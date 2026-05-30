@@ -47,6 +47,8 @@
       <a href="#engine">解析エンジン (core)</a>
       <a href="#android">Android / AAOS / AOSP</a>
       <a href="#db">永続化・SQLite インデックス</a>
+      <a href="#db-schema" class="sub">スキーマ（ER 図）</a>
+      <a href="#db-dao" class="sub">DAO・Ingest 層</a>
       <a href="#render">PlantUML 描画</a>
       <div class="group">運用</div>
       <a href="#build">ビルドと実行</a>
@@ -689,6 +691,336 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
         <li><b>書き込み</b>：<code>IndexWriter</code> が 1 ファイル = 1 トランザクション（path DELETE → CASCADE → INSERT → <code>ClassIngestor</code> 系）。集約系は毎回 wipe → 再構築で冪等。</li>
         <li><b>増分</b>：<code>IncrementalScanner</code> が <code>files</code> と現 FS を mtime + size で突合（ハッシュ不使用）。<code>GradleProjectScope</code> がモジュール境界を拾い AOSP 級ツリーの全走査を回避。</li>
       </ul>
+
+      <h3 id="db-schema">スキーマ（ER 図）</h3>
+      <p><code>SchemaInitializer</code>（<code>SCHEMA_VERSION = 6</code>）が一括 CREATE する <b>16 テーブル + <code>meta</code></b> の関係を示します。各エンティティはキー列（<span class="pill">PK</span><span class="pill">FK</span><span class="pill">UQ</span>）に絞って表示し、全カラムは上記説明と <code>SchemaInitializer.java</code> に対応します。FK 線の <b>実線 = <code>ON DELETE CASCADE</code></b>（親が消えると子も消える）、<b>破線 = <code>SET NULL</code> / 弱参照</b>。crow's-foot（三叉）が <code>*</code>（多）、縦棒が <code>1</code> を表します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 1000 510" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="10.5">
+        <defs>
+          <marker id="erN" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker>
+          <marker id="erNw" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow-weak" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker>
+          <marker id="er1" markerWidth="12" markerHeight="14" refX="7" refY="7" orient="auto"><path class="mk-one" d="M6,1 L6,13"/></marker>
+        </defs>
+
+        <!-- ── relationship lines (draw first, behind entities) ── -->
+        <!-- modules 1—* files (SET NULL, weak) -->
+        <path class="u-er-rel-weak" d="M182,80 C196,100 196,135 206,139" marker-end="url(#erNw)"/>
+        <!-- files 1—* {classes, refs, unresolved, external_endpoints}, files 1—1 manifests -->
+        <path class="u-er-rel" d="M370,130 C386,118 386,60 398,60" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,150 C386,150 388,154 398,154" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,160 C388,200 388,240 398,240" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,168 C388,290 388,326 398,326" marker-end="url(#er1)"/>
+        <path class="u-er-rel" d="M370,174 C388,400 388,412 398,412" marker-end="url(#erN)"/>
+        <!-- classes 1—* {class_interfaces, class_imports, fields, methods}, classes 1—1 aidl_interfaces -->
+        <path class="u-er-rel" d="M562,52 C586,48 588,47 606,47" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,60 C588,90 588,119 606,119" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,70 C588,180 588,198 606,198" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,80 C590,270 590,284 606,284" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,90 C592,360 592,370 606,370" marker-end="url(#er1)"/>
+        <!-- manifests 1—* components -->
+        <path class="u-er-rel" d="M562,330 C588,400 588,454 606,454" marker-end="url(#erN)"/>
+        <!-- aidl_interfaces 1—* aidl_methods ; components 1—* intent_filters -->
+        <path class="u-er-rel" d="M770,370 L812,370" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M770,454 L812,454" marker-end="url(#erN)"/>
+
+        <!-- ── entities ── -->
+        <!-- modules -->
+        <g>
+          <rect class="u-ent" x="18" y="44" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="18" y="44" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="100" y="59" text-anchor="middle">modules</text>
+          <line class="u-ent-div" x1="18" y1="66" x2="182" y2="66"/>
+          <text class="u-pk" x="26" y="78"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="26" y="92"><tspan class="u-keytag">UQ</tspan> name</text>
+          <text class="u-col" x="26" y="106">path</text>
+        </g>
+        <!-- meta -->
+        <g>
+          <rect class="u-ent" x="18" y="150" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="18" y="150" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="100" y="165" text-anchor="middle">meta <tspan class="u-faint">（独立）</tspan></text>
+          <line class="u-ent-div" x1="18" y1="172" x2="182" y2="172"/>
+          <text class="u-pk" x="26" y="184"><tspan class="u-keytag">PK</tspan> key</text>
+          <text class="u-col" x="26" y="198">value</text>
+        </g>
+        <!-- files -->
+        <g>
+          <rect class="u-ent" x="206" y="96" width="164" height="86" rx="6"/><rect class="u-ent-hdr" x="206" y="96" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="288" y="111" text-anchor="middle">files</text>
+          <line class="u-ent-div" x1="206" y1="118" x2="370" y2="118"/>
+          <text class="u-pk" x="214" y="130"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="214" y="144"><tspan class="u-keytag">UQ</tspan> path</text>
+          <text class="u-fk" x="214" y="158"><tspan class="u-keytag">FK</tspan> module_id ▸modules</text>
+          <text class="u-col" x="214" y="172">kind, mtime, size</text>
+        </g>
+        <!-- classes -->
+        <g>
+          <rect class="u-ent" x="398" y="18" width="164" height="86" rx="6"/><rect class="u-ent-hdr" x="398" y="18" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="33" text-anchor="middle">classes</text>
+          <line class="u-ent-div" x1="398" y1="40" x2="562" y2="40"/>
+          <text class="u-pk" x="406" y="52"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="406" y="66"><tspan class="u-keytag">UQ</tspan> qn</text>
+          <text class="u-fk" x="406" y="80"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="94">kind, super_class</text>
+        </g>
+        <!-- refs -->
+        <g>
+          <rect class="u-ent" x="398" y="118" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="118" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="133" text-anchor="middle">refs <tspan class="u-faint">（逆参照）</tspan></text>
+          <line class="u-ent-div" x1="398" y1="140" x2="562" y2="140"/>
+          <text class="u-pk" x="406" y="152"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="166"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="180">callee_owner_qn, caller_qn</text>
+        </g>
+        <!-- unresolved -->
+        <g>
+          <rect class="u-ent" x="398" y="204" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="204" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="219" text-anchor="middle">unresolved</text>
+          <line class="u-ent-div" x1="398" y1="226" x2="562" y2="226"/>
+          <text class="u-pk" x="406" y="238"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="252"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="266">symbol</text>
+        </g>
+        <!-- manifests -->
+        <g>
+          <rect class="u-ent" x="398" y="290" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="290" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="305" text-anchor="middle">manifests</text>
+          <line class="u-ent-div" x1="398" y1="312" x2="562" y2="312"/>
+          <text class="u-pk" x="406" y="324"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="338"><tspan class="u-keytag">FK·UQ</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="352">package_name, source_set</text>
+        </g>
+        <!-- external_endpoints -->
+        <g>
+          <rect class="u-ent" x="398" y="376" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="376" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="391" text-anchor="middle">external_endpoints</text>
+          <line class="u-ent-div" x1="398" y1="398" x2="562" y2="398"/>
+          <text class="u-pk" x="406" y="410"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="424"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="438">source_kind, to_qn</text>
+        </g>
+        <!-- class_interfaces -->
+        <g>
+          <rect class="u-ent" x="606" y="18" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="606" y="18" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="33" text-anchor="middle">class_interfaces</text>
+          <line class="u-ent-div" x1="606" y1="40" x2="770" y2="40"/>
+          <text class="u-fk" x="614" y="52"><tspan class="u-keytag">PK·FK</tspan> class_id ▸classes</text>
+          <text class="u-pk" x="614" y="66"><tspan class="u-keytag">PK</tspan> iface_qn</text>
+        </g>
+        <!-- class_imports -->
+        <g>
+          <rect class="u-ent" x="606" y="90" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="606" y="90" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="105" text-anchor="middle">class_imports</text>
+          <line class="u-ent-div" x1="606" y1="112" x2="770" y2="112"/>
+          <text class="u-fk" x="614" y="124"><tspan class="u-keytag">PK·FK</tspan> class_id ▸classes</text>
+          <text class="u-pk" x="614" y="138"><tspan class="u-keytag">PK</tspan> imp, is_static</text>
+        </g>
+        <!-- fields -->
+        <g>
+          <rect class="u-ent" x="606" y="162" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="162" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="177" text-anchor="middle">fields</text>
+          <line class="u-ent-div" x1="606" y1="184" x2="770" y2="184"/>
+          <text class="u-pk" x="614" y="196"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="210"><tspan class="u-keytag">FK</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="224">name, type, visibility</text>
+        </g>
+        <!-- methods -->
+        <g>
+          <rect class="u-ent" x="606" y="248" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="248" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="263" text-anchor="middle">methods</text>
+          <line class="u-ent-div" x1="606" y1="270" x2="770" y2="270"/>
+          <text class="u-pk" x="614" y="282"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="296"><tspan class="u-keytag">FK</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="310">name, return_type, params</text>
+        </g>
+        <!-- aidl_interfaces -->
+        <g>
+          <rect class="u-ent" x="606" y="334" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="334" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="349" text-anchor="middle">aidl_interfaces</text>
+          <line class="u-ent-div" x1="606" y1="356" x2="770" y2="356"/>
+          <text class="u-pk" x="614" y="368"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="382"><tspan class="u-keytag">FK·UQ</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="396">package_name, simple_name</text>
+        </g>
+        <!-- components -->
+        <g>
+          <rect class="u-ent" x="606" y="418" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="418" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="433" text-anchor="middle">components</text>
+          <line class="u-ent-div" x1="606" y1="440" x2="770" y2="440"/>
+          <text class="u-pk" x="614" y="452"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="466"><tspan class="u-keytag">FK</tspan> manifest_id ▸manifests</text>
+          <text class="u-uq" x="614" y="480"><tspan class="u-keytag">UQ</tspan> comp_type, class_qn</text>
+        </g>
+        <!-- aidl_bindings -->
+        <g>
+          <rect class="u-ent" x="812" y="44" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="812" y="44" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="59" text-anchor="middle">aidl_bindings <tspan class="u-faint">（独立）</tspan></text>
+          <line class="u-ent-div" x1="812" y1="66" x2="976" y2="66"/>
+          <text class="u-pk" x="820" y="78"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="820" y="92"><tspan class="u-keytag">UQ</tspan> aidl_qn, impl_qn</text>
+        </g>
+        <!-- aidl_methods -->
+        <g>
+          <rect class="u-ent" x="812" y="334" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="812" y="334" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="349" text-anchor="middle">aidl_methods</text>
+          <line class="u-ent-div" x1="812" y1="356" x2="976" y2="356"/>
+          <text class="u-pk" x="820" y="368"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="820" y="382"><tspan class="u-keytag">FK</tspan> aidl_id ▸aidl_interfaces</text>
+          <text class="u-col" x="820" y="396">name, oneway, return_type</text>
+        </g>
+        <!-- intent_filters -->
+        <g>
+          <rect class="u-ent" x="812" y="418" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="812" y="418" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="433" text-anchor="middle">intent_filters</text>
+          <line class="u-ent-div" x1="812" y1="440" x2="976" y2="440"/>
+          <text class="u-pk" x="820" y="452"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="820" y="466"><tspan class="u-keytag">FK</tspan> component_id ▸components</text>
+          <text class="u-col" x="820" y="480">filter_index, actions</text>
+        </g>
+      </svg>
+      <figcaption><b>図3</b>　SQLite インデックス <code>index.db</code> のスキーマ（ER 図・<code>SCHEMA_VERSION 6</code>）。<code>files</code> を中心に <code>classes</code>／<code>refs</code>／<code>manifests</code> 等が <code>ON DELETE CASCADE</code>（実線・crow's-foot = 多）でぶら下がり、<code>modules → files</code> のみ <code>SET NULL</code>（破線）。<code>file_id</code> が UNIQUE な <code>manifests</code> と <code>class_id</code> が UNIQUE な <code>aidl_interfaces</code> は <code>1—1</code>（縦棒）。<code>meta</code> と <code>aidl_bindings</code> は FK を持たない独立テーブル。1 ファイル削除で子行が連鎖削除されるため、増分再構築（<code>IncrementalScanner</code>）が冪等になる。</figcaption>
+      </figure>
+
+      <div class="uml-legend">
+        <h4>ER 図の凡例</h4>
+        <div class="legend-grid">
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-pk" x="2" y="12"><tspan class="u-keytag">PK</tspan></text></svg> 主キー（primary key）</span>
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-fk" x="2" y="12"><tspan class="u-keytag">FK</tspan></text></svg> 外部キー（references）</span>
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-uq" x="2" y="12"><tspan class="u-keytag">UQ</tspan></text></svg> UNIQUE 制約</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><defs><marker id="lg-erN" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker></defs><line class="u-er-rel" x1="2" y1="8" x2="34" y2="8" marker-end="url(#lg-erN)"/></svg> 1—* （CASCADE）</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><defs><marker id="lg-er1" markerWidth="12" markerHeight="14" refX="7" refY="7" orient="auto"><path class="mk-one" d="M6,1 L6,13"/></marker></defs><line class="u-er-rel" x1="2" y1="8" x2="36" y2="8" marker-end="url(#lg-er1)"/></svg> 1—1 （UNIQUE FK）</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><line class="u-er-rel-weak" x1="2" y1="8" x2="40" y2="8"/></svg> SET NULL / 弱参照</span>
+        </div>
+      </div>
+
+      <h3 id="db-dao">書き込み / 読み出しの責務（DAO・Ingest 層）</h3>
+      <p>上記スキーマへの出し入れは <b>3 つの層</b>に分かれます。<code>Ingestor</code>（解析結果 → 行への変換アダプタ）、<code>Dao</code>（1 テーブル = 1 クラスの CRUD・SQL 隠蔽）、そして <code>IndexWriter</code>（1 ファイル = 1 トランザクションの書き込み窓口）/ <code>IndexReader</code>（DB → メモリへの復元 API）。書き込みは上段（左→右で SQLite へ）、読み出しは下段（SQLite → メモリモデル → 図生成）に流れます。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 820 440" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="10.5">
+        <defs>
+          <marker id="f16-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f16-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker>
+        </defs>
+
+        <!-- ── bootstrap row ── -->
+        <g>
+          <rect class="u-cls" x="18" y="16" width="150" height="44" rx="6"/><rect class="u-cls-hdr" x="18" y="16" width="150" height="24" rx="6"/>
+          <text class="u-name" x="93" y="32" text-anchor="middle">DbBootstrap</text>
+          <text class="u-member" x="26" y="54">キャッシュ位置を解決</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="188" y="16" width="168" height="44" rx="6"/><rect class="u-cls-hdr" x="188" y="16" width="168" height="24" rx="6"/>
+          <text class="u-name" x="272" y="32" text-anchor="middle">IndexDatabase</text>
+          <text class="u-member" x="196" y="54">接続 / PRAGMA / 版チェック</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="376" y="16" width="176" height="44" rx="6"/><rect class="u-cls-hdr" x="376" y="16" width="176" height="24" rx="6"/>
+          <text class="u-name" x="464" y="32" text-anchor="middle">SchemaInitializer <tspan class="u-faint">«static»</tspan></text>
+          <text class="u-member" x="384" y="54">16 テーブルを一括 CREATE</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="576" y="16" width="176" height="44" rx="6"/><rect class="u-cls-hdr" x="576" y="16" width="176" height="24" rx="6"/>
+          <text class="u-name" x="664" y="32" text-anchor="middle">IncrementalScanner</text>
+          <text class="u-member" x="584" y="54">mtime/size で stale 判定</text>
+        </g>
+        <path class="u-rel" d="M168,38 L188,38" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,38 L376,38" marker-end="url(#f16-arr)"/>
+        <path class="u-rel-dash" d="M520,60 C620,82 692,96 706,118" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="610" y="90">«create»</text>
+        <path class="u-rel-dash" d="M606,60 C556,80 520,92 500,138" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="508" y="84">diff ▸ FilesDao</text>
+
+        <!-- ── WRITE lane ── -->
+        <g>
+          <rect class="u-cls" x="18" y="150" width="152" height="74" rx="6"/><rect class="u-cls-hdr" x="18" y="150" width="152" height="30" rx="6"/>
+          <text class="u-stereo" x="94" y="163" text-anchor="middle">«synchronized»</text>
+          <text class="u-name" x="94" y="176" text-anchor="middle">IndexWriter</text>
+          <line class="u-div" x1="18" y1="180" x2="170" y2="180"/>
+          <text class="u-member" x="26" y="194"><tspan class="u-vis">+</tspan> upsertFile(path,…)</text>
+          <text class="u-member" x="26" y="208">1 file = 1 TX</text>
+          <text class="u-member" x="26" y="221"><tspan class="u-faint">DELETE→CASCADE→INSERT</tspan></text>
+        </g>
+
+        <!-- ingest frame -->
+        <rect class="u-frame" x="190" y="100" width="176" height="158" rx="8"/>
+        <rect class="u-frame-tab" x="190" y="100" width="176" height="20"/>
+        <text class="u-frame-op" x="198" y="114">ingest/（解析→DAO アダプタ）</text>
+        <text class="u-member" x="200" y="140">▸ ClassIngestor</text>
+        <text class="u-member" x="200" y="160">▸ RefsIngestor</text>
+        <text class="u-member" x="200" y="180">▸ ManifestIngestor</text>
+        <text class="u-member" x="200" y="200">▸ ComponentIngestor</text>
+        <text class="u-member" x="200" y="220">▸ AidlIngestor</text>
+        <text class="u-member" x="200" y="240">▸ EndpointAggregator</text>
+
+        <!-- dao frame -->
+        <rect class="u-frame" x="388" y="100" width="214" height="200" rx="8"/>
+        <rect class="u-frame-tab" x="388" y="100" width="214" height="20"/>
+        <text class="u-frame-op" x="396" y="114">dao/（12 テーブル DAO・SQL 隠蔽）</text>
+        <text class="u-member" x="398" y="140">ClassesDao</text>
+        <text class="u-member" x="398" y="160">MembersDao</text>
+        <text class="u-member" x="398" y="180">FilesDao</text>
+        <text class="u-member" x="398" y="200">ModulesDao</text>
+        <text class="u-member" x="398" y="220">RefsDao</text>
+        <text class="u-member" x="398" y="240">UnresolvedDao</text>
+        <text class="u-member" x="498" y="140">ManifestsDao</text>
+        <text class="u-member" x="498" y="160">ComponentsDao</text>
+        <text class="u-member" x="498" y="180">IntentFiltersDao</text>
+        <text class="u-member" x="498" y="200">AidlInterfacesDao</text>
+        <text class="u-member" x="498" y="220">AidlBindingsDao</text>
+        <text class="u-member" x="498" y="240">EndpointsDao</text>
+
+        <!-- SQLite cylinder -->
+        <g>
+          <rect class="u-cls" x="636" y="135" width="150" height="110"/>
+          <ellipse class="u-cls" cx="711" cy="245" rx="75" ry="14"/>
+          <ellipse class="u-cls-hdr" cx="711" cy="135" rx="75" ry="14"/>
+          <text class="u-name" x="711" y="170" text-anchor="middle">index.db</text>
+          <text class="u-member" x="711" y="188" text-anchor="middle">SQLite · schema v6</text>
+          <text class="u-member" x="711" y="205" text-anchor="middle">16 tables</text>
+        </g>
+
+        <path class="u-rel" d="M170,178 L190,178" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M366,170 L388,170" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="368" y="164">ingest()</text>
+        <path class="u-rel" d="M602,160 L636,160" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="606" y="154">INSERT · upsert</text>
+
+        <!-- ── READ lane ── -->
+        <g>
+          <rect class="u-cls" x="18" y="324" width="160" height="92" rx="6"/><rect class="u-cls-hdr" x="18" y="324" width="160" height="24" rx="6"/>
+          <text class="u-name" x="98" y="340" text-anchor="middle">IndexReader</text>
+          <line class="u-div" x1="18" y1="348" x2="178" y2="348"/>
+          <text class="u-member" x="26" y="362"><tspan class="u-vis">+</tspan> loadStageAClassIndex()</text>
+          <text class="u-member" x="26" y="377"><tspan class="u-vis">+</tspan> fieldsOf() / methodsOf()</text>
+          <text class="u-member" x="26" y="392"><tspan class="u-vis">+</tspan> loadReferenceIndex()</text>
+          <text class="u-member" x="26" y="408"><tspan class="u-faint">DB → メモリ復元</tspan></text>
+        </g>
+        <g>
+          <rect class="u-cls" x="206" y="322" width="150" height="34" rx="6"/>
+          <text class="u-name" x="281" y="343" text-anchor="middle">ClassIndex</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="206" y="364" width="150" height="34" rx="6"/>
+          <text class="u-name" x="281" y="385" text-anchor="middle">ReferenceIndex</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="392" y="338" width="178" height="44" rx="6"/><rect class="u-cls-hdr" x="392" y="338" width="178" height="24" rx="6"/>
+          <text class="u-name" x="481" y="354" text-anchor="middle">UmlGenerator ほか</text>
+          <text class="u-member" x="400" y="376">図種ごとの PlantUml*Diagram</text>
+        </g>
+
+        <!-- read arrows (SQLite → DAO → IndexReader → models → 図生成) -->
+        <path class="u-rel-dash" d="M690,250 C600,310 520,300 478,300" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="560" y="296">SELECT</text>
+        <path class="u-rel" d="M388,278 C260,300 220,330 180,356" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="250" y="318">DAO 経由で読み出し</text>
+        <path class="u-rel" d="M178,352 L206,340" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M178,372 L206,380" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,340 C374,344 376,356 392,358" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,380 C374,376 376,366 392,362" marker-end="url(#f16-arr)"/>
+      </svg>
+      <figcaption><b>図4</b>　SQLite インデックス層の責務分離（クラス図）。上段=<b>書き込み</b>：<code>IndexWriter</code> が 1 ファイル = 1 トランザクションで <code>ingest/</code>（解析結果→行アダプタ）→ <code>dao/</code>（テーブルごとの CRUD）→ <code>index.db</code> へ流す。下段=<b>読み出し</b>：<code>IndexReader</code> が同じ <code>dao/</code> 経由で <code>ClassIndex</code> / <code>ReferenceIndex</code> をメモリ復元し、図生成（<code>UmlGenerator</code>）へ渡す。上の <code>DbBootstrap → IndexDatabase → SchemaInitializer</code> が DB を用意し、<code>IncrementalScanner</code> が差分だけ再書き込みする。実線=呼び出し/関連、破線=生成/読み出し。</figcaption>
+      </figure>
     </section>
 
     <section id="render">
@@ -835,7 +1167,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
           <text class="u-member" x="638" y="483"><tspan class="u-vis">+</tspan> PlantUmlRenderFailedException(String)</text>
         </g>
       </svg>
-      <figcaption><b>図3</b>　PlantUML 図生成階層（クラス図）。<code>UmlGenerator</code>（façade）が独立 <code>final</code> クラス群を呼び、各 <code>generate()</code> が返す <code>String</code> を <code>PlantUmlRenderer</code> が SVG 化（<code>DiagramStyle</code> を <code>currentStyle</code> として参照、失敗時 <code>PlantUmlRenderFailedException</code> を送出）。<code>PlantUmlClassDiagram</code> だけが補助 <code>~</code> ヘルパ 2 種に依存。</figcaption>
+      <figcaption><b>図5</b>　PlantUML 図生成階層（クラス図）。<code>UmlGenerator</code>（façade）が独立 <code>final</code> クラス群を呼び、各 <code>generate()</code> が返す <code>String</code> を <code>PlantUmlRenderer</code> が SVG 化（<code>DiagramStyle</code> を <code>currentStyle</code> として参照、失敗時 <code>PlantUmlRenderFailedException</code> を送出）。<code>PlantUmlClassDiagram</code> だけが補助 <code>~</code> ヘルパ 2 種に依存。</figcaption>
       </figure>
     </section>
 

@@ -239,6 +239,27 @@ figure.uml-fig figcaption b { color: var(--accent); font-weight: 600; }
 .diagram-svg .u-end-o { fill: none; stroke: var(--text); stroke-width: 1.6; }
 .diagram-svg .u-end-i { fill: var(--text); stroke: none; }
 
+/* ER 図（entity-relationship: SQLite index.db スキーマ）
+   エンティティ箱はクラス図の u-cls 系に近いが、行の種別（PK/FK/UNIQUE/通常）で
+   色分けし、関係線は crow's-foot marker で多重度を示す。 */
+.diagram-svg .u-ent { fill: var(--bg-soft); stroke: var(--border); }
+.diagram-svg .u-ent-hdr { fill: var(--pill-bg); stroke: var(--border); }
+.diagram-svg .u-ent-nm { fill: var(--text); font-weight: 600; }
+.diagram-svg .u-ent-div { stroke: var(--border); stroke-width: 1; }
+.diagram-svg .u-pk { fill: var(--accent); font-weight: 600; }     /* 主キー行 */
+.diagram-svg .u-fk { fill: var(--accent-2); }                     /* 外部キー行 */
+.diagram-svg .u-uq { fill: var(--accent-3); }                     /* UNIQUE 行 */
+.diagram-svg .u-col { fill: var(--text-dim); }                    /* 通常カラム */
+.diagram-svg .u-keytag { font-size: 8.5px; font-weight: 700; }
+/* 関係線: 実線 = ON DELETE CASCADE、破線 = SET NULL / 弱参照 */
+.diagram-svg .u-er-rel { stroke: var(--accent); stroke-width: 1.25; fill: none; }
+.diagram-svg .u-er-rel-weak { stroke: var(--text-faint); stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; }
+.diagram-svg .u-card { fill: var(--accent-2); font-size: 10px; }
+/* crow's-foot marker 用（多: 三叉、1: 縦棒） */
+.diagram-svg .mk-crow { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+.diagram-svg .mk-crow-weak { fill: none; stroke: var(--text-faint); stroke-width: 1.2; }
+.diagram-svg .mk-one { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+
 /* alt / loop / opt などの結合フラグメント枠 */
 .diagram-svg .u-frame { fill: none; stroke: var(--accent-3); stroke-width: 1; stroke-dasharray: 3 3; }
 .diagram-svg .u-frame-tab { fill: var(--bg-soft); stroke: var(--accent-3); stroke-width: 1; }

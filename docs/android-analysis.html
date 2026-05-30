@@ -126,7 +126,7 @@
       <h3>GUI（<code>app/uml/DiagramService</code> → <code>DiagramKind</code>）</h3>
       <p>GUI では各タブが <code>DiagramKind</code> を 1 つ持ち、<code>DiagramService</code> が種別に応じて系統①/②を呼び分けます。Android 系の <code>DiagramKind</code>:</p>
       <p><span class="pill">COMPONENT</span><span class="pill">MANIFEST</span><span class="pill">DEPENDENCY</span><span class="pill">NAVIGATION</span><span class="pill">LAYOUT</span><span class="pill">SCREEN_FLOW</span><span class="pill">SOONG（Android.bp）</span> ＝ 系統② / 派生。<span class="pill">CLASS</span><span class="pill">SEQUENCE</span><span class="pill">CALLGRAPH</span><span class="pill">INHERITANCE</span><span class="pill">PACKAGE</span><span class="pill">COMMON</span><span class="pill">ACTIVITY</span><span class="pill">MODULE</span> ＝ 系統①。</p>
-      <p>プロジェクトを開いた瞬間の重い解析（系統①の並列パース）は <code>ProjectLoader</code> が <code>SwingWorker</code> で背景実行し、結果は <code>ProjectAnalysisCache</code> にキャッシュされます（流れは <a href="./source-analysis.html#stage">ソース解析・Stage A/B</a> の図5を参照）。②の Android 資産解析は比較的軽いので、図を開くタイミングで都度 <code>AndroidProjectAnalyzer.analyze()</code> が走ることが多いです。</p>
+      <p>プロジェクトを開いた瞬間の重い解析（系統①の並列パース）は <code>ProjectLoader</code> が <code>SwingWorker</code> で背景実行し、結果は <code>ProjectAnalysisCache</code> にキャッシュされます（流れは <a href="./source-analysis.html#stage">ソース解析・Stage A/B</a> の図7を参照）。②の Android 資産解析は比較的軽いので、図を開くタイミングで都度 <code>AndroidProjectAnalyzer.analyze()</code> が走ることが多いです。</p>
 
       <h3>API（コードから直接）</h3>
       <pre><code>// 系統① 構造解析（並列・進捗・キャンセル対応）
