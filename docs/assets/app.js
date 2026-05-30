@@ -207,4 +207,31 @@
       if (dl.children.length && wrap.parentNode) wrap.parentNode.replaceChild(dl, wrap);
     });
   }
+
+  // --- collapse long inline diagrams into <details> (pages flagged .figcollapse) ---
+  if (document.body.classList.contains('figcollapse')) {
+    document.querySelectorAll('figure.uml-fig').forEach(function (fig) {
+      var cap = fig.querySelector('figcaption');
+      var badge = '図', title = '図を表示';
+      if (cap) {
+        var b = cap.querySelector('b');
+        if (b) badge = b.textContent.trim();
+        var rest = cap.textContent.replace(/^\s*図\d+\s*/, '').split(/[。.]/)[0].trim();
+        if (rest) title = rest;
+      }
+      var det = document.createElement('details');
+      det.className = 'fig';
+      var sum = document.createElement('summary');
+      sum.innerHTML = '<span class="fig-badge"></span><span class="fig-title"></span>';
+      sum.querySelector('.fig-badge').textContent = badge;
+      sum.querySelector('.fig-title').textContent = title;
+      fig.parentNode.insertBefore(det, fig);
+      det.appendChild(sum);
+      det.appendChild(fig);
+      var legend = det.nextElementSibling;
+      if (legend && legend.classList && legend.classList.contains('uml-legend')) {
+        det.appendChild(legend);
+      }
+    });
+  }
 })();

@@ -7,7 +7,7 @@
 <meta name="description" content="Juml の Swing GUI 操作マニュアル：起動・画面構成・ツールバー・図種・スタイル設定・エクスポート・ショートカット。">
 <link rel="stylesheet" href="./assets/style.css">
 </head>
-<body class="v2">
+<body class="v2 figcollapse">
 
 <header class="site-nav">
   <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
@@ -27,28 +27,42 @@
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <nav id="toc">
-      <div class="group">基本</div>
+      <div class="group">はじめに</div>
       <a href="#start">起動と画面構成</a>
+      <a class="sub" href="#app-state">アプリ全体の状態遷移</a>
       <a href="#open">プロジェクトを開く</a>
+      <a class="sub" href="#view-flow">図を見るまでの操作フロー</a>
+      <div class="group">画面ナビゲーション</div>
       <a href="#toolbar">ツールバー</a>
       <a href="#tree">左ペイン — ツリー</a>
       <a href="#tabs">右ペイン — タブ</a>
       <div class="group">図を作る</div>
       <a href="#kinds">図種の選択と切り替え</a>
+      <a class="sub" href="#kind-sync">図種切替時の連動</a>
       <a href="#kind-detail">各図種の詳細操作</a>
       <a href="#methodlink">クラス図のメソッドリンク</a>
       <a href="#scope">スコープ絞り込み</a>
       <a href="#search">エンティティ検索</a>
-      <div class="group">操作</div>
+      <div class="group">操作・ナビ</div>
       <a href="#zoom">ズーム・パン</a>
       <a href="#drilldown">ドリルダウンとタブ</a>
+      <a class="sub" href="#tab-lifecycle">タブのライフサイクル</a>
+      <div class="group">動作と状態</div>
+      <a href="#state">操作の状態管理</a>
+      <a class="sub" href="#tab-state">タブごとの状態</a>
+      <a class="sub" href="#state-sync">状態の同期と再描画</a>
+      <a href="#transitions">画面とダイアログの遷移</a>
+      <a class="sub" href="#state-table">状態遷移テーブル</a>
+      <a class="sub" href="#dialog-map">ダイアログ遷移マップ</a>
+      <div class="group">見た目・保存</div>
       <a href="#style">スタイル設定</a>
-      <div class="group">出力・解析</div>
       <a href="#export">右クリックエクスポート</a>
       <a href="#save">図の保存・エクスポート</a>
-      <a href="#impact">Impact 解析</a>
       <a href="#persist">設定の自動保存</a>
+      <div class="group">解析・トラブル</div>
+      <a href="#impact">Impact 解析</a>
       <a href="#graphviz">巨大な図が描画できないとき</a>
+      <div class="group">リファレンス</div>
       <a href="#shortcuts">ショートカット一覧</a>
     </nav>
   </aside>
@@ -638,6 +652,141 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
       </figure>
     </section>
 
+    <section id="state">
+      <h2>操作の状態管理</h2>
+      <p>Juml は「タブ＝エディタ」モデルです。状態は <b>タブごとに保持される状態</b> と、<b>アクティブタブを映すグローバル状態</b>（<code>DiagramState</code>）の二層に分かれます。スコープ／フィルタ等のダイアログやエクスポートは、常に「いまフォーカスしているタブ」の状態を見て動きます。</p>
+
+      <h3 id="tab-state">タブごとに保持される状態</h3>
+      <p>各図タブは自分の描画リクエスト（<code>DiagramRequest</code>）と描画結果を独立して持ちます。別タブへ切り替えても、それぞれの図種・スコープ・起点・ズーム率は保たれます。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>状態項目</th><th>内容</th><th>変わる操作</th><th>保持・復元</th></tr></thead>
+        <tbody>
+          <tr><td>図種 <code>kind</code></td><td>そのタブが描く図（Class / Sequence / …）</td><td>図種切替・ドリルダウン</td><td>タブごと。閉じると破棄</td></tr>
+          <tr><td>スコープ <code>scope</code></td><td>クラス図の表示範囲（パッケージ / 関連線 / 可視性）</td><td>Diagram › Scope</td><td>タブごと。変更で再描画</td></tr>
+          <tr><td>起点 <code>entry</code></td><td>シーケンス / アクティビティ / コールグラフの <code>Class.method</code></td><td>メソッド選択 / Choose … Entry</td><td>タブごと</td></tr>
+          <tr><td>非表示 participant</td><td>シーケンス図で隠す相手</td><td>Participant フィルタ</td><td>タブごと。変更で再描画</td></tr>
+          <tr><td>ズーム率</td><td>プレビューの倍率</td><td>ズーム・パン</td><td><b>タブごとに独立</b>（共有しない）</td></tr>
+          <tr><td>PlantUML / SVG</td><td>最後に描画したソースと図</td><td>再描画時</td><td>タブごと。ソースタブ／エクスポートが参照</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="state-sync">アクティブタブとグローバル状態の同期</h3>
+      <p>タブをフォーカスすると、そのタブの状態が「現在の状態」（<code>DiagramState</code>）へ反映され（<code>mirrorToState</code>）、<b>ツリーのハイライト・ツールバーの図種・ステータスバー</b>が連動します。逆にスタイルやスコープを変えるとアクティブタブが再描画され、結果がまた <code>DiagramState</code> に書き戻されます。</p>
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 920 350" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="s12-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+        </defs>
+        <line class="u-life" x1="170" y1="40" x2="170" y2="338"/>
+        <line class="u-life" x1="360" y1="40" x2="360" y2="338"/>
+        <line class="u-life" x1="540" y1="40" x2="540" y2="338"/>
+        <line class="u-life" x1="710" y1="40" x2="710" y2="338"/>
+        <line class="u-life" x1="860" y1="40" x2="860" y2="338"/>
+        <g font-size="9">
+          <rect class="u-actor" x="112" y="12" width="116" height="26" rx="6"/><text class="u-name" x="170" y="29" text-anchor="middle">DiagramTabPane</text>
+          <rect class="u-actor" x="308" y="12" width="104" height="26" rx="6"/><text class="u-name" x="360" y="29" text-anchor="middle">DiagramState</text>
+          <rect class="u-actor" x="484" y="12" width="112" height="26" rx="6"/><text class="u-name" x="540" y="29" text-anchor="middle">DiagramController</text>
+          <rect class="u-actor" x="656" y="12" width="108" height="26" rx="6"/><text class="u-name" x="710" y="29" text-anchor="middle">ProjectTreePanel</text>
+          <rect class="u-actor" x="808" y="12" width="104" height="26" rx="6"/><text class="u-name" x="860" y="29" text-anchor="middle">ツールバー/メニュー</text>
+        </g>
+        <!-- activations -->
+        <rect class="u-act" x="166" y="72" width="8" height="258"/>
+        <rect class="u-act" x="356" y="100" width="8" height="14"/>
+        <rect class="u-act" x="536" y="128" width="8" height="60"/>
+        <rect class="u-act" x="706" y="152" width="8" height="14"/>
+        <rect class="u-act" x="856" y="176" width="8" height="14"/>
+        <rect class="u-act" x="536" y="230" width="8" height="32"/>
+        <rect class="u-act" x="356" y="312" width="8" height="14"/>
+        <!-- group A -->
+        <rect class="u-frame" x="108" y="52" width="804" height="146"/>
+        <rect class="u-frame-tab" x="108" y="52" width="48" height="14"/>
+        <text class="u-frame-op" x="114" y="63">group</text>
+        <text class="u-guard" x="160" y="63">[タブをフォーカスしたとき]</text>
+        <path class="u-msg" d="M24,72 L164,72" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="26" y="67">タブを選択</text>
+        <path class="u-msg" d="M174,100 L356,100" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="178" y="95">mirrorToState()  [puml / svg / scope / entry]</text>
+        <path class="u-msg" d="M174,128 L536,128" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="200" y="123">onTabFocused(FocusedTab)</text>
+        <path class="u-msg" d="M544,152 L706,152" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="548" y="147">selectClassNode(fqn) [suppressNotify]</text>
+        <path class="u-msg" d="M544,176 L856,176" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="600" y="171">reflectKindInToolbar(kind)</text>
+        <!-- group B -->
+        <rect class="u-frame" x="108" y="210" width="804" height="126"/>
+        <rect class="u-frame-tab" x="108" y="210" width="48" height="14"/>
+        <text class="u-frame-op" x="114" y="221">group</text>
+        <text class="u-guard" x="160" y="221">[スタイル / スコープを変えたとき]</text>
+        <path class="u-msg" d="M24,230 L536,230" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="26" y="225">Scope 設定 / スタイル変更</text>
+        <path class="u-msg" d="M536,258 L174,258" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="200" y="253">applyStateToActiveTab() / rerenderAllTabs()</text>
+        <path class="u-self" d="M174,282 L226,282 L226,296 L176,296" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="230" y="292">startRender()（再描画）</text>
+        <path class="u-msg" d="M174,312 L356,312" marker-end="url(#s12-arr)"/>
+        <text class="u-msg-lbl" x="178" y="307">mirrorToState()（結果を反映）</text>
+      </svg>
+      <figcaption><b>図12</b>　状態の同期と再描画（シーケンス図）。タブをフォーカスすると <code>DiagramTabPane</code> が <code>mirrorToState()</code> で <code>DiagramState</code> を更新し、<code>onTabFocused</code> 経由でツリーのハイライト（<code>selectClassNode</code>）とツールバー図種（<code>reflectKindInToolbar</code>）へ逆同期。スタイル/スコープ変更時は <code>applyStateToActiveTab()</code>／<code>rerenderAllTabs()</code> で再描画し、結果が再び <code>DiagramState</code> に反映される。凡例はシーケンス図と共通。</figcaption>
+      </figure>
+      <div class="note"><b>無限ループ防止:</b> タブ → ツリーのハイライトは <code>suppressNotify</code> 付きで行われ、ツリー側の選択コールバックを再発火させません（タブ ⇄ ツリー ⇄ ツールバーの循環を断ち切ります）。</div>
+
+      <details>
+        <summary>内部構造（クラスの責務）</summary>
+        <ul>
+          <li><code>DiagramState</code> = グローバル状態の<b>保持のみ</b>（副作用なし）。フィールド: <code>sequenceEntry</code> / <code>activityEntry</code> / <code>callGraphEntry</code> / <code>currentLayoutKey</code> / <code>currentNavigationKey</code> / <code>currentScope</code> / <code>currentPuml</code> / <code>currentSvgXml</code> / <code>sequenceHiddenParticipants</code>。</li>
+          <li><code>DiagramController</code> = 状態遷移と UI 同期。<code>onTabFocused → syncToFocusedTab()</code>（ツリー選択）＋ <code>reflectKindInToolbar()</code>、スコープ等は <code>applyStateToActiveTab()</code>。</li>
+          <li><code>DiagramTabPane</code> / <code>DiagramTab</code> = タブのライフサイクルと描画。<code>startRender()</code>（SwingWorker）、<code>mirrorToState()</code>、<code>setActiveTabSpecAndRender()</code>、<code>rerenderAllTabs()</code>。</li>
+          <li><code>mirrorToState()</code> は (1) タブ選択時（<code>handleTabSelectionChanged</code>）と (2) 描画完了時（アクティブタブのとき）に呼ばれます。</li>
+        </ul>
+      </details>
+
+      <h3 id="state-life">状態の生存期間</h3>
+      <ul>
+        <li>タブを閉じると、そのタブの状態は破棄されます。</li>
+        <li>プロジェクトを開き直すと、起点・スコープ・非表示 participant など<b>アクティブタブ状態はクリア</b>され、既定の Package 図が 1 枚開きます。</li>
+        <li>一方、<b>スタイル・プリセット等のプロジェクト設定は永続化</b>され、次回ロード時に自動復元されます（→ <a href="#persist">設定の自動保存</a>）。</li>
+      </ul>
+    </section>
+
+    <section id="transitions">
+      <h2>画面とダイアログの遷移</h2>
+      <p>アプリ全体の画面状態（→ <a href="#app-state">アプリ全体の状態遷移</a>）と各タブの状態（→ <a href="#tab-lifecycle">タブのライフサイクル</a>）を、トリガ・動作とあわせて一覧にします。</p>
+
+      <h3 id="state-table">状態遷移テーブル</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>層</th><th>状態</th><th>トリガ</th><th>動作 / 遷移先</th></tr></thead>
+        <tbody>
+          <tr><td>アプリ</td><td>空（未ロード）</td><td>Open Project / 起動引数</td><td>解析を開始 → <b>解析中</b></td></tr>
+          <tr><td>アプリ</td><td>解析中</td><td>解析完了 [成功]</td><td>ツリー構築 → 既定 Package タブ → <b>図表示</b></td></tr>
+          <tr><td>アプリ</td><td>解析中</td><td>Cancel Loading</td><td>中断 → <b>空</b></td></tr>
+          <tr><td>アプリ</td><td>解析中</td><td>[error]</td><td>エラーダイアログ → <b>空</b></td></tr>
+          <tr><td>アプリ</td><td>図表示</td><td>別プロジェクトを開く</td><td>状態クリア → <b>解析中</b></td></tr>
+          <tr><td>タブ</td><td>未生成</td><td>ツリー選択 / 図種切替（<code>openDiagram</code>）</td><td>SwingWorker 起動 → <b>描画中</b></td></tr>
+          <tr><td>タブ</td><td>描画中</td><td>描画成功 / 失敗</td><td><b>表示</b> / <b>エラー表示</b></td></tr>
+          <tr><td>タブ</td><td>表示</td><td>他タブを選択</td><td><b>非フォーカス</b>（再選択で復帰＋同期）</td></tr>
+          <tr><td>タブ</td><td>表示</td><td>Refresh(F5) / スタイル・スコープ変更</td><td>再描画 → <b>描画中</b></td></tr>
+          <tr><td>タブ</td><td>表示</td><td>同じ題材・図種を再要求</td><td>フォーカスのみ（重複生成なし）</td></tr>
+          <tr><td>タブ</td><td>表示 / 非フォーカス</td><td>× / 中クリック / Close</td><td>破棄</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="dialog-map">ダイアログ遷移マップ</h3>
+      <p>どの操作でどのダイアログが開き、何の状態を設定して、どう反映されるか。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>操作（トリガ）</th><th>ダイアログ</th><th>設定する状態 → 結果</th></tr></thead>
+        <tbody>
+          <tr><td>File › Open Project（<kbd>Ctrl+O</kbd>）</td><td>Open Project</td><td>プロジェクトをロード → 解析中 → 既定 Package タブ</td></tr>
+          <tr><td>Diagram › Choose Sequence / Activity / Call Graph Entry</td><td>Sequence Entry</td><td>各起点（<code>sequenceEntry</code> 等）を設定 → 対応する図タブを開く</td></tr>
+          <tr><td>Diagram › Scope…</td><td>Scope</td><td><code>currentScope</code> を設定 → アクティブタブを再描画</td></tr>
+          <tr><td>Diagram › Participant Filter</td><td>Participant Filter</td><td>非表示 participant を設定 → 再描画</td></tr>
+          <tr><td>Diagram › Choose Layout / Navigation</td><td>Layout / Navigation File</td><td>layout / navigation キーを設定 → 図タブを開く</td></tr>
+          <tr><td>Diagram › Style Settings / Theme</td><td>Style Settings</td><td>スタイルを更新 → <b>全タブ</b>を再描画</td></tr>
+          <tr><td>Tools › Entity Search（<kbd>Ctrl+Shift+F</kbd>）</td><td>Entity Search</td><td>選択エンティティのタブを開く / スコープ適用</td></tr>
+          <tr><td>Tools › Preferences</td><td>Preferences</td><td>アプリ設定（Look&amp;Feel 等）を更新・保存</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
     <section id="style">
       <h2>スタイル設定</h2>
       <h3>クイック切替（テーマ）</h3>
@@ -689,18 +838,6 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
       <div class="tip"><b>ヒント:</b> 大きな図は <code>.svg</code> 出力を推奨。PNG は PlantUML のキャンバス上限に達すると切り詰められます。</div>
     </section>
 
-    <section id="impact">
-      <h2>Impact 解析</h2>
-      <p>あるクラスやメソッドに<b>依存している箇所（逆参照）</b>を BFS で辿り、変更影響範囲を把握します。</p>
-      <ol>
-        <li>右ペインの <b>Impact</b> タブをクリック</li>
-        <li><b>Symbol</b> に完全修飾名を入力（クラス <code>com.example.MyClass</code> / メソッド <code>com.example.MyClass.myMethod</code>）</li>
-        <li><b>Depth</b> スピナーで BFS 深さを指定（既定 3、範囲 1–10）</li>
-        <li><b>Analyze</b> で層別の呼び出し元ツリーを表示</li>
-      </ol>
-      <div class="tip"><b>ヒント:</b> 初回は参照インデックス構築に時間がかかります。2 回目以降はキャッシュが利用されます。</div>
-    </section>
-
     <section id="persist">
       <h2>プロジェクト設定の自動保存</h2>
       <p>プロジェクトごとの設定が SQLite に自動保存され、開き直すと復元されます。ウィンドウ位置・サイズも保存されます。</p>
@@ -712,6 +849,18 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
           <tr><td>クラス図</td><td>プリセット・フィールド/メソッド/アノテーション表示・PUBLIC_ONLY・コメント最大長</td></tr>
         </tbody>
       </table></div>
+    </section>
+
+    <section id="impact">
+      <h2>Impact 解析</h2>
+      <p>あるクラスやメソッドに<b>依存している箇所（逆参照）</b>を BFS で辿り、変更影響範囲を把握します。</p>
+      <ol>
+        <li>右ペインの <b>Impact</b> タブをクリック</li>
+        <li><b>Symbol</b> に完全修飾名を入力（クラス <code>com.example.MyClass</code> / メソッド <code>com.example.MyClass.myMethod</code>）</li>
+        <li><b>Depth</b> スピナーで BFS 深さを指定（既定 3、範囲 1–10）</li>
+        <li><b>Analyze</b> で層別の呼び出し元ツリーを表示</li>
+      </ol>
+      <div class="tip"><b>ヒント:</b> 初回は参照インデックス構築に時間がかかります。2 回目以降はキャッシュが利用されます。</div>
     </section>
 
     <section id="graphviz">

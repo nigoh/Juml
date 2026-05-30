@@ -559,6 +559,23 @@ body.v2 .deflist dd { color: var(--text-dim); margin: 0; }
   body.v2 .table-wrap.cardify td:first-child::before { color: var(--cat, var(--accent)); }
 }
 
+/* --- 折りたたみ図（details.fig）: 既定は閉じて長さを抑え、必要時に展開 --- */
+body.v2 details.fig { background: none; border: none; padding: 0; margin: 1.4rem 0; }
+body.v2 details.fig > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .55rem;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px;
+  padding: .5rem .9rem; color: var(--text-dim); font-size: .9rem; font-weight: 600;
+}
+body.v2 details.fig > summary::-webkit-details-marker { display: none; }
+body.v2 details.fig > summary::before { content: "▸"; color: var(--accent); font-size: .8rem; }
+body.v2 details.fig[open] > summary::before { content: "▾"; }
+body.v2 details.fig[open] > summary { border-radius: 10px 10px 0 0; border-bottom: none; }
+body.v2 details.fig .fig-badge { color: var(--accent); font-weight: 700; }
+body.v2 details.fig .fig-title { color: var(--text); font-weight: 600; }
+body.v2 details.fig > summary:hover { border-color: var(--accent); }
+body.v2 details.fig figure.uml-fig { margin: 0; border-top-left-radius: 0; }
+body.v2 details.fig[open] figure.uml-fig { border-top: 3px solid var(--accent); }
+
 /* --- カードのアフォーダンスを正直に：押せる(a.card)＝浮いた箱＋常時「↗」、
        表示専用(div.card)＝フラットなパネル（押せる印象を出さない）。 --- */
 body.v2 .card:not(a) {
