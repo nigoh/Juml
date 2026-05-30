@@ -170,7 +170,7 @@
         <path class="u-ret" d="M864,514 L22,514" marker-end="url(#f5-ret)"/>
         <text class="u-msg-lbl" x="300" y="509">puml: String  →  PlantUmlRenderer.renderSvg()</text>
       </svg>
-      <figcaption><b>図4</b>　解析パイプライン内部（シーケンス図）。<code>extract()</code> から <code>JavaParserFrontend</code> が字句展開（<code>JavaLexer</code>）→ JavaParser 構文解析 → <code>TypeDeclAdapter</code>／<code>MemberAdapter</code> による <code>JavaClassInfo</code> 組み立てを行い、最終的に <code>PlantUmlClassDiagram.generate()</code> が PlantUML 文字列を返す。実線=同期呼び出し、破線=戻り値、<code>loop/opt</code>=反復・条件。</figcaption>
+      <figcaption><b>図6</b>　解析パイプライン内部（シーケンス図）。<code>extract()</code> から <code>JavaParserFrontend</code> が字句展開（<code>JavaLexer</code>）→ JavaParser 構文解析 → <code>TypeDeclAdapter</code>／<code>MemberAdapter</code> による <code>JavaClassInfo</code> 組み立てを行い、最終的に <code>PlantUmlClassDiagram.generate()</code> が PlantUML 文字列を返す。実線=同期呼び出し、破線=戻り値、<code>loop/opt</code>=反復・条件。</figcaption>
       </figure>
 
       <div class="uml-legend">
@@ -307,7 +307,7 @@
         <text class="u-faint" x="600" y="466">→ tabPane.openDiagram("KIND:PACKAGE")</text>
         <path class="u-ret" d="M874,472 L444,472" marker-end="url(#f6-ret)"/>
       </svg>
-      <figcaption><b>図5</b>　プロジェクト解析（シーケンス図）。<code>ProjectLoader.start()</code> が <code>SwingWorker</code> を起動し、背景スレッドの <code>doInBackground()</code> で <code>ProjectAnalysisCache.load()</code> を実行（進捗は <code>invokeLater</code> で EDT に通知）。完了後 <code>done()</code> が <code>alt</code> でエラー／キャンセル／成功を分岐し、成功時はツリー更新と既定（PACKAGE）タブ表示まで行う。</figcaption>
+      <figcaption><b>図7</b>　プロジェクト解析（シーケンス図）。<code>ProjectLoader.start()</code> が <code>SwingWorker</code> を起動し、背景スレッドの <code>doInBackground()</code> で <code>ProjectAnalysisCache.load()</code> を実行（進捗は <code>invokeLater</code> で EDT に通知）。完了後 <code>done()</code> が <code>alt</code> でエラー／キャンセル／成功を分岐し、成功時はツリー更新と既定（PACKAGE）タブ表示まで行う。</figcaption>
       </figure>
     </section>
 
@@ -433,7 +433,7 @@
           <text class="u-member" x="408" y="425"><tspan class="u-vis">+</tspan> fromModifiers(Collection): Visibility</text>
         </g>
       </svg>
-      <figcaption><b>図6</b>　Java 解析エンジン（クラス図）。<code>JavaStructureExtractor</code> が <code>JavaParserFrontend</code> へ委譲し、<code>JavaLexer</code> が <code>JavaToken</code> を生成、結果が中核モデル <code>JavaClassInfo</code> に集約される。◆ はコンポジション（<code>fields</code>/<code>methods</code> を <code>0..*</code> 保持）、実線矢印は <code>Visibility</code> への関連、破線は生成・依存。</figcaption>
+      <figcaption><b>図8</b>　Java 解析エンジン（クラス図）。<code>JavaStructureExtractor</code> が <code>JavaParserFrontend</code> へ委譲し、<code>JavaLexer</code> が <code>JavaToken</code> を生成、結果が中核モデル <code>JavaClassInfo</code> に集約される。◆ はコンポジション（<code>fields</code>/<code>methods</code> を <code>0..*</code> 保持）、実線矢印は <code>Visibility</code> への関連、破線は生成・依存。</figcaption>
       </figure>
 
       <div class="uml-legend">

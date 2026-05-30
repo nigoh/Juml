@@ -218,7 +218,7 @@
           <text class="u-member" x="720" y="485"><tspan class="u-vis">+</tspan> handleVhalFlow(ctx)</text>
         </g>
       </svg>
-      <figcaption><b>図13</b>　CLI / エントリ層（クラス図）。<code>Main.main()</code> が <code>CliOptions</code> を生成・解析し <code>CliContext</code>（<code>UmlOverrides</code> を <code>◆</code> 保持）を構築、<code>CliDispatcher.dispatch()</code> が図モードを判定して各 <code>*Commands</code> へ委譲、出力は <code>CliOutput</code> が担う。破線=依存／生成、実線=関連。</figcaption>
+      <figcaption><b>図15</b>　CLI / エントリ層（クラス図）。<code>Main.main()</code> が <code>CliOptions</code> を生成・解析し <code>CliContext</code>（<code>UmlOverrides</code> を <code>◆</code> 保持）を構築、<code>CliDispatcher.dispatch()</code> が図モードを判定して各 <code>*Commands</code> へ委譲、出力は <code>CliOutput</code> が担う。破線=依存／生成、実線=関連。</figcaption>
       </figure>
       <div class="uml-legend">
         <h4>クラス図の凡例</h4>
@@ -321,7 +321,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
         <path class="u-ret" d="M114,486 L22,486" marker-end="url(#f9-ret)"/>
         <text class="u-msg-lbl" x="24" y="481">class.svg 出力完了</text>
       </svg>
-      <figcaption><b>図14</b>　CLI で図を SVG 出力（シーケンス図）。<code>Main.main()</code> が引数を解析して <code>CliDispatcher.dispatch()</code> へ、<code>UmlCommands.handleUmlInput()</code> が <code>UmlGenerator</code> で解析 → <code>PlantUmlClassDiagram.generate()</code> で PlantUML 化 → <code>CliOutput.writeUmlOutput()</code> が SVG 描画。<code>alt</code> は描画成功と失敗（サイドカー <code>.puml</code> 保存 + <code>exit(2)</code>）の分岐。</figcaption>
+      <figcaption><b>図16</b>　CLI で図を SVG 出力（シーケンス図）。<code>Main.main()</code> が引数を解析して <code>CliDispatcher.dispatch()</code> へ、<code>UmlCommands.handleUmlInput()</code> が <code>UmlGenerator</code> で解析 → <code>PlantUmlClassDiagram.generate()</code> で PlantUML 化 → <code>CliOutput.writeUmlOutput()</code> が SVG 描画。<code>alt</code> は描画成功と失敗（サイドカー <code>.puml</code> 保存 + <code>exit(2)</code>）の分岐。</figcaption>
       </figure>
       <div class="uml-legend">
         <h4>シーケンス図の凡例</h4>

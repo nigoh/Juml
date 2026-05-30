@@ -143,7 +143,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <text class="u-state-sub" x="583" y="105">内部遷移（状態は不変）:</text>
         <text class="u-state-sub" x="583" y="120">タブ操作 / 図種切替 / ズーム・パン</text>
       </svg>
-      <figcaption><b>図7</b>　アプリ全体の状態遷移（状態機械図）。<code>Open Project</code> または起動引数で「解析中」へ入り、成功時に既定（PACKAGE）図を開いて「図表示」へ。<code>Cancel</code>／エラーは「空」に戻る。図表示中のタブ操作・図種切替・ズームは状態を変えない内部遷移。</figcaption>
+      <figcaption><b>図9</b>　アプリ全体の状態遷移（状態機械図）。<code>Open Project</code> または起動引数で「解析中」へ入り、成功時に既定（PACKAGE）図を開いて「図表示」へ。<code>Cancel</code>／エラーは「空」に戻る。図表示中のタブ操作・図種切替・ズームは状態を変えない内部遷移。</figcaption>
       </figure>
 
       <div class="uml-legend">
@@ -241,7 +241,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <!-- end -->
         <circle class="u-end-o" cx="280" cy="556" r="9"/><circle class="u-end-i" cx="280" cy="556" r="4"/>
       </svg>
-      <figcaption><b>図8</b>　図を見るまでの操作フロー（アクティビティ図）。起動 → プロジェクトを開く → 解析 → （成功なら）ツリーで題材選択 → タブ表示 → 図種切替 → 絞り込み → エクスポート。判断 <code>◇</code> は解析の成否、失敗時はエラーダイアログで終了。</figcaption>
+      <figcaption><b>図10</b>　図を見るまでの操作フロー（アクティビティ図）。起動 → プロジェクトを開く → 解析 → （成功なら）ツリーで題材選択 → タブ表示 → 図種切替 → 絞り込み → エクスポート。判断 <code>◇</code> は解析の成否、失敗時はエラーダイアログで終了。</figcaption>
       </figure>
 
       <div class="uml-legend">
@@ -395,7 +395,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <path class="u-self" d="M304,452 L356,452 L356,464 L306,464" marker-end="url(#f7-arr)"/>
         <text class="u-msg-lbl" x="360" y="462">reflectKindInToolbar(kind) — ツールバー / メニュー同期</text>
       </svg>
-      <figcaption><b>図9</b>　GUI でタブを開く（シーケンス図）。ツリーのダブルクリックが <code>DiagramController.onTreeOpenInNewTab()</code> 経由で <code>DiagramTabPane.addOrFocusTab()</code> を呼び、<code>alt</code> で「既存タブはフォーカスのみ／新規は <code>DiagramTab.startRender()</code> が <code>SwingWorker</code> で非同期描画」を分岐。描画後はタブフォーカスがツリー選択とツールバー図種へ逆同期される。</figcaption>
+      <figcaption><b>図11</b>　GUI でタブを開く（シーケンス図）。ツリーのダブルクリックが <code>DiagramController.onTreeOpenInNewTab()</code> 経由で <code>DiagramTabPane.addOrFocusTab()</code> を呼び、<code>alt</code> で「既存タブはフォーカスのみ／新規は <code>DiagramTab.startRender()</code> が <code>SwingWorker</code> で非同期描画」を分岐。描画後はタブフォーカスがツリー選択とツールバー図種へ逆同期される。</figcaption>
       </figure>
       <div class="uml-legend">
         <h4>シーケンス図の凡例</h4>
@@ -496,7 +496,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <path class="u-msg" d="M346,262 L154,262" marker-end="url(#q10-arr)"/>
         <text class="u-msg-lbl" x="170" y="257">reflectKindInToolbar(kind) — トグル / ラジオ同期</text>
       </svg>
-      <figcaption><b>図10</b>　図種切替時の連動（シーケンス図）。ツールバー/メニューの選択が <code>DiagramController.selectDiagramKind()</code> → <code>DiagramTabPane</code> でタブを開く/フォーカスし、<code>onTabFocused</code> を起点にツリーのハイライト（<code>selectClassNode</code>）とツールバー/メニュー（<code>reflectKindInToolbar</code>）へ逆同期される。凡例はシーケンス図と共通。</figcaption>
+      <figcaption><b>図12</b>　図種切替時の連動（シーケンス図）。ツールバー/メニューの選択が <code>DiagramController.selectDiagramKind()</code> → <code>DiagramTabPane</code> でタブを開く/フォーカスし、<code>onTabFocused</code> を起点にツリーのハイライト（<code>selectClassNode</code>）とツールバー/メニュー（<code>reflectKindInToolbar</code>）へ逆同期される。凡例はシーケンス図と共通。</figcaption>
       </figure>
     </section>
 
@@ -648,7 +648,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <!-- final -->
         <circle class="u-final-o" cx="722" cy="111" r="9"/><circle class="u-final-i" cx="722" cy="111" r="4"/>
       </svg>
-      <figcaption><b>図11</b>　タブのライフサイクル（状態機械図）。<code>openDiagram(key)</code> で「描画中」に入り <code>SwingWorker</code> が非同期描画、成功で「表示」、失敗で「エラー表示」。他タブ選択で「非フォーカス」、<code>Refresh</code> やスタイル変更で「描画中」へ戻る。同じ key の再要求はフォーカスのみ（重複生成なし）。<code>×</code>/中クリック/Close で破棄。ドリルダウン（クラス名・メソッド ▶）は<b>別キーの新しいタブ</b>を生成する。</figcaption>
+      <figcaption><b>図13</b>　タブのライフサイクル（状態機械図）。<code>openDiagram(key)</code> で「描画中」に入り <code>SwingWorker</code> が非同期描画、成功で「表示」、失敗で「エラー表示」。他タブ選択で「非フォーカス」、<code>Refresh</code> やスタイル変更で「描画中」へ戻る。同じ key の再要求はフォーカスのみ（重複生成なし）。<code>×</code>/中クリック/Close で破棄。ドリルダウン（クラス名・メソッド ▶）は<b>別キーの新しいタブ</b>を生成する。</figcaption>
       </figure>
     </section>
 
@@ -726,7 +726,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <path class="u-msg" d="M174,312 L356,312" marker-end="url(#s12-arr)"/>
         <text class="u-msg-lbl" x="178" y="307">mirrorToState()（結果を反映）</text>
       </svg>
-      <figcaption><b>図12</b>　状態の同期と再描画（シーケンス図）。タブをフォーカスすると <code>DiagramTabPane</code> が <code>mirrorToState()</code> で <code>DiagramState</code> を更新し、<code>onTabFocused</code> 経由でツリーのハイライト（<code>selectClassNode</code>）とツールバー図種（<code>reflectKindInToolbar</code>）へ逆同期。スタイル/スコープ変更時は <code>applyStateToActiveTab()</code>／<code>rerenderAllTabs()</code> で再描画し、結果が再び <code>DiagramState</code> に反映される。凡例はシーケンス図と共通。</figcaption>
+      <figcaption><b>図14</b>　状態の同期と再描画（シーケンス図）。タブをフォーカスすると <code>DiagramTabPane</code> が <code>mirrorToState()</code> で <code>DiagramState</code> を更新し、<code>onTabFocused</code> 経由でツリーのハイライト（<code>selectClassNode</code>）とツールバー図種（<code>reflectKindInToolbar</code>）へ逆同期。スタイル/スコープ変更時は <code>applyStateToActiveTab()</code>／<code>rerenderAllTabs()</code> で再描画し、結果が再び <code>DiagramState</code> に反映される。凡例はシーケンス図と共通。</figcaption>
       </figure>
       <div class="note"><b>無限ループ防止:</b> タブ → ツリーのハイライトは <code>suppressNotify</code> 付きで行われ、ツリー側の選択コールバックを再発火させません（タブ ⇄ ツリー ⇄ ツールバーの循環を断ち切ります）。</div>
 
