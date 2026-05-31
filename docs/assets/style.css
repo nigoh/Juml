@@ -29,11 +29,16 @@
   }
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+/* 横方向のはみ出しはルートでクリップする（全ページ共通の防御）。
+   index の装飾グロー（.hero-brand::before, width:460px）や、モバイルの
+   オフキャンバス・サイドバーが狭い画面でビューポートを超え、ページ全体が
+   左にずれて左端が切れる問題を防ぐ。clip は hidden と違いスクロール
+   コンテナを生成しないため、アンカースクロール / scroll-padding-top は維持される。 */
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; overflow-x: clip; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: var(--sans); font-size: 15px; line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: antialiased; overflow-x: clip; max-width: 100%;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
