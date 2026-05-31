@@ -29,11 +29,16 @@
   }
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+/* 横方向のはみ出しはルートでクリップする（全ページ共通の防御）。
+   index の装飾グロー（.hero-brand::before, width:460px）や、モバイルの
+   オフキャンバス・サイドバーが狭い画面でビューポートを超え、ページ全体が
+   左にずれて左端が切れる問題を防ぐ。clip は hidden と違いスクロール
+   コンテナを生成しないため、アンカースクロール / scroll-padding-top は維持される。 */
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; overflow-x: clip; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: var(--sans); font-size: 15px; line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: antialiased; overflow-x: clip; max-width: 100%;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -513,6 +518,63 @@ body.v2 .grad {
 }
 @media (max-width: 560px) {
   body.v2 .hero-brand { flex-direction: column; align-items: flex-start; }
+}
+
+/* --- Braille ASCII ロゴ（index ヒーロー）: サイバーパンク・グリッチ ---
+   点字（U+2800–28FF）で組んだ "JUML" ワードマーク。ネオン発光 + RGB ずれ
+   （chromatic aberration）+ 走査線 + フリッカーで cyberpunk 調に animate する。
+   prefers-reduced-motion では静止＋ネオン発光のみに落とす。 */
+.ascii-logo-wrap {
+  position: relative; display: flex; justify-content: center;
+  margin: .2rem 0 1.6rem; overflow: hidden;
+}
+.ascii-logo {
+  margin: 0; white-space: pre; font-weight: 700; line-height: 1.0; letter-spacing: 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: clamp(6px, 2.05vw, 13px);
+  color: var(--accent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 78%, transparent),
+               0 0 16px color-mix(in srgb, var(--accent) 42%, transparent);
+  animation: jml-flicker 5.5s infinite, jml-rgb 3.4s infinite, jml-shift 6.5s infinite;
+  will-change: transform, opacity, text-shadow;
+}
+/* 走査線（scanline）オーバーレイ */
+.ascii-logo-wrap::after {
+  content: ""; position: absolute; inset: -12% 0; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 2px,
+              color-mix(in srgb, var(--bg) 60%, transparent) 2px 3px);
+  opacity: .45; animation: jml-scan 9s linear infinite;
+}
+/* 上から下へ流れるネオン帯 */
+.ascii-logo-wrap::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -30%; height: 30%; z-index: 1; pointer-events: none;
+  background: linear-gradient(180deg, transparent,
+              color-mix(in srgb, var(--accent-2) 28%, transparent), transparent);
+  animation: jml-band 6.5s ease-in-out infinite;
+}
+@keyframes jml-flicker {
+  0%, 39%, 43%, 69%, 71%, 100% { opacity: 1; }
+  41% { opacity: .55; } 70% { opacity: .72; }
+}
+@keyframes jml-rgb {
+  0%, 100% { text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 78%, transparent),
+                          0 0 16px color-mix(in srgb, var(--accent) 42%, transparent); }
+  46% { text-shadow: -2px 0 #ff2d55, 2px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+  50% { text-shadow:  2px 0 #ff2d55, -2px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+  54% { text-shadow: -1px 0 #ff2d55, 1px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+}
+@keyframes jml-shift {
+  0%, 44%, 60%, 100% { transform: translateX(0); }
+  46% { transform: translateX(-3px); }
+  48% { transform: translate(3px, 1px); }
+  52% { transform: translateX(-1px); }
+}
+@keyframes jml-scan { 0% { background-position: 0 0; } 100% { background-position: 0 120px; } }
+@keyframes jml-band { 0% { top: -30%; } 55%, 100% { top: 120%; } }
+@media (prefers-reduced-motion: reduce) {
+  .ascii-logo { animation: none; }
+  .ascii-logo-wrap::after, .ascii-logo-wrap::before { animation: none; }
+  .ascii-logo-wrap::before { display: none; }
 }
 
 /* --- セクションのカテゴリ色（app.js が TOC グループ順に --cat を付与） --- */
