@@ -577,6 +577,37 @@ body.v2 .grad {
   .ascii-logo-wrap::before { display: none; }
 }
 
+/* --- 踊る柔道家（点字フリップブック）＋ JUML ロゴ の横並びロックアップ ---
+   柔道家は 6 フレームの点字を重ね、staggered animation-delay で 1 枚ずつ
+   表示する CSS スプライト方式（JS 不要）。GIF のように踊る。 */
+.logo-lockup {
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(.5rem, 2.4vw, 1.6rem); margin: .3rem 0 1.6rem; flex-wrap: nowrap;
+}
+.logo-lockup .ascii-logo-wrap { margin: 0; }
+.judoka {
+  position: relative; flex: 0 0 auto;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: clamp(5px, 1.7vw, 11px); line-height: 1.0; font-weight: 700; letter-spacing: 0;
+  color: var(--accent-2);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent-2) 70%, transparent),
+               0 0 13px color-mix(in srgb, var(--accent-2) 35%, transparent);
+}
+.judoka .jframe {
+  margin: 0; white-space: pre; opacity: 0;
+  animation: jd-cycle 1.5s steps(1, end) infinite;
+}
+.judoka .jframe:first-child { position: relative; }      /* 最初の1枚が箱サイズを決める */
+.judoka .jframe:not(:first-child) { position: absolute; inset: 0; }
+@keyframes jd-cycle { 0%, 16.66% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .judoka .jframe { animation: none; opacity: 0; }
+  .judoka .jframe:first-child { opacity: 1; }
+}
+@media (max-width: 420px) {
+  .logo-lockup { gap: .4rem; }
+}
+
 /* --- セクションのカテゴリ色（app.js が TOC グループ順に --cat を付与） --- */
 body.v2 section { --cat: var(--accent); }
 body.v2 section > h2::before { background: var(--cat); }
