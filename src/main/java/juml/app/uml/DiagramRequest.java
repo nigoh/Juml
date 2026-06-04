@@ -94,6 +94,15 @@ public final class DiagramRequest {
     }
 
     /**
+     * LAYOUT_SCREEN (Salt ワイヤーフレーム) 図用のショートカットコンストラクタ。
+     * LAYOUT と同じく {@link #layoutKey} スロットでレイアウトを指定する。
+     */
+    public static DiagramRequest forLayoutScreen(String layoutKey, boolean includeLegend) {
+        return new DiagramRequest(DiagramKind.LAYOUT_SCREEN, null, null, includeLegend,
+                null, false, layoutKey, null);
+    }
+
+    /**
      * NAVIGATION 図用のショートカットコンストラクタ。
      * 内部的には {@link #layoutKey} スロットを再利用する
      * (LAYOUT と NAVIGATION は同時に有効化されないため)。

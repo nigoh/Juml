@@ -4,6 +4,20 @@ Change log
 2.1
 --------
 
+* **レイアウトリソースの「画面」可視化 + コード↔リソース紐づけ図を追加** (3 機能)
+    * **① 画面ワイヤーフレーム図** (`DiagramKind.LAYOUT_SCREEN` / `PlantUmlLayoutScreenDiagram` 新規)
+        * 既存の `LAYOUT` 図 (入れ子 rectangle = 構造ツリー) に対し、`res/layout/*.xml` を **PlantUML Salt** のワイヤーフレームで「画面としてどう見えるか」を描画する。`Button` → `[ ボタン ]`、`EditText` → 入力欄、`CheckBox` → チェックボックス、`ImageView` → 画像アイコン等にウィジェット変換。`LinearLayout orientation="horizontal"` の子は横並び (`|` 連結)、それ以外の ViewGroup は縦積みで近似。`android:text` が `@string/foo` のときはプロジェクトの strings.xml で実文言へ解決して表示。`EditText` が空欄なら `android:hint` → id をプレースホルダ表示。
+        * GUI: ツールバー/Diagram メニューに図種 `Screen` を追加 (LAYOUT と同じくレイアウトファイル選択ダイアログ経由)。`DiagramRequest.forLayoutScreen` / `DiagramController.openLayoutScreenDiagram` / `DiagramEntryDialogs.pickLayoutScreenFile` で配線。
+    * **② コード↔リソース紐づけ図** (`DiagramKind.RESOURCE_LINK` / `ResourceLinkAnalyzer` / `ResourceLinkAnalysis` / `ResourceReference` / `PlantUmlResourceLinkDiagram` 新規)
+        * `SCREEN_FLOW` / `SOONG` と同じ「プロジェクトルート再走査」方式で、Java/Kotlin から `setContentView(R.layout.x)` / `inflate(R.layout.x)` / ViewBinding (`XxxBinding.inflate` → レイアウト名を逆算) / `R.string.*` / `R.id.*` を正規表現抽出。参照元クラスはファイル先頭の型宣言から推定。
+        * 「**クラス ── レイアウト ── 文字列リソース**」を 1 枚の関係図に描画: クラス⇒レイアウト (太線=`setContentView`/`inflate`/Binding で画面を束ねる) / クラス→レイアウト (細線=その他 `R.layout`) / クラス⋯>文字列 (`R.string`) / レイアウト⋯>文字列 (XML 内 `@string/`)。文字列ノードには実文言を併記。
+        * GUI: ツールバー/メニューに図種 `Resources` を追加。`DiagramService` のルート必須経路 (`generateResourceLinkPuml`) で処理。
+    * **③ 文字列リソース解析基盤** (`StringResourceParser` / `AndroidStringResources` 新規)
+        * `res/values*/strings.xml` (`values-ja/` 等のロケールバリアント含む) をセキュア DOM パース (XXE 防御) し `<string name>value</string>` を抽出。Android の `"..."` 空白保持記法・`\'` `\"` `\n` エスケープを正規化。文字列を含まない values XML (colors.xml 等) は保持しない。
+        * `AndroidProjectScanner.includeValues` を追加し values ディレクトリを収集。`AndroidProjectAnalyzer` が走査して `AndroidProjectAnalysis.getStringResourcesByModule()` に格納。`resolveString(ref)` でデフォルトロケール優先の文言解決を提供 (①② から利用)。
+    * テスト: 新規 `StringResourceParserTest` / `PlantUmlLayoutScreenDiagramTest` / `ResourceLinkAnalyzerTest` / `PlantUmlResourceLinkDiagramTest` (計 22 ケース)。PlantUML 実レンダリングで Salt/関係図が SVG 化できることも確認。既存テスト全 PASS / checkstyle clean。
+    * 目的: 「レイアウトが画面としてどう表示されるか」と「実コードとリソース (レイアウト・文言) がどう紐づくか」を、Java/Gradle 図と同じタブ中心 UI で可視化できるようにするため。
+
 * **Android プロジェクト解析の詳細ドキュメントを追加** (`docs/android-analysis.html` 新規)
     * Android Gradle プロジェクトを Juml がどう解析するかを、ソースから棚卸しして 1 ページに集約。`docs` サイトのナビ / index カードにも `Android 解析` を追加。
     * 内容: 「2 系統の解析」(① 構造解析 `UmlGenerator.extractFromProjectDetailed` / ② Android 資産解析 `AndroidProjectAnalyzer.analyze`)、入口 (CLI `AndroidCommands` 各フラグ / GUI `DiagramKind` / API)、`AndroidProjectScanner` の収集・除外ルール、`inferModuleName` / sourceSet・qualifier 推定、並列パース・Manifest マージ・`DependencyJarIndex`、`AndroidProjectAnalysis` データモデル、各パーサ (Gradle / VersionCatalog / Manifest / Layout / Navigation)、Android 系の図生成、派生解析 (Room / 画面遷移 / 設定 / AOSP / AAOS)。

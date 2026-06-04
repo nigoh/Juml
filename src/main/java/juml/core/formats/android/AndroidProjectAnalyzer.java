@@ -39,6 +39,7 @@ public final class AndroidProjectAnalyzer {
         opts.includeManifest = true;
         opts.includeLayout = true;
         opts.includeNavigation = true;
+        opts.includeValues = true;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
 
         // 0. gradle/libs.versions.toml があれば先に読み込み、後段のパースで参照する
@@ -119,6 +120,8 @@ public final class AndroidProjectAnalyzer {
                 analysis.getLayoutsByModule()
                         .computeIfAbsent(moduleName, k -> new ArrayList<>())
                         .add(info);
+            } else if (name.endsWith(".xml") && isInValuesDir(f)) {
+                parseStringResources(f, moduleName, analysis, l);
             } else if (name.equals("androidmanifest.xml")) {
                 String content = safeRead(f, l);
                 if (content == null) {
@@ -147,11 +150,13 @@ public final class AndroidProjectAnalyzer {
         int manifestCount = analysis.allManifests().size();
         int layoutCount = analysis.allLayouts().size();
         int navCount = analysis.allNavigationGraphs().size();
+        int stringFileCount = analysis.allStringResources().size();
         l.onError(null, -1,
                 "android analyzer: " + gradleCount + " gradle file(s), "
                         + manifestCount + " manifest(s), "
                         + layoutCount + " layout(s), "
-                        + navCount + " navigation graph(s)");
+                        + navCount + " navigation graph(s), "
+                        + stringFileCount + " string resource file(s)");
 
         return analysis;
     }
@@ -164,6 +169,65 @@ public final class AndroidProjectAnalyzer {
         }
         String dir = parent.getName();
         return "navigation".equals(dir) || dir.startsWith("navigation-");
+    }
+
+    /**
+     * 1 つの values XML をパースして文字列リソースを取り込む。
+     * 文字列を 1 つも含まない (colors.xml 等) 場合は何も追加しない。
+     */
+    private static void parseStringResources(File f, String moduleName,
+                                             AndroidProjectAnalysis analysis, ErrorListener l) {
+        String content = safeRead(f, l);
+        if (content == null) {
+            return;
+        }
+        AndroidStringResources info;
+        try {
+            info = StringResourceParser.parse(content, l);
+        } catch (RuntimeException ex) {
+            l.onError(f.getName(), -1, "strings parse failed: " + ex.getMessage());
+            return;
+        }
+        if (info.getStrings().isEmpty()) {
+            return;
+        }
+        info.setFilePath(f.getAbsolutePath());
+        info.setFileName(f.getName());
+        info.setModuleName(moduleName);
+        info.setSourceSet(inferLayoutSourceSet(f));
+        info.setConfigQualifier(inferValuesConfigQualifier(f));
+        analysis.getStringResourcesByModule()
+                .computeIfAbsent(moduleName, k -> new ArrayList<>())
+                .add(info);
+    }
+
+    /** 親ディレクトリが {@code values} または {@code values-*} のときに true。 */
+    private static boolean isInValuesDir(File f) {
+        File parent = f.getParentFile();
+        if (parent == null) {
+            return false;
+        }
+        String dir = parent.getName();
+        return "values".equals(dir) || dir.startsWith("values-");
+    }
+
+    /**
+     * values ファイルの親ディレクトリ名から configuration qualifier (locale 等) を抽出する。
+     * {@code res/values/} → {@code ""}、{@code res/values-ja/} → {@code "ja"}。
+     */
+    static String inferValuesConfigQualifier(File valuesFile) {
+        File parent = valuesFile.getParentFile();
+        if (parent == null) {
+            return "";
+        }
+        String dir = parent.getName();
+        if ("values".equals(dir)) {
+            return "";
+        }
+        if (dir.startsWith("values-") && dir.length() > "values-".length()) {
+            return dir.substring("values-".length());
+        }
+        return "";
     }
 
     /** 親ディレクトリが {@code layout} または {@code layout-*} のときに true。 */

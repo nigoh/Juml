@@ -143,6 +143,14 @@ final class DiagramEntryDialogs {
         c.openLayoutDiagram(picked);
     }
 
+    public void pickLayoutScreenFile() {
+        String picked = LayoutFileChooserDialog.chooseLayoutKey(c.parentFrame, c.cache());
+        if (picked == null) {
+            return;
+        }
+        c.openLayoutScreenDiagram(picked);
+    }
+
     public void pickNavigationGraph() {
         String picked = NavigationFileChooserDialog.chooseNavigationKey(c.parentFrame, c.cache());
         if (picked == null) {

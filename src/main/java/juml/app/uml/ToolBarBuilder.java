@@ -128,6 +128,8 @@ public final class ToolBarBuilder {
             case DEPENDENCY: return "Dependency";
             case MANIFEST: return "Manifest";
             case LAYOUT: return "Layout";
+            case LAYOUT_SCREEN: return "Screen";
+            case RESOURCE_LINK: return "Resources";
             case NAVIGATION: return "Navigation";
             case MODULE: return "Module";
             case INHERITANCE: return "Inherit";
@@ -142,6 +144,8 @@ public final class ToolBarBuilder {
             case ACTIVITY:   return " (choose method from Diagram menu)";
             case CALLGRAPH:  return " — shows which functions are called from entry";
             case LAYOUT:     return " (choose layout file from Diagram menu)";
+            case LAYOUT_SCREEN: return " — wireframe screen preview (choose layout file)";
+            case RESOURCE_LINK: return " — code ↔ layout/string resource links";
             case NAVIGATION: return " (choose navigation file from Diagram menu)";
             case COMMON:     return " — top-N most referenced classes (fan-in)";
             case SOONG:      return " — Android.bp (Soong) module dependencies";
