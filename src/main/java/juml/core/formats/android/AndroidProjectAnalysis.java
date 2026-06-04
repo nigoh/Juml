@@ -22,6 +22,8 @@ public class AndroidProjectAnalysis {
     private final Map<String, List<AndroidLayoutInfo>> layoutsByModule = new LinkedHashMap<>();
     private final Map<String, List<AndroidNavigationGraphInfo>> navigationsByModule
             = new LinkedHashMap<>();
+    private final Map<String, List<AndroidStringResources>> stringResourcesByModule
+            = new LinkedHashMap<>();
 
     public GradleProjectInfo getRootSettings() {
         return rootSettings;
@@ -98,6 +100,59 @@ public class AndroidProjectAnalysis {
             }
         }
         return null;
+    }
+
+    /**
+     * モジュール名 → そのモジュールに含まれる文字列リソースファイル (strings.xml 等) のリスト。
+     * {@link StringResourceParser} 経由でパース済み。空 Map で初期化されるので null にはならない。
+     */
+    public Map<String, List<AndroidStringResources>> getStringResourcesByModule() {
+        return stringResourcesByModule;
+    }
+
+    /** 全モジュールの文字列リソースファイルを 1 つのリストに連結。 */
+    public List<AndroidStringResources> allStringResources() {
+        List<AndroidStringResources> all = new ArrayList<>();
+        for (List<AndroidStringResources> list : stringResourcesByModule.values()) {
+            all.addAll(list);
+        }
+        return all;
+    }
+
+    /**
+     * {@code @string/foo} / {@code R.string.foo} の {@code foo} を実文言へ解決する。
+     *
+     * <p>デフォルト locale (qualifier 無し) を優先し、見つからなければ任意の locale から
+     * 最初に見つかった値を返す。未定義なら null。引数は {@code @string/} や
+     * {@code R.string.} の接頭辞を付けても付けなくても良い。</p>
+     */
+    public String resolveString(String ref) {
+        if (ref == null || ref.isEmpty()) {
+            return null;
+        }
+        String name = ref;
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot >= 0) {
+            name = name.substring(dot + 1);
+        }
+        String fallback = null;
+        for (AndroidStringResources sr : allStringResources()) {
+            String v = sr.getString(name);
+            if (v == null) {
+                continue;
+            }
+            if (sr.isDefaultLocale()) {
+                return v;
+            }
+            if (fallback == null) {
+                fallback = v;
+            }
+        }
+        return fallback;
     }
 
     /** 全モジュールのマニフェストを 1 つのリストに連結。 */

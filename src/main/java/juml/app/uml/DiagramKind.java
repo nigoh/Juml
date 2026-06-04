@@ -26,6 +26,10 @@ public enum DiagramKind {
     MANIFEST("Manifest Diagram"),
     /** Layout 図 — res/layout XML 1 つの View 階層を可視化。 */
     LAYOUT("Layout View Hierarchy"),
+    /** Layout 画面図 — res/layout XML を Salt ワイヤーフレームで「画面として」可視化。 */
+    LAYOUT_SCREEN("Layout Screen (Wireframe)"),
+    /** リソース紐づけ図 — コード (R.layout/R.string) ↔ レイアウト ↔ 文字列リソースの関係。 */
+    RESOURCE_LINK("Resource Links"),
     /** 共通クラス図 — 他クラスから参照される回数 (fan-in) が多いクラスを上位 N 件表示。 */
     COMMON("Common Classes"),
     /** Navigation 図 — res/navigation/*.xml の画面遷移を State 図として可視化。 */

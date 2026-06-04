@@ -209,6 +209,16 @@ public final class DiagramController {
                 TreeNodeIcon.COMPONENT_GROUP, DiagramRequest.forLayout(layoutKey, true), null);
     }
 
+    void openLayoutScreenDiagram(String layoutKey) {
+        if (tabPane == null || layoutKey == null) {
+            return;
+        }
+        tabPane.openDiagram("LAYOUT_SCREEN:" + layoutKey,
+                shortKeyLabel(layoutKey) + " (screen)",
+                TreeNodeIcon.COMPONENT_GROUP,
+                DiagramRequest.forLayoutScreen(layoutKey, true), null);
+    }
+
     void openNavigationDiagram(String navKey) {
         if (tabPane == null || navKey == null) {
             return;
@@ -294,6 +304,9 @@ public final class DiagramController {
             case LAYOUT:
                 return isBlank(state.currentLayoutKey) ? null
                         : DiagramRequest.forLayout(state.currentLayoutKey, true);
+            case LAYOUT_SCREEN:
+                return isBlank(state.currentLayoutKey) ? null
+                        : DiagramRequest.forLayoutScreen(state.currentLayoutKey, true);
             case NAVIGATION:
                 return isBlank(state.currentNavigationKey) ? null
                         : DiagramRequest.forNavigationGraph(state.currentNavigationKey, true);
@@ -437,6 +450,9 @@ public final class DiagramController {
             case LAYOUT:
                 pickLayoutFile();
                 break;
+            case LAYOUT_SCREEN:
+                pickLayoutScreenFile();
+                break;
             case NAVIGATION:
                 pickNavigationGraph();
                 break;
@@ -474,8 +490,9 @@ public final class DiagramController {
             case SEQUENCE:   return isBlank(state.sequenceEntry);
             case ACTIVITY:   return isBlank(state.activityEntry);
             case CALLGRAPH:  return isBlank(state.callGraphEntry);
-            case LAYOUT:     return isBlank(state.currentLayoutKey);
-            case NAVIGATION: return isBlank(state.currentNavigationKey);
+            case LAYOUT:        return isBlank(state.currentLayoutKey);
+            case LAYOUT_SCREEN: return isBlank(state.currentLayoutKey);
+            case NAVIGATION:    return isBlank(state.currentNavigationKey);
             default:         return false;
         }
     }
@@ -603,6 +620,10 @@ public final class DiagramController {
 
     public void pickLayoutFile() {
         entryDialogs.pickLayoutFile();
+    }
+
+    public void pickLayoutScreenFile() {
+        entryDialogs.pickLayoutScreenFile();
     }
 
     public void pickNavigationGraph() {

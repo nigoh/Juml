@@ -9,8 +9,12 @@ import juml.core.formats.android.AndroidProjectAnalysis;
 import juml.core.formats.android.PlantUmlComponentDiagram;
 import juml.core.formats.android.PlantUmlGradleDependencyGraph;
 import juml.core.formats.android.PlantUmlLayoutDiagram;
+import juml.core.formats.android.PlantUmlLayoutScreenDiagram;
 import juml.core.formats.android.PlantUmlManifestDiagram;
 import juml.core.formats.android.PlantUmlNavigationGraphDiagram;
+import juml.core.formats.android.PlantUmlResourceLinkDiagram;
+import juml.core.formats.android.ResourceLinkAnalysis;
+import juml.core.formats.android.ResourceLinkAnalyzer;
 import juml.core.formats.uml.ClassIndex;
 import juml.core.formats.uml.DependencyJarIndex;
 import juml.core.formats.uml.JavaClassInfo;
@@ -70,6 +74,10 @@ public final class DiagramService {
         if (request != null && request.getKind() == DiagramKind.SOONG) {
             return generateSoongPuml(cache.getProjectRoot());
         }
+        // リソース紐づけ図はコード (R.layout/R.string) を再走査するためルートが要る。
+        if (request != null && request.getKind() == DiagramKind.RESOURCE_LINK) {
+            return generateResourceLinkPuml(cache.getProjectRoot());
+        }
         return generatePuml(request, cache.getAnalysis(), cache.getClasses(),
                 cache.getIndex(), cache.getDependencyIndex());
     }
@@ -110,6 +118,26 @@ public final class DiagramService {
                     + "@enduml\n";
         }
         return juml.core.aosp.PlantUmlSoongDependencyDiagram.render(modules);
+    }
+
+    /**
+     * プロジェクト下の Java/Kotlin と res/layout・res/values を再走査し、
+     * コード ↔ リソースの紐づけを {@link PlantUmlResourceLinkDiagram} で描画する。
+     */
+    private static String generateResourceLinkPuml(java.io.File projectRoot) {
+        if (projectRoot == null || !projectRoot.isDirectory()) {
+            return "@startuml\ntitle Resource Links\n"
+                    + "note as N\nOpen a project directory to detect code↔resource links.\n"
+                    + "end note\n@enduml\n";
+        }
+        try {
+            ResourceLinkAnalysis model =
+                    new ResourceLinkAnalyzer().analyzeProject(projectRoot);
+            return PlantUmlResourceLinkDiagram.generate(model);
+        } catch (java.io.IOException ex) {
+            return "@startuml\ntitle Resource Links\nnote as N\nScan failed: "
+                    + ex.getMessage().replace("\n", " ") + "\nend note\n@enduml\n";
+        }
     }
 
     /**
@@ -163,6 +191,14 @@ public final class DiagramService {
                 return generateCommonDiagram(request, analysis, classes, index, depIndex);
             case LAYOUT:
                 return generateLayoutDiagram(request, analysis, classes, index, depIndex);
+            case LAYOUT_SCREEN:
+                return generateLayoutScreenDiagram(request, analysis, classes, index, depIndex);
+            case RESOURCE_LINK:
+                // リソース紐づけ図はコードを再走査するためプロジェクトルートが必須。
+                // ルートを持つ generatePuml(request, cache) 経路から呼ぶこと。
+                throw new IllegalStateException(
+                        "RESOURCE_LINK diagram requires a project root; "
+                                + "call generatePuml(request, cache) instead");
             case NAVIGATION:
                 return generateNavigationDiagram(request, analysis, classes, index, depIndex);
             case MODULE:
@@ -208,7 +244,6 @@ public final class DiagramService {
                         + originalTotal + " classes";
             }
             return PlantUmlClassDiagram.generate(scoped, o);
-        
     }
 
     private static String generatePackageDiagram(DiagramRequest request,
@@ -221,7 +256,6 @@ public final class DiagramService {
             PlantUmlPackageDiagram.Options o = new PlantUmlPackageDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlPackageDiagram.generate(scoped, o);
-        
     }
 
     private static String generateSequenceDiagram(DiagramRequest request,
@@ -246,7 +280,6 @@ public final class DiagramService {
                 o.hiddenParticipants = hidden;
             }
             return PlantUmlSequenceDiagram.generate(source, cls, method, o);
-        
     }
 
     private static String generateActivityDiagram(DiagramRequest request,
@@ -265,7 +298,6 @@ public final class DiagramService {
             PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlActivityDiagram.generate(source, cls, method, o);
-        
     }
 
     private static String generateComponentDiagram(DiagramRequest request,
@@ -276,7 +308,6 @@ public final class DiagramService {
             PlantUmlComponentDiagram.Options o = new PlantUmlComponentDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlComponentDiagram.generate(analysis, o);
-        
     }
 
     private static String generateDependencyDiagram(DiagramRequest request,
@@ -288,7 +319,6 @@ public final class DiagramService {
                     new PlantUmlGradleDependencyGraph.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlGradleDependencyGraph.generate(analysis, o);
-        
     }
 
     private static String generateManifestDiagram(DiagramRequest request,
@@ -299,7 +329,6 @@ public final class DiagramService {
             PlantUmlManifestDiagram.Options o = new PlantUmlManifestDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlManifestDiagram.generate(analysis, o);
-        
     }
 
     private static String generateCommonDiagram(DiagramRequest request,
@@ -316,7 +345,6 @@ public final class DiagramService {
                     new PlantUmlCommonClassesDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlCommonClassesDiagram.generate(scoped, o);
-        
     }
 
     private static String generateLayoutDiagram(DiagramRequest request,
@@ -324,6 +352,26 @@ public final class DiagramService {
                                   List<JavaClassInfo> classes,
                                   ClassIndex index,
                                   DependencyJarIndex depIndex) {
+            PlantUmlLayoutDiagram.Options o = new PlantUmlLayoutDiagram.Options();
+            o.includeLegend = request.isIncludeLegend();
+            return PlantUmlLayoutDiagram.generate(lookupLayout(request, analysis), o);
+    }
+
+    private static String generateLayoutScreenDiagram(DiagramRequest request,
+                                  AndroidProjectAnalysis analysis,
+                                  List<JavaClassInfo> classes,
+                                  ClassIndex index,
+                                  DependencyJarIndex depIndex) {
+            AndroidLayoutInfo layout = lookupLayout(request, analysis);
+            PlantUmlLayoutScreenDiagram.Options o = new PlantUmlLayoutScreenDiagram.Options();
+            // @string/foo をプロジェクトの strings.xml で実文言へ解決する
+            o.stringResolver = analysis::resolveString;
+            return PlantUmlLayoutScreenDiagram.generate(layout, o);
+    }
+
+    /** LAYOUT / LAYOUT_SCREEN 共通: layoutKey から {@link AndroidLayoutInfo} を引く。 */
+    private static AndroidLayoutInfo lookupLayout(DiagramRequest request,
+                                                  AndroidProjectAnalysis analysis) {
             String key = request.getLayoutKey();
             if (key == null || key.isEmpty()) {
                 throw new IllegalArgumentException(
@@ -335,13 +383,9 @@ public final class DiagramService {
             }
             AndroidLayoutInfo layout = analysis.findLayoutByKey(key);
             if (layout == null) {
-                throw new IllegalArgumentException(
-                        "Layout not found for key: " + key);
+                throw new IllegalArgumentException("Layout not found for key: " + key);
             }
-            PlantUmlLayoutDiagram.Options o = new PlantUmlLayoutDiagram.Options();
-            o.includeLegend = request.isIncludeLegend();
-            return PlantUmlLayoutDiagram.generate(layout, o);
-        
+            return layout;
     }
 
     private static String generateNavigationDiagram(DiagramRequest request,
@@ -368,7 +412,6 @@ public final class DiagramService {
                     new PlantUmlNavigationGraphDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlNavigationGraphDiagram.generate(nav, o);
-        
     }
 
     private static String generateModuleDiagram(DiagramRequest request,
@@ -379,7 +422,6 @@ public final class DiagramService {
             PlantUmlModuleDiagram.Options o = new PlantUmlModuleDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlModuleDiagram.generate(classes, o);
-        
     }
 
     private static String generateInheritanceDiagram(DiagramRequest request,
@@ -418,7 +460,6 @@ public final class DiagramService {
             o.includeLegend = request.isIncludeLegend();
             o.interactiveLinks = request.isInteractiveLinks();
             return PlantUmlClassDiagram.generate(scoped, o);
-        
     }
 
     private static String generateCallgraphDiagram(DiagramRequest request,
@@ -438,7 +479,6 @@ public final class DiagramService {
             o.includeLegend = request.isIncludeLegend();
             applyCallGraphSettings(o);
             return PlantUmlCallGraphDiagram.generate(source, cls, method, o);
-        
     }
 
     /**

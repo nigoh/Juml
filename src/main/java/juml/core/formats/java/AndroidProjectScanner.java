@@ -85,6 +85,8 @@ public final class AndroidProjectScanner {
         public boolean includeLayout = false;
         /** res/navigation/ 配下の Jetpack Navigation グラフ XML を含める。 */
         public boolean includeNavigation = false;
+        /** res/values/ 配下の XML (strings.xml 等、文字列リソース) を含める。 */
+        public boolean includeValues = false;
         /** 除外ディレクトリ名のセット。 */
         public Set<String> excludedDirs = DEFAULT_EXCLUDED_DIRS;
         /** AOSP 級プロジェクト向けの追加除外名 ({@link #AOSP_EXTRA_EXCLUDED_DIRS}) も合成する。 */
@@ -234,7 +236,23 @@ public final class AndroidProjectScanner {
         if (opts.includeNavigation && name.endsWith(".xml") && isInNavigationDir(f)) {
             return true;
         }
+        if (opts.includeValues && name.endsWith(".xml") && isInValuesDir(f)) {
+            return true;
+        }
         return false;
+    }
+
+    /**
+     * 親ディレクトリ名が {@code values} または {@code values-*} (例: {@code values-ja},
+     * {@code values-night}) の場合に true を返す。
+     */
+    static boolean isInValuesDir(File f) {
+        File parent = f.getParentFile();
+        if (parent == null) {
+            return false;
+        }
+        String dir = parent.getName();
+        return "values".equals(dir) || dir.startsWith("values-");
     }
 
     /**

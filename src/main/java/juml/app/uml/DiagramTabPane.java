@@ -473,6 +473,7 @@ public final class DiagramTabPane {
                     state.callGraphEntry = entryOf(spec);
                     break;
                 case LAYOUT:
+                case LAYOUT_SCREEN:
                     state.currentLayoutKey = spec.getLayoutKey();
                     break;
                 case NAVIGATION:
