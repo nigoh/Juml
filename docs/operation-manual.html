@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>操作マニュアル — Juml docs</title>
+<meta name="description" content="Juml 操作マニュアル：入手・インストール（exe / jar / ビルド）から GUI・CLI の実運用、エクスポート、トラブル対処までを少しコーディングできる人向けに一気通貫で解説。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2 figcollapse">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np current" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">はじめに</div>
+      <a href="#intro">対象読者と前提</a>
+      <a href="#what">Juml で何ができるか</a>
+      <div class="group">入手とインストール</div>
+      <a href="#install">3 つの実行形態</a>
+      <a class="sub" href="#install-exe">Windows exe（推奨）</a>
+      <a class="sub" href="#install-jar">jar 版</a>
+      <a class="sub" href="#install-build">ソースからビルド</a>
+      <div class="group">使う</div>
+      <a href="#gui-flow">GUI の基本ワークフロー</a>
+      <a href="#kinds">図種早見表（GUI ⇄ CLI）</a>
+      <a href="#cli">CLI で図を出力する</a>
+      <a class="sub" href="#cli-examples">実コマンド例</a>
+      <a class="sub" href="#cli-options">主要オプション早見表</a>
+      <a class="sub" href="#cli-index">index サブコマンド</a>
+      <a href="#export">エクスポート（SVG / PNG / PUML / MD）</a>
+      <a href="#features">便利機能</a>
+      <div class="group">実践</div>
+      <a href="#recipes">よくあるワークフロー</a>
+      <a href="#trouble">トラブルシューティング</a>
+      <div class="group">リファレンス</div>
+      <a href="#related">関連ドキュメント</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero">
+      <h1>操作マニュアル</h1>
+      <p class="tag">入手・インストール（exe / jar / ビルド）から GUI・CLI の実運用までを一気通貫で。コマンド例を多めに収録しています。</p>
+      <div class="badges">
+        <span class="badge">対象: <b>少しコーディングできる人</b></span>
+        <span class="badge">Java <b>17+</b></span>
+        <span class="badge">exe は <b>JRE 同梱</b></span>
+        <span class="badge">図種 <b>15+</b></span>
+      </div>
+    </header>
+
+    <section id="intro">
+      <h2>対象読者と前提</h2>
+      <p>このマニュアルは <b>ターミナルで <code>java -jar</code> や <code>./gradlew</code> を叩ける程度のコーディング経験がある方</b>を対象に、Juml を「手元で動かして UML 図を作る」ための操作を順を追って説明します。GUI の細かな画面仕様や CLI 全フラグはそれぞれ <a href="./gui-manual.html">GUI マニュアル</a> / <a href="./developer-reference.html">開発者リファレンス</a> に譲り、ここでは <b>入手 → 起動 → 図を出す</b>までの導線に集中します。</p>
+      <div class="note">前提環境: 図を作るだけなら追加インストールは不要です。PlantUML は同梱（Smetana レイアウト）で、<b>Graphviz / PlantUML を別途入れる必要はありません</b>。exe 版なら Java すら不要です。</div>
+    </section>
+
+    <section id="what">
+      <h2>Juml で何ができるか</h2>
+      <p>Juml は <b>Java / Android（Gradle + AndroidManifest.xml + AIDL）プロジェクトを解析して UML 図を生成する Swing GUI + CLI ツール</b>です。クラス図・シーケンス図・パッケージ図のほか、Android / AOSP 向けの Manifest 図・依存グラフ・Soong 図など <b>全 15 種以上</b>を出力できます。出力は SVG（推奨）/ PNG / PlantUML テキスト(.puml) / Markdown サマリー。</p>
+      <div class="tip"><b>使い分け:</b> 対話的に探索したいときは <b>GUI</b>、CI やスクリプトで一括出力したいときは <b>CLI</b>。どちらも同じ解析エンジンを使います。</div>
+    </section>
+
+    <section id="install">
+      <h2>入手とインストール — 3 つの実行形態</h2>
+      <p>用途に合わせて 3 つの形態から選べます。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>形態</th><th>Java の要否</th><th>向いている人</th><th>入手方法</th></tr></thead>
+        <tbody>
+          <tr><td><b>Windows exe</b>（自己完結）</td><td>不要（JRE 同梱）</td><td>とにかく動かしたい / 配布したい</td><td>Release の <code>Juml-windows-*.zip</code></td></tr>
+          <tr><td><b>jar</b>（fat jar）</td><td>Java 17+ が必要</td><td>OS 問わず使いたい / CLI で回したい</td><td>Release の <code>Juml.jar</code></td></tr>
+          <tr><td><b>ソースからビルド</b></td><td>JDK 17+ が必要</td><td>改造したい / 最新を試したい</td><td><code>git clone</code> → <code>./gradlew</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="install-exe">Windows exe（推奨・Java 不要）</h3>
+      <p>GitHub Release から <code>Juml-windows-&lt;version&gt;.zip</code> をダウンロードして展開します。中の <code>Juml/</code> フォルダに <code>Juml.exe</code> と専用 <code>runtime\</code>（JRE）が入っており、<b>Java をインストールしていない PC でもそのまま動きます</b>。</p>
+      <pre><code># 1) zip を展開（任意のフォルダで可）
+# 2) Juml.exe をダブルクリック → プロジェクト選択ダイアログが開く
+
+# コマンドラインから起動（プロジェクトを渡すと起動時に解析）
+Juml.exe C:\path\to\AndroidStudioProjects\MyApp</code></pre>
+      <div class="note">この exe は JDK 標準の <code>jpackage</code> で生成した <b>app-image</b> です。インストーラ（.msi）ではなく <b>展開して使うポータブル形式</b>なので、フォルダごとコピー・削除できます。</div>
+
+      <h3 id="install-jar">jar 版（Java 17+）</h3>
+      <p>OS を問わず使える単一ファイルの fat jar です。Java 17 以上（JRE / JDK どちらでも可）が必要です。</p>
+      <pre><code># バージョン確認（17 以上であること）
+java -version
+
+# GUI を起動（引数なし＝プロジェクト選択ダイアログ）
+java -jar Juml.jar
+
+# プロジェクトを渡して起動時に解析
+java -jar Juml.jar ~/AndroidStudioProjects/MyApp
+
+# ヘルプ（CLI 全オプション）
+java -jar Juml.jar --help</code></pre>
+
+      <h3 id="install-build">ソースからビルド</h3>
+      <p>改造したい・最新の <code>main</code> を試したい場合は JDK 17 以上でビルドします。Gradle Wrapper 同梱なので Gradle のインストールは不要です。</p>
+      <pre><code># クローン
+git clone https://github.com/nigoh/Juml.git
+cd Juml
+
+# fat jar をビルド → build/libs/Juml.jar
+./gradlew jar
+
+# 配布 zip（jar + 起動スクリプト + 既定設定）→ build/distributions/juml-*.zip
+./gradlew makeZip
+
+# 自己完結ネイティブイメージ（JRE 同梱）を生成
+#   Windows で実行  → build/jpackage/Juml/Juml.exe
+#   Linux で実行    → build/jpackage/Juml/bin/Juml
+#   macOS で実行    → build/jpackage/Juml.app
+./gradlew jpackageImage
+
+# 上記を OS 別サフィックス付き zip に固める → build/distributions/Juml-<os>-<ver>.zip
+./gradlew jpackageZip</code></pre>
+      <div class="warn"><b>exe を作るには JDK が必要:</b> <code>jpackageImage</code> は JDK 同梱の <code>jpackage</code> を使います。JRE で実行すると「jpackage が見つかりません」とエラーになるので、<code>JAVA_HOME</code> を <b>JDK 17 以上</b>に向けてください。また <code>jpackage</code> は <b>実行している OS 向けのイメージしか作れません</b>。配布用の Windows <code>.exe</code> は Windows 上（または CI の Windows ランナー）で生成します。</div>
+      <div class="tip"><b>CI でも自動生成:</b> タグ <code>v*</code> を push すると GitHub Actions が jar・配布 zip に加えて Windows ランナーで <code>Juml-windows-*.zip</code>（exe 同梱）を生成し、同じ Release に自動添付します（<code>.github/workflows/release.yml</code>）。</div>
+    </section>
+
+    <section id="gui-flow">
+      <h2>GUI の基本ワークフロー</h2>
+      <p>起動後の基本的な流れは次の 4 ステップです。画面構成やショートカットの詳細は <a href="./gui-manual.html">GUI マニュアル</a> を参照してください。</p>
+      <ol>
+        <li><b>プロジェクトを開く</b> — <code>File → Open Project</code>（または起動時に引数で渡す）。Android Studio / Gradle プロジェクトのルートを選ぶと解析が走ります。</li>
+        <li><b>左ツリーで対象を選ぶ</b> — クラス / パッケージ / モジュール / メソッドをクリック。VS Code のように <b>1 つの題材＋図種＝1 タブ（エディタ）</b>として開きます。</li>
+        <li><b>図種を切り替える</b> — ツールバー下段の図種トグル、または <code>Diagram</code> メニューでアクティブタブの図種を変更。</li>
+        <li><b>図を保存／エクスポート</b> — 図を右クリック、または <code>File</code> メニューから SVG / PNG / PUML / Markdown で書き出し。</li>
+      </ol>
+      <div class="note"><b>連動の仕組み:</b> アクティブタブ ⇄ 左ツリーのハイライト ⇄ ツールバー / メニューの図種表示 ⇄ ステータスバーは常に同期します。「いまフォーカスしているタブ」に対して操作が効く、と覚えてください。</div>
+    </section>
+
+    <section id="kinds">
+      <h2>図種早見表（GUI ⇄ CLI）</h2>
+      <p>主な図種と、GUI での起点・対応する CLI フラグの対応です。CLI フラグが空欄の図種は主に GUI から利用します。図種カタログの詳細は <a href="./developer-reference.html#kinds">開発者リファレンス</a> を参照してください。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>図種</th><th>GUI での起点</th><th>CLI フラグ</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td>クラス図 (Class)</td><td>クラス / パッケージを選択</td><td><span class="pill">-c</span></td><td>構造・継承・依存の俯瞰</td></tr>
+          <tr><td>シーケンス図 (Sequence)</td><td>メソッドを選択</td><td><span class="pill">-q Class.method</span></td><td>呼び出しトレース（if→alt / loop）</td></tr>
+          <tr><td>アクティビティ図 (Activity)</td><td>メソッドを選択 → 図種切替</td><td>—</td><td>メソッド内の制御フロー</td></tr>
+          <tr><td>コールグラフ (Call Graph)</td><td>メソッドを選択 → 図種切替</td><td>—</td><td>どの関数を呼ぶか</td></tr>
+          <tr><td>パッケージ図 (Package)</td><td>図種切替</td><td>—</td><td>パッケージ単位の依存</td></tr>
+          <tr><td>継承図 (Inheritance)</td><td>図種切替</td><td>—</td><td>extends / implements 階層</td></tr>
+          <tr><td>共通クラス図 (Common)</td><td>図種切替</td><td>—</td><td>参照されやすいハブクラス上位</td></tr>
+          <tr><td>モジュール図 (Module)</td><td>module-info を選択</td><td>—</td><td>requires / exports / opens</td></tr>
+          <tr><td>コンポーネント図 (Component)</td><td>図種切替</td><td><span class="pill">-d</span></td><td>Android コンポーネント構成</td></tr>
+          <tr><td>Manifest 図</td><td>図種切替</td><td><span class="pill">-M</span></td><td>Application + 各コンポーネント</td></tr>
+          <tr><td>Gradle 依存グラフ</td><td>図種切替</td><td><span class="pill">-G</span></td><td>モジュール / Maven 依存</td></tr>
+          <tr><td>Layout / Layout 画面 / Resource Link / Navigation</td><td>res/ のノードを選択</td><td>—</td><td>レイアウト・リソース・画面遷移</td></tr>
+          <tr><td>Soong 図</td><td>図種切替</td><td><span class="pill">--android-bp</span></td><td>Android.bp モジュール依存</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="cli">
+      <h2>CLI で図を出力する</h2>
+      <p>引数に出力系オプションを付けると GUI を開かずに図やレポートを書き出します。出力拡張子で形式が決まります（<code>.svg</code> 推奨 / <code>.png</code> / <code>.puml</code> / <code>.md</code>）。以下の例は jar 版で書いていますが、<code>java -jar Juml.jar</code> を <code>Juml.exe</code> に置き換えれば exe 版でも同じです。</p>
+
+      <h3 id="cli-examples">実コマンド例</h3>
+      <pre><code># クラス図を SVG で出力
+java -jar Juml.jar -c -o class.svg ~/AndroidStudioProjects/MyApp
+
+# 特定メソッドのシーケンス図（Class.method を指定）
+java -jar Juml.jar -q com.example.MainActivity.onCreate -o seq.svg ~/MyApp
+
+# どの Class.method を -q に渡せるか一覧する
+java -jar Juml.jar --list-methods ~/MyApp
+
+# Gradle 依存グラフ
+java -jar Juml.jar -G -o deps.svg ~/MyApp
+
+# AndroidManifest 図
+java -jar Juml.jar -M -o manifest.svg ~/MyApp
+
+# 全成果物を一括出力（summary.md + 各種 SVG をディレクトリへ）
+java -jar Juml.jar --all -o ./out ~/MyApp
+
+# プロジェクト全体の Markdown サマリーをディレクトリへ
+java -jar Juml.jar --summary -o ./out ~/MyApp
+
+# フォルダ単位でクラス図を分割出力（サブフォルダ構造を維持）
+java -jar Juml.jar -c -P -o ./out ~/MyApp
+
+# 影響範囲（逆参照）の解析：あるシンボルを誰が使っているか
+java -jar Juml.jar --impact com.example.Repo.save ~/MyApp
+
+# クリック可能なクラスリンクを埋め込んだ SVG（ブラウザで探索向け）
+java -jar Juml.jar -c --interactive-svg -o class.svg ~/MyApp</code></pre>
+
+      <h3 id="cli-options">主要オプション早見表</h3>
+      <p>よく使うものを抜粋します。全オプションは <code>--help</code> または <a href="./developer-reference.html#cli">開発者リファレンスの CLI 節</a>を参照してください。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>オプション</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill">-o FILE</span></td><td>出力先ファイル / ディレクトリ（一括系はディレクトリ）</td></tr>
+          <tr><td><span class="pill">-c</span> / <span class="pill">-q M</span> / <span class="pill">-d</span> / <span class="pill">-M</span> / <span class="pill">-G</span></td><td>クラス / シーケンス / コンポーネント / Manifest / 依存グラフ</td></tr>
+          <tr><td><span class="pill">-A --all</span> / <span class="pill">--summary</span></td><td>全成果物一括 / Markdown サマリー（いずれもディレクトリ出力）</td></tr>
+          <tr><td><span class="pill">-Q</span> / <span class="pill">-P --per-folder</span></td><td>ライフサイクル起点のシーケンス一括 / フォルダ単位クラス図</td></tr>
+          <tr><td><span class="pill">--seq-depth N</span></td><td>シーケンスのトレース深度（既定 5、0=無制限）</td></tr>
+          <tr><td><span class="pill">--exclude-external</span> / <span class="pill">--exclude-package PREFIX</span></td><td>外部ライブラリ除外 / パッケージ除外（複数可）</td></tr>
+          <tr><td><span class="pill">--public-only</span> / <span class="pill">--no-fields</span> / <span class="pill">--no-methods</span></td><td>表示メンバーの絞り込み</td></tr>
+          <tr><td><span class="pill">--preset minimal|balanced|detailed</span></td><td>クラス図の見やすさプリセット（既定 balanced）</td></tr>
+          <tr><td><span class="pill">--relation inherit,impl,use</span></td><td>関係線の種別を限定（CSV）</td></tr>
+          <tr><td><span class="pill">--list-methods</span> / <span class="pill">--function-list</span></td><td>Class.method 候補一覧 / 全メソッド一覧（呼び出し元・条件付き）</td></tr>
+          <tr><td><span class="pill">--impact SYMBOL</span> / <span class="pill">--ref-find SYMBOL</span></td><td>逆参照の影響解析 / 参照箇所の grep 向け列挙</td></tr>
+          <tr><td><span class="pill">-v --verbose</span> / <span class="pill">-h --help</span></td><td>警告・サマリーを stderr に / ヘルプ表示</td></tr>
+        </tbody>
+      </table></div>
+      <div class="warn"><b>オプション記法の制約:</b> 短縮形の連結（<code>-vc</code>）や <code>--opt=value</code> 形式は非対応です。値は <code>--opt value</code> と<b>空白区切り</b>で指定してください（例外は <code>index</code> サブコマンドの <code>--db=path</code> のみ）。複数モードを同時指定した場合は先に判定されたモードが優先されます。</div>
+
+      <h3 id="cli-index">index サブコマンド（任意・大規模向け）</h3>
+      <p>大規模プロジェクトを繰り返し解析する場合は、SQLite インデックスを事前構築しておくと横断クエリ（参照関係など）が速くなります。詳細は <a href="./developer-reference.html#cli">開発者リファレンス</a>へ。</p>
+      <pre><code># プロジェクトのインデックスを構築（DB パスは --db= で指定可）
+java -jar Juml.jar index ~/MyApp</code></pre>
+    </section>
+
+    <section id="export">
+      <h2>エクスポート（SVG / PNG / PUML / MD）</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>形式</th><th>用途</th><th>メモ</th></tr></thead>
+        <tbody>
+          <tr><td><b>.svg</b></td><td>図の標準出力（推奨）</td><td>ベクター・解像度無制限。巨大な図でも破綻しない</td></tr>
+          <tr><td><b>.png</b></td><td>資料への貼り付け</td><td><b>4096×4096 px 制限</b>あり。大きい図は SVG を使う</td></tr>
+          <tr><td><b>.puml</b></td><td>PlantUML ソース</td><td>手で微調整・版管理したいとき</td></tr>
+          <tr><td><b>.md / .markdown</b></td><td>サマリー</td><td>Gradle / Manifest / プロジェクト全体の表・リスト</td></tr>
+        </tbody>
+      </table></div>
+      <p>GUI では図を<b>右クリック → Save As</b>、または <code>File</code> メニューから保存します。CLI は <code>-o</code> の拡張子で形式が決まり、<code>--all</code> / <code>--summary</code> / <code>-P</code> はディレクトリへ複数ファイルを書き出します。</p>
+      <div class="tip"><b>迷ったら SVG。</b> 解像度無制限でクラス数が多くても潰れません。PNG は 4096px を超えると切れるため、大きな図は SVG で出してブラウザやベクターツールで閲覧してください。</div>
+    </section>
+
+    <section id="features">
+      <h2>便利機能</h2>
+      <ul>
+        <li><b>スコープ絞り込み</b> — ツールバーの「Scope」/ <code>Diagram → Scope</code>。パッケージ / モジュール / 正規表現で対象を限定し、seed からの hop 距離や外部ライブラリ除外を指定して図を小さく保てます。</li>
+        <li><b>エンティティ検索</b> — <span class="pill">Ctrl+Shift+F</span> でクラス・メソッド・フィールドを横断検索し、結果から該当図へジャンプ。</li>
+        <li><b>スタイル / テーマ</b> — <code>Style</code> メニューで PlantUML テーマ・フォント・コメント配置（inline / note）を切替。<code>Custom Skinparam</code> で <code>skinparam</code> を直接編集（<code>!include</code> 等のディレクティブは安全のため自動除去）。</li>
+        <li><b>ズーム・パン</b> — <span class="pill">Ctrl+=</span> / <span class="pill">Ctrl+-</span> / <span class="pill">Ctrl+0</span>（100%）/ <span class="pill">Ctrl+1</span>（Fit）、マウスドラッグでパン。</li>
+        <li><b>Impact 解析</b> — あるクラス / メソッドの逆参照（影響範囲）を図と表で確認。CLI では <code>--impact</code>。</li>
+        <li><b>設定の自動保存</b> — スタイルや最近開いたプロジェクトは自動で永続化（次回起動時に復元）。</li>
+      </ul>
+    </section>
+
+    <section id="recipes">
+      <h2>よくあるワークフロー</h2>
+      <div class="grid">
+        <div class="card">
+          <h4>1 クラスの周辺だけ見たい</h4>
+          <p>GUI で対象クラスをクリック（seed + 1 hop のクラス図）。CLI なら関係を絞る:</p>
+          <pre><code>java -jar Juml.jar -c \
+  --exclude-external \
+  -o focus.svg ~/MyApp</code></pre>
+        </div>
+        <div class="card">
+          <h4>あるメソッドの呼び出しを追う</h4>
+          <p>まず候補を一覧し、シーケンス図を出す:</p>
+          <pre><code>java -jar Juml.jar --list-methods ~/MyApp
+java -jar Juml.jar -q com.example.A.run \
+  --seq-depth 4 -o run.svg ~/MyApp</code></pre>
+        </div>
+        <div class="card">
+          <h4>プロジェクト全体を棚卸し</h4>
+          <p>サマリー + 主要図をまとめて出力:</p>
+          <pre><code>java -jar Juml.jar --all -o ./out ~/MyApp</code></pre>
+        </div>
+        <div class="card">
+          <h4>変更の影響範囲を調べる</h4>
+          <p>あるシンボルを誰が使っているか:</p>
+          <pre><code>java -jar Juml.jar \
+  --impact com.example.Repo.save ~/MyApp</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="trouble">
+      <h2>トラブルシューティング</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>症状</th><th>対処</th></tr></thead>
+        <tbody>
+          <tr><td>jar が起動しない / バージョンエラー</td><td><code>java -version</code> で <b>17 以上</b>か確認。古い場合は JDK/JRE 17+ を入れるか、Java 不要の <b>exe 版</b>を使う。</td></tr>
+          <tr><td><code>./gradlew jpackageImage</code> で「jpackage が見つかりません」</td><td>JRE ではなく <b>JDK 17+</b> が必要。<code>JAVA_HOME</code> を JDK に向ける。</td></tr>
+          <tr><td>Windows exe を Linux/macOS で作りたい</td><td>不可。jpackage は<b>実行 OS 向けのみ</b>生成。Windows 上または CI の Windows ランナーで生成する。</td></tr>
+          <tr><td>図が大きすぎて描画されない / PNG が切れる</td><td>スコープで対象を絞る、<code>--exclude-external</code> / <code>--public-only</code> で要素削減、出力は <b>SVG</b> を使う。詳細は <a href="./gui-manual.html#graphviz">GUI マニュアルの該当節</a>。</td></tr>
+          <tr><td>大規模で OutOfMemory</td><td>jar 起動時にヒープを増やす: <code>java -Xmx4g -jar Juml.jar …</code></td></tr>
+          <tr><td>解析に時間がかかる</td><td><code>--mode headers-only</code> の軽量パース、<code>index</code> サブコマンドで事前インデックス構築を検討。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="related">
+      <h2>関連ドキュメント</h2>
+      <div class="grid">
+        <a class="card" href="./gui-manual.html"><h4>GUI マニュアル</h4><p>画面構成・ツールバー・各図種の詳細操作・ショートカット。</p></a>
+        <a class="card" href="./developer-reference.html"><h4>開発者リファレンス</h4><p>CLI 全フラグ・図種カタログ・解析エンジン・SQLite スキーマ。</p></a>
+        <a class="card" href="./project-summary.html"><h4>プロジェクト概要</h4><p>何ができるか・構成・ビルド・主要依存ライブラリ。</p></a>
+        <a class="card" href="./android-analysis.html"><h4>Android 解析</h4><p>Android プロジェクト解析の入口・パーサ・拡張ポイント。</p></a>
+      </div>
+    </section>
+
+    <footer>
+      <p>Juml — 操作マニュアル。GUI の詳細は <a href="./gui-manual.html">GUI マニュアル</a>、CLI 全フラグ・内部仕様は <a href="./developer-reference.html">開発者リファレンス</a>へ。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

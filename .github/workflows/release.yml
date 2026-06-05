@@ -94,3 +94,45 @@ jobs:
           files: |
             release-assets/Juml.jar
             release-assets/juml-*.zip
+
+  # Windows 向け自己完結 exe (JRE 同梱の app-image) を Windows ランナーで生成し、
+  # 上で作成済みの同一タグの Release に追加添付する。jpackage はホスト OS 向けの
+  # イメージしか作れないため、Windows exe はこのジョブ (windows-latest) で生成する。
+  package-windows:
+    needs: build-and-release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # jar (fat jar) → jpackageZip で Juml.exe + runtime を含む app-image を ZIP 化する。
+      - name: Build Windows app-image (Juml.exe)
+        run: ./gradlew --no-daemon jar jpackageZip
+
+      - name: Upload exe zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          files: build/distributions/Juml-windows-*.zip

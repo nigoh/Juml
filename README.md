@@ -40,6 +40,7 @@ GUI の操作、CLI の全オプション、各図種の詳細、ビルド方法
 
 * [ドキュメントトップ](https://nigoh.github.io/Juml/) — 概要・GUI マニュアル・開発者リファレンスへの入口
 * [プロジェクト概要](docs/project-summary.html) — 何ができるか・構成・ビルド・主要依存ライブラリ
+* [操作マニュアル](docs/operation-manual.html) — **入手・インストール (exe / jar / ビルド) から GUI・CLI の実運用までを一気通貫**で解説（少しコーディングできる人向け）
 * [GUI 操作マニュアル](docs/gui-manual.html) — 起動・ツールバー・各図種の操作・スタイル設定・ショートカット・**巨大な図が描画できないときの対処**
 * [開発者リファレンス](docs/developer-reference.html) — CLI 全フラグ・図種カタログ・GUI 内部・解析エンジン・**解析対象と既知の制約**
 * [Claude Code 連携](docs/claude-code.html) — `.claude/` 配下のエージェント・スキル・スラッシュコマンド (AOSP / AAOS 解析・Java 解析エンジン) のカタログと使い方
