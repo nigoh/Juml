@@ -22,20 +22,26 @@ import java.net.URL;
  * 起動スプラッシュ ({@link SplashWindow}) と解析中オーバーレイ
  * ({@link LoadingGlassPane}) の両方からこのパネルを使い、見た目を統一する。</p>
  *
- * <p>GIF リソース ({@code /images/loading.gif}) が見つからない場合は GIF ラベルを
- * 出さずステータス文言だけ表示する (リソース欠落でも例外で落とさない)。</p>
+ * <p>表示する GIF は {@link LoadingGifs} が複数候補からランダムに選ぶ
+ * (例: {@code /images/loading.gif} と {@code /images/loading2.gif})。選んだ GIF が
+ * 見つからない場合は GIF ラベルを出さずステータス文言だけ表示する (リソース欠落でも
+ * 例外で落とさない)。</p>
  */
 final class LoadingGifView extends JPanel {
 
-    private static final String GIF_RESOURCE = "/images/loading.gif";
-
     private final JLabel statusLabel = new JLabel("", SwingConstants.CENTER);
 
+    /** ランダムに選んだ GIF で構築する。 */
     LoadingGifView(String initialStatus) {
+        this(LoadingGifs.pickResource(), initialStatus);
+    }
+
+    /** 指定した GIF リソースで構築する。 */
+    LoadingGifView(String gifResource, String initialStatus) {
         setOpaque(false);
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
-        URL gifUrl = LoadingGifView.class.getResource(GIF_RESOURCE);
+        URL gifUrl = LoadingGifView.class.getResource(gifResource);
         if (gifUrl != null) {
             JLabel gifLabel = new JLabel(new ImageIcon(gifUrl));
             gifLabel.setAlignmentX(Component.CENTER_ALIGNMENT);

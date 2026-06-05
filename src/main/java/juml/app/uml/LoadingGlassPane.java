@@ -32,7 +32,6 @@ final class LoadingGlassPane extends JComponent {
 
     /** 背後 UI を覆う半透明の暗幕色。 */
     private static final Color SCRIM = new Color(0, 0, 0, 140);
-    private static final String GIF_RESOURCE = "/images/loading.gif";
 
     /** アニメ GIF。リソースが無ければ null (ステータスのみ表示)。 */
     private final ImageIcon icon;
@@ -41,7 +40,8 @@ final class LoadingGlassPane extends JComponent {
     LoadingGlassPane() {
         setOpaque(false);
         setVisible(false);
-        URL gifUrl = LoadingGlassPane.class.getResource(GIF_RESOURCE);
+        // 複数候補からランダムに 1 つ選ぶ (実在するものだけが対象)。
+        URL gifUrl = LoadingGlassPane.class.getResource(LoadingGifs.pickResource());
         icon = gifUrl != null ? new ImageIcon(gifUrl) : null;
         // 解析中は背後 UI を触らせない: イベントを握りつぶす空リスナ。
         addMouseListener(new MouseAdapter() { });
