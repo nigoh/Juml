@@ -35,9 +35,9 @@ import java.util.regex.Pattern;
  */
 public final class ResourceLinkAnalyzer {
 
-    /** {@code R.layout.x / R.string.x / R.id.x} を捕捉。g1=種別, g2=名前。 */
+    /** {@code R.layout.x / R.string.x / R.id.x / R.style.x} を捕捉。g1=種別, g2=名前。 */
     private static final Pattern R_REF = Pattern.compile(
-            "\\bR\\.(layout|string|id)\\.([A-Za-z_][A-Za-z0-9_]*)");
+            "\\bR\\.(layout|string|id|style)\\.([A-Za-z_][A-Za-z0-9_]*)");
 
     /** {@code setContentView(R.layout.x)}。g1=layout 名。 */
     private static final Pattern SET_CONTENT_VIEW = Pattern.compile(
@@ -69,11 +69,12 @@ public final class ResourceLinkAnalyzer {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return result;
         }
-        // 1. layout / strings をまとめて取得 (文言解決・レイアウト→文字列エッジに使う)
+        // 1. layout / strings / styles をまとめて取得 (文言・スタイル解決やエッジに使う)
         AndroidProjectAnalysis analysis =
                 AndroidProjectAnalyzer.analyze(projectRoot, ErrorListener.silent());
         result.setAnalysis(analysis);
-        collectLayoutStringRefs(analysis, result);
+        collectLayoutResourceRefs(analysis, result);
+        collectManifestThemeRefs(analysis, result);
 
         // 2. Java/Kotlin を走査してコード参照を抽出
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
@@ -143,37 +144,78 @@ public final class ResourceLinkAnalyzer {
         }
     }
 
-    /** layout XML を走査し、各レイアウトが参照する {@code @string/foo} を集める。 */
-    private static void collectLayoutStringRefs(AndroidProjectAnalysis analysis,
-                                                ResourceLinkAnalysis result) {
+    /**
+     * layout XML を走査し、各レイアウトが参照する {@code @string/foo} と
+     * {@code @style/Foo} ({@code style="..."} / {@code android:theme="..."} 含む) を集める。
+     */
+    private static void collectLayoutResourceRefs(AndroidProjectAnalysis analysis,
+                                                  ResourceLinkAnalysis result) {
         if (analysis == null) {
             return;
         }
         for (AndroidLayoutInfo layout : analysis.allLayouts()) {
             String layoutName = stripXml(layout.getFileName());
             if (layout.getRoot() != null) {
-                collectStringRefsInNode(layout.getRoot(), layoutName, result);
+                collectRefsInNode(layout.getRoot(), layoutName, result);
             }
         }
     }
 
-    private static void collectStringRefsInNode(LayoutViewNode node, String layoutName,
-                                                ResourceLinkAnalysis result) {
-        addStringRef(node.getText(), layoutName, result);
-        addStringRef(node.getContentDescription(), layoutName, result);
+    private static void collectRefsInNode(LayoutViewNode node, String layoutName,
+                                          ResourceLinkAnalysis result) {
+        addResRef(node.getText(), layoutName, result);
+        addResRef(node.getContentDescription(), layoutName, result);
         for (String v : node.getExtraAttributes().values()) {
-            addStringRef(v, layoutName, result);
+            addResRef(v, layoutName, result);
         }
         for (LayoutViewNode child : node.getChildren()) {
-            collectStringRefsInNode(child, layoutName, result);
+            collectRefsInNode(child, layoutName, result);
         }
     }
 
-    private static void addStringRef(String value, String layoutName,
-                                     ResourceLinkAnalysis result) {
-        if (value != null && value.startsWith("@string/")) {
-            result.addLayoutStringRef(layoutName, value.substring("@string/".length()));
+    /** 1 つの属性値が {@code @string/} / {@code @style/} 参照なら記録する。 */
+    private static void addResRef(String value, String layoutName,
+                                  ResourceLinkAnalysis result) {
+        if (value == null) {
+            return;
         }
+        if (value.startsWith("@string/")) {
+            result.addLayoutStringRef(layoutName, value.substring("@string/".length()));
+        } else if (value.startsWith("@style/")) {
+            result.addLayoutStyleRef(layoutName, value.substring("@style/".length()));
+        }
+    }
+
+    /**
+     * Manifest の {@code <application android:theme="@style/Foo">} を、
+     * Application クラス (無ければ {@code "AndroidManifest"}) → style の参照として記録する。
+     */
+    private static void collectManifestThemeRefs(AndroidProjectAnalysis analysis,
+                                                 ResourceLinkAnalysis result) {
+        if (analysis == null) {
+            return;
+        }
+        for (AndroidManifestInfo m : analysis.allManifests()) {
+            String theme = m.getApplicationTheme();
+            if (theme == null || !theme.startsWith("@style/")) {
+                continue;
+            }
+            String styleName = theme.substring("@style/".length());
+            String owner = m.getApplicationClass();
+            owner = (owner == null || owner.isEmpty())
+                    ? "AndroidManifest" : simpleName(owner);
+            result.getReferences().add(new ResourceReference(
+                    owner, ResourceReference.Kind.STYLE, styleName, false, "AndroidManifest.xml"));
+        }
+    }
+
+    private static String simpleName(String fqn) {
+        if (fqn == null) {
+            return null;
+        }
+        String n = fqn.startsWith(".") ? fqn.substring(1) : fqn;
+        int dot = n.lastIndexOf('.');
+        return dot >= 0 ? n.substring(dot + 1) : n;
     }
 
     /** ファイル先頭の型宣言名を返す。見つからなければ null。 */
@@ -212,6 +254,7 @@ public final class ResourceLinkAnalyzer {
         switch (token) {
             case "layout": return ResourceReference.Kind.LAYOUT;
             case "string": return ResourceReference.Kind.STRING;
+            case "style":  return ResourceReference.Kind.STYLE;
             case "id":     return ResourceReference.Kind.ID;
             default:       return ResourceReference.Kind.ID;
         }

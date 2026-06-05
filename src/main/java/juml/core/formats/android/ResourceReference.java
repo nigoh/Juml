@@ -19,7 +19,9 @@ public final class ResourceReference {
         /** {@code R.string.*} — 文字列リソース。 */
         STRING,
         /** {@code R.id.*} — View ID ({@code findViewById} 等)。 */
-        ID
+        ID,
+        /** {@code R.style.*} — スタイル/テーマ ({@code setTheme} / {@code @style/} / {@code android:theme})。 */
+        STYLE
     }
 
     private final String ownerClass;

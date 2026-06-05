@@ -4,6 +4,17 @@ Change log
 2.1
 --------
 
+* **リソース紐づけ図に style/テーマを追加** (`RESOURCE_LINK` 拡張 / `StyleResourceParser` / `AndroidStyleResources` 新規)
+    * 既存のコード↔リソース紐づけ図 (`RESOURCE_LINK`) が `R.layout` / `R.string` / `R.id` までだったのに対し、**スタイル/テーマ** を解析対象に追加した。
+    * **`styles.xml` / `themes.xml` パーサ** (`StyleResourceParser`): `<style name parent>` と配下の `<item>` を抽出。親は明示 `parent="@style/Foo"` を優先し、無ければ Android の暗黙ドット継承 (`AppTheme.Dialog` → 親 `AppTheme`) で補完。`AndroidProjectScanner.includeValues` 経由で `<string>` と同じ values XML から両方を取り込む (`AndroidProjectAnalyzer.parseValuesResources`)。
+    * **抽出元** を 3 経路に拡張:
+        1. コード: `R.style.*` / `setTheme(R.style.X)` (`R_REF` に `style` 追加、`ResourceReference.Kind.STYLE`)
+        2. レイアウト XML: `style="@style/X"` / `android:theme="@style/X"` (属性値から `@style/` 参照を収集)
+        3. Manifest: `<application android:theme="@style/X">` を Application クラス → style として記録
+    * **図** に紫の `<<style>>` ノードを追加: クラス⋯>style (`R.style` / `theme`)、レイアウト⋯>style (`style`)、そして **style ⋯|> 親style (`extends`)** の継承チェーンを再帰的に描画 (`AndroidProjectAnalysis.resolveStyleParent`)。凡例も更新。
+    * テスト: 新規 `StyleResourceParserTest` (7 ケース) ＋ `ResourceLinkAnalyzerTest` / `PlantUmlResourceLinkDiagramTest` に style ケースを追加。既存テスト全 PASS / checkstyle clean。
+    * 目的: 「どのクラス/レイアウト/Manifest がどのスタイル・テーマに紐づき、そのテーマがどう継承されているか」まで 1 枚で追えるようにするため。
+
 * **レイアウトリソースの「画面」可視化 + コード↔リソース紐づけ図を追加** (3 機能)
     * **① 画面ワイヤーフレーム図** (`DiagramKind.LAYOUT_SCREEN` / `PlantUmlLayoutScreenDiagram` 新規)
         * 既存の `LAYOUT` 図 (入れ子 rectangle = 構造ツリー) に対し、`res/layout/*.xml` を **PlantUML Salt** のワイヤーフレームで「画面としてどう見えるか」を描画する。`Button` → `[ ボタン ]`、`EditText` → 入力欄、`CheckBox` → チェックボックス、`ImageView` → 画像アイコン等にウィジェット変換。`LinearLayout orientation="horizontal"` の子は横並び (`|` 連結)、それ以外の ViewGroup は縦積みで近似。`android:text` が `@string/foo` のときはプロジェクトの strings.xml で実文言へ解決して表示。`EditText` が空欄なら `android:hint` → id をプレースホルダ表示。

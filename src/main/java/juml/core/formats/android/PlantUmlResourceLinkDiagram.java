@@ -3,6 +3,8 @@
 
 package juml.core.formats.android;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -59,11 +61,13 @@ public final class PlantUmlResourceLinkDiagram {
         out.append("  BorderColor<<layout>> #B59C3A\n");
         out.append("  BackgroundColor<<string>> #E8F5E9\n");
         out.append("  BorderColor<<string>> #2E7D32\n");
+        out.append("  BackgroundColor<<style>> #F3E5F5\n");
+        out.append("  BorderColor<<style>> #7B1FA2\n");
         out.append("}\n");
 
         if (model.isEmpty()) {
             out.append("note as N1\n  No code↔resource links were found.\n")
-                    .append("  (no R.layout/R.string/R.id usage detected)\nend note\n");
+                    .append("  (no R.layout/R.string/R.id/R.style usage detected)\nend note\n");
             out.append("@enduml\n");
             return out.toString();
         }
@@ -72,7 +76,9 @@ public final class PlantUmlResourceLinkDiagram {
         Map<String, String> classAlias = new LinkedHashMap<>();
         Map<String, String> layoutAlias = new LinkedHashMap<>();
         Map<String, String> stringAlias = new LinkedHashMap<>();
+        Map<String, String> styleAlias = new LinkedHashMap<>();
         Set<String> stringNames = new LinkedHashSet<>();
+        Set<String> styleNames = new LinkedHashSet<>();
         Set<String> edges = new LinkedHashSet<>();
 
         for (ResourceReference ref : model.getReferences()) {
@@ -94,6 +100,15 @@ public final class PlantUmlResourceLinkDiagram {
                     edges.add(cAlias + " ..> " + sAlias + " : R.string");
                     break;
                 }
+                case STYLE: {
+                    styleNames.add(ref.getResourceName());
+                    String yAlias = alias(styleAlias, "Y_", ref.getResourceName());
+                    boolean theme = ref.getFile() != null
+                            && ref.getFile().endsWith("AndroidManifest.xml");
+                    edges.add(cAlias + " ..> " + yAlias
+                            + (theme ? " : theme" : " : R.style"));
+                    break;
+                }
                 case ID:
                 default:
                     // ID 参照はノードにすると煩雑なため、クラスノードは作るがエッジは引かない
@@ -113,10 +128,36 @@ public final class PlantUmlResourceLinkDiagram {
             }
         }
 
+        // レイアウト → スタイル (style= / android:theme=) のエッジ
+        for (Map.Entry<String, Set<String>> e : model.getLayoutStyleRefs().entrySet()) {
+            String lAlias = alias(layoutAlias, "L_", e.getKey());
+            for (String yName : e.getValue()) {
+                styleNames.add(yName);
+                String yAlias = alias(styleAlias, "Y_", yName);
+                edges.add(lAlias + " ..> " + yAlias + " : style");
+            }
+        }
+
+        // スタイル → 親スタイル (継承) のエッジ。親も解決して連鎖を辿る。
+        Deque<String> work = new ArrayDeque<>(styleNames);
+        while (!work.isEmpty()) {
+            String child = work.poll();
+            String parent = model.resolveStyleParent(child);
+            if (parent == null || parent.equals(child)) {
+                continue;
+            }
+            if (styleNames.add(parent)) {
+                work.add(parent);
+            }
+            edges.add(alias(styleAlias, "Y_", child) + " ..|> "
+                    + alias(styleAlias, "Y_", parent) + " : extends");
+        }
+
         // ノード宣言
         emitNodes(out, classAlias, "<<class>>", null, model, o);
         emitNodes(out, layoutAlias, "<<layout>>", null, model, o);
         emitNodes(out, stringAlias, "<<string>>", stringNames, model, o);
+        emitNodes(out, styleAlias, "<<style>>", null, model, o);
 
         out.append('\n');
         for (String edge : edges) {
@@ -165,9 +206,11 @@ public final class PlantUmlResourceLinkDiagram {
         out.append("rectangle <<class>>   参照元クラス (Activity/Fragment 等)\n");
         out.append("rectangle <<layout>>  レイアウト (R.layout)\n");
         out.append("rectangle <<string>>  文字列リソース (R.string / @string)\n");
+        out.append("rectangle <<style>>   スタイル/テーマ (R.style / @style / android:theme)\n");
         out.append("A =[#1565C0]=> B  画面を束ねる (setContentView/inflate/Binding)\n");
         out.append("A --> B          R.layout 参照\n");
-        out.append("A ..> B          R.string / @string 参照\n");
+        out.append("A ..> B          R.string / @string / R.style / theme 参照\n");
+        out.append("A ..|> B         スタイル継承 (parent)\n");
         out.append("endlegend\n");
     }
 

@@ -23,6 +23,8 @@ public final class ResourceLinkAnalysis {
     private final List<ResourceReference> references = new ArrayList<>();
     /** layout 名 → その XML 内で参照される {@code @string/} 名の集合。 */
     private final Map<String, Set<String>> layoutStringRefs = new LinkedHashMap<>();
+    /** layout 名 → その XML 内で参照される {@code @style/} (style= / android:theme=) 名の集合。 */
+    private final Map<String, Set<String>> layoutStyleRefs = new LinkedHashMap<>();
     private AndroidProjectAnalysis analysis;
 
     public List<ResourceReference> getReferences() {
@@ -40,6 +42,17 @@ public final class ResourceLinkAnalysis {
         layoutStringRefs.computeIfAbsent(layoutName, k -> new LinkedHashSet<>()).add(stringName);
     }
 
+    public Map<String, Set<String>> getLayoutStyleRefs() {
+        return layoutStyleRefs;
+    }
+
+    public void addLayoutStyleRef(String layoutName, String styleName) {
+        if (layoutName == null || styleName == null) {
+            return;
+        }
+        layoutStyleRefs.computeIfAbsent(layoutName, k -> new LinkedHashSet<>()).add(styleName);
+    }
+
     public AndroidProjectAnalysis getAnalysis() {
         return analysis;
     }
@@ -50,11 +63,16 @@ public final class ResourceLinkAnalysis {
 
     /** 解析対象が皆無 (コード参照もレイアウト参照も無し) か。 */
     public boolean isEmpty() {
-        return references.isEmpty() && layoutStringRefs.isEmpty();
+        return references.isEmpty() && layoutStringRefs.isEmpty() && layoutStyleRefs.isEmpty();
     }
 
     /** 文字列名 → 実文言を解決する (見つからなければ null)。 */
     public String resolveString(String name) {
         return analysis != null ? analysis.resolveString(name) : null;
+    }
+
+    /** スタイル名 → 親 (継承元) スタイル名を解決する (見つからなければ null)。 */
+    public String resolveStyleParent(String name) {
+        return analysis != null ? analysis.resolveStyleParent(name) : null;
     }
 }

@@ -24,6 +24,8 @@ public class AndroidProjectAnalysis {
             = new LinkedHashMap<>();
     private final Map<String, List<AndroidStringResources>> stringResourcesByModule
             = new LinkedHashMap<>();
+    private final Map<String, List<AndroidStyleResources>> styleResourcesByModule
+            = new LinkedHashMap<>();
 
     public GradleProjectInfo getRootSettings() {
         return rootSettings;
@@ -153,6 +155,65 @@ public class AndroidProjectAnalysis {
             }
         }
         return fallback;
+    }
+
+    /**
+     * モジュール名 → そのモジュールに含まれるスタイル/テーマ定義ファイルのリスト。
+     * {@link StyleResourceParser} 経由でパース済み。空 Map で初期化されるので null にはならない。
+     */
+    public Map<String, List<AndroidStyleResources>> getStyleResourcesByModule() {
+        return styleResourcesByModule;
+    }
+
+    /** 全モジュールのスタイル定義ファイルを 1 つのリストに連結。 */
+    public List<AndroidStyleResources> allStyleResources() {
+        List<AndroidStyleResources> all = new ArrayList<>();
+        for (List<AndroidStyleResources> list : styleResourcesByModule.values()) {
+            all.addAll(list);
+        }
+        return all;
+    }
+
+    /**
+     * {@code @style/Foo} / {@code R.style.Foo} の {@code Foo} に対応する
+     * {@link AndroidStyleResources.StyleDef} を返す。複数 locale/variant では最初に
+     * 見つかったものを返す。未定義なら null。
+     */
+    public AndroidStyleResources.StyleDef findStyle(String ref) {
+        String name = styleName(ref);
+        if (name == null) {
+            return null;
+        }
+        for (AndroidStyleResources sr : allStyleResources()) {
+            AndroidStyleResources.StyleDef def = sr.getStyle(name);
+            if (def != null) {
+                return def;
+            }
+        }
+        return null;
+    }
+
+    /** スタイルの親 (継承元) 名を返す。明示 parent / 暗黙ドット継承を解決済みの値。未定義なら null。 */
+    public String resolveStyleParent(String ref) {
+        AndroidStyleResources.StyleDef def = findStyle(ref);
+        return def != null ? def.getParent() : null;
+    }
+
+    private static String styleName(String ref) {
+        if (ref == null || ref.isEmpty()) {
+            return null;
+        }
+        String name = ref;
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        // R.style.Foo 形式 (ドット区切り) は末尾要素を採用。ただしスタイル名自体が
+        // ドットを含む (AppTheme.Dialog) ため、明示接頭辞 "R.style." のときだけ末尾化する。
+        if (name.startsWith("R.style.")) {
+            name = name.substring("R.style.".length());
+        }
+        return name.isEmpty() ? null : name;
     }
 
     /** 全モジュールのマニフェストを 1 つのリストに連結。 */

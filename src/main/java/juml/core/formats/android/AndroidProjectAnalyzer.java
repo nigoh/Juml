@@ -121,7 +121,7 @@ public final class AndroidProjectAnalyzer {
                         .computeIfAbsent(moduleName, k -> new ArrayList<>())
                         .add(info);
             } else if (name.endsWith(".xml") && isInValuesDir(f)) {
-                parseStringResources(f, moduleName, analysis, l);
+                parseValuesResources(f, moduleName, analysis, l);
             } else if (name.equals("androidmanifest.xml")) {
                 String content = safeRead(f, l);
                 if (content == null) {
@@ -151,12 +151,14 @@ public final class AndroidProjectAnalyzer {
         int layoutCount = analysis.allLayouts().size();
         int navCount = analysis.allNavigationGraphs().size();
         int stringFileCount = analysis.allStringResources().size();
+        int styleFileCount = analysis.allStyleResources().size();
         l.onError(null, -1,
                 "android analyzer: " + gradleCount + " gradle file(s), "
                         + manifestCount + " manifest(s), "
                         + layoutCount + " layout(s), "
                         + navCount + " navigation graph(s), "
-                        + stringFileCount + " string resource file(s)");
+                        + stringFileCount + " string resource file(s), "
+                        + styleFileCount + " style resource file(s)");
 
         return analysis;
     }
@@ -172,33 +174,54 @@ public final class AndroidProjectAnalyzer {
     }
 
     /**
-     * 1 つの values XML をパースして文字列リソースを取り込む。
-     * 文字列を 1 つも含まない (colors.xml 等) 場合は何も追加しない。
+     * 1 つの values XML をパースして文字列リソース ({@code <string>}) と
+     * スタイル/テーマ ({@code <style>}) を取り込む。該当要素を 1 つも含まない
+     * (colors.xml 等) 場合は何も追加しない。
      */
-    private static void parseStringResources(File f, String moduleName,
+    private static void parseValuesResources(File f, String moduleName,
                                              AndroidProjectAnalysis analysis, ErrorListener l) {
         String content = safeRead(f, l);
         if (content == null) {
             return;
         }
-        AndroidStringResources info;
+        String sourceSet = inferLayoutSourceSet(f);
+        String qualifier = inferValuesConfigQualifier(f);
+
+        AndroidStringResources strings;
         try {
-            info = StringResourceParser.parse(content, l);
+            strings = StringResourceParser.parse(content, l);
         } catch (RuntimeException ex) {
             l.onError(f.getName(), -1, "strings parse failed: " + ex.getMessage());
-            return;
+            strings = new AndroidStringResources();
         }
-        if (info.getStrings().isEmpty()) {
-            return;
+        if (!strings.getStrings().isEmpty()) {
+            strings.setFilePath(f.getAbsolutePath());
+            strings.setFileName(f.getName());
+            strings.setModuleName(moduleName);
+            strings.setSourceSet(sourceSet);
+            strings.setConfigQualifier(qualifier);
+            analysis.getStringResourcesByModule()
+                    .computeIfAbsent(moduleName, k -> new ArrayList<>())
+                    .add(strings);
         }
-        info.setFilePath(f.getAbsolutePath());
-        info.setFileName(f.getName());
-        info.setModuleName(moduleName);
-        info.setSourceSet(inferLayoutSourceSet(f));
-        info.setConfigQualifier(inferValuesConfigQualifier(f));
-        analysis.getStringResourcesByModule()
-                .computeIfAbsent(moduleName, k -> new ArrayList<>())
-                .add(info);
+
+        AndroidStyleResources styles;
+        try {
+            styles = StyleResourceParser.parse(content, l);
+        } catch (RuntimeException ex) {
+            l.onError(f.getName(), -1, "styles parse failed: " + ex.getMessage());
+            styles = new AndroidStyleResources();
+        }
+        if (!styles.getStyles().isEmpty()) {
+            styles.setFilePath(f.getAbsolutePath());
+            styles.setFileName(f.getName());
+            styles.setModuleName(moduleName);
+            styles.setSourceSet(sourceSet);
+            styles.setConfigQualifier(qualifier);
+            analysis.getStyleResourcesByModule()
+                    .computeIfAbsent(moduleName, k -> new ArrayList<>())
+                    .add(styles);
+        }
     }
 
     /** 親ディレクトリが {@code values} または {@code values-*} のときに true。 */

@@ -76,6 +76,36 @@ public class PlantUmlResourceLinkDiagramTest {
     }
 
     @Test
+    public void testStyleNodesEdgesAndInheritance() {
+        ResourceLinkAnalysis model = new ResourceLinkAnalysis();
+        // コード: ThemedActivity が R.style.AppTheme_Dialog を使う
+        model.getReferences().add(new ResourceReference(
+                "ThemedActivity", ResourceReference.Kind.STYLE, "AppTheme_Dialog", false, "x.java"));
+        // Manifest: Application が theme を持つ
+        model.getReferences().add(new ResourceReference(
+                "App", ResourceReference.Kind.STYLE, "AppTheme", false, "AndroidManifest.xml"));
+        // レイアウト: activity_main が style="@style/CardStyle"
+        model.addLayoutStyleRef("activity_main", "CardStyle");
+
+        AndroidProjectAnalysis analysis = new AndroidProjectAnalysis();
+        AndroidStyleResources sr = new AndroidStyleResources();
+        AndroidStyleResources.StyleDef child = new AndroidStyleResources.StyleDef("CardStyle");
+        child.setParent("AppTheme");
+        sr.getStyles().put("CardStyle", child);
+        sr.getStyles().put("AppTheme", new AndroidStyleResources.StyleDef("AppTheme"));
+        analysis.getStyleResourcesByModule().put(":root",
+                java.util.Collections.singletonList(sr));
+        model.setAnalysis(analysis);
+
+        String puml = PlantUmlResourceLinkDiagram.generate(model);
+        assertTrue("style ステレオタイプ", puml.contains("<<style>>"));
+        assertTrue("R.style エッジ", puml.contains(": R.style"));
+        assertTrue("manifest theme エッジ", puml.contains(": theme"));
+        assertTrue("layout style エッジ", puml.contains(": style"));
+        assertTrue("継承エッジ", puml.contains("..|>") && puml.contains(": extends"));
+    }
+
+    @Test
     public void testLegendToggle() {
         PlantUmlResourceLinkDiagram.Options opts = new PlantUmlResourceLinkDiagram.Options();
         opts.includeLegend = false;
