@@ -73,6 +73,24 @@ public class ResourceLinkAnalyzerTest {
     }
 
     @Test
+    public void testRStyleExtracted() {
+        String src = "class ThemedActivity {\n"
+                + "  void onCreate() {\n"
+                + "    setTheme(R.style.AppTheme_Dark);\n"
+                + "    int s = R.style.Button_Primary;\n"
+                + "  }\n"
+                + "}\n";
+        ResourceLinkAnalysis r = new ResourceLinkAnalysis();
+        new ResourceLinkAnalyzer().analyzeSource(src, "ThemedActivity.java", r);
+        assertNotNull(find(r, ResourceReference.Kind.STYLE, "AppTheme_Dark"));
+        ResourceReference btn = find(r, ResourceReference.Kind.STYLE, "Button_Primary");
+        assertNotNull(btn);
+        assertEquals("ThemedActivity", btn.getOwnerClass());
+        // R.style は content binding ではない
+        assertFalse(btn.isContentBinding());
+    }
+
+    @Test
     public void testBindingClassToLayout() {
         assertEquals("activity_main",
                 ResourceLinkAnalyzer.bindingClassToLayout("ActivityMainBinding"));
