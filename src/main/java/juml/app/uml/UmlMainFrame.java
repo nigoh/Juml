@@ -398,24 +398,30 @@ public class UmlMainFrame extends JFrame {
         Setting setting = Main.getSetting();
         String curLaf = setting != null ? setting.getLookAndFeel() : "SYSTEM";
         boolean curRestore = setting != null && setting.isRestoreLastProjectOnStartup();
-        PreferencesDialog.Result r = PreferencesDialog.showDialog(this, curLaf, curRestore);
+        String curLang = setting != null ? setting.getLanguage() : "ja";
+        PreferencesDialog.Result r =
+                PreferencesDialog.showDialog(this, curLaf, curRestore, curLang);
         if (r == null) {
             return;
         }
         boolean lafChanged = !r.lookAndFeel.equalsIgnoreCase(curLaf);
+        boolean langChanged = !r.language.equalsIgnoreCase(curLang);
         try {
             if (setting != null) {
                 setting.setLookAndFeel(r.lookAndFeel);
                 setting.setRestoreLastProjectOnStartup(r.restoreLastProjectOnStartup);
+                setting.setLanguage(r.language);
                 Main.saveSetting();
             }
         } catch (RuntimeException ignored) {
             // 設定保存はベストエフォート
         }
-        if (lafChanged) {
+        // 外観・言語のいずれも、既に生成済みの UI へは遡及しないため再起動で反映する。
+        if (lafChanged || langChanged) {
             JOptionPane.showMessageDialog(this,
-                    "Look & Feel の変更はアプリの再起動後に反映されます。",
-                    "Preferences", JOptionPane.INFORMATION_MESSAGE);
+                    juml.util.Messages.get("pref.restartNotice"),
+                    juml.util.Messages.get("menubar.settings.preferences"),
+                    JOptionPane.INFORMATION_MESSAGE);
         }
     }
 

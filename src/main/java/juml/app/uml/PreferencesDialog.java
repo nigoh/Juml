@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -81,31 +83,69 @@ public final class PreferencesDialog extends JDialog {
         }
     }
 
+    /**
+     * 選択可能な UI 表示言語。{@code key()} が永続化キー ({@link juml.Setting#getLanguage()})
+     * になる。
+     */
+    public enum LanguageOption {
+        JA("ja", "日本語"),
+        EN("en", "English");
+
+        private final String key;
+        private final String displayName;
+
+        LanguageOption(String key, String displayName) {
+            this.key = key;
+            this.displayName = displayName;
+        }
+
+        public String key() {
+            return key;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        /** 永続化キー (未知/空/null は日本語)。 */
+        public static LanguageOption fromKey(String key) {
+            return (key != null && "en".equalsIgnoreCase(key.trim())) ? EN : JA;
+        }
+    }
+
     /** ダイアログの編集結果 (OK 押下時のみ生成)。 */
     public static final class Result {
         /** 選択された Look &amp; Feel の永続化キー。 */
         public final String lookAndFeel;
         /** 起動時に前回プロジェクトを復元するか。 */
         public final boolean restoreLastProjectOnStartup;
+        /** 選択された UI 表示言語キー ("ja" / "en")。 */
+        public final String language;
 
-        public Result(String lookAndFeel, boolean restoreLastProjectOnStartup) {
+        public Result(String lookAndFeel, boolean restoreLastProjectOnStartup,
+                      String language) {
             this.lookAndFeel = (lookAndFeel == null || lookAndFeel.isEmpty())
                     ? "SYSTEM" : lookAndFeel;
             this.restoreLastProjectOnStartup = restoreLastProjectOnStartup;
+            this.language = LanguageOption.fromKey(language).key();
         }
     }
 
     private final JComboBox<LookAndFeelOption> lafCombo =
             new JComboBox<>(LookAndFeelOption.values());
+    private final JComboBox<LanguageOption> languageCombo =
+            new JComboBox<>(LanguageOption.values());
     private final JCheckBox restoreLastProjectCheck =
             new JCheckBox("前回開いたプロジェクトを起動時に復元する");
 
     private Result result;
 
     private PreferencesDialog(Frame owner, String currentLaf,
-                              boolean currentRestoreLastProject) {
+                              boolean currentRestoreLastProject,
+                              String currentLanguage) {
         super(owner, "Preferences", true);
         lafCombo.setSelectedItem(LookAndFeelOption.fromKey(currentLaf));
+        languageCombo.setSelectedItem(LanguageOption.fromKey(currentLanguage));
         restoreLastProjectCheck.setSelected(currentRestoreLastProject);
         setContentPane(buildContent());
         pack();
@@ -170,6 +210,38 @@ public final class PreferencesDialog extends JDialog {
                 "引数でプロジェクトを指定せずに起動したとき、最後に開いたプロジェクトを自動で開きます");
         form.add(restoreLastProjectCheck, c);
 
+        // --- 言語 (Language) ---
+        c.gridwidth = 1;
+        c.gridy = 5;
+        c.gridx = 0;
+        c.insets = new Insets(14, 4, 4, 4);
+        form.add(sectionLabel("言語 (Language)"), c);
+        c.insets = new Insets(4, 4, 4, 4);
+
+        c.gridy = 6;
+        c.gridx = 0;
+        form.add(new JLabel(Messages.get("pref.language")), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        languageCombo.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel l = new JLabel(value != null ? value.getDisplayName() : "");
+            l.setOpaque(true);
+            if (isSelected) {
+                l.setBackground(list.getSelectionBackground());
+                l.setForeground(list.getSelectionForeground());
+            }
+            l.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+            return l;
+        });
+        form.add(languageCombo, c);
+
+        c.gridy = 7;
+        c.gridx = 1;
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        form.add(hint(Messages.get("pref.language.hint")), c);
+
         return form;
     }
 
@@ -179,8 +251,10 @@ public final class PreferencesDialog extends JDialog {
         JButton cancel = new JButton("Cancel");
         ok.addActionListener(e -> {
             LookAndFeelOption sel = (LookAndFeelOption) lafCombo.getSelectedItem();
+            LanguageOption lang = (LanguageOption) languageCombo.getSelectedItem();
             result = new Result(sel != null ? sel.name() : "SYSTEM",
-                    restoreLastProjectCheck.isSelected());
+                    restoreLastProjectCheck.isSelected(),
+                    lang != null ? lang.key() : "ja");
             dispose();
         });
         cancel.addActionListener(e -> {
@@ -211,9 +285,10 @@ public final class PreferencesDialog extends JDialog {
      * モーダルでダイアログを表示する。OK なら {@link Result}、キャンセル/クローズなら null。
      */
     public static Result showDialog(Frame owner, String currentLaf,
-                                    boolean currentRestoreLastProject) {
+                                    boolean currentRestoreLastProject,
+                                    String currentLanguage) {
         PreferencesDialog dlg = new PreferencesDialog(owner, currentLaf,
-                currentRestoreLastProject);
+                currentRestoreLastProject, currentLanguage);
         dlg.setVisible(true);
         return dlg.result;
     }

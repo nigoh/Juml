@@ -5,6 +5,7 @@ package juml.app.uml;
 
 import juml.core.formats.uml.DiagramStyle;
 import juml.core.formats.uml.PlantUmlRenderer;
+import juml.util.Messages;
 
 import javax.swing.AbstractButton;
 import javax.swing.ButtonGroup;
@@ -116,7 +117,7 @@ public final class MenuBarBuilder {
 
     /** メニューバーを構築して {@link Result} を返す。EDT から呼ぶこと。 */
     public Result build() {
-        JMenuItem cancelLoadingItem = new JMenuItem("Cancel Loading");
+        JMenuItem cancelLoadingItem = new JMenuItem(Messages.get("menubar.file.cancelLoading"));
         cancelLoadingItem.addActionListener(e -> cb.cancelLoading.run());
         cancelLoadingItem.setEnabled(false);
 
@@ -139,12 +140,12 @@ public final class MenuBarBuilder {
     }
 
     private JMenu buildFileMenu(JMenuItem cancelLoadingItem) {
-        JMenu m = new JMenu("File");
+        JMenu m = new JMenu(Messages.get("menubar.file"));
         m.setMnemonic(KeyEvent.VK_F);
-        JMenuItem open = new JMenuItem("Open Project...");
+        JMenuItem open = new JMenuItem(Messages.get("menubar.file.open"));
         open.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, menuMask));
         open.addActionListener(e -> cb.chooseProject.run());
-        JMenu recent = new JMenu("Open Recent");
+        JMenu recent = new JMenu(Messages.get("menubar.file.openRecent"));
         m.addMenuListener(new javax.swing.event.MenuListener() {
             @Override public void menuSelected(javax.swing.event.MenuEvent e) {
                 rebuildRecentMenu(recent);
@@ -152,19 +153,19 @@ public final class MenuBarBuilder {
             @Override public void menuDeselected(javax.swing.event.MenuEvent e) {}
             @Override public void menuCanceled(javax.swing.event.MenuEvent e) {}
         });
-        JMenuItem save = new JMenuItem("Save Diagram As...");
+        JMenuItem save = new JMenuItem(Messages.get("menubar.file.saveAs"));
         save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
         save.addActionListener(e -> cb.chooseAndExport.run());
-        JMenuItem perFolder = new JMenuItem("Export Class Diagrams Per Folder...");
+        JMenuItem perFolder = new JMenuItem(Messages.get("menubar.file.exportPerFolder"));
         perFolder.addActionListener(e -> cb.exportClassDiagramsPerFolder.run());
-        JMenuItem functionList = new JMenuItem("Export Function List...");
+        JMenuItem functionList = new JMenuItem(Messages.get("menubar.file.exportFunctionList"));
         functionList.addActionListener(e -> cb.exportFunctionList.run());
-        JMenuItem memberList = new JMenuItem("Export Members to Excel...");
+        JMenuItem memberList = new JMenuItem(Messages.get("menubar.file.exportMembers"));
         memberList.addActionListener(e -> cb.exportMemberList.run());
-        JMenuItem refresh = new JMenuItem("Refresh");
+        JMenuItem refresh = new JMenuItem(Messages.get("menubar.file.refresh"));
         refresh.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
         refresh.addActionListener(e -> cb.refreshDiagram.run());
-        JMenuItem exit = new JMenuItem("Exit");
+        JMenuItem exit = new JMenuItem(Messages.get("menubar.file.exit"));
         exit.addActionListener(e -> cb.exitApp.run());
         m.add(open);
         m.add(recent);
@@ -189,7 +190,7 @@ public final class MenuBarBuilder {
             records = java.util.Collections.emptyList();
         }
         if (records.isEmpty()) {
-            JMenuItem none = new JMenuItem("(No recent projects)");
+            JMenuItem none = new JMenuItem(Messages.get("menubar.file.recentNone"));
             none.setEnabled(false);
             recent.add(none);
             return;
@@ -205,7 +206,7 @@ public final class MenuBarBuilder {
 
     private JMenu buildDiagramMenu(EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems,
                                    ButtonGroup diagramGroup) {
-        JMenu m = new JMenu("Diagram");
+        JMenu m = new JMenu(Messages.get("menubar.diagram"));
         m.setMnemonic(KeyEvent.VK_D);
         for (DiagramKind k : DiagramKind.values()) {
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(k.getDisplayName());
@@ -224,43 +225,45 @@ public final class MenuBarBuilder {
             m.add(item);
         }
         m.addSeparator();
-        JMenuItem search = new JMenuItem("Search Entities...");
+        JMenuItem search = new JMenuItem(Messages.get("menubar.diagram.search"));
         search.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F,
                 menuMask | InputEvent.SHIFT_DOWN_MASK));
         search.addActionListener(e -> cb.openEntitySearch.run());
         m.add(search);
-        JMenuItem pickEntry = new JMenuItem("Choose Sequence Entry...");
+        JMenuItem pickEntry = new JMenuItem(Messages.get("menubar.diagram.chooseSequenceEntry"));
         pickEntry.addActionListener(e -> cb.pickSequenceEntry.run());
         m.add(pickEntry);
-        JMenuItem filterParticipants = new JMenuItem("Filter Sequence Participants...");
+        JMenuItem filterParticipants =
+                new JMenuItem(Messages.get("menubar.diagram.filterParticipants"));
         filterParticipants.addActionListener(e -> cb.openParticipantFilterDialog.run());
         m.add(filterParticipants);
-        JMenuItem clearParticipantFilter = new JMenuItem("Clear Sequence Participant Filter");
+        JMenuItem clearParticipantFilter =
+                new JMenuItem(Messages.get("menubar.diagram.clearParticipantFilter"));
         clearParticipantFilter.addActionListener(e -> cb.clearSequenceParticipants.run());
         m.add(clearParticipantFilter);
-        JMenuItem pickActivity = new JMenuItem("Choose Activity Method...");
+        JMenuItem pickActivity = new JMenuItem(Messages.get("menubar.diagram.chooseActivity"));
         pickActivity.addActionListener(e -> cb.pickActivityEntry.run());
         m.add(pickActivity);
-        JMenuItem pickLayout = new JMenuItem("Choose Layout File...");
+        JMenuItem pickLayout = new JMenuItem(Messages.get("menubar.diagram.chooseLayout"));
         pickLayout.addActionListener(e -> cb.pickLayoutFile.run());
         m.add(pickLayout);
-        JMenuItem pickNavigation = new JMenuItem("Choose Navigation Graph...");
+        JMenuItem pickNavigation = new JMenuItem(Messages.get("menubar.diagram.chooseNavigation"));
         pickNavigation.addActionListener(e -> cb.pickNavigationGraph.run());
         m.add(pickNavigation);
         m.addSeparator();
         m.add(buildPresetSubMenu());
-        JMenuItem scope = new JMenuItem("Scope...");
+        JMenuItem scope = new JMenuItem(Messages.get("menubar.diagram.scope"));
         scope.addActionListener(e -> cb.openScopeDialog.run());
         m.add(scope);
-        JMenuItem clearScope = new JMenuItem("Clear Scope");
+        JMenuItem clearScope = new JMenuItem(Messages.get("menubar.diagram.clearScope"));
         clearScope.addActionListener(e -> cb.clearScope.run());
         m.add(clearScope);
         return m;
     }
 
     private JMenu buildPresetSubMenu() {
-        JMenu sub = new JMenu("Preset");
-        sub.setToolTipText("Switch class diagram density (Minimal / Balanced / Detailed)");
+        JMenu sub = new JMenu(Messages.get("menubar.diagram.preset"));
+        sub.setToolTipText(Messages.get("menubar.diagram.preset.tooltip"));
         int seq = 1;
         for (DiagramPreset p : DiagramPreset.values()) {
             if (p == DiagramPreset.CUSTOM) {
@@ -286,18 +289,18 @@ public final class MenuBarBuilder {
     }
 
     private JMenu buildViewMenu() {
-        JMenu m = new JMenu("View");
+        JMenu m = new JMenu(Messages.get("menubar.view"));
         m.setMnemonic(KeyEvent.VK_V);
-        JMenuItem zoomIn = new JMenuItem("Zoom In");
+        JMenuItem zoomIn = new JMenuItem(Messages.get("menubar.view.zoomIn"));
         zoomIn.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, menuMask));
         zoomIn.addActionListener(e -> cb.zoomIn.run());
-        JMenuItem zoomOut = new JMenuItem("Zoom Out");
+        JMenuItem zoomOut = new JMenuItem(Messages.get("menubar.view.zoomOut"));
         zoomOut.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, menuMask));
         zoomOut.addActionListener(e -> cb.zoomOut.run());
-        JMenuItem zoomReset = new JMenuItem("Zoom 100%");
+        JMenuItem zoomReset = new JMenuItem(Messages.get("menubar.view.zoomReset"));
         zoomReset.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_0, menuMask));
         zoomReset.addActionListener(e -> cb.zoomReset.run());
-        JMenuItem zoomFit = new JMenuItem("Zoom to Fit");
+        JMenuItem zoomFit = new JMenuItem(Messages.get("menubar.view.zoomFit"));
         zoomFit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, menuMask));
         zoomFit.addActionListener(e -> cb.zoomToFit.run());
         m.add(zoomIn);
@@ -309,11 +312,11 @@ public final class MenuBarBuilder {
 
     private JMenu buildStyleMenu(Map<String, JRadioButtonMenuItem> themeItems,
                                  ButtonGroup themeGroup) {
-        JMenu m = new JMenu("Style");
+        JMenu m = new JMenu(Messages.get("menubar.style"));
         m.setMnemonic(KeyEvent.VK_S);
         DiagramStyle current = PlantUmlRenderer.getStyle();
         for (String theme : StyleSettingsDialog.THEMES) {
-            String label = theme.isEmpty() ? "(None)" : theme;
+            String label = theme.isEmpty() ? Messages.get("menubar.style.none") : theme;
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(label);
             if (theme.equals(current.getTheme() == null ? "" : current.getTheme())) {
                 item.setSelected(true);
@@ -324,52 +327,47 @@ public final class MenuBarBuilder {
             m.add(item);
         }
         m.addSeparator();
-        JMenuItem advanced = new JMenuItem("Style Settings...");
+        JMenuItem advanced = new JMenuItem(Messages.get("menubar.style.settings"));
         advanced.addActionListener(e -> cb.openStyleSettings.run());
         m.add(advanced);
         return m;
     }
 
     private JMenu buildSettingsMenu() {
-        JMenu m = new JMenu("Settings");
+        JMenu m = new JMenu(Messages.get("menubar.settings"));
         m.setMnemonic(KeyEvent.VK_T);
-        JMenuItem preferences = new JMenuItem("Preferences...");
-        preferences.setToolTipText("アプリ全体の設定 (外観 / 起動時の動作)");
+        JMenuItem preferences = new JMenuItem(Messages.get("menubar.settings.preferences"));
+        preferences.setToolTipText(Messages.get("menubar.settings.preferences.tooltip"));
         preferences.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_COMMA, menuMask));
         preferences.addActionListener(e -> cb.openPreferences.run());
         m.add(preferences);
         m.addSeparator();
-        JMenuItem styleSettings = new JMenuItem("Style Settings...");
-        styleSettings.setToolTipText("図のスタイル / シーケンス / クラス図の詳細設定");
+        JMenuItem styleSettings = new JMenuItem(Messages.get("menubar.settings.styleSettings"));
+        styleSettings.setToolTipText(Messages.get("menubar.settings.styleSettings.tooltip"));
         styleSettings.addActionListener(e -> cb.openStyleSettings.run());
         m.add(styleSettings);
-        JMenuItem enableGraphviz = new JMenuItem("Enable Graphviz (dot)...");
-        enableGraphviz.setToolTipText(
-                "大きな図で純 Java の Smetana レイアウトが破綻する場合、"
-                + "Graphviz dot を有効にすると安定して描画できます");
+        JMenuItem enableGraphviz = new JMenuItem(Messages.get("menubar.settings.enableGraphviz"));
+        enableGraphviz.setToolTipText(Messages.get("menubar.settings.enableGraphviz.tooltip"));
         enableGraphviz.addActionListener(e -> cb.enableGraphviz.run());
         m.add(enableGraphviz);
         m.addSeparator();
-        JMenuItem clearCache = new JMenuItem("Clear Analysis Cache");
-        clearCache.setToolTipText(
-                "現在のプロジェクトの解析キャッシュ (メモリ + ディスク) を破棄して再解析します");
+        JMenuItem clearCache = new JMenuItem(Messages.get("menubar.settings.clearCache"));
+        clearCache.setToolTipText(Messages.get("menubar.settings.clearCache.tooltip"));
         clearCache.addActionListener(e -> cb.clearAnalysisCache.run());
         m.add(clearCache);
         return m;
     }
 
     private JMenu buildHelpMenu() {
-        JMenu m = new JMenu("Help");
+        JMenu m = new JMenu(Messages.get("menubar.help"));
         m.setMnemonic(KeyEvent.VK_H);
-        JMenuItem usage = new JMenuItem("Usage");
+        JMenuItem usage = new JMenuItem(Messages.get("menubar.help.usage"));
         usage.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F1, 0));
         usage.addActionListener(e -> showUsageDialog());
-        JMenuItem about = new JMenuItem("About");
+        JMenuItem about = new JMenuItem(Messages.get("menubar.help.about"));
         about.addActionListener(e -> JOptionPane.showMessageDialog(parentFrame,
-                "Juml UML\n\n"
-                        + "Java + Android + Gradle UML diagram generator.\n"
-                        + "Bundled PlantUML for rendering.",
-                "About Juml UML",
+                Messages.get("menubar.help.about.message"),
+                Messages.get("menubar.help.about.title"),
                 JOptionPane.INFORMATION_MESSAGE));
         m.add(usage);
         m.addSeparator();
