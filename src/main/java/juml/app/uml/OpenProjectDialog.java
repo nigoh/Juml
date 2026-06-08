@@ -4,6 +4,7 @@
 package juml.app.uml;
 
 import juml.ProjectRecord;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListCellRenderer;
@@ -47,7 +48,7 @@ final class OpenProjectDialog extends JDialog {
 
     private OpenProjectDialog(Frame owner, List<ProjectRecord> records,
                               Consumer<ProjectRecord> onDelete) {
-        super(owner, "Open Project", true);
+        super(owner, Messages.get("dlg.openProject.title"), true);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(0, 0));
 
@@ -246,7 +247,7 @@ final class OpenProjectDialog extends JDialog {
         if (d.action == Action.BROWSE) {
             JFileChooser fc = new JFileChooser();
             fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            fc.setDialogTitle("Open Android / Gradle project");
+            fc.setDialogTitle(Messages.get("dlg.openAndroidGradle"));
             int r = fc.showOpenDialog(owner);
             return r == JFileChooser.APPROVE_OPTION ? fc.getSelectedFile() : null;
         }

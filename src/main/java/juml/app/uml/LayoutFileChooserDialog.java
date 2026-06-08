@@ -5,6 +5,7 @@ package juml.app.uml;
 
 import juml.core.formats.android.AndroidLayoutInfo;
 import juml.core.formats.android.AndroidProjectAnalysis;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -51,7 +52,7 @@ public class LayoutFileChooserDialog extends JDialog {
     private String selectedKey;
 
     public LayoutFileChooserDialog(Frame owner, List<AndroidLayoutInfo> layouts) {
-        super(owner, "Select layout file", true);
+        super(owner, Messages.get("dlg.selectLayout.title"), true);
         setLayout(new BorderLayout(8, 8));
         ((JPanel) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 

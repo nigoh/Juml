@@ -143,7 +143,7 @@ public final class PreferencesDialog extends JDialog {
     private PreferencesDialog(Frame owner, String currentLaf,
                               boolean currentRestoreLastProject,
                               String currentLanguage) {
-        super(owner, "Preferences", true);
+        super(owner, Messages.get("dlg.preferences.title"), true);
         lafCombo.setSelectedItem(LookAndFeelOption.fromKey(currentLaf));
         languageCombo.setSelectedItem(LanguageOption.fromKey(currentLanguage));
         restoreLastProjectCheck.setSelected(currentRestoreLastProject);

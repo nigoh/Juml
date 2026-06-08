@@ -9,6 +9,7 @@ import juml.core.formats.uml.JavaMethodInfo;
 import juml.core.formats.uml.UmlGenerator;
 import juml.core.funcdiff.MarkdownMethodDiffReport;
 import juml.core.funcdiff.MethodDiffAnalyzer;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -148,7 +149,7 @@ public class FuncDiffPanel extends JPanel {
         JButton btn = new JButton("Browse...");
         btn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
-            fc.setDialogTitle("Select Java file");
+            fc.setDialogTitle(Messages.get("dlg.selectJavaFile"));
             fc.setAcceptAllFileFilterUsed(true);
             fc.setFileFilter(new FileNameExtensionFilter("Java source (*.java)", "java"));
             String current = target.getText().trim();
@@ -250,7 +251,7 @@ public class FuncDiffPanel extends JPanel {
             return;
         }
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Save Diff Report");
+        fc.setDialogTitle(Messages.get("dlg.saveDiffReport"));
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new FileNameExtensionFilter("Markdown (*.md)", "md"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {

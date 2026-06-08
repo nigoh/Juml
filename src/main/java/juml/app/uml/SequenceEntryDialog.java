@@ -6,6 +6,7 @@ package juml.app.uml;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.PlantUmlSequenceDiagram;
 import juml.core.formats.uml.Visibility;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -61,7 +62,7 @@ public class SequenceEntryDialog extends JDialog {
     private final Timer debounceTimer = new Timer(150, e -> rebuildTree(filter.getText()));
 
     public SequenceEntryDialog(Frame owner, List<JavaClassInfo> classes) {
-        super(owner, "Select sequence diagram entry", true);
+        super(owner, Messages.get("dlg.selectSequenceEntry.title"), true);
         setLayout(new BorderLayout(8, 8));
         ((JPanel) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 

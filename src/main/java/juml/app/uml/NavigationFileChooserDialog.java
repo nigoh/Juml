@@ -5,6 +5,7 @@ package juml.app.uml;
 
 import juml.core.formats.android.AndroidNavigationGraphInfo;
 import juml.core.formats.android.AndroidProjectAnalysis;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -51,7 +52,7 @@ public class NavigationFileChooserDialog extends JDialog {
     private String selectedKey;
 
     public NavigationFileChooserDialog(Frame owner, List<AndroidNavigationGraphInfo> graphs) {
-        super(owner, "Select navigation graph", true);
+        super(owner, Messages.get("dlg.selectNavigation.title"), true);
         setLayout(new BorderLayout(8, 8));
         ((JPanel) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
