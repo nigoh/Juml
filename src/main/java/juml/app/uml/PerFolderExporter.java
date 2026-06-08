@@ -7,6 +7,7 @@ import juml.core.formats.uml.ClassIndex;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.PerFolderClassDiagrams;
 import juml.util.ErrorListener;
+import juml.util.Messages;
 import juml.util.ProgressListener;
 
 import javax.swing.JFileChooser;
@@ -47,7 +48,7 @@ final class PerFolderExporter {
                        final JProgressBar loadProgress,
                        final JLabel status) {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Choose output directory");
+        chooser.setDialogTitle(Messages.get("dlg.chooseOutputDir"));
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         if (chooser.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION) {
             return;

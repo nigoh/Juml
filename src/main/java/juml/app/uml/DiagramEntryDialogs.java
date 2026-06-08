@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.JOptionPane;
 
 /**
@@ -20,15 +22,15 @@ final class DiagramEntryDialogs {
     public void pickSequenceEntry() {
         if (!c.cache().isLoaded()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         SequenceEntryDialog dlg = new SequenceEntryDialog(c.parentFrame, c.cache().getClasses());
         if (dlg.getCandidateCount() == 0) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "No methods found in this project.",
-                    "Sequence diagram", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noMethods"),
+                    Messages.get("diagram.kind.SEQUENCE"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         dlg.setVisible(true);
@@ -49,14 +51,15 @@ final class DiagramEntryDialogs {
     public void openParticipantFilterDialog() {
         if (!c.cache().isLoaded()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         if (c.state.sequenceEntry == null || c.state.sequenceEntry.isEmpty()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "Choose a sequence entry first (Diagram → Choose Sequence Entry...).",
-                    "Sequence participants", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.chooseSequenceEntryFirst"),
+                    Messages.get("dlg.sequenceParticipants.title"),
+                    JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         int dot = c.state.sequenceEntry.lastIndexOf('.');
@@ -70,8 +73,9 @@ final class DiagramEntryDialogs {
                         c.cache().getClasses(), cls, method, null);
         if (all.isEmpty()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "No participants found for " + c.state.sequenceEntry,
-                    "Sequence participants", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noParticipantsFor") + c.state.sequenceEntry,
+                    Messages.get("dlg.sequenceParticipants.title"),
+                    JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         java.util.Set<String> picked = SequenceParticipantFilterDialog.show(
@@ -81,8 +85,9 @@ final class DiagramEntryDialogs {
             c.state.sequenceHiddenParticipants.addAll(picked);
             int total = all.size();
             int hidden = c.state.sequenceHiddenParticipants.size();
-            c.statusLabel.setText("Sequence filter: showing " + (total - hidden) + "/" + total
-                    + " participants");
+            c.statusLabel.setText(Messages.get("status.sequenceFilterPrefix")
+                    + (total - hidden) + "/" + total
+                    + Messages.get("status.sequenceFilterSuffix"));
             c.applyStateToActiveTab();
         }
     }
@@ -94,16 +99,16 @@ final class DiagramEntryDialogs {
     public void pickActivityEntry() {
         if (!c.cache().isLoaded()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         SequenceEntryDialog dlg = new SequenceEntryDialog(c.parentFrame, c.cache().getClasses());
-        dlg.setTitle("Select activity method");
+        dlg.setTitle(Messages.get("dlg.selectActivityMethod"));
         if (dlg.getCandidateCount() == 0) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "No methods found in this project.",
-                    "Activity diagram", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noMethods"),
+                    Messages.get("diagram.kind.ACTIVITY"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         dlg.setVisible(true);
@@ -116,16 +121,16 @@ final class DiagramEntryDialogs {
     public void pickCallGraphEntry() {
         if (!c.cache().isLoaded()) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         SequenceEntryDialog dlg = new SequenceEntryDialog(c.parentFrame, c.cache().getClasses());
-        dlg.setTitle("Select call graph entry method");
+        dlg.setTitle(Messages.get("dlg.selectCallGraphEntry"));
         if (dlg.getCandidateCount() == 0) {
             JOptionPane.showMessageDialog(c.parentFrame,
-                    "No methods found in this project.",
-                    "Call graph", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noMethods"),
+                    Messages.get("diagram.kind.CALLGRAPH"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         dlg.setVisible(true);

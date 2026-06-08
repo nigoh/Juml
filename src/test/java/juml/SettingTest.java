@@ -286,6 +286,57 @@ public class SettingTest {
     }
 
     @Test
+    public void testLanguageDefaultIsJapanese() {
+        Setting s = new Setting();
+        assertEquals("ja", s.getLanguage());
+    }
+
+    @Test
+    public void testLanguageSetterNormalizes() {
+        Setting s = new Setting();
+        s.setLanguage("en");
+        assertEquals("en", s.getLanguage());
+        s.setLanguage("EN");
+        assertEquals("en", s.getLanguage());
+        // 未知 / null / 空は日本語に丸める
+        s.setLanguage("fr");
+        assertEquals("ja", s.getLanguage());
+        s.setLanguage(null);
+        assertEquals("ja", s.getLanguage());
+        s.setLanguage("");
+        assertEquals("ja", s.getLanguage());
+    }
+
+    @Test
+    public void testLanguageRoundTrip() throws IOException {
+        Setting original = new Setting();
+        original.setLanguage("en");
+
+        File file = tempFolder.newFile("settings-lang.xml");
+        original.saveToFile(file);
+
+        Setting loaded = Setting.loadFromFile(file);
+        assertEquals("en", loaded.getLanguage());
+    }
+
+    @Test
+    public void testLanguageLegacyFallsBackToJapanese() throws IOException {
+        // app.language キーを持たない旧 XML を読んでも既定 (日本語) で初期化される
+        File file = tempFolder.newFile("legacy-no-lang.xml");
+        String legacy = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<!DOCTYPE properties SYSTEM "
+                + "\"http://java.sun.com/dtd/properties.dtd\">"
+                + "<properties>"
+                + "<entry key=\"windowWidth\">1024</entry>"
+                + "</properties>";
+        java.nio.file.Files.write(file.toPath(),
+                legacy.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        Setting loaded = Setting.loadFromFile(file);
+        assertEquals("ja", loaded.getLanguage());
+    }
+
+    @Test
     public void testLookAndFeelEmptyFallsBackToSystem() {
         Setting s = new Setting();
         s.setLookAndFeel("");

@@ -46,8 +46,15 @@ public enum DiagramPreset {
         this.displayName = displayName;
     }
 
+    /**
+     * 現在の表示言語でのプリセット名を返す。
+     *
+     * <p>{@code diagram.preset.<NAME>} のリソースを引き、未定義なら英語の既定値へ
+     * フォールバックする。CLI 解釈 ({@link #fromCli(String)}) は英語の
+     * {@code displayName} フィールドを使うため、言語切替の影響を受けない。</p>
+     */
     public String getDisplayName() {
-        return displayName;
+        return DiagramKind.localized("diagram.preset." + name(), displayName);
     }
 
     /** クラス図生成側の Options にプリセットを反映する。CUSTOM は何もしない。 */

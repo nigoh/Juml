@@ -75,6 +75,8 @@ public class Setting {
     private String lookAndFeel = "SYSTEM";
     /** 起動時に前回開いたプロジェクトを自動で復元するか。 */
     private boolean restoreLastProjectOnStartup = false;
+    /** UI 表示言語 ("ja" / "en")。既定は日本語。 */
+    private String language = "ja";
 
     public int getWindowX() { return windowX; }
     public void setWindowX(int windowX) { this.windowX = windowX; }
@@ -144,6 +146,12 @@ public class Setting {
     public boolean isRestoreLastProjectOnStartup() { return restoreLastProjectOnStartup; }
     public void setRestoreLastProjectOnStartup(boolean v) {
         this.restoreLastProjectOnStartup = v;
+    }
+
+    public String getLanguage() { return language; }
+    /** UI 言語を設定する。"en" 以外 (null / 未知の値含む) は既定の "ja" に丸める。 */
+    public void setLanguage(String v) {
+        this.language = (v != null && "en".equalsIgnoreCase(v.trim())) ? "en" : "ja";
     }
 
     /** 永続化済みの値から {@link DiagramStyle} を組み立てて返す。 */
@@ -226,6 +234,7 @@ public class Setting {
         props.setProperty("app.lookAndFeel", lookAndFeel);
         props.setProperty("app.restoreLastProjectOnStartup",
                 Boolean.toString(restoreLastProjectOnStartup));
+        props.setProperty("app.language", language);
 
         try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f))) {
             props.storeToXML(bos, "Juml Settings");
@@ -294,6 +303,7 @@ public class Setting {
         s.lookAndFeel = stringOrDefault(props.getProperty("app.lookAndFeel"), "SYSTEM");
         s.restoreLastProjectOnStartup = parseBooleanSafe(
                 props.getProperty("app.restoreLastProjectOnStartup"), false);
+        s.setLanguage(stringOrDefault(props.getProperty("app.language"), "ja"));
 
         return s;
     }

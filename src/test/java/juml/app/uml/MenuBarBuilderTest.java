@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
 import org.junit.Test;
 
 import javax.swing.JMenuBar;
@@ -56,8 +57,9 @@ public class MenuBarBuilderTest {
     public void build_settingsMenuIsBeforeHelp() {
         MenuBarBuilder.Result r = buildDefault();
         JMenuBar bar = r.menuBar;
-        assertEquals("Settings", bar.getMenu(4).getText());
-        assertEquals("Help", bar.getMenu(5).getText());
+        // ラベルは i18n される。現在の言語に対応する文言で比較する。
+        assertEquals(Messages.get("menubar.settings"), bar.getMenu(4).getText());
+        assertEquals(Messages.get("menubar.help"), bar.getMenu(5).getText());
     }
 
     @Test

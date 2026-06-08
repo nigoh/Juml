@@ -22,6 +22,8 @@ public final class UmlApp {
     /** UML GUI を起動する。{@code initialProject} は null 可。 */
     public static void launch(File initialProject) {
         System.setProperty("apple.laf.useScreenMenuBar", "true");
+        // メニュー等を構築する前に、永続化された言語をメッセージリソースへ反映する。
+        juml.util.Messages.setLanguage(resolveLanguageKey());
         PreferencesDialog.applyLookAndFeel(resolveLookAndFeelKey());
         launchWithSplash(initialProject);
     }
@@ -33,6 +35,15 @@ public final class UmlApp {
         } catch (RuntimeException ex) {
             // SettingManager 未初期化 (テスト等) では既定 (System) を使う
             return "SYSTEM";
+        }
+    }
+
+    /** 永続化された UI 言語キーを取得する。未初期化等では既定 (日本語) を使う。 */
+    private static String resolveLanguageKey() {
+        try {
+            return juml.SettingManager.getInstance().getSetting().getLanguage();
+        } catch (RuntimeException ex) {
+            return "ja";
         }
     }
 

@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 /**
  * GUI で選択可能な UML 図種。
  *
@@ -45,13 +47,26 @@ public enum DiagramKind {
     /** Soong 依存図 — プロジェクト下の {@code Android.bp} を解析し、モジュール依存をコンポーネント図で表示。 */
     SOONG("Soong (Android.bp)");
 
+    /** 英語の既定表示名。i18n リソースにキーが無い場合のフォールバックに使う。 */
     private final String displayName;
 
     DiagramKind(String displayName) {
         this.displayName = displayName;
     }
 
+    /**
+     * 現在の表示言語での図種名を返す。
+     *
+     * <p>{@code diagram.kind.<NAME>} のリソースを引き、未定義なら英語の既定値へ
+     * フォールバックする (新しい図種を追加してキー登録を忘れても生キーは出さない)。</p>
+     */
     public String getDisplayName() {
-        return displayName;
+        return localized("diagram.kind." + name(), displayName);
+    }
+
+    /** リソースを引き、未定義 (キーがそのまま返る) なら fallback を返す小さなヘルパー。 */
+    static String localized(String key, String fallback) {
+        String v = Messages.get(key);
+        return v.equals(key) ? fallback : v;
     }
 }

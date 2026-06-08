@@ -7,6 +7,7 @@ import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.JavaFieldInfo;
 import juml.core.formats.uml.JavaMethodInfo;
 import juml.core.formats.uml.Visibility;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -92,7 +93,7 @@ public class EntitySearchDialog extends JDialog {
     private final Timer debounceTimer = new Timer(150, e -> rebuildTree(filter.getText()));
 
     public EntitySearchDialog(Frame owner, List<JavaClassInfo> classes) {
-        super(owner, "Search entities", true);
+        super(owner, Messages.get("dlg.searchEntities.title"), true);
         setLayout(new BorderLayout(8, 8));
         ((JPanel) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
