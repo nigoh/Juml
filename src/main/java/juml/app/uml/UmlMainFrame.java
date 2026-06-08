@@ -322,7 +322,7 @@ public class UmlMainFrame extends JFrame {
                 : DiagramScope.builder();
         p.applyTo(b);
         state.currentScope = b.build();
-        status.setText("Preset: " + p.getDisplayName());
+        status.setText(juml.util.Messages.get("status.presetPrefix") + p.getDisplayName());
         controller.applyStateToActiveTab();
     }
 

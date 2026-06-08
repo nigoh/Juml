@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -85,12 +87,15 @@ public final class ToolBarBuilder {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
         bar.setRollover(true);
-        bar.add(makeButton("Open", "Open project (Ctrl+O)", e -> cb.chooseProject.run()));
-        bar.add(makeButton("Save", "Save diagram (Ctrl+S)", e -> cb.chooseAndExport.run()));
-        bar.add(makeButton("Refresh", "Refresh diagram (F5)", e -> cb.refreshDiagram.run()));
+        bar.add(makeButton(Messages.get("toolbar.open"),
+                Messages.get("toolbar.open.tip"), e -> cb.chooseProject.run()));
+        bar.add(makeButton(Messages.get("toolbar.save"),
+                Messages.get("toolbar.save.tip"), e -> cb.chooseAndExport.run()));
+        bar.add(makeButton(Messages.get("toolbar.refresh"),
+                Messages.get("toolbar.refresh.tip"), e -> cb.refreshDiagram.run()));
         bar.addSeparator();
-        bar.add(makeButton("Search", "Search entities (Ctrl+Shift+F)",
-                e -> cb.openEntitySearch.run()));
+        bar.add(makeButton(Messages.get("toolbar.search"),
+                Messages.get("toolbar.search.tip"), e -> cb.openEntitySearch.run()));
         return bar;
     }
 
@@ -99,7 +104,7 @@ public final class ToolBarBuilder {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
         bar.setRollover(true);
-        bar.add(new JLabel(" Diagram: "));
+        bar.add(new JLabel(Messages.get("toolbar.diagramLabel")));
         for (DiagramKind k : DiagramKind.values()) {
             JToggleButton b = new JToggleButton(toolbarLabel(k));
             b.setToolTipText(k.getDisplayName() + tooltipExtra(k));
@@ -116,7 +121,16 @@ public final class ToolBarBuilder {
         return bar;
     }
 
+    /**
+     * トグルボタン用の短いラベル。i18n リソース {@code diagram.kind.<NAME>.short} を
+     * 引き、未定義なら英語の既定 (下の {@code switch}) へフォールバックする。
+     */
     public static String toolbarLabel(DiagramKind k) {
+        return DiagramKind.localized("diagram.kind." + k.name() + ".short",
+                defaultToolbarLabel(k));
+    }
+
+    private static String defaultToolbarLabel(DiagramKind k) {
         switch (k) {
             case CLASS: return "Class";
             case PACKAGE: return "Package";
@@ -138,7 +152,16 @@ public final class ToolBarBuilder {
         }
     }
 
+    /**
+     * ツールチップ末尾に付く補足説明。i18n リソース {@code diagram.kind.<NAME>.tip} を
+     * 引き、未定義なら英語の既定 (下の {@code switch}) へフォールバックする。
+     */
     public static String tooltipExtra(DiagramKind k) {
+        return DiagramKind.localized("diagram.kind." + k.name() + ".tip",
+                defaultTooltipExtra(k));
+    }
+
+    private static String defaultTooltipExtra(DiagramKind k) {
         switch (k) {
             case SEQUENCE:   return " (choose entry from Diagram menu)";
             case ACTIVITY:   return " (choose method from Diagram menu)";
