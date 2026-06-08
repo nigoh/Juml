@@ -10,6 +10,7 @@ import juml.core.formats.uml.DiagramStyle;
 import juml.core.formats.uml.GraphvizLocator;
 import juml.core.formats.uml.PlantUmlRenderer;
 import juml.util.CancelToken;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -431,22 +432,22 @@ public class UmlMainFrame extends JFrame {
      */
     private void clearAnalysisCache() {
         File root = cache.getProjectRoot();
+        String title = Messages.get("menubar.settings.clearCache");
         if (root == null) {
             JOptionPane.showMessageDialog(this,
-                    "クリアする解析キャッシュがありません (プロジェクト未読込)。",
-                    "Clear Analysis Cache", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.clearCache.none"),
+                    title, JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         int choice = JOptionPane.showConfirmDialog(this,
-                "現在のプロジェクトの解析キャッシュ (メモリ + ディスク) を破棄して\n"
-                        + "再解析しますか?",
-                "Clear Analysis Cache",
+                Messages.get("dlg.clearCache.confirm"),
+                title,
                 JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         if (choice != JOptionPane.YES_OPTION) {
             return;
         }
         cache.invalidate();
-        status.setText("Cleared analysis cache. Reloading...");
+        status.setText(Messages.get("status.cacheCleared"));
         loadProject(root);
     }
 
@@ -520,15 +521,15 @@ public class UmlMainFrame extends JFrame {
     private void exportClassDiagramsPerFolder() {
         if (!cache.isLoaded()) {
             JOptionPane.showMessageDialog(this,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         File projectRoot = cache.getProjectRoot();
         if (projectRoot == null || !projectRoot.isDirectory()) {
             JOptionPane.showMessageDialog(this,
-                    "Loaded project root is unavailable.",
-                    "No project", JOptionPane.WARNING_MESSAGE);
+                    Messages.get("dlg.projectRootUnavailable"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.WARNING_MESSAGE);
             return;
         }
         PerFolderExporter.choose(this, projectRoot,
@@ -556,7 +557,7 @@ public class UmlMainFrame extends JFrame {
                 actions = new juml.core.formats.android.actions.UiActionScanner()
                         .analyzeProject(currentProjectRoot);
             } catch (java.io.IOException ex) {
-                status.setText("UI action scan failed: " + ex.getMessage());
+                status.setText(Messages.get("status.uiActionScanFailed") + ex.getMessage());
             }
         }
         return juml.core.formats.uml.MethodUsageReport.render(
@@ -581,8 +582,8 @@ public class UmlMainFrame extends JFrame {
     /** 関数使用マップをファイルに保存する (File メニュー、Markdown テーブル / CSV を拡張子で選択)。 */
     private void exportFunctionList() {
         if (!cache.isLoaded()) {
-            JOptionPane.showMessageDialog(this, "Open a project first.",
-                    "Functions", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.functions.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         exportController.exportFunctionList(
@@ -590,18 +591,18 @@ public class UmlMainFrame extends JFrame {
                         juml.core.formats.uml.MethodUsageReport.Format.TABLE),
                 buildFunctionListReport(
                         juml.core.formats.uml.MethodUsageReport.Format.CSV),
-                "Save function list (Markdown table or CSV)");
+                Messages.get("dlg.saveFunctionList.title"));
     }
 
     /** 全クラスのメンバー解析結果を Excel (.xlsx) ワークブックとして保存する (File メニュー)。 */
     private void exportMemberList() {
         if (!cache.isLoaded()) {
-            JOptionPane.showMessageDialog(this, "Open a project first.",
-                    "Members", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, Messages.get("dlg.openProjectFirst"),
+                    Messages.get("dlg.members.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         exportController.exportMemberWorkbook(
-                cache.getClasses(), "Save members workbook (Excel .xlsx)");
+                cache.getClasses(), Messages.get("dlg.saveMembers.title"));
     }
 
     /** F5 / Refresh / フィルタ変更後にアクティブタブを再描画する。 */
@@ -620,22 +621,19 @@ public class UmlMainFrame extends JFrame {
         if (GraphvizLocator.redetect()) {
             tabPane.rerenderAllTabs();
             JOptionPane.showMessageDialog(this,
-                    "Graphviz (dot) を検出しました。\n開いている図を再描画しました。",
+                    Messages.get("dlg.graphviz.detected"),
                     "Graphviz", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         int choice = JOptionPane.showConfirmDialog(this,
-                "Graphviz (dot) が見つかりませんでした。\n"
-                        + "dot 実行ファイルの場所を指定しますか?\n\n"
-                        + "未インストールの場合は https://graphviz.org/download/ から\n"
-                        + "インストールしてください。",
-                "Graphviz が見つかりません",
+                Messages.get("dlg.graphviz.notFoundConfirm"),
+                Messages.get("dlg.graphviz.notFoundTitle"),
                 JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         if (choice != JOptionPane.YES_OPTION) {
             return;
         }
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("dot 実行ファイルを選択");
+        fc.setDialogTitle(Messages.get("dlg.graphviz.chooseDot"));
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -643,13 +641,13 @@ public class UmlMainFrame extends JFrame {
         if (GraphvizLocator.useDotBinary(dot)) {
             tabPane.rerenderAllTabs();
             JOptionPane.showMessageDialog(this,
-                    "Graphviz (dot) を有効化しました。\n開いている図を再描画しました。",
+                    Messages.get("dlg.graphviz.enabled"),
                     "Graphviz", JOptionPane.INFORMATION_MESSAGE);
         } else {
             JOptionPane.showMessageDialog(this,
-                    "選択したファイルは実行可能な dot ではありません:\n"
+                    Messages.get("dlg.graphviz.notExecutable") + "\n"
                             + dot.getAbsolutePath(),
-                    "エラー", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 

@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -31,18 +33,18 @@ final class ExportController {
 
     /** 右クリックエクスポートポップアップを構築する (SVG / PNG / PUML 保存 + SVG コピー)。 */
     public JPopupMenu buildExportPopup() {
-        JPopupMenu popup = new JPopupMenu("Export");
-        JMenuItem saveSvg = new JMenuItem("Save as SVG...");
+        JPopupMenu popup = new JPopupMenu(Messages.get("export.title"));
+        JMenuItem saveSvg = new JMenuItem(Messages.get("export.saveSvg"));
         saveSvg.addActionListener(e -> exportAs(UmlExporter.Format.SVG));
         popup.add(saveSvg);
-        JMenuItem savePng = new JMenuItem("Save as PNG...");
+        JMenuItem savePng = new JMenuItem(Messages.get("export.savePng"));
         savePng.addActionListener(e -> exportAs(UmlExporter.Format.PNG));
         popup.add(savePng);
-        JMenuItem savePuml = new JMenuItem("Save as PlantUML...");
+        JMenuItem savePuml = new JMenuItem(Messages.get("export.savePuml"));
         savePuml.addActionListener(e -> exportAs(UmlExporter.Format.PUML));
         popup.add(savePuml);
         popup.addSeparator();
-        JMenuItem copySvg = new JMenuItem("Copy SVG to Clipboard");
+        JMenuItem copySvg = new JMenuItem(Messages.get("export.copySvg"));
         copySvg.addActionListener(e -> copySvgToClipboard());
         popup.add(copySvg);
         return popup;
@@ -52,8 +54,8 @@ final class ExportController {
     private void exportAs(UmlExporter.Format fmt) {
         if (state.currentPuml == null || state.currentPuml.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
-                    "No diagram to export yet.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("export.noDiagram"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         String ext;
@@ -64,7 +66,7 @@ final class ExportController {
             default:   ext = "puml"; filterDesc = "PlantUML source (*.puml)"; break;
         }
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Save diagram as " + ext.toUpperCase());
+        fc.setDialogTitle(Messages.get("export.saveDiagramAs") + " " + ext.toUpperCase());
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new FileNameExtensionFilter(filterDesc, ext));
         int r = fc.showSaveDialog(parent);
@@ -81,11 +83,11 @@ final class ExportController {
                 pngImage = PlantUmlImageRenderer.toBufferedImage(state.currentPuml);
             }
             UmlExporter.export(fmt, chosen, state.currentPuml, pngImage);
-            status.setText("Saved: " + chosen.getAbsolutePath());
+            status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(parent,
-                    "Export failed: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("export.failed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -93,8 +95,8 @@ final class ExportController {
     private void copySvgToClipboard() {
         if (state.currentSvgXml == null || state.currentSvgXml.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
-                    "No SVG to copy.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("export.noSvg"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         try {
@@ -102,24 +104,24 @@ final class ExportController {
                     new java.awt.datatransfer.StringSelection(state.currentSvgXml);
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard()
                     .setContents(sel, null);
-            status.setText("SVG copied to clipboard ("
-                    + state.currentSvgXml.length() + " chars)");
+            status.setText(Messages.get("export.svgCopiedPrefix")
+                    + state.currentSvgXml.length() + Messages.get("export.svgCopiedSuffix"));
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(parent,
-                    "Failed to copy SVG: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("export.copyFailed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 
     public void chooseAndExport() {
         if (state.currentPuml == null || state.currentPuml.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
-                    "No diagram to export yet.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("export.noDiagram"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Save diagram as");
+        fc.setDialogTitle(Messages.get("export.saveDiagramAs"));
         fc.setAcceptAllFileFilterUsed(false);
         FileNameExtensionFilter svg = new FileNameExtensionFilter("SVG (*.svg)", "svg");
         FileNameExtensionFilter png = new FileNameExtensionFilter("PNG (*.png)", "png");
@@ -154,11 +156,11 @@ final class ExportController {
                 pngImage = PlantUmlImageRenderer.toBufferedImage(state.currentPuml);
             }
             UmlExporter.export(fmt, chosen, state.currentPuml, pngImage);
-            status.setText("Saved: " + chosen.getAbsolutePath());
+            status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(parent,
-                    "Export failed: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("export.failed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -168,8 +170,8 @@ final class ExportController {
      */
     public void exportFunctionList(String markdown, String csv, String dialogTitle) {
         if ((markdown == null || markdown.isEmpty()) && (csv == null || csv.isEmpty())) {
-            JOptionPane.showMessageDialog(parent, "No content to export.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(parent, Messages.get("export.noContent"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         JFileChooser fc = new JFileChooser();
@@ -195,11 +197,11 @@ final class ExportController {
         }
         try {
             juml.app.cli.CliOutput.writeText(chosen, asCsv ? csv : markdown);
-            status.setText("Saved: " + chosen.getAbsolutePath());
+            status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(parent,
-                    "Export failed: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("export.failed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -207,8 +209,8 @@ final class ExportController {
     public void exportMemberWorkbook(
             java.util.List<juml.core.formats.uml.JavaClassInfo> classes, String dialogTitle) {
         if (classes == null || classes.isEmpty()) {
-            JOptionPane.showMessageDialog(parent, "No content to export.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(parent, Messages.get("export.noContent"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         JFileChooser fc = new JFileChooser();
@@ -225,11 +227,11 @@ final class ExportController {
         }
         try (java.io.OutputStream os = new java.io.FileOutputStream(chosen)) {
             juml.core.formats.uml.MemberWorkbookExporter.write(classes, os);
-            status.setText("Saved: " + chosen.getAbsolutePath());
+            status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(parent,
-                    "Export failed: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    Messages.get("export.failed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
         }
     }
 }

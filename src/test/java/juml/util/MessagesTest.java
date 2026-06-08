@@ -92,6 +92,22 @@ public class MessagesTest {
         assertEquals("ファイル", Messages.get("menubar.file"));
     }
 
+    /** ダイアログ用キーが両言語で解決し、区切りスペース / 改行が保持されること。 */
+    @Test
+    public void testDialogKeysResolveInBothLanguages() {
+        Messages.setLanguage("en");
+        assertEquals("Export", Messages.get("export.title"));
+        assertTrue("status.saved should keep a trailing separator space",
+                Messages.get("status.saved").endsWith(" "));
+        assertTrue("multi-line confirm should preserve newlines",
+                Messages.get("dlg.clearCache.confirm").contains("\n"));
+
+        Messages.setLanguage("ja");
+        assertEquals("エクスポート", Messages.get("export.title"));
+        assertTrue(Messages.get("status.saved").endsWith(" "));
+        assertTrue(Messages.get("dlg.clearCache.confirm").contains("\n"));
+    }
+
     /** 他テストへ影響しないよう、既定 (日本語) に戻す。 */
     @After
     public void resetLanguage() {

@@ -7,6 +7,7 @@ import juml.app.uml.PlantUmlSvgRenderer.LinkArea;
 import juml.app.uml.PlantUmlSvgRenderer.RenderedSvg;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.JavaMethodInfo;
+import juml.util.Messages;
 
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -664,14 +665,14 @@ public final class DiagramTabPane {
             if (event == null) {
                 return;
             }
-            JPopupMenu popup = new JPopupMenu("Export");
-            JMenuItem saveSvg = new JMenuItem("Save as SVG...");
+            JPopupMenu popup = new JPopupMenu(Messages.get("export.title"));
+            JMenuItem saveSvg = new JMenuItem(Messages.get("export.saveSvg"));
             saveSvg.addActionListener(e -> exportTabAs(UmlExporter.Format.SVG));
             popup.add(saveSvg);
-            JMenuItem savePng = new JMenuItem("Save as PNG...");
+            JMenuItem savePng = new JMenuItem(Messages.get("export.savePng"));
             savePng.addActionListener(e -> exportTabAs(UmlExporter.Format.PNG));
             popup.add(savePng);
-            JMenuItem savePuml = new JMenuItem("Save as PlantUML...");
+            JMenuItem savePuml = new JMenuItem(Messages.get("export.savePuml"));
             savePuml.addActionListener(e -> exportTabAs(UmlExporter.Format.PUML));
             popup.add(savePuml);
             popup.show(event.getComponent(), event.getX(), event.getY());
@@ -681,13 +682,13 @@ public final class DiagramTabPane {
             String puml = renderedPuml;
             if (puml == null || puml.isEmpty()) {
                 JOptionPane.showMessageDialog(this,
-                        "No diagram to export yet.", "Export",
+                        Messages.get("export.noDiagram"), Messages.get("export.title"),
                         JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
             String ext = fmt.getExtension();
             JFileChooser fc = new JFileChooser();
-            fc.setDialogTitle("Save diagram as " + ext.toUpperCase());
+            fc.setDialogTitle(Messages.get("export.saveDiagramAs") + " " + ext.toUpperCase());
             fc.setAcceptAllFileFilterUsed(false);
             fc.setFileFilter(new FileNameExtensionFilter(
                     ext.toUpperCase() + " (*." + ext + ")", ext));
@@ -706,11 +707,11 @@ public final class DiagramTabPane {
                     img = PlantUmlImageRenderer.toBufferedImage(puml);
                 }
                 UmlExporter.export(fmt, chosen, puml, img);
-                reportStatus("Saved: " + chosen.getAbsolutePath());
+                reportStatus(Messages.get("status.saved") + chosen.getAbsolutePath());
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(this,
-                        "Export failed: " + ex.getMessage(),
-                        "Error", JOptionPane.ERROR_MESSAGE);
+                        Messages.get("export.failed") + ex.getMessage(),
+                        Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
             }
         }
     }
