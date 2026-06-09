@@ -332,6 +332,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
           <tr><td>—</td><td><code>--init-flow</code></td><td>—</td><td>off</td><td>Application onCreate 等の初期化 seq 図（要 -o dir）</td></tr>
           <tr><td>—</td><td><code>--action-map</code></td><td>—</td><td>off</td><td>onClick / Compose / menu ハンドラ Markdown</td></tr>
           <tr><td>—</td><td><code>--func-diff</code></td><td>有</td><td>—</td><td>2 メソッドの呼び出し列比較レポート</td></tr>
+          <tr><td>—</td><td><code>--insights</code></td><td>—</td><td>off</td><td>アーキテクチャ俯瞰（エントリポイント / ホットスポット / パッケージ循環 / デッドコード候補 / 推定レイヤ）Markdown + 循環図</td></tr>
         </tbody>
       </table>
       </div>
@@ -341,13 +342,13 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
       <div class="grid">
         <div class="card"><h4>単発出力</h4><p><code>-c</code>/<code>-q</code>/<code>-d</code>/<code>-M</code>/<code>-D</code>/<code>-G</code> 等。<code>-o</code> なしは標準出力、ありはファイル。</p></div>
         <div class="card"><h4>一括出力（要 -o dir）</h4><p><code>-A</code>（8 種一括）/<code>-Q</code>（ライフサイクル seq 群）/<code>-P</code>（フォルダ別）/<code>--init-flow</code>。</p></div>
-        <div class="card"><h4>一覧 / 解析</h4><p><code>--list-methods</code>/<code>--function-list</code>/<code>--ref-find</code>/<code>--impact</code>/<code>--func-diff</code>。</p></div>
+        <div class="card"><h4>一覧 / 解析</h4><p><code>--list-methods</code>/<code>--function-list</code>/<code>--ref-find</code>/<code>--impact</code>/<code>--func-diff</code>/<code>--insights</code>。</p></div>
       </div>
       <h4>出力フォーマットの決定</h4>
       <ul>
         <li><b>PlantUML 系</b>：<code>-o</code> 拡張子が <code>.svg</code> なら同梱 PlantUML で SVG レンダリング、それ以外は PlantUML テキスト。SVG 失敗時は同名 <code>.puml</code> をサイドカー保存して <b>exit 2</b>。</li>
         <li><b>Markdown / テキスト系</b>：そのまま書き込み（<code>-g</code>/<code>-m</code>/<code>--summary</code>/<code>--action-map</code>/<code>--ref-find</code> 等）。</li>
-        <li><b>二重成果物系</b>：拡張子で <code>.md</code>/<code>.puml</code>/<code>.svg</code> を分岐。<b>拡張子なしなら .md と .puml を両方出力</b>（<code>--impact</code>/<code>--data-flow</code>/<code>--screen-flow</code>/<code>--vhal-flow</code>/<code>--android-bp</code>）。</li>
+        <li><b>二重成果物系</b>：拡張子で <code>.md</code>/<code>.puml</code>/<code>.svg</code> を分岐。<b>拡張子なしなら .md と .puml を両方出力</b>（<code>--impact</code>/<code>--data-flow</code>/<code>--screen-flow</code>/<code>--vhal-flow</code>/<code>--android-bp</code>/<code>--insights</code>）。</li>
       </ul>
       <h4><code>--all</code> の出力内訳（8 ステップ）</h4>
       <p><span class="pill">summary.md</span><span class="pill">component-diagram.svg</span><span class="pill">manifest-diagram.svg</span><span class="pill">deeplink-diagram.svg</span><span class="pill">dependency-graph.svg</span><span class="pill">class-diagram.svg</span><span class="pill">methods.txt</span><span class="pill">sequence-diagrams/&lt;Class.method&gt;.svg</span></p>

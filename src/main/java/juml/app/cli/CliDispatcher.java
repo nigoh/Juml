@@ -132,6 +132,10 @@ public final class CliDispatcher {
             AnalysisCommands.handleFuncDiff(ctx, o.funcDiff.getArguments().getLast());
             return true;
         }
+        if (o.insights.isSet()) {
+            AnalysisCommands.handleInsights(ctx);
+            return true;
+        }
         if (o.classDiagram.isSet() && o.perFolder.isSet()) {
             UmlCommands.handleClassDiagramsPerFolder(ctx);
             return true;

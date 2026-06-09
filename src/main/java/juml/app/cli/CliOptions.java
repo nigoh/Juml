@@ -72,6 +72,7 @@ public final class CliOptions {
     public final Option initFlow = new Option(null, "init-flow", false);
     public final Option actionMap = new Option(null, "action-map", false);
     public final Option funcDiff = new Option(null, "func-diff", true);
+    public final Option insights = new Option(null, "insights", false);
 
     private final OptionParser parser = new OptionParser(new Option[]{
             help, out,
@@ -91,7 +92,7 @@ public final class CliOptions {
             vhalFlow, aidlBinding, erDiagram, dataFlow,
             screenFlow, androidBp, selinux, rro,
             settings, initFlow, actionMap,
-            funcDiff});
+            funcDiff, insights});
 
     /** 引数をパースする。未知オプションは stderr に出して {@code System.exit(1)}。 */
     public void parse(String[] args) {
@@ -208,6 +209,9 @@ public final class CliOptions {
         System.err.println("  --action-map: Detect onClick handlers (setOnClickListener,"
                 + " android:onClick, Compose onClick) and menu handlers, output as"
                 + " Markdown table.");
+        System.err.println("  --insights: Architecture overview for code reading:"
+                + " entry points, hotspots (fan-in/out), package cycles, dead-code"
+                + " candidates and estimated layers (Markdown + PlantUML).");
         System.err.println("  input: Java/AIDL file or Gradle/Android project directory.");
     }
 }

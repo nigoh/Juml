@@ -29,6 +29,10 @@ java -jar Juml.jar -c -o class.svg ~/AndroidStudioProjects/MyApp
 
 # 全成果物を一括出力
 java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp
+
+# アーキテクチャ俯瞰レポート (エントリポイント / ホットスポット /
+# パッケージ循環依存 / デッドコード候補 / 推定レイヤ) + 循環図を出力
+java -jar Juml.jar --insights -o ./insights ~/AndroidStudioProjects/MyApp
 ```
 
 GUI の操作、CLI の全オプション、各図種の詳細、ビルド方法、既知の制約などは

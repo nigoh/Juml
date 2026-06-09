@@ -12,6 +12,10 @@ import juml.core.impact.ImpactAnalyzer;
 import juml.core.impact.ImpactGraph;
 import juml.core.impact.MarkdownImpactReport;
 import juml.core.impact.PlantUmlImpactDiagram;
+import juml.core.insights.InsightsAnalyzer;
+import juml.core.insights.InsightsModel;
+import juml.core.insights.MarkdownInsightsReport;
+import juml.core.insights.PlantUmlPackageCycleDiagram;
 import juml.core.refs.ReferenceIndex;
 import juml.core.refs.ReferenceIndexBuilder;
 import juml.core.refs.ReferenceKey;
@@ -28,7 +32,7 @@ import java.io.IOException;
 /**
  * 参照・影響・差分・データフローなどの解析系 CLI モード
  * ({@code --impact} / {@code --ref-find} / {@code --er-diagram} / {@code --data-flow} /
- * {@code --screen-flow} / {@code --func-diff}) のハンドラ群。
+ * {@code --screen-flow} / {@code --func-diff} / {@code --insights}) のハンドラ群。
  */
 public final class AnalysisCommands {
 
@@ -146,14 +150,49 @@ public final class AnalysisCommands {
      */
     static ReferenceIndex buildReferenceIndex(File projectDir, ErrorListener listener)
             throws IOException {
-        UmlGenerator.ProjectParseResult result =
-                UmlGenerator.extractFromProjectDetailed(projectDir, null, listener,
-                        null, null, false, UmlGenerator.ParseMode.FULL);
+        return buildReferenceIndex(parseProject(projectDir, listener), listener);
+    }
+
+    /** パース済み結果から {@link ReferenceIndex} を構築する (結果を他用途と共有する場合)。 */
+    static ReferenceIndex buildReferenceIndex(UmlGenerator.ProjectParseResult result,
+                                              ErrorListener listener) {
         ReferenceIndex idx = new ReferenceIndex();
         ReferenceIndexBuilder builder = new ReferenceIndexBuilder(idx,
                 result.getIndex(), result.getDependencyIndex(), listener);
         builder.addAll(result.getClasses());
         return idx;
+    }
+
+    private static UmlGenerator.ProjectParseResult parseProject(
+            File projectDir, ErrorListener listener) throws IOException {
+        return UmlGenerator.extractFromProjectDetailed(projectDir, null, listener,
+                null, null, false, UmlGenerator.ParseMode.FULL);
+    }
+
+    /**
+     * {@code --insights}: コードリーディングの足がかりとなるアーキテクチャ俯瞰
+     * (エントリポイント / ホットスポット / パッケージ循環 / デッドコード候補 /
+     * 推定レイヤ) を Markdown レポート + 循環図 PlantUML で出力する。
+     *
+     * <p>出力先の規約は {@code --impact} と同じ
+     * ({@link CliOutput#writeImpactOutput(File, String, String)})。</p>
+     */
+    public static void handleInsights(CliContext ctx) throws IOException {
+        File fileIn = ctx.fileIn;
+        File fileOut = ctx.fileOut;
+        ErrorListener listener = ctx.listener;
+        if (fileIn == null || !fileIn.isDirectory()) {
+            System.err.println("--insights requires a project directory as input.");
+            System.exit(1);
+            return;
+        }
+        UmlGenerator.ProjectParseResult result = parseProject(fileIn, listener);
+        ReferenceIndex refIndex = buildReferenceIndex(result, listener);
+        InsightsModel model = InsightsAnalyzer.analyze(
+                result.getClasses(), result.getIndex(), refIndex);
+        String markdown = MarkdownInsightsReport.render(model);
+        String puml = PlantUmlPackageCycleDiagram.render(model);
+        CliOutput.writeImpactOutput(fileOut, markdown, puml);
     }
 
     /**

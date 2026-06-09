@@ -4,6 +4,28 @@ Change log
 2.1
 --------
 
+* **アーキテクチャ俯瞰レポート `--insights` を追加** (`juml.core.insights` パッケージ新規: `InsightsAnalyzer` / `InsightsModel` / `MarkdownInsightsReport` / `PlantUmlPackageCycleDiagram`)
+    * 未知のコードベースを読み始める「最初の 1 時間」を支援する解析モード。`java -jar Juml.jar --insights <projectDir> [-o out]` で Markdown レポート + パッケージ循環図 (PlantUML) を一括出力する (出力規約は `--impact` と同じ: `.md` / `.puml` / `.svg` / 拡張子なしで両方)。
+    * 既存の逆参照インデックス (`ReferenceIndex`) / `ClassIndex` / `AndroidSuperclassDetector` を再利用し、以下を 1 回の走査ベースで集計:
+        1. **エントリポイント**: `public static main` + Android コンポーネント (Manifest 宣言 / 継承チェーン検出の両方)
+        2. **ホットスポット**: fan-in (参照元クラス数) / fan-out (参照先クラス数) 上位 20 件と主な参照元
+        3. **パッケージ循環依存**: Tarjan SCC (非再帰実装) でサイズ 2 以上の強連結成分を列挙し、循環エッジを赤太線でハイライトした図も出力 (孤立ノードは Smetana qsort 例外回避のため描かない)
+        4. **デッドコード候補**: 参照ゼロの public クラス/メソッド。`@Override` / `main` / `on*` コールバック / コンストラクタ / エントリポイント / `*Test` を除外し、Reason・Confidence を併記 (DI / リフレクション / AIDL / XML 参照は静的に見えないため免責文つき)
+        5. **推定レイヤ**: パッケージ名セグメント辞書 (ui / viewmodel / domain / repository / util 等) による best-effort 分類
+    * core は CLI 非依存 (`juml.core.impact` と同じ 4 点セット構成) とし、将来 GUI の図種としても追加できる構造にした。`AnalysisCommands.buildReferenceIndex` はパース結果を共有できるようリファクタリング。
+    * テスト: 新規 `InsightsAnalyzerTest` (10) / `MarkdownInsightsReportTest` (7) / `PlantUmlPackageCycleDiagramTest` (5)。Juml 自身への適用で 445 クラス / 循環 3 件 / ホットスポット表を確認、循環図の SVG レンダリングも検証。
+    * 目的: 図を 1 枚ずつ開く前に「どこから読むべきか・どこが危ないか」を 1 ファイルで把握できるようにし、ソース解析の初動を速くするため。
+
+* **Gradle 依存図のスコープ別矢印** (`PlantUmlGradleDependencyGraph.arrowForScope`)
+    * これまで test 系以外すべて `-->` だった矢印を、`api` 系 → `-[bold]->` (推移的に公開される依存)、`compileOnly` / `runtimeOnly` → `..>` (弱い依存) にスタイル分けし、凡例にも説明を追加した。`implementation` は従来どおり `-->`。
+    * テスト: `PlantUmlGradleDependencyGraphTest` に 3 ケース追加。
+    * 目的: モジュール境界設計で重要な「api か implementation か」を図から直接読み取れるようにするため。
+
+* **GradleScriptParser の `ksp` 直書き依存の脱落を修正**
+    * `ksp(libs.x)` (Version Catalog 経由) は取れていたが、`ksp("group:artifact:ver")` / `ksp(project(":x"))` の直書きが `DEP_NOTATION` / `DEP_PROJECT` 正規表現に `ksp` が無く脱落していた実バグを修正。
+    * テスト: `GradleScriptParserTest.testKspDependencies` 追加。
+    * 目的: KSP (Room / Hilt 等) を使うモダンな Kotlin プロジェクトでも依存グラフが欠けないようにするため。
+
 * **リソース紐づけ図に style/テーマを追加** (`RESOURCE_LINK` 拡張 / `StyleResourceParser` / `AndroidStyleResources` 新規)
     * 既存のコード↔リソース紐づけ図 (`RESOURCE_LINK`) が `R.layout` / `R.string` / `R.id` までだったのに対し、**スタイル/テーマ** を解析対象に追加した。
     * **`styles.xml` / `themes.xml` パーサ** (`StyleResourceParser`): `<style name parent>` と配下の `<item>` を抽出。親は明示 `parent="@style/Foo"` を優先し、無ければ Android の暗黙ドット継承 (`AppTheme.Dialog` → 親 `AppTheme`) で補完。`AndroidProjectScanner.includeValues` 経由で `<string>` と同じ values XML から両方を取り込む (`AndroidProjectAnalyzer.parseValuesResources`)。

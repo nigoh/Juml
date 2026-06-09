@@ -164,12 +164,12 @@ public final class GradleScriptParser {
                         + "\\s*[=]?\\s*(\\d+)");
         private static final Pattern DEP_NOTATION = Pattern.compile(
                 "\\b(implementation|api|compileOnly|runtimeOnly|testImplementation"
-                        + "|androidTestImplementation|annotationProcessor|kapt"
+                        + "|androidTestImplementation|annotationProcessor|kapt|ksp"
                         + "|debugImplementation|releaseImplementation)\\b"
                         + "\\s*[(]?\\s*[\"']([^\"']+)[\"']");
         private static final Pattern DEP_PROJECT = Pattern.compile(
                 "\\b(implementation|api|compileOnly|runtimeOnly|testImplementation"
-                        + "|androidTestImplementation|annotationProcessor|kapt"
+                        + "|androidTestImplementation|annotationProcessor|kapt|ksp"
                         + "|debugImplementation|releaseImplementation)\\b"
                         + "\\s*[(]?\\s*project\\s*[(]\\s*[\"']([^\"']+)[\"']\\s*[)]");
         private static final Pattern INCLUDE_PROJECT = Pattern.compile(
