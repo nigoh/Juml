@@ -208,8 +208,13 @@ public final class PlantUmlGradleDependencyGraph {
         if (scope.startsWith("test") || scope.startsWith("androidTest")) {
             return "..>";
         }
+        // api は推移的に公開される依存なので太線で強調する
+        if (scope.startsWith("api")) {
+            return "-[bold]->";
+        }
+        // compileOnly / runtimeOnly は実行時 or コンパイル時のみの弱い依存
         if ("compileOnly".equals(scope) || "runtimeOnly".equals(scope)) {
-            return "-->";
+            return "..>";
         }
         return "-->";
     }
@@ -223,7 +228,9 @@ public final class PlantUmlGradleDependencyGraph {
         if (o.includeExternalLibs) {
             out.append("component <<external>>     外部 Maven 依存\n");
         }
-        out.append("A --> B                    implementation/api 依存\n");
+        out.append("A --> B                    implementation 依存\n");
+        out.append("A -[bold]-> B              api 依存 (推移的に公開)\n");
+        out.append("A ..> B                    compileOnly/runtimeOnly 依存\n");
         if (o.includeTestScopes) {
             out.append("A ..> B                    test/androidTest 依存\n");
         }

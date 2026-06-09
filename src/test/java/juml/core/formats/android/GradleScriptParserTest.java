@@ -194,6 +194,27 @@ public class GradleScriptParserTest {
     }
 
     @Test
+    public void testKspDependencies() {
+        // ksp はカタログ参照だけでなく直書き表記/プロジェクト参照でも取れること
+        String src =
+                "dependencies {\n"
+                        + "  ksp 'androidx.room:room-compiler:2.6.1'\n"
+                        + "  ksp(project(\":processor\"))\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        assertEquals(2, info.getDependencies().size());
+        // project() 参照が先に抽出される
+        GradleDependency d0 = info.getDependencies().get(0);
+        assertEquals("ksp", d0.getScope());
+        assertTrue(d0.isModuleReference());
+        assertEquals("processor", d0.getModuleRef());
+        GradleDependency d1 = info.getDependencies().get(1);
+        assertEquals("ksp", d1.getScope());
+        assertEquals("androidx.room", d1.getGroup());
+        assertEquals("room-compiler", d1.getName());
+    }
+
+    @Test
     public void testSettingsInclude() {
         String src = "include ':app', ':lib:core', ':lib:net'\n";
         GradleProjectInfo info = GradleScriptParser.parse(src, "settings.gradle");

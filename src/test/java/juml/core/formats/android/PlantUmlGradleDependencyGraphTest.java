@@ -146,6 +146,37 @@ public class PlantUmlGradleDependencyGraphTest {
     }
 
     @Test
+    public void testApiScopeUsesBoldArrow() {
+        AndroidProjectAnalysis a = build();
+        a.getGradleByModule().get("app").getDependencies()
+                .add(new GradleDependency("api", "project(':lib')"));
+        String puml = PlantUmlGradleDependencyGraph.generate(a);
+        // api は太線、implementation は通常線のまま
+        assertTrue(puml, puml.contains("-[bold]-> M1 : api"));
+        assertTrue(puml, puml.contains("--> M1 : implementation"));
+    }
+
+    @Test
+    public void testCompileOnlyAndRuntimeOnlyUseDashedArrow() {
+        AndroidProjectAnalysis a = build();
+        a.getGradleByModule().get("app").getDependencies()
+                .add(new GradleDependency("compileOnly", "project(':lib')"));
+        a.getGradleByModule().get("app").getDependencies()
+                .add(new GradleDependency("runtimeOnly", "project(':lib')"));
+        String puml = PlantUmlGradleDependencyGraph.generate(a);
+        assertTrue(puml, puml.contains("..> M1 : compileOnly"));
+        assertTrue(puml, puml.contains("..> M1 : runtimeOnly"));
+    }
+
+    @Test
+    public void testLegendDescribesScopeArrows() {
+        String puml = PlantUmlGradleDependencyGraph.generate(build());
+        assertTrue(puml, puml.contains("A --> B"));
+        assertTrue(puml, puml.contains("A -[bold]-> B"));
+        assertTrue(puml, puml.contains("compileOnly/runtimeOnly"));
+    }
+
+    @Test
     public void testNoExternalLibsOption() {
         PlantUmlGradleDependencyGraph.Options o = new PlantUmlGradleDependencyGraph.Options();
         o.includeExternalLibs = false;
