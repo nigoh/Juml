@@ -189,16 +189,15 @@ public final class DiagramService {
                 return generateManifestDiagram(request, analysis, classes, index, depIndex);
             case COMMON:
                 return generateCommonDiagram(request, analysis, classes, index, depIndex);
+            case CYCLES:
+                // 逆参照インデックスを都度構築する (Impact パネル初回実行と同等のコスト)
+                return juml.core.insights.PlantUmlPackageCycleDiagram.render(
+                        juml.core.insights.InsightsAnalyzer.analyzeBuildingIndex(
+                                classes, index, depIndex));
             case LAYOUT:
                 return generateLayoutDiagram(request, analysis, classes, index, depIndex);
             case LAYOUT_SCREEN:
                 return generateLayoutScreenDiagram(request, analysis, classes, index, depIndex);
-            case RESOURCE_LINK:
-                // リソース紐づけ図はコードを再走査するためプロジェクトルートが必須。
-                // ルートを持つ generatePuml(request, cache) 経路から呼ぶこと。
-                throw new IllegalStateException(
-                        "RESOURCE_LINK diagram requires a project root; "
-                                + "call generatePuml(request, cache) instead");
             case NAVIGATION:
                 return generateNavigationDiagram(request, analysis, classes, index, depIndex);
             case MODULE:
@@ -207,12 +206,13 @@ public final class DiagramService {
                 return generateInheritanceDiagram(request, analysis, classes, index, depIndex);
             case CALLGRAPH:
                 return generateCallgraphDiagram(request, analysis, classes, index, depIndex);
+            case RESOURCE_LINK:
             case SOONG:
-                // Soong 図は Android.bp を再走査するためプロジェクトルートが必須。
+                // ソース再走査系の図種はプロジェクトルートが必須。
                 // ルートを持つ generatePuml(request, cache) 経路から呼ぶこと。
-                throw new IllegalStateException(
-                        "SOONG diagram requires a project root; "
-                                + "call generatePuml(request, cache) instead");
+                throw new IllegalStateException(request.getKind()
+                        + " diagram requires a project root; "
+                        + "call generatePuml(request, cache) instead");
             default:
                 throw new IllegalStateException("Unknown diagram kind: " + request.getKind());
         }

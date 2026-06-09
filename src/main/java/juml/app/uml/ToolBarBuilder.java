@@ -30,9 +30,11 @@ public final class ToolBarBuilder {
             EnumSet.allOf(DiagramKind.class);
     public static final EnumSet<DiagramKind> DIAGRAMS_MODULE = EnumSet.of(
             DiagramKind.CLASS, DiagramKind.PACKAGE, DiagramKind.MODULE,
-            DiagramKind.DEPENDENCY, DiagramKind.COMPONENT, DiagramKind.COMMON);
+            DiagramKind.DEPENDENCY, DiagramKind.COMPONENT, DiagramKind.COMMON,
+            DiagramKind.CYCLES);
     public static final EnumSet<DiagramKind> DIAGRAMS_PACKAGE = EnumSet.of(
-            DiagramKind.CLASS, DiagramKind.PACKAGE, DiagramKind.COMMON);
+            DiagramKind.CLASS, DiagramKind.PACKAGE, DiagramKind.COMMON,
+            DiagramKind.CYCLES);
     public static final EnumSet<DiagramKind> DIAGRAMS_JAVA_TYPE = EnumSet.of(
             DiagramKind.CLASS, DiagramKind.COMMON);
     public static final EnumSet<DiagramKind> DIAGRAMS_METHOD = EnumSet.of(
@@ -138,6 +140,7 @@ public final class ToolBarBuilder {
             case ACTIVITY: return "Activity";
             case CALLGRAPH: return "Call Graph";
             case COMMON: return "Common";
+            case CYCLES: return "Cycles";
             case COMPONENT: return "Component";
             case DEPENDENCY: return "Dependency";
             case MANIFEST: return "Manifest";
@@ -171,6 +174,7 @@ public final class ToolBarBuilder {
             case RESOURCE_LINK: return " — code ↔ layout/string resource links";
             case NAVIGATION: return " (choose navigation file from Diagram menu)";
             case COMMON:     return " — top-N most referenced classes (fan-in)";
+            case CYCLES:     return " — package dependency cycles (red = cyclic)";
             case SOONG:      return " — Android.bp (Soong) module dependencies";
             default: return "";
         }

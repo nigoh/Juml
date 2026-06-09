@@ -69,6 +69,8 @@ public class UmlMainFrame extends JFrame {
             = new juml.app.uml.explore.ReverseReferencePanel(refIndexCache);
     private final juml.app.uml.explore.FuncDiffPanel funcDiffPanel
             = new juml.app.uml.explore.FuncDiffPanel();
+    private final juml.app.uml.explore.InsightsPanel insightsPanel
+            = new juml.app.uml.explore.InsightsPanel(cache, refIndexCache);
     private final MethodListPanel methodListPanel = new MethodListPanel();
     private final MemberListPanel memberListPanel = new MemberListPanel();
     private final JLabel status = new JLabel(" ");
@@ -86,7 +88,7 @@ public class UmlMainFrame extends JFrame {
 
     /** タブマネージャ (すべての図を対等なタブとして管理)。 */
     private DiagramTabPane tabPane;
-    /** 右側のフラットタブバー (動的タブ / Manifest / Impact / References / Func Diff / Functions)。 */
+    /** 右側のフラットタブバー (動的タブ / Manifest / Impact / References / Func Diff / Insights / Functions)。 */
     private JTabbedPane mainTabs;
 
     /** アクティブタブのミラー兼スクラッチ状態 (エクスポート・スコープ/フィルタダイアログが参照)。 */
@@ -202,22 +204,24 @@ public class UmlMainFrame extends JFrame {
     /** 中央のツリー + タブ (動的ダイアグラムタブ + 末尾の固定ユーティリティタブ) を構築する。 */
     private void buildCenterTabs() {
         // 右側: VS Code 風のフラットタブバー
-        // [動的ダイアグラムタブ…] [Manifest] [Impact] [References] [Func Diff] [Functions] [Members]
+        // [動的ダイアグラムタブ…] [Manifest] [Impact] [References] [Func Diff] [Insights]
+        // [Functions] [Members]
         // 特別扱いの「Home タブ」は持たない。
         mainTabs = new JTabbedPane(JTabbedPane.TOP);
         // タブ多数でも 1 段スクロール表示にし、多段折り返しで図領域が潰れるのを防ぐ。
         mainTabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
 
-        // ユーティリティタブ (固定・末尾 6 本)
+        // ユーティリティタブ (固定・末尾 7 本)
         mainTabs.addTab("Manifest", manifestSummaryPanel);
         mainTabs.addTab("Impact", impactPanel);
         mainTabs.addTab("References", referencesPanel);
         mainTabs.addTab("Func Diff", funcDiffPanel);
+        mainTabs.addTab("Insights", insightsPanel);
         mainTabs.addTab("Functions", methodListPanel);
         mainTabs.addTab("Members", memberListPanel);
 
-        // 動的タブマネージャ (fixedSuffix=6 で末尾ユーティリティタブの手前に挿入)
-        tabPane = new DiagramTabPane(mainTabs, 6, cache, state,
+        // 動的タブマネージャ (fixedSuffix=7 で末尾ユーティリティタブの手前に挿入)
+        tabPane = new DiagramTabPane(mainTabs, 7, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
 
         // Functions / Members タブ表示時は一覧を遅延生成

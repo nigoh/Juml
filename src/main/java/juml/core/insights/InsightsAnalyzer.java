@@ -5,12 +5,15 @@ package juml.core.insights;
 
 import juml.core.formats.uml.AndroidSuperclassDetector;
 import juml.core.formats.uml.ClassIndex;
+import juml.core.formats.uml.DependencyJarIndex;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.JavaMethodInfo;
 import juml.core.formats.uml.Visibility;
 import juml.core.refs.ReferenceIndex;
+import juml.core.refs.ReferenceIndexBuilder;
 import juml.core.refs.ReferenceKey;
 import juml.core.refs.ReferenceSite;
+import juml.util.ErrorListener;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -78,6 +81,19 @@ public final class InsightsAnalyzer {
     }
 
     private InsightsAnalyzer() {
+    }
+
+    /**
+     * {@link ReferenceIndex} を内部で構築してから解析する便宜メソッド。
+     * 構築済みインデックスを持たない呼び出し元 (GUI の図種ディスパッチ等) 向け。
+     */
+    public static InsightsModel analyzeBuildingIndex(List<JavaClassInfo> classes,
+                                                     ClassIndex index,
+                                                     DependencyJarIndex depIndex) {
+        ReferenceIndex refs = new ReferenceIndex();
+        new ReferenceIndexBuilder(refs, index, depIndex, ErrorListener.silent())
+                .addAll(classes);
+        return analyze(classes, index, refs);
     }
 
     /**

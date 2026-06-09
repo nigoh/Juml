@@ -159,6 +159,37 @@ public class DiagramServiceTest {
     }
 
     @Test
+    public void testCyclesDiagramDetectsPackageCycle() {
+        // pkg.a ↔ pkg.b の相互フィールド参照で循環を作る
+        List<JavaClassInfo> infos = new ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract(
+                "package pkg.a; import pkg.b.B; public class A { private B b; }"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package pkg.b; import pkg.a.A; public class B { private A a; }"));
+        String puml = DiagramService.generatePuml(
+                new DiagramRequest(DiagramKind.CYCLES), sampleAnalysis(), infos);
+        assertNotNull(puml);
+        assertTrue(puml, puml.contains("@startuml"));
+        assertTrue(puml, puml.contains("@enduml"));
+        assertTrue(puml, puml.contains("pkg.a"));
+        assertTrue(puml, puml.contains("pkg.b"));
+        // 循環エッジは赤太線でハイライトされる
+        assertTrue(puml, puml.contains("-[#Red,bold]->"));
+    }
+
+    @Test
+    public void testCyclesDiagramNoCycleShowsNote() {
+        // sampleClasses は com.a → com.b の一方向依存のみで循環なし
+        String puml = DiagramService.generatePuml(
+                new DiagramRequest(DiagramKind.CYCLES),
+                sampleAnalysis(), sampleClasses());
+        assertNotNull(puml);
+        assertTrue(puml, puml.contains("@startuml"));
+        assertTrue(puml, puml.contains("@enduml"));
+        assertFalse(puml, puml.contains("-[#Red,bold]->"));
+    }
+
+    @Test
     public void testSequenceDiagram() {
         DiagramRequest req = new DiagramRequest(
                 DiagramKind.SEQUENCE, "com.a.Foo", "run", true);

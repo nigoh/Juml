@@ -4,6 +4,13 @@ Change log
 2.1
 --------
 
+* **Insights を GUI に統合: 循環依存図 + Insights パネル** (`DiagramKind.CYCLES` / `InsightsPanel` 新規)
+    * **循環依存図 (図種 `Cycles`)**: ツールバー / Diagram メニューから「循環」を選ぶと、パッケージ間の循環依存 (Tarjan SCC) を赤太線・赤背景でハイライトした図をタブとして開ける。`DiagramService` の図種ディスパッチに統合し、逆参照インデックスは描画時に構築 (`InsightsAnalyzer.analyzeBuildingIndex` 新規、Impact パネル初回実行と同等コスト)。
+    * **Insights パネル (固定タブ)**: Impact / References / Func Diff と並ぶ固定ユーティリティタブ「Insights」を追加。「Analyze」で CLI `--insights` と同内容の Markdown レポート (エントリポイント / ホットスポット / 循環 / デッドコード候補 / 推定レイヤ) を表示し、「Save Report...」で .md 保存できる。逆参照インデックスは `ReferenceIndexCache` 経由で Impact / References パネルと共有。
+    * 配線: `ToolBarBuilder` (短ラベル「循環」+ ツールチップ + DIAGRAMS_MODULE/PACKAGE セット) / `DiagramController.iconForKind` / `messages(.ja).properties` の i18n キー / `UmlMainFrame` の固定タブ (fixedSuffix 6→7)。`DiagramService` のルート必須例外 (RESOURCE_LINK/SOONG) は case 統合で整理。
+    * テスト: `DiagramServiceTest` に CYCLES 2 ケース追加。Xvfb 上で GUI を実起動し、循環図のレンダリングと Insights パネルの Analyze 実行 (Juml 自身: 446 クラス / 循環 3 件) をスクリーンショットで確認。
+    * 目的: CLI を使わなくても、プロジェクトを開いたまま「どこから読むか・どこが危ないか」を GUI で確認できるようにするため (第 1 弾 CLI `--insights` の GUI 化)。
+
 * **アーキテクチャ俯瞰レポート `--insights` を追加** (`juml.core.insights` パッケージ新規: `InsightsAnalyzer` / `InsightsModel` / `MarkdownInsightsReport` / `PlantUmlPackageCycleDiagram`)
     * 未知のコードベースを読み始める「最初の 1 時間」を支援する解析モード。`java -jar Juml.jar --insights <projectDir> [-o out]` で Markdown レポート + パッケージ循環図 (PlantUML) を一括出力する (出力規約は `--impact` と同じ: `.md` / `.puml` / `.svg` / 拡張子なしで両方)。
     * 既存の逆参照インデックス (`ReferenceIndex`) / `ClassIndex` / `AndroidSuperclassDetector` を再利用し、以下を 1 回の走査ベースで集計:
