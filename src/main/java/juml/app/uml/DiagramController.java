@@ -251,6 +251,7 @@ public final class DiagramController {
     private static TreeNodeIcon iconForKind(DiagramKind kind) {
         switch (kind) {
             case PACKAGE:   return TreeNodeIcon.PACKAGE;
+            case CYCLES:    return TreeNodeIcon.PACKAGE;
             case MODULE:    return TreeNodeIcon.MODULE;
             case MANIFEST:  return TreeNodeIcon.MANIFEST;
             case SEQUENCE:  return TreeNodeIcon.SEQUENCE;

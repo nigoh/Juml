@@ -34,6 +34,8 @@ public enum DiagramKind {
     RESOURCE_LINK("Resource Links"),
     /** 共通クラス図 — 他クラスから参照される回数 (fan-in) が多いクラスを上位 N 件表示。 */
     COMMON("Common Classes"),
+    /** パッケージ循環図 — パッケージ間の循環依存 (SCC) を赤太線でハイライト表示。 */
+    CYCLES("Package Cycles"),
     /** Navigation 図 — res/navigation/*.xml の画面遷移を State 図として可視化。 */
     NAVIGATION("Navigation Graph"),
     /** モジュール依存グラフ — module-info.java の requires/exports/opens を可視化。 */

@@ -215,6 +215,7 @@
           <tr><td><b>Manifest</b></td><td>Manifest Diagram</td><td><code>-M</code></td><td>AndroidProjectAnalysis</td><td><code>&lt;application&gt;</code> 属性を中央配置、sourceSet ごとに別 Application ノード</td></tr>
           <tr><td><b>Layout</b></td><td>Layout View Hierarchy</td><td>—</td><td>layout XML 選択</td><td>View 階層を nested <code>rectangle</code> 化、上限超過で truncated note</td></tr>
           <tr><td><b>Common</b></td><td>Common Classes</td><td>—</td><td>全クラス</td><td>fan-in（被参照数）上位 N 件を中心化。設計ボトルネック発見用</td></tr>
+          <tr><td><b>Cycles</b></td><td>Package Cycles</td><td><code>--insights</code></td><td>逆参照インデックス</td><td>パッケージ間の循環依存（Tarjan SCC）を赤太線でハイライト。循環参加パッケージは赤背景</td></tr>
           <tr><td><b>Navigation</b></td><td>Navigation Graph</td><td>—<sup>※</sup></td><td>navigation XML 選択</td><td>Destination を <code>state</code> 化、Action→<code>--&gt;</code>、start→<code>[*] --&gt;</code></td></tr>
           <tr><td><b>Module</b></td><td>Module Diagram</td><td>—</td><td>module-info.java</td><td>requires/exports/opens。<code>requires transitive</code>→<code>==&gt;</code></td></tr>
           <tr><td><b>Inherit</b></td><td>Inheritance Diagram</td><td>—</td><td>extends/implements</td><td>継承階層のみの軽量図。全体は大規模警告対象</td></tr>
@@ -229,7 +230,7 @@
       <h3>解析 → 図解化のディスパッチ</h3>
       <p>GUI のトグル / メニューは <code>DiagramController.selectDiagramKind</code> → <code>DiagramService.generatePuml(request, cache)</code> 経由で各生成器へ振り分けられます。入力源は 3 系統に分かれ、<b>パースの起点</b>（解析済みモデルの再利用か、生成時の再走査か）が異なります。</p>
       <div class="grid">
-        <div class="card"><h4>① 解析済み Java モデル</h4><p><code>List&lt;JavaClassInfo&gt;</code> を再利用。<code>applyScope</code> で絞り込み、<code>promoteToDetailed</code>（<code>ClassIndex#detail</code>）で必要分だけ Stage B 昇格してから描画。<br><b>Class / Inherit / Package / Common / Module / Sequence / Activity / Call Graph</b></p></div>
+        <div class="card"><h4>① 解析済み Java モデル</h4><p><code>List&lt;JavaClassInfo&gt;</code> を再利用。<code>applyScope</code> で絞り込み、<code>promoteToDetailed</code>（<code>ClassIndex#detail</code>）で必要分だけ Stage B 昇格してから描画。<br><b>Class / Inherit / Package / Common / Cycles / Module / Sequence / Activity / Call Graph</b></p></div>
         <div class="card"><h4>② Android / Gradle 解析</h4><p><code>AndroidProjectAnalysis</code>（Manifest・layout・navigation・Gradle のパース済み結果）から生成。Layout / Navigation は <code>findLayoutByKey</code> / <code>findNavigationByKey</code> で対象 1 件を引く。<br><b>Component / Dependency / Manifest / Layout / Navigation</b></p></div>
         <div class="card"><h4>③ 生成時に再走査</h4><p>キャッシュではなく <code>cache.getProjectRoot()</code> 配下を改めて走査。Screen Flow は <code>IntentNavigationDetector</code>（regex）、Soong は <code>AndroidBpParser</code>（軽量 Blueprint パーサ）。<br><b>Screen Flow / Soong</b></p></div>
       </div>
@@ -592,7 +593,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
         <p><b>Help:</b> Usage <kbd>F1</kbd> / About。</p>
       </details>
       <h4>ツールバー</h4>
-      <p>上段アクション：<span class="pill">Open</span><span class="pill">Save</span><span class="pill">Refresh</span><span class="pill">Search</span>。下段は <code>DiagramKind.values()</code> 全 15 種の排他トグル（Class / Package / Sequence / Activity / Component / Dependency / Manifest / Layout / Common / Navigation / Module / Inherit / Call Graph / Screen Flow / Soong）。</p>
+      <p>上段アクション：<span class="pill">Open</span><span class="pill">Save</span><span class="pill">Refresh</span><span class="pill">Search</span>。下段は <code>DiagramKind.values()</code> 全 18 種の排他トグル（Class / Package / Sequence / Activity / Component / Dependency / Manifest / Layout / Screen / Resources / Common / Cycles / Navigation / Module / Inherit / Call Graph / Screen Flow / Soong）。</p>
 
       <h3 id="gui-tabs">タブのライフサイクルとフォーカス連動</h3>
       <ul>
