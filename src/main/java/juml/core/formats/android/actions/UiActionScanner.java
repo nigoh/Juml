@@ -69,6 +69,12 @@ public final class UiActionScanner {
      * プロジェクト全体をスキャンして全 UI アクションエントリを返す。
      */
     public List<UiActionEntry> analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /** {@code includeTests} でテストソースを含めるかを制御できる版。 */
+    public List<UiActionEntry> analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return Collections.emptyList();
         }
@@ -77,6 +83,7 @@ public final class UiActionScanner {
         // Java / Kotlin ソースをスキャン
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
         opts.includeKotlin = true;
+        opts.includeTests = includeTests;
         List<File> srcFiles = AndroidProjectScanner.scan(projectRoot, opts);
         for (File f : srcFiles) {
             String name = f.getName().toLowerCase();

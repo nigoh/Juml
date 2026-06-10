@@ -38,10 +38,13 @@ public final class MarkdownImpactReport {
                 .append(graph.transitiveCallerCount()).append('\n');
 
         List<ImpactGraph.Node> nodes = new ArrayList<>(graph.nodes());
+        // 層 → スコア降順 → FQN: 各層の中で「先に確認すべき呼び出し元」が上に来る
         Collections.sort(nodes, new Comparator<ImpactGraph.Node>() {
             @Override
             public int compare(ImpactGraph.Node a, ImpactGraph.Node b) {
                 int c = Integer.compare(a.getLayer(), b.getLayer());
+                if (c != 0) return c;
+                c = Double.compare(b.getScore(), a.getScore());
                 if (c != 0) return c;
                 return a.getId().compareTo(b.getId());
             }

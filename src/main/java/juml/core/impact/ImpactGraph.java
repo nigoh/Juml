@@ -37,11 +37,13 @@ public final class ImpactGraph {
         public double getScore() { return score; }
         public String getReason() { return reason; }
 
-        /** 影響度スコアから簡易リスクラベル。 */
+        /** 影響度スコアから簡易リスクラベル。
+         * しきい値は種別重み付けスコア (CALL=1.0 / TYPE_REFERENCE=0.7 / IMPORT=0.4,
+         * 層ごとに半減) に合わせ、直接呼び出し層のみが HIGH になるよう設定。 */
         public String getBreakageRisk() {
             if (layer == 0) return "TARGET";
-            if (score >= 0.5) return "HIGH";
-            if (score >= 0.3) return "MEDIUM";
+            if (score >= 0.8) return "HIGH";
+            if (score >= 0.45) return "MEDIUM";
             return "LOW";
         }
     }

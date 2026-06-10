@@ -135,6 +135,69 @@ public class ImpactAnalyzerTest {
         assertTrue(puml.contains("com.foo.Caller"));
     }
 
+    @Test
+    public void callScoresHigherThanImportOnlyReference() {
+        String target = "package com.foo;\n"
+                + "public class Target { public void hit() {} }\n";
+        String caller = "package com.foo;\n"
+                + "public class Caller { private Target t; void run() { t.hit(); } }\n";
+        String importer = "package com.bar;\n"
+                + "import com.foo.Target;\n"
+                + "public class Importer { }\n";
+        ReferenceIndex idx = buildIndex(parse(target, caller, importer));
+        ImpactGraph g = new ImpactAnalyzer(idx).analyzeClass("com.foo.Target", 3);
+
+        ImpactGraph.Node callNode = findNode(g, "com.foo.Caller");
+        ImpactGraph.Node importNode = findNode(g, "com.bar.Importer");
+        assertNotNull(callNode);
+        assertNotNull(importNode);
+        assertTrue("CALL must score higher than IMPORT-only: "
+                        + callNode.getScore() + " vs " + importNode.getScore(),
+                callNode.getScore() > importNode.getScore());
+        assertEquals("HIGH", callNode.getBreakageRisk());
+        assertTrue("import-only must not be HIGH",
+                !"HIGH".equals(importNode.getBreakageRisk()));
+    }
+
+    @Test
+    public void deeperLayerScoresLower() {
+        String target = "package com.foo;\n"
+                + "public class Target { public void hit() {} }\n";
+        String mid = "package com.foo;\n"
+                + "public class Mid { private Target t; public void delegate() { t.hit(); } }\n";
+        String top = "package com.foo;\n"
+                + "public class Top { private Mid m; void run() { m.delegate(); } }\n";
+        ReferenceIndex idx = buildIndex(parse(target, mid, top));
+        ImpactGraph g = new ImpactAnalyzer(idx).analyzeMethod("com.foo.Target", "hit", 3);
+
+        ImpactGraph.Node midNode = findNode(g, "com.foo.Mid");
+        ImpactGraph.Node topNode = findNode(g, "com.foo.Top");
+        assertNotNull(midNode);
+        assertNotNull(topNode);
+        assertTrue("layer 2 must score lower than layer 1: "
+                        + topNode.getScore() + " vs " + midNode.getScore(),
+                topNode.getScore() < midNode.getScore());
+    }
+
+    @Test
+    public void multipleCallSitesAnnotatedWithCount() {
+        String target = "package com.foo;\n"
+                + "public class Target { public void hit() {} public void hit2() {} }\n";
+        String caller = "package com.foo;\n"
+                + "public class Caller {\n"
+                + "  private Target t;\n"
+                + "  void a() { t.hit(); }\n"
+                + "  void b() { t.hit2(); }\n"
+                + "}\n";
+        ReferenceIndex idx = buildIndex(parse(target, caller));
+        ImpactGraph g = new ImpactAnalyzer(idx).analyzeClass("com.foo.Target", 1);
+
+        ImpactGraph.Node node = findNode(g, "com.foo.Caller");
+        assertNotNull(node);
+        assertTrue("multi-site reason should carry a count: " + node.getReason(),
+                node.getReason().contains("x"));
+    }
+
     private static ImpactGraph.Node findNode(ImpactGraph g, String id) {
         for (ImpactGraph.Node n : g.nodes()) {
             if (id.equals(n.getId())) {

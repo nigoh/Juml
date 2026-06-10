@@ -132,12 +132,19 @@ public final class IntentNavigationDetector {
      * 宣言的遷移 ({@link ComposeNavScanner}) を統合して返す。</p>
      */
     public List<ScreenTransition> analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /** {@code includeTests} でテストソースを含めるかを制御できる版。 */
+    public List<ScreenTransition> analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return Collections.emptyList();
         }
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
         opts.includeAidl = false;
         opts.includeKotlin = true;
+        opts.includeTests = includeTests;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
         List<ScreenTransition> all = new ArrayList<>();
         ComposeNavScanner compose = new ComposeNavScanner();

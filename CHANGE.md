@@ -4,6 +4,22 @@ Change log
 2.1
 --------
 
+* **テストコードを既定で解析対象から除外 (`--include-tests` で復帰)** (`AndroidProjectScanner.isTestDir` / `isTestFileName` 拡張)
+    * これまで除外対象は Gradle 規約の `src/test` / `src/androidTest` のみで、AOSP 流レイアウト (`tests/`, `hostsidetests/`, `carservice_unit_test/`, `CarLibUnitTest/` 等) やテストディレクトリ外の `*Test.java` は素通りしていた。ディレクトリ名の単語分割判定 (camelCase / snake_case 境界で `test`/`tests` 語を検出) とファイル名接尾辞判定 (`*Test` / `*Tests` / `*TestCase` / `*_test`) に拡張し、`AndroidProjectScanner` を使う全解析 (クラス図 / insights / impact / vhal-flow / screen-flow / settings / action-map 等) で既定除外されるようにした。CLI には `--include-tests` を追加し、従来どおりテスト込みで解析することもできる。
+    * AAOS 実リポジトリ (`packages/services/Car`) での効果: `--vhal-flow` のアクセス検出 359 → 33 件 (テスト用 `CUSTOM_*`/`BOOLEAN_PROP` ノイズが全消滅)、`--impact CarPropertyService` の直接参照元 31 → 19 件 (テストクラス混入解消)、`--insights` のエントリポイント 231 → 45 件。
+    * テスト: `AndroidProjectScannerTest` に AOSP レイアウト除外 / 部分文字列 (`latest`, `Contest.java`) の誤検出防止 / `--include-tests` 復帰の 4 ケースを追加。
+    * 目的: 大規模 AOSP/AAOS ソースに対するレポート類が「プロダクションコードの実態」を映すようにし、デッドコード・影響解析の偽陽性を減らすため。
+
+* **`--impact` のスコアを参照種別・参照箇所数で差別化** (`ImpactAnalyzer` / `ImpactGraph` / `MarkdownImpactReport`)
+    * 従来は層数のみの単純減衰 (`1/(layer+1)`) で layer 1 が全件 0.50 / HIGH になり優先順位付けに使えなかった。スコアを「最強参照種別の重み (CALL/EXTENDS/IMPLEMENTS=1.0, TYPE_REFERENCE=0.7, ANNOTATION=0.5, IMPORT=0.4) × 層減衰 (層ごとに半減) × 件数ボーナス (+5%/箇所, 最大 +30%)」に変更し、同一呼び出し元の複数参照は 1 ノードに集約して Reason に `DIRECT_CALL x5` のように件数を併記する。リスクしきい値も HIGH ≥0.8 / MEDIUM ≥0.45 に再調整し、Markdown レポートは各層内をスコア降順で並べる。
+    * テスト: `ImpactAnalyzerTest` に CALL vs IMPORT の序列 / 層減衰 / 件数併記の 3 ケースを追加。
+    * 目的: 影響解析を「参照の一覧」から「どこから確認すべきかが分かる優先順位付きレポート」に格上げするため。
+
+* **`-o` の解釈を全 CLI コマンドで統一 (既存ディレクトリ指定対応)** (`CliOutput.writeText` / `writeUmlOutput` / `writeImpactOutput` にデフォルト名引数を追加)
+    * `--aidl-binding -o <既存dir>` 等で生の `FileNotFoundException` スタックトレースを吐いて落ちていた問題を修正。`-o` が既存ディレクトリの場合はコマンド固有の既定ファイル名 (`aidl-binding.md`, `selinux.md`, `vhal-flow.md`+`.puml`, `class-diagram.svg` 等) をその中に書き出す。既定名を持たない低レベル `writeText` には出力先の指定方法を案内する明確な `IOException` を実装。
+    * テスト: 新規 `CliOutputTest` (9 ケース: ディレクトリ補完 / 明確なエラー / 拡張子なし sibling 出力 / svg レンダリング)。
+    * 目的: 初見ユーザーが最初に踏む `-o` の地雷を除去し、コマンドごとに挙動が違う混乱をなくすため。
+
 * **Insights を GUI に統合: 循環依存図 + Insights パネル** (`DiagramKind.CYCLES` / `InsightsPanel` 新規)
     * **循環依存図 (図種 `Cycles`)**: ツールバー / Diagram メニューから「循環」を選ぶと、パッケージ間の循環依存 (Tarjan SCC) を赤太線・赤背景でハイライトした図をタブとして開ける。`DiagramService` の図種ディスパッチに統合し、逆参照インデックスは描画時に構築 (`InsightsAnalyzer.analyzeBuildingIndex` 新規、Impact パネル初回実行と同等コスト)。
     * **Insights パネル (固定タブ)**: Impact / References / Func Diff と並ぶ固定ユーティリティタブ「Insights」を追加。「Analyze」で CLI `--insights` と同内容の Markdown レポート (エントリポイント / ホットスポット / 循環 / デッドコード候補 / 推定レイヤ) を表示し、「Save Report...」で .md 保存できる。逆参照インデックスは `ReferenceIndexCache` 経由で Impact / References パネルと共有。

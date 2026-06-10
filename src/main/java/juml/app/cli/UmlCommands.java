@@ -51,10 +51,11 @@ public final class UmlCommands {
         if (fileIn.isDirectory()) {
             if (parseMode == UmlGenerator.ParseMode.HEADERS_ONLY) {
                 infos = new java.util.ArrayList<>(UmlGenerator.extractFromProjectDetailed(
-                        fileIn, null, listener, null, null,
+                        fileIn, ctx.scanOptions(), listener, null, null,
                         mergeManifest, parseMode).getClasses());
             } else {
-                infos = UmlGenerator.extractFromProject(fileIn, null, listener, mergeManifest);
+                infos = UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(),
+                        listener, mergeManifest);
             }
         } else {
             String src = AndroidProjectScanner.readFile(fileIn);
@@ -120,7 +121,8 @@ public final class UmlCommands {
             }
             output = juml.core.formats.uml.PlantUmlClassDiagram.generate(infos, clOpts);
         }
-        CliOutput.writeUmlOutput(fileOut, output);
+        CliOutput.writeUmlOutput(fileOut, output,
+                spec.isEmpty() ? "class-diagram" : "sequence-diagram");
     }
 
     /**
@@ -139,7 +141,7 @@ public final class UmlCommands {
         }
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos;
         if (fileIn.isDirectory()) {
-            infos = UmlGenerator.extractFromProject(fileIn, null, listener);
+            infos = UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener);
         } else {
             String src = AndroidProjectScanner.readFile(fileIn);
             infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
@@ -153,7 +155,7 @@ public final class UmlCommands {
                     .append(c.callCount == 1 ? "" : "s")
                     .append(", ").append(c.visibility.name().toLowerCase()).append(")\n");
         }
-        CliOutput.writeText(fileOut, sb.toString());
+        CliOutput.writeText(fileOut, sb.toString(), "method-list.txt");
     }
 
     /**
@@ -176,20 +178,22 @@ public final class UmlCommands {
         java.util.List<UiActionEntry> actions = java.util.Collections.emptyList();
         if (fileIn.isDirectory()) {
             UmlGenerator.ProjectParseResult result = UmlGenerator.extractFromProjectDetailed(
-                    fileIn, null, listener, null, null, false, UmlGenerator.ParseMode.FULL);
+                    fileIn, ctx.scanOptions(), listener, null, null, false,
+                    UmlGenerator.ParseMode.FULL);
             infos = new java.util.ArrayList<>(result.getClasses());
             ReferenceIndex idx = new ReferenceIndex();
             new ReferenceIndexBuilder(idx, result.getIndex(), result.getDependencyIndex(), listener)
                     .addAll(result.getClasses());
             refIndex = idx;
-            actions = new UiActionScanner().analyzeProject(fileIn);
+            actions = new UiActionScanner().analyzeProject(fileIn, ctx.includeTests);
         } else {
             String src = AndroidProjectScanner.readFile(fileIn);
             infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
         }
         CliOutput.writeText(fileOut,
                 juml.core.formats.uml.MethodUsageReport.render(
-                        infos, refIndex, actions, format));
+                        infos, refIndex, actions, format),
+                "function-list.md");
     }
 
     /**
@@ -229,7 +233,8 @@ public final class UmlCommands {
         long startMs = System.currentTimeMillis();
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
-                UmlGenerator.extractFromProject(fileIn, null, listener, mergeManifest);
+                UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(),
+                        listener, mergeManifest);
         progress.step("Generating sequence diagrams (.puml + .svg)");
         int count = generateLifecycleSequenceDiagrams(infos, fileOut, legendOverride,
                 overrides, progress, listener);
@@ -325,7 +330,8 @@ public final class UmlCommands {
         long startMs = System.currentTimeMillis();
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
-                UmlGenerator.extractFromProject(fileIn, null, listener, false);
+                UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(),
+                        listener, false);
         progress.step("Generating Application init-flow sequence diagrams");
         int count = generateInitFlowSequenceDiagrams(infos, fileOut, legendOverride,
                 overrides, progress, listener);

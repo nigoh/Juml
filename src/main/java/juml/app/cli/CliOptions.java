@@ -73,6 +73,7 @@ public final class CliOptions {
     public final Option actionMap = new Option(null, "action-map", false);
     public final Option funcDiff = new Option(null, "func-diff", true);
     public final Option insights = new Option(null, "insights", false);
+    public final Option includeTests = new Option(null, "include-tests", false);
 
     private final OptionParser parser = new OptionParser(new Option[]{
             help, out,
@@ -92,7 +93,7 @@ public final class CliOptions {
             vhalFlow, aidlBinding, erDiagram, dataFlow,
             screenFlow, androidBp, selinux, rro,
             settings, initFlow, actionMap,
-            funcDiff, insights});
+            funcDiff, insights, includeTests});
 
     /** 引数をパースする。未知オプションは stderr に出して {@code System.exit(1)}。 */
     public void parse(String[] args) {
@@ -118,7 +119,12 @@ public final class CliOptions {
         System.err.println(
                 "Arguments: [-o file] [-c|-q M|-d|-M|-G|-g|-m|-Q|-A|--summary] [-v] [-h] [input]");
         System.err.println("  No arguments / [input dir]: Launch UML GUI for the project.");
-        System.err.println("  -o file: Save diagram (puml/svg) or report (md) to file.");
+        System.err.println("  -o path: Save diagram (puml/svg) or report (md) to path."
+                + " If path is an existing directory, a command-specific default"
+                + " file name is used inside it.");
+        System.err.println("  --include-tests: Include test sources (src/test,"
+                + " src/androidTest, tests/, */hostsidetests/, *Test.java etc.) in"
+                + " analysis. Excluded by default to keep reports production-only.");
         System.err.println("  -h: Show this help.");
         System.err.println("  -c --class-diagram: Output PlantUML class diagram.");
         System.err.println("  -q --sequence-diagram Class.method: PlantUML sequence diagram.");

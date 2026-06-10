@@ -23,7 +23,9 @@ public final class CliOutput {
     private CliOutput() {
     }
 
-    /** テキストをファイルへ UTF-8 で書き出す。{@code f} が null なら標準出力。 */
+    /** テキストをファイルへ UTF-8 で書き出す。{@code f} が null なら標準出力。
+     * {@code f} が既存ディレクトリの場合は (生の {@code FileNotFoundException} ではなく)
+     * 出力先の指定方法を案内する {@link IOException} を投げる。 */
     public static void writeText(File f, String content) throws IOException {
         if (f == null) {
             // System.out の既定エンコーディングに依存しないよう UTF-8 で明示出力
@@ -31,9 +33,32 @@ public final class CliOutput {
             System.out.flush();
             return;
         }
+        if (f.isDirectory()) {
+            throw new IOException("-o points to an existing directory: " + f.getPath()
+                    + " (specify a file path, e.g. -o " + f.getPath()
+                    + File.separator + "report.md)");
+        }
         try (Writer w = new OutputStreamWriter(new FileOutputStream(f), StandardCharsets.UTF_8)) {
             w.write(content);
         }
+    }
+
+    /**
+     * テキスト書き出し ({@code -o} がディレクトリでも動く版)。{@code f} が既存
+     * ディレクトリなら {@code defaultFileName} をその中に書く。CLI ハンドラは
+     * 原則こちらを使い、{@code -o} の解釈を全コマンドで統一する。
+     */
+    public static void writeText(File f, String content, String defaultFileName)
+            throws IOException {
+        writeText(resolveInDir(f, defaultFileName), content);
+    }
+
+    /** {@code f} が既存ディレクトリなら {@code defaultFileName} を補完した File を返す。 */
+    private static File resolveInDir(File f, String defaultFileName) {
+        if (f != null && f.isDirectory() && defaultFileName != null) {
+            return new File(f, defaultFileName);
+        }
+        return f;
     }
 
     /**
@@ -42,6 +67,17 @@ public final class CliOutput {
      * PlantUML テキストをそのまま書き出す (標準出力可)。
      */
     public static void writeUmlOutput(File fileOut, String puml) throws IOException {
+        writeUmlOutput(fileOut, puml, null);
+    }
+
+    /**
+     * PlantUML 系出力 ({@code -o} がディレクトリでも動く版)。{@code fileOut} が既存
+     * ディレクトリなら {@code defaultBaseName + ".svg"} をその中に書く。
+     */
+    public static void writeUmlOutput(File fileOut, String puml, String defaultBaseName)
+            throws IOException {
+        fileOut = resolveInDir(fileOut,
+                defaultBaseName == null ? null : defaultBaseName + ".svg");
         if (fileOut != null && fileOut.getName().toLowerCase().endsWith(".svg")) {
             try {
                 PlantUmlRenderer.renderSvg(puml, fileOut);
@@ -102,8 +138,24 @@ public final class CliOutput {
      */
     public static void writeImpactOutput(File fileOut, String markdown, String puml)
             throws IOException {
+        writeImpactOutput(fileOut, markdown, puml, null);
+    }
+
+    /**
+     * Markdown + PlantUML 2 成果物の書き出し ({@code -o} がディレクトリでも動く版)。
+     * {@code fileOut} が既存ディレクトリなら {@code defaultBaseName + ".md"} と
+     * {@code defaultBaseName + ".puml"} をその中に書く。
+     */
+    public static void writeImpactOutput(File fileOut, String markdown, String puml,
+                                          String defaultBaseName)
+            throws IOException {
         if (fileOut == null) {
             writeText(null, markdown);
+            return;
+        }
+        if (fileOut.isDirectory() && defaultBaseName != null) {
+            writeText(new File(fileOut, defaultBaseName + ".md"), markdown);
+            writeText(new File(fileOut, defaultBaseName + ".puml"), puml);
             return;
         }
         String name = fileOut.getName().toLowerCase();
