@@ -66,7 +66,7 @@ public final class AnalysisCommands {
             System.exit(1);
             return;
         }
-        ReferenceIndex refIndex = buildReferenceIndex(fileIn, listener);
+        ReferenceIndex refIndex = buildReferenceIndex(ctx);
 
         ImpactGraph graph;
         ImpactAnalyzer analyzer = new ImpactAnalyzer(refIndex);
@@ -87,7 +87,7 @@ public final class AnalysisCommands {
 
         String markdown = MarkdownImpactReport.render(graph);
         String puml = PlantUmlImpactDiagram.render(graph);
-        CliOutput.writeImpactOutput(fileOut, markdown, puml);
+        CliOutput.writeImpactOutput(fileOut, markdown, puml, "impact");
     }
 
     /**
@@ -108,7 +108,7 @@ public final class AnalysisCommands {
             System.exit(1);
             return;
         }
-        ReferenceIndex refIndex = buildReferenceIndex(fileIn, listener);
+        ReferenceIndex refIndex = buildReferenceIndex(ctx);
 
         java.util.List<ReferenceSite> sites;
         int lastDot = target.lastIndexOf('.');
@@ -141,16 +141,16 @@ public final class AnalysisCommands {
         if (sb.length() == 0) {
             sb.append("(no references found for ").append(target).append(")\n");
         }
-        CliOutput.writeText(fileOut, sb.toString());
+        CliOutput.writeText(fileOut, sb.toString(), "ref-find.txt");
     }
 
     /**
      * プロジェクトをパースして {@link ReferenceIndex} を構築する。
      * Stage B 化されたクラスをすべて {@link ReferenceIndexBuilder} に流す。
      */
-    static ReferenceIndex buildReferenceIndex(File projectDir, ErrorListener listener)
+    static ReferenceIndex buildReferenceIndex(CliContext ctx)
             throws IOException {
-        return buildReferenceIndex(parseProject(projectDir, listener), listener);
+        return buildReferenceIndex(parseProject(ctx), ctx.listener);
     }
 
     /** パース済み結果から {@link ReferenceIndex} を構築する (結果を他用途と共有する場合)。 */
@@ -163,10 +163,10 @@ public final class AnalysisCommands {
         return idx;
     }
 
-    private static UmlGenerator.ProjectParseResult parseProject(
-            File projectDir, ErrorListener listener) throws IOException {
-        return UmlGenerator.extractFromProjectDetailed(projectDir, null, listener,
-                null, null, false, UmlGenerator.ParseMode.FULL);
+    private static UmlGenerator.ProjectParseResult parseProject(CliContext ctx)
+            throws IOException {
+        return UmlGenerator.extractFromProjectDetailed(ctx.fileIn, ctx.scanOptions(),
+                ctx.listener, null, null, false, UmlGenerator.ParseMode.FULL);
     }
 
     /**
@@ -186,13 +186,13 @@ public final class AnalysisCommands {
             System.exit(1);
             return;
         }
-        UmlGenerator.ProjectParseResult result = parseProject(fileIn, listener);
+        UmlGenerator.ProjectParseResult result = parseProject(ctx);
         ReferenceIndex refIndex = buildReferenceIndex(result, listener);
         InsightsModel model = InsightsAnalyzer.analyze(
                 result.getClasses(), result.getIndex(), refIndex);
         String markdown = MarkdownInsightsReport.render(model);
         String puml = PlantUmlPackageCycleDiagram.render(model);
-        CliOutput.writeImpactOutput(fileOut, markdown, puml);
+        CliOutput.writeImpactOutput(fileOut, markdown, puml, "insights");
     }
 
     /**
@@ -208,11 +208,11 @@ public final class AnalysisCommands {
             return;
         }
         UmlGenerator.ProjectParseResult result =
-                UmlGenerator.extractFromProjectDetailed(fileIn, null, listener,
+                UmlGenerator.extractFromProjectDetailed(fileIn, ctx.scanOptions(), listener,
                         null, null, false, UmlGenerator.ParseMode.FULL);
         RoomAnalyzer.Result room = new RoomAnalyzer().analyze(result.getClasses());
         String puml = PlantUmlErDiagram.render(room);
-        CliOutput.writeUmlOutput(fileOut, puml);
+        CliOutput.writeUmlOutput(fileOut, puml, "er-diagram");
     }
 
     /**
@@ -229,12 +229,12 @@ public final class AnalysisCommands {
             return;
         }
         UmlGenerator.ProjectParseResult result =
-                UmlGenerator.extractFromProjectDetailed(fileIn, null, listener,
+                UmlGenerator.extractFromProjectDetailed(fileIn, ctx.scanOptions(), listener,
                         null, null, false, UmlGenerator.ParseMode.FULL);
         RoomAnalyzer.Result room = new RoomAnalyzer().analyze(result.getClasses());
         String md = MarkdownDataFlowReport.render(room);
         String puml = PlantUmlErDiagram.render(room);
-        CliOutput.writeImpactOutput(fileOut, md, puml);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "data-flow");
     }
 
     /**
@@ -251,10 +251,10 @@ public final class AnalysisCommands {
             return;
         }
         java.util.List<ScreenTransition> transitions =
-                new IntentNavigationDetector().analyzeProject(fileIn);
+                new IntentNavigationDetector().analyzeProject(fileIn, ctx.includeTests);
         String md = MarkdownScreenFlowReport.render(transitions);
         String puml = PlantUmlScreenFlowDiagram.render(transitions);
-        CliOutput.writeImpactOutput(fileOut, md, puml);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "screen-flow");
     }
 
     /**
@@ -310,6 +310,8 @@ public final class AnalysisCommands {
 
         juml.core.funcdiff.MethodDiffAnalyzer.DiffResult result =
                 juml.core.funcdiff.MethodDiffAnalyzer.analyze(methodA, specA, methodB, specB);
-        CliOutput.writeText(fileOut, juml.core.funcdiff.MarkdownMethodDiffReport.render(result));
+        CliOutput.writeText(fileOut,
+                juml.core.funcdiff.MarkdownMethodDiffReport.render(result),
+                "func-diff.md");
     }
 }

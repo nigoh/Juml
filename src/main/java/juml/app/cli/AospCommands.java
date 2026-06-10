@@ -50,11 +50,12 @@ public final class AospCommands {
             return;
         }
         VhalAnalyzer analyzer = new VhalAnalyzer();
-        java.util.List<VhalAccess> accesses = analyzer.analyzeProject(fileIn);
+        java.util.List<VhalAccess> accesses =
+                analyzer.analyzeProject(fileIn, ctx.includeTests);
         VehiclePropertyCatalog catalog = VehiclePropertyCatalog.scanProject(fileIn);
         String md = MarkdownVhalReport.render(accesses, catalog);
         String puml = PlantUmlVhalFlowDiagram.render(accesses);
-        CliOutput.writeImpactOutput(fileOut, md, puml);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "vhal-flow");
     }
 
     /**
@@ -70,12 +71,12 @@ public final class AospCommands {
             return;
         }
         UmlGenerator.ProjectParseResult result =
-                UmlGenerator.extractFromProjectDetailed(fileIn, null, ctx.listener,
-                        null, null, false, UmlGenerator.ParseMode.FULL);
+                UmlGenerator.extractFromProjectDetailed(fileIn, ctx.scanOptions(),
+                        ctx.listener, null, null, false, UmlGenerator.ParseMode.FULL);
         java.util.Map<String, java.util.List<AidlBinding>> bindings =
                 new AidlBindingResolver().resolve(result.getClasses());
         String md = MarkdownAidlBindingReport.render(bindings);
-        CliOutput.writeText(fileOut, md);
+        CliOutput.writeText(fileOut, md, "aidl-binding.md");
     }
 
     /**
@@ -94,7 +95,7 @@ public final class AospCommands {
                 new AndroidBpParser().analyzeProject(fileIn);
         String md = MarkdownSoongReport.render(modules);
         String puml = PlantUmlSoongDependencyDiagram.render(modules);
-        CliOutput.writeImpactOutput(fileOut, md, puml);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "android-bp");
     }
 
     /**
@@ -112,7 +113,7 @@ public final class AospCommands {
         java.util.List<SelinuxRule> rules =
                 new SelinuxPolicyParser().analyzeProject(fileIn);
         String md = MarkdownSelinuxReport.render(rules);
-        CliOutput.writeText(fileOut, md);
+        CliOutput.writeText(fileOut, md, "selinux.md");
     }
 
     /**
@@ -130,6 +131,6 @@ public final class AospCommands {
         java.util.List<RroOverlay> overlays =
                 new RroOverlayDetector().analyzeProject(fileIn);
         String md = MarkdownRroReport.render(overlays);
-        CliOutput.writeText(fileOut, md);
+        CliOutput.writeText(fileOut, md, "rro-overlays.md");
     }
 }

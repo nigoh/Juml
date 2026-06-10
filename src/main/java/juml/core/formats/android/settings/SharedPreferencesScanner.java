@@ -50,12 +50,19 @@ public final class SharedPreferencesScanner {
      * プロジェクト全体をスキャンして結果を返す。
      */
     public SettingsAnalysisResult analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /** {@code includeTests} でテストソースを含めるかを制御できる版。 */
+    public SettingsAnalysisResult analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         SettingsAnalysisResult result = new SettingsAnalysisResult();
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return result;
         }
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
         opts.includeKotlin = true;
+        opts.includeTests = includeTests;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
         for (File f : files) {
             String name = f.getName().toLowerCase();

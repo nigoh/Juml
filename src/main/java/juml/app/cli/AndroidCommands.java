@@ -51,13 +51,15 @@ public final class AndroidCommands {
         }
         if (fileIn.isDirectory()) {
             AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
-            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis));
+            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
+                    "gradle-summary.md");
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             GradleProjectInfo info = GradleScriptParser.parse(content, fileIn.getName(), listener);
             AndroidProjectAnalysis fake = new AndroidProjectAnalysis();
             fake.getGradleByModule().put(fileIn.getName(), info);
-            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(fake));
+            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(fake),
+                    "gradle-summary.md");
         }
     }
 
@@ -73,7 +75,8 @@ public final class AndroidCommands {
         }
         if (fileIn.isDirectory()) {
             AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
-            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis));
+            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
+                    "manifest-summary.md");
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             AndroidManifestInfo info = AndroidManifestParser.parse(content, listener);
@@ -81,7 +84,8 @@ public final class AndroidCommands {
             java.util.List<AndroidManifestInfo> list = new java.util.ArrayList<>();
             list.add(info);
             fake.getManifestsByModule().put(fileIn.getName(), list);
-            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(fake));
+            CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(fake),
+                    "manifest-summary.md");
         }
     }
 
@@ -101,7 +105,8 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        CliOutput.writeUmlOutput(fileOut, PlantUmlComponentDiagram.generate(analysis, o));
+        CliOutput.writeUmlOutput(fileOut,
+                PlantUmlComponentDiagram.generate(analysis, o), "component-diagram");
     }
 
     /**
@@ -133,7 +138,8 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        CliOutput.writeUmlOutput(fileOut, PlantUmlManifestDiagram.generate(analysis, o));
+        CliOutput.writeUmlOutput(fileOut,
+                PlantUmlManifestDiagram.generate(analysis, o), "manifest-diagram");
     }
 
     /**
@@ -165,7 +171,8 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        CliOutput.writeUmlOutput(fileOut, PlantUmlDeepLinkDiagram.generate(analysis, o));
+        CliOutput.writeUmlOutput(fileOut,
+                PlantUmlDeepLinkDiagram.generate(analysis, o), "deeplink-diagram");
     }
 
     /** {@code --dependency-graph}: Gradle 依存グラフ PlantUML を生成。 */
@@ -184,7 +191,8 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        CliOutput.writeUmlOutput(fileOut, PlantUmlGradleDependencyGraph.generate(analysis, o));
+        CliOutput.writeUmlOutput(fileOut,
+                PlantUmlGradleDependencyGraph.generate(analysis, o), "dependency-graph");
     }
 
     /** {@code --summary}: プロジェクト全体の Markdown サマリーを生成。 */
@@ -198,7 +206,8 @@ public final class AndroidCommands {
             return;
         }
         AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
-        CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis));
+        CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
+                "summary.md");
     }
 
     /**
@@ -214,13 +223,13 @@ public final class AndroidCommands {
             return;
         }
         SharedPreferencesScanner scanner = new SharedPreferencesScanner();
-        SettingsAnalysisResult result = scanner.analyzeProject(fileIn);
+        SettingsAnalysisResult result = scanner.analyzeProject(fileIn, ctx.includeTests);
         PreferencesXmlParser xmlParser = new PreferencesXmlParser();
         for (juml.core.formats.android.settings.PreferenceXmlEntry e
                 : xmlParser.analyzeProject(fileIn)) {
             result.addXmlEntry(e);
         }
-        CliOutput.writeText(fileOut, MarkdownSettingsReport.render(result));
+        CliOutput.writeText(fileOut, MarkdownSettingsReport.render(result), "settings.md");
     }
 
     /**
@@ -236,8 +245,9 @@ public final class AndroidCommands {
             return;
         }
         java.util.List<UiActionEntry> entries =
-                new UiActionScanner().analyzeProject(fileIn);
-        CliOutput.writeText(fileOut, MarkdownActionReport.render(entries));
+                new UiActionScanner().analyzeProject(fileIn, ctx.includeTests);
+        CliOutput.writeText(fileOut, MarkdownActionReport.render(entries),
+                "action-map.md");
     }
 
     /**
@@ -345,7 +355,8 @@ public final class AndroidCommands {
         // 6) クラス図 (SVG)。UmlGenerator は内部で再走査するが、manifest 連携のため別経路。
         progress.step("[6/8] Generating class-diagram.svg (scanning Java/AIDL)");
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
-                UmlGenerator.extractFromProject(fileIn, null, listener, mergeManifest);
+                UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener,
+                        mergeManifest);
         juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
                 new juml.core.formats.uml.PlantUmlClassDiagram.Options();
         if (Boolean.FALSE.equals(legendOverride)) {

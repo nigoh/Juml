@@ -101,14 +101,22 @@ public final class VhalAnalyzer {
                     + "[A-Za-z_$<][A-Za-z0-9_$<>,\\s\\[\\]\\?]*\\s+"
                     + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\([^)]*\\)\\s*(?:throws[^{]*)?\\{");
 
-    /** プロジェクト内の Java / Kotlin ソースをスキャンして全 VHAL アクセスを返す。 */
+    /** プロジェクト内の Java / Kotlin ソースをスキャンして全 VHAL アクセスを返す。
+     * テストソースは既定で除外する。 */
     public List<VhalAccess> analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /** {@code includeTests} でテストソースを含めるかを制御できる版。 */
+    public List<VhalAccess> analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return Collections.emptyList();
         }
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
         opts.includeAidl = false;
         opts.includeKotlin = true;
+        opts.includeTests = includeTests;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
         List<VhalAccess> all = new ArrayList<>();
         for (File f : files) {

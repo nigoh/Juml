@@ -468,4 +468,112 @@ public class AndroidProjectScannerTest {
         assertTrue(foundVintf);
     }
 
+    // --- AOSP 流テストレイアウトの除外 ---
+
+    @Test
+    public void testAospStyleTestDirsExcludedByDefault() throws IOException {
+        // AOSP 流: ルート直下 tests/、snake_case の *_test、camelCase の *Test
+        File aospTests = new File(root, "tests/SomeApp/src/com/example");
+        assertTrue(aospTests.mkdirs());
+        writeFile(new File(aospTests, "Helper.java"), "public class Helper {}");
+
+        File unitTest = new File(root, "carservice_unit_test/src/com/example");
+        assertTrue(unitTest.mkdirs());
+        writeFile(new File(unitTest, "Sample.java"), "public class Sample {}");
+
+        File camelTest = new File(root, "CarLibUnitTest/src/com/example");
+        assertTrue(camelTest.mkdirs());
+        writeFile(new File(camelTest, "Sample2.java"), "public class Sample2 {}");
+
+        File hostside = new File(root, "hostsidetests/src/com/example");
+        assertTrue(hostside.mkdirs());
+        writeFile(new File(hostside, "HostHelper.java"), "public class HostHelper {}");
+
+        List<File> files = AndroidProjectScanner.scan(root);
+        for (File f : files) {
+            String p = f.getPath().replace(File.separatorChar, '/');
+            assertFalse("AOSP test dir not excluded: " + p, p.contains("/tests/"));
+            assertFalse("snake_case test dir not excluded: " + p,
+                    p.contains("carservice_unit_test"));
+            assertFalse("camelCase test dir not excluded: " + p,
+                    p.contains("CarLibUnitTest"));
+            assertFalse("hostsidetests not excluded: " + p,
+                    p.contains("hostsidetests"));
+        }
+
+        AndroidProjectScanner.Options o = new AndroidProjectScanner.Options();
+        o.includeTests = true;
+        List<File> all = AndroidProjectScanner.scan(root, o);
+        boolean foundAosp = false;
+        for (File f : all) {
+            if (f.getPath().replace(File.separatorChar, '/').contains("/tests/")) {
+                foundAosp = true;
+            }
+        }
+        assertTrue("--include-tests must restore AOSP tests/", foundAosp);
+    }
+
+    @Test
+    public void testDirNamesContainingTestAsSubstringAreNotExcluded() throws IOException {
+        // "latest" / "contest" のように test を部分文字列として含むだけの
+        // ディレクトリは除外しない (単語単位の判定)
+        File latest = new File(root, "app/src/main/java/com/example/latest");
+        assertTrue(latest.mkdirs());
+        writeFile(new File(latest, "LatestInfo.java"), "public class LatestInfo {}");
+
+        List<File> files = AndroidProjectScanner.scan(root);
+        boolean found = false;
+        for (File f : files) {
+            if (f.getName().equals("LatestInfo.java")) {
+                found = true;
+            }
+        }
+        assertTrue("dir 'latest' must not be treated as test dir", found);
+    }
+
+    @Test
+    public void testTestFileNameExcludedEvenOutsideTestDir() throws IOException {
+        // テストディレクトリ外に置かれた *Test.java もファイル名で除外する
+        File mainJava = new File(root, "app/src/main/java/com/example/app");
+        writeFile(new File(mainJava, "StrayUnitTest.java"),
+                "public class StrayUnitTest {}");
+        writeFile(new File(mainJava, "Contest.java"),
+                "public class Contest {}");
+
+        List<File> files = AndroidProjectScanner.scan(root);
+        boolean foundStray = false;
+        boolean foundContest = false;
+        for (File f : files) {
+            if (f.getName().equals("StrayUnitTest.java")) {
+                foundStray = true;
+            }
+            if (f.getName().equals("Contest.java")) {
+                foundContest = true;
+            }
+        }
+        assertFalse("*Test.java must be excluded by default", foundStray);
+        assertTrue("Contest.java must not be excluded", foundContest);
+
+        AndroidProjectScanner.Options o = new AndroidProjectScanner.Options();
+        o.includeTests = true;
+        boolean restored = false;
+        for (File f : AndroidProjectScanner.scan(root, o)) {
+            if (f.getName().equals("StrayUnitTest.java")) {
+                restored = true;
+            }
+        }
+        assertTrue("--include-tests must restore *Test.java", restored);
+    }
+
+    @Test
+    public void testIsTestFileName() {
+        assertTrue(AndroidProjectScanner.isTestFileName("FooTest.java"));
+        assertTrue(AndroidProjectScanner.isTestFileName("FooTests.java"));
+        assertTrue(AndroidProjectScanner.isTestFileName("FooTestCase.java"));
+        assertTrue(AndroidProjectScanner.isTestFileName("FooTest.kt"));
+        assertFalse(AndroidProjectScanner.isTestFileName("Contest.java"));
+        assertFalse(AndroidProjectScanner.isTestFileName("TestHelper.java"));
+        assertFalse(AndroidProjectScanner.isTestFileName("Foo.java"));
+    }
+
 }

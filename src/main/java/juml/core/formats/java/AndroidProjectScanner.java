@@ -63,7 +63,12 @@ public final class AndroidProjectScanner {
 
     /** スキャンオプション。 */
     public static class Options {
-        /** テストソース (src/test/java, src/androidTest/java) を含める。 */
+        /**
+         * テストソースを含める。Gradle 規約 ({@code src/test} / {@code src/androidTest})
+         * に加え、AOSP 流のテストディレクトリ ({@code tests/}, {@code hostsidetests/},
+         * {@code *_test/}, {@code *Test/} など) と {@code *Test.java} 系ファイル名も
+         * 対象 ({@link #isTestDir(File)} / {@link #isTestFileName(String)})。
+         */
         public boolean includeTests = false;
         /** Kotlin ファイルも含める (現状は変換非対応のため、ファイルリストのみ)。 */
         public boolean includeKotlin = false;
@@ -194,18 +199,70 @@ public final class AndroidProjectScanner {
         return false;
     }
 
-    private static boolean isTestDir(File dir) {
-        // src/test/... または src/androidTest/... のディレクトリを判定
+    /** AOSP 系レイアウトで頻出する、単語分割では拾えないテストディレクトリ名 (小文字)。 */
+    private static final Set<String> KNOWN_TEST_DIR_NAMES = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "androidtest", "androidtests", "javatests",
+                    "unittest", "unittests", "hostsidetests")));
+
+    /**
+     * テストソースを含むディレクトリかを判定する。
+     *
+     * <p>Gradle 規約 ({@code src/test} / {@code src/androidTest}) に加え、AOSP 系
+     * レイアウト ({@code tests/}, {@code hostsidetests/}, {@code carservice_unit_test/},
+     * {@code CarLibUnitTest/} など) も対象にするため、名前を区切り文字 + camelCase で
+     * 単語分割し {@code test}/{@code tests} 語を含むかで判定する。</p>
+     */
+    public static boolean isTestDir(File dir) {
         String name = dir.getName();
-        if (!"test".equals(name) && !"androidTest".equals(name)) {
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        // test, tests, testing, testdata, testapi, testclient... を一括で対象にする
+        if (lower.startsWith("test")) {
+            return true;
+        }
+        if (KNOWN_TEST_DIR_NAMES.contains(lower)) {
+            return true;
+        }
+        return hasTestWord(name);
+    }
+
+    /**
+     * テストクラスのファイル名かを判定する ({@code *Test.java} / {@code *Tests.java} /
+     * {@code *TestCase.java}、Kotlin も同様)。テストディレクトリ外に置かれた
+     * テストファイルを取りこぼさないための補助判定。
+     */
+    public static boolean isTestFileName(String fileName) {
+        String lower = fileName.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.endsWith(".java") && !lower.endsWith(".kt")) {
             return false;
         }
-        File parent = dir.getParentFile();
-        return parent != null && "src".equals(parent.getName());
+        String base = fileName.substring(0, fileName.lastIndexOf('.'));
+        String lowerBase = base.toLowerCase(java.util.Locale.ROOT);
+        // 大文字 T の "Test" 接尾辞 (camelCase 境界) か snake_case の "_test" のみ対象。
+        // "Contest" のような単語の一部としての test は誤検出しない。
+        return base.endsWith("Test") || base.endsWith("Tests")
+                || base.endsWith("TestCase")
+                || lowerBase.endsWith("_test") || lowerBase.endsWith("_tests");
+    }
+
+    /** 名前を {@code _ - . 空白} と camelCase 境界で分割し、test/tests 語を含むか。 */
+    private static boolean hasTestWord(String name) {
+        String[] words = name.split("[_\\-.\\s]+|(?<=[a-z0-9])(?=[A-Z])");
+        for (String w : words) {
+            String lower = w.toLowerCase(java.util.Locale.ROOT);
+            if ("test".equals(lower) || "tests".equals(lower)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean accept(File f, Options opts) {
         String name = f.getName().toLowerCase();
+        // テストディレクトリ判定をすり抜けた *Test.java / *Test.kt もファイル名で除外する
+        if (!opts.includeTests && isTestFileName(f.getName())) {
+            return false;
+        }
         if (name.endsWith(".java")) {
             return true;
         }

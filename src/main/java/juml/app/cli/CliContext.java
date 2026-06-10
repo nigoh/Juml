@@ -28,16 +28,36 @@ public final class CliContext {
     public final boolean mergeManifest;
     /** UML 系出力の上書きオプション束。 */
     public final UmlOverrides overrides;
+    /** テストソース (src/test, tests/, *Test.java 等) を解析対象に含めるか。 */
+    public final boolean includeTests;
 
     public CliContext(File fileIn, File fileOut, ErrorListener listener,
                       Boolean legendOverride, boolean mergeManifest,
                       UmlOverrides overrides) {
+        this(fileIn, fileOut, listener, legendOverride, mergeManifest, overrides, false);
+    }
+
+    public CliContext(File fileIn, File fileOut, ErrorListener listener,
+                      Boolean legendOverride, boolean mergeManifest,
+                      UmlOverrides overrides, boolean includeTests) {
         this.fileIn = fileIn;
         this.fileOut = fileOut;
         this.listener = listener;
         this.legendOverride = legendOverride;
         this.mergeManifest = mergeManifest;
         this.overrides = overrides;
+        this.includeTests = includeTests;
+    }
+
+    /**
+     * {@code --include-tests} を反映したプロジェクト走査オプションを返す。
+     * CLI ハンドラが {@code UmlGenerator.extractFromProject*} に渡す共通設定。
+     */
+    public juml.core.formats.java.AndroidProjectScanner.Options scanOptions() {
+        juml.core.formats.java.AndroidProjectScanner.Options o =
+                new juml.core.formats.java.AndroidProjectScanner.Options();
+        o.includeTests = includeTests;
+        return o;
     }
 
     /**
@@ -70,7 +90,8 @@ public final class CliContext {
             return null;
         }
         return new CliContext(fileIn, fileOut, listener,
-                legendOverride, mergeManifest, overrides);
+                legendOverride, mergeManifest, overrides,
+                options.includeTests.isSet());
     }
 
     /** 指定パスが存在する/読める File を返す。問題があれば stderr に出して System.exit(1)。 */
