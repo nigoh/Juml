@@ -6,6 +6,7 @@ package juml.app.uml;
 import juml.core.formats.doxygen.DoxGroup;
 import juml.core.formats.doxygen.DoxModel;
 import juml.core.formats.doxygen.DoxygenLocator;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -37,10 +38,11 @@ public final class DoxygenGroupsPanel extends JPanel {
 
     private final ProjectAnalysisCache projectCache;
     private final DoxygenResultCache resultCache;
-    private final JButton runButton = new JButton("Run Doxygen");
-    private final JButton locateButton = new JButton("Locate doxygen...");
+    private final JButton runButton = new JButton(Messages.get("doxygen.btn.run"));
+    private final JButton locateButton = new JButton(Messages.get("doxygen.btn.locate"));
     private final JLabel statusLabel = new JLabel(" ");
-    private final DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode("Groups");
+    private final DefaultMutableTreeNode rootNode =
+            new DefaultMutableTreeNode(Messages.get("doxygen.groups.rootNode"));
     private final DefaultTreeModel treeModel = new DefaultTreeModel(rootNode);
     private final JTree tree = new JTree(treeModel);
 
@@ -57,7 +59,7 @@ public final class DoxygenGroupsPanel extends JPanel {
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         input.add(runButton);
         input.add(locateButton);
-        input.add(new JLabel("@defgroup / @ingroup hierarchy (from doxygen XML)"));
+        input.add(new JLabel(Messages.get("doxygen.groups.description")));
         add(input, BorderLayout.NORTH);
 
         tree.setRootVisible(true);
@@ -79,30 +81,32 @@ public final class DoxygenGroupsPanel extends JPanel {
 
     private void onLocate(ActionEvent e) {
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Select doxygen executable");
+        fc.setDialogTitle(Messages.get("doxygen.dlg.selectExe"));
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
         if (DoxygenLocator.useDoxygenBinary(fc.getSelectedFile())) {
-            statusLabel.setText("doxygen set: " + DoxygenLocator.getDoxygenPath());
+            statusLabel.setText(Messages.get("doxygen.status.set")
+                    + " " + DoxygenLocator.getDoxygenPath());
             refreshLocateVisibility();
         } else {
-            statusLabel.setText("Not an executable file: " + fc.getSelectedFile());
+            statusLabel.setText(Messages.get("doxygen.status.notExecutable")
+                    + " " + fc.getSelectedFile());
         }
     }
 
     private void onRun(ActionEvent e) {
         if (!projectCache.isLoaded()) {
-            statusLabel.setText("No project loaded. Open a project first.");
+            statusLabel.setText(Messages.get("doxygen.status.noProject"));
             return;
         }
         File root = projectCache.getProjectRoot();
         if (root == null || !root.isDirectory()) {
-            statusLabel.setText("Doxygen needs a project directory (archives are not supported).");
+            statusLabel.setText(Messages.get("doxygen.status.needsDir"));
             return;
         }
         if (!DoxygenLocator.isAvailable() && !DoxygenLocator.redetect()) {
-            statusLabel.setText("doxygen not found. Click \"Locate doxygen...\" to select it.");
+            statusLabel.setText(Messages.get("doxygen.status.notFound"));
             refreshLocateVisibility();
             return;
         }
@@ -110,9 +114,9 @@ public final class DoxygenGroupsPanel extends JPanel {
                 () -> {
                     runButton.setEnabled(false);
                     locateButton.setEnabled(false);
-                    statusLabel.setText("Running doxygen (this may take a while)...");
+                    statusLabel.setText(Messages.get("doxygen.status.running"));
                 },
-                msg -> statusLabel.setText("Doxygen failed: " + msg),
+                msg -> statusLabel.setText(Messages.get("doxygen.status.failed") + " " + msg),
                 () -> {
                     runButton.setEnabled(true);
                     locateButton.setEnabled(true);
@@ -126,7 +130,7 @@ public final class DoxygenGroupsPanel extends JPanel {
         DoxModel model = resultCache.getModel();
         if (model == null) {
             treeModel.reload();
-            statusLabel.setText("Run Doxygen to see the @defgroup / @ingroup hierarchy.");
+            statusLabel.setText(Messages.get("doxygen.groups.hint"));
             return;
         }
         List<DoxGroup> groups = model.getGroups();
@@ -146,17 +150,19 @@ public final class DoxygenGroupsPanel extends JPanel {
         }
         treeModel.reload();
         if (groups.isEmpty()) {
-            statusLabel.setText("No @defgroup groups found in this project.");
+            statusLabel.setText(Messages.get("doxygen.groups.noGroups"));
         } else {
             tree.expandPath(new TreePath(rootNode.getPath()));
-            statusLabel.setText(groups.size() + " groups (" + topLevel + " top-level).");
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("doxygen.groups.countFormat"), groups.size(), topLevel));
         }
     }
 
     /** グループ 1 件のツリーノードを構築する。下位グループは再帰、循環は visited で防ぐ。 */
     private DefaultMutableTreeNode buildGroupNode(DoxGroup g, Map<String, DoxGroup> byId,
                                                   Set<String> visited) {
-        DefaultMutableTreeNode node = new DefaultMutableTreeNode("[group] " + g.getTitle());
+        String prefix = Messages.get("doxygen.groups.nodePrefix");
+        DefaultMutableTreeNode node = new DefaultMutableTreeNode(prefix + " " + g.getTitle());
         if (!visited.add(g.getId())) {
             return node; // 循環参照ガード
         }
@@ -165,7 +171,7 @@ public final class DoxygenGroupsPanel extends JPanel {
             if (sub != null) {
                 node.add(buildGroupNode(sub, byId, visited));
             } else {
-                node.add(new DefaultMutableTreeNode("[group] " + subId));
+                node.add(new DefaultMutableTreeNode(prefix + " " + subId));
             }
         }
         for (String cls : g.getInnerClassNames()) {

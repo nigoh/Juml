@@ -5,6 +5,7 @@ package juml.app.uml;
 
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.JavaMethodInfo;
+import juml.util.Messages;
 
 import javax.swing.JOptionPane;
 import javax.swing.JRadioButtonMenuItem;
@@ -170,25 +171,26 @@ public final class DiagramController {
         if (cache().isLoaded()
                 && isWholeProjectDiagramLarge(kind, cache().getClasses().size())) {
             int n = cache().getClasses().size();
-            String[] options = {"Choose scope…", "Render anyway", "Cancel"};
+            String[] options = {
+                    Messages.get("dlg.largeDiagram.chooseScope"),
+                    Messages.get("dlg.largeDiagram.renderAnyway"),
+                    Messages.get("dlg.cancel")};
             int choice = JOptionPane.showOptionDialog(parentFrame,
-                    n + " classes — a whole-project "
-                            + ToolBarBuilder.toolbarLabel(kind)
-                            + " diagram is large and may be slow or fail to render.\n"
-                            + "Narrow it to a package / module / class first?",
-                    "Large diagram",
+                    java.text.MessageFormat.format(
+                            Messages.get("dlg.largeDiagram.message"),
+                            n, ToolBarBuilder.toolbarLabel(kind)),
+                    Messages.get("dlg.largeDiagram.title"),
                     JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE,
                     null, options, options[0]);
             if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) {
-                statusLabel.setText("Cancelled — pick a package/class from the tree"
-                        + " to open a focused diagram.");
+                statusLabel.setText(Messages.get("dlg.largeDiagram.cancelledPickScope"));
                 return;
             }
             if (choice == 0) {
                 scope = promptForScope();
                 if (scope == null) {
                     // スコープ未選択 (ダイアログをキャンセル) なら全体図は開かず中断。
-                    statusLabel.setText("Cancelled — no scope selected.");
+                    statusLabel.setText(Messages.get("dlg.largeDiagram.cancelledNoScope"));
                     return;
                 }
             }
@@ -431,8 +433,8 @@ public final class DiagramController {
     public void openScopeDialog() {
         if (!cache().isLoaded()) {
             JOptionPane.showMessageDialog(parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noProject.message"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         java.util.Set<String> packages = new java.util.TreeSet<>();
@@ -673,16 +675,16 @@ public final class DiagramController {
     public void openEntitySearch() {
         if (!cache().isLoaded()) {
             JOptionPane.showMessageDialog(parentFrame,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noProject.message"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         LazyDetail.withDetailedClasses(cache(), parentFrame, classes -> {
             EntitySearchDialog dlg = new EntitySearchDialog(parentFrame, classes);
             if (dlg.getCandidateCount() == 0) {
                 JOptionPane.showMessageDialog(parentFrame,
-                        "No entities found in this project.",
-                        "Search", JOptionPane.INFORMATION_MESSAGE);
+                        Messages.get("dlg.search.noEntities"),
+                        Messages.get("dlg.search.title"), JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
             dlg.setVisible(true);
@@ -702,10 +704,14 @@ public final class DiagramController {
                     String simple = extractSimpleClass(result.ownerQn);
                     String methodEntry = simple + "." + result.simpleName;
                     // 画面中央のポップアップ (Esc 不可) ではなく、親中央のモーダル選択に。
-                    String[] options = {"Sequence Diagram", "Activity Diagram", "Call Graph"};
+                    String[] options = {
+                            Messages.get("dlg.chooseDiagram.sequence"),
+                            Messages.get("dlg.chooseDiagram.activity"),
+                            Messages.get("dlg.chooseDiagram.callGraph")};
                     int choice = JOptionPane.showOptionDialog(parentFrame,
-                            "Open which diagram for " + methodEntry + "?",
-                            "Choose diagram", JOptionPane.DEFAULT_OPTION,
+                            java.text.MessageFormat.format(
+                                    Messages.get("dlg.chooseDiagram.message"), methodEntry),
+                            Messages.get("dlg.chooseDiagram.title"), JOptionPane.DEFAULT_OPTION,
                             JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
                     if (choice == 0) {
                         openEntryDiagram(methodEntry, DiagramKind.SEQUENCE);

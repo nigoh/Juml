@@ -45,8 +45,8 @@ public class FuncDiffPanel extends JPanel {
     private final JTextField methodAField = new JTextField(30);
     private final JTextField fileBField = new JTextField(40);
     private final JTextField methodBField = new JTextField(30);
-    private final JButton compareButton = new JButton("Compare");
-    private final JButton saveButton = new JButton("Save Report...");
+    private final JButton compareButton = new JButton(Messages.get("explore.diff.btn.compare"));
+    private final JButton saveButton = new JButton(Messages.get("explore.diff.btn.save"));
     private final JLabel statusLabel = new JLabel(" ");
     private final JTextArea resultArea = new JTextArea();
 
@@ -73,33 +73,33 @@ public class FuncDiffPanel extends JPanel {
         c.anchor = GridBagConstraints.WEST;
 
         // ── Method A ──
-        addSectionLabel(form, c, "Method A", 0);
+        addSectionLabel(form, c, Messages.get("explore.diff.sectionA"), 0);
 
-        addLabel(form, c, "File:", 1, 0);
+        addLabel(form, c, Messages.get("explore.diff.fileLabel"), 1, 0);
         c.gridx = 1; c.gridy = 1; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
-        fileAField.setToolTipText("Absolute path to a .java source file, or use Browse...");
+        fileAField.setToolTipText(Messages.get("explore.diff.fileTip"));
         form.add(fileAField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
         c.gridx = 2; form.add(makeBrowseButton(fileAField), c);
 
-        addLabel(form, c, "Method:", 2, 0);
-        methodAField.setToolTipText("ClassName.methodName または methodName（クラス名省略可）");
+        addLabel(form, c, Messages.get("explore.diff.methodLabel"), 2, 0);
+        methodAField.setToolTipText(Messages.get("explore.diff.methodHint"));
         c.gridx = 1; c.gridy = 2; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
         form.add(methodAField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
 
         // ── Method B ──
-        addSectionLabel(form, c, "Method B", 3);
+        addSectionLabel(form, c, Messages.get("explore.diff.sectionB"), 3);
 
-        addLabel(form, c, "File:", 4, 0);
+        addLabel(form, c, Messages.get("explore.diff.fileLabel"), 4, 0);
         c.gridx = 1; c.gridy = 4; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
-        fileBField.setToolTipText("Absolute path to a .java source file, or use Browse...");
+        fileBField.setToolTipText(Messages.get("explore.diff.fileTip"));
         form.add(fileBField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
         c.gridx = 2; form.add(makeBrowseButton(fileBField), c);
 
-        addLabel(form, c, "Method:", 5, 0);
-        methodBField.setToolTipText("ClassName.methodName または methodName（クラス名省略可）");
+        addLabel(form, c, Messages.get("explore.diff.methodLabel"), 5, 0);
+        methodBField.setToolTipText(Messages.get("explore.diff.methodHint"));
         c.gridx = 1; c.gridy = 5; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
         form.add(methodBField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
@@ -148,12 +148,13 @@ public class FuncDiffPanel extends JPanel {
     }
 
     private JButton makeBrowseButton(JTextField target) {
-        JButton btn = new JButton("Browse...");
+        JButton btn = new JButton(Messages.get("explore.diff.btn.browse"));
         btn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
             fc.setDialogTitle(Messages.get("dlg.selectJavaFile"));
             fc.setAcceptAllFileFilterUsed(true);
-            fc.setFileFilter(new FileNameExtensionFilter("Java source (*.java)", "java"));
+            fc.setFileFilter(new FileNameExtensionFilter(
+                    Messages.get("explore.diff.javaFilter"), "java"));
             String current = target.getText().trim();
             if (!current.isEmpty()) {
                 File f = new File(current);
@@ -179,11 +180,11 @@ public class FuncDiffPanel extends JPanel {
         String methodB = methodBField.getText().trim();
 
         if (fileA.isEmpty() || fileB.isEmpty()) {
-            statusLabel.setText("File path is required for both methods.");
+            statusLabel.setText(Messages.get("explore.diff.fileRequired"));
             return;
         }
         if (methodA.isEmpty() || methodB.isEmpty()) {
-            statusLabel.setText("Method name is required for both methods.");
+            statusLabel.setText(Messages.get("explore.diff.methodRequired"));
             return;
         }
 
@@ -196,14 +197,15 @@ public class FuncDiffPanel extends JPanel {
             parsedA = MethodDiffAnalyzer.parseSpec(specA);
             parsedB = MethodDiffAnalyzer.parseSpec(specB);
         } catch (IllegalArgumentException ex) {
-            statusLabel.setText("Invalid spec: " + ex.getMessage());
+            statusLabel.setText(Messages.get("explore.diff.invalidSpec")
+                    + " " + ex.getMessage());
             return;
         }
 
         compareButton.setEnabled(false);
         saveButton.setEnabled(false);
         resultArea.setText("");
-        statusLabel.setText("Analyzing...");
+        statusLabel.setText(Messages.get("explore.diff.analyzing"));
 
         final MethodDiffAnalyzer.MethodSpec finalA = parsedA;
         final MethodDiffAnalyzer.MethodSpec finalB = parsedB;
@@ -234,15 +236,17 @@ public class FuncDiffPanel extends JPanel {
                     resultArea.setText(report);
                     resultArea.setCaretPosition(0);
                     saveButton.setEnabled(true);
-                    statusLabel.setText("Done. Scroll down to see the full report.");
+                    statusLabel.setText(Messages.get("explore.diff.done"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error("FuncDiffPanel", "Method diff analysis failed", cause);
-                    statusLabel.setText("Error: " + cause.getMessage());
-                    resultArea.setText("Error: " + cause.getMessage());
+                    statusLabel.setText(Messages.get("explore.diff.error")
+                            + " " + cause.getMessage());
+                    resultArea.setText(Messages.get("explore.diff.error")
+                            + " " + cause.getMessage());
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
-                    statusLabel.setText("Interrupted.");
+                    statusLabel.setText(Messages.get("explore.diff.interrupted"));
                 }
             }
         }.execute();
@@ -256,7 +260,7 @@ public class FuncDiffPanel extends JPanel {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle(Messages.get("dlg.saveDiffReport"));
         fc.setAcceptAllFileFilterUsed(false);
-        fc.setFileFilter(new FileNameExtensionFilter("Markdown (*.md)", "md"));
+        fc.setFileFilter(new FileNameExtensionFilter(Messages.get("explore.diff.markdownFilter"), "md"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -266,11 +270,13 @@ public class FuncDiffPanel extends JPanel {
         }
         try {
             Files.write(chosen.toPath(), content.getBytes(StandardCharsets.UTF_8));
-            statusLabel.setText("Saved to: " + chosen.getAbsolutePath());
+            statusLabel.setText(Messages.get("explore.diff.savedTo")
+                    + " " + chosen.getAbsolutePath());
         } catch (IOException ex) {
             juml.util.AppLog.error("FuncDiffPanel",
                     "Failed to save diff report: " + chosen.getAbsolutePath(), ex);
-            statusLabel.setText("Save failed: " + ex.getMessage());
+            statusLabel.setText(Messages.get("explore.diff.saveFailed")
+                    + " " + ex.getMessage());
         }
     }
 }

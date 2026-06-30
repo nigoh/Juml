@@ -6,6 +6,7 @@ package juml.app.uml;
 import juml.core.formats.doxygen.DoxModel;
 import juml.core.formats.doxygen.DoxXrefItem;
 import juml.core.formats.doxygen.DoxygenLocator;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -32,14 +33,22 @@ import java.util.List;
  */
 public final class DoxygenTodoPanel extends JPanel {
 
-    private static final String[] COLUMNS = {"Type", "Location", "Description"};
+    private static final String[] COLUMNS = {
+            Messages.get("doxygen.todo.col.type"),
+            Messages.get("doxygen.todo.col.location"),
+            Messages.get("doxygen.todo.col.description")
+    };
 
     private final ProjectAnalysisCache projectCache;
     private final DoxygenResultCache resultCache;
-    private final JButton runButton = new JButton("Run Doxygen");
-    private final JButton locateButton = new JButton("Locate doxygen...");
-    private final JComboBox<String> filter =
-            new JComboBox<>(new String[]{"All", "Todo", "Bug", "Deprecated"});
+    private final JButton runButton = new JButton(Messages.get("doxygen.btn.run"));
+    private final JButton locateButton = new JButton(Messages.get("doxygen.btn.locate"));
+    private final JComboBox<String> filter = new JComboBox<>(new String[]{
+            Messages.get("doxygen.todo.filter.all"),
+            Messages.get("doxygen.todo.filter.todo"),
+            Messages.get("doxygen.todo.filter.bug"),
+            Messages.get("doxygen.todo.filter.deprecated")
+    });
     private final JLabel statusLabel = new JLabel(" ");
     private final DefaultTableModel tableModel = new DefaultTableModel(COLUMNS, 0) {
         @Override
@@ -62,9 +71,9 @@ public final class DoxygenTodoPanel extends JPanel {
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         input.add(runButton);
         input.add(locateButton);
-        input.add(new JLabel("Show:"));
+        input.add(new JLabel(Messages.get("doxygen.todo.showLabel")));
         input.add(filter);
-        input.add(new JLabel("@todo / @bug / @deprecated across the project"));
+        input.add(new JLabel(Messages.get("doxygen.todo.description")));
         add(input, BorderLayout.NORTH);
 
         add(new JScrollPane(table), BorderLayout.CENTER);
@@ -85,30 +94,32 @@ public final class DoxygenTodoPanel extends JPanel {
 
     private void onLocate(ActionEvent e) {
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Select doxygen executable");
+        fc.setDialogTitle(Messages.get("doxygen.dlg.selectExe"));
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
         if (DoxygenLocator.useDoxygenBinary(fc.getSelectedFile())) {
-            statusLabel.setText("doxygen set: " + DoxygenLocator.getDoxygenPath());
+            statusLabel.setText(Messages.get("doxygen.status.set")
+                    + " " + DoxygenLocator.getDoxygenPath());
             refreshLocateVisibility();
         } else {
-            statusLabel.setText("Not an executable file: " + fc.getSelectedFile());
+            statusLabel.setText(Messages.get("doxygen.status.notExecutable")
+                    + " " + fc.getSelectedFile());
         }
     }
 
     private void onRun(ActionEvent e) {
         if (!projectCache.isLoaded()) {
-            statusLabel.setText("No project loaded. Open a project first.");
+            statusLabel.setText(Messages.get("doxygen.status.noProject"));
             return;
         }
         File root = projectCache.getProjectRoot();
         if (root == null || !root.isDirectory()) {
-            statusLabel.setText("Doxygen needs a project directory (archives are not supported).");
+            statusLabel.setText(Messages.get("doxygen.status.needsDir"));
             return;
         }
         if (!DoxygenLocator.isAvailable() && !DoxygenLocator.redetect()) {
-            statusLabel.setText("doxygen not found. Click \"Locate doxygen...\" to select it.");
+            statusLabel.setText(Messages.get("doxygen.status.notFound"));
             refreshLocateVisibility();
             return;
         }
@@ -116,9 +127,9 @@ public final class DoxygenTodoPanel extends JPanel {
                 () -> {
                     runButton.setEnabled(false);
                     locateButton.setEnabled(false);
-                    statusLabel.setText("Running doxygen (this may take a while)...");
+                    statusLabel.setText(Messages.get("doxygen.status.running"));
                 },
-                msg -> statusLabel.setText("Doxygen failed: " + msg),
+                msg -> statusLabel.setText(Messages.get("doxygen.status.failed") + " " + msg),
                 () -> {
                     runButton.setEnabled(true);
                     locateButton.setEnabled(true);
@@ -131,33 +142,35 @@ public final class DoxygenTodoPanel extends JPanel {
         tableModel.setRowCount(0);
         DoxModel model = resultCache.getModel();
         if (model == null) {
-            statusLabel.setText("Run Doxygen to collect @todo / @bug / @deprecated items.");
+            statusLabel.setText(Messages.get("doxygen.todo.hint"));
             return;
         }
         List<DoxXrefItem> items = model.getXrefItems();
         String selected = (String) filter.getSelectedItem();
+        String allLabel = Messages.get("doxygen.todo.filter.all");
         int shown = 0;
         for (DoxXrefItem item : items) {
             String type = label(item.getKind());
-            if (!"All".equals(selected) && !type.equals(selected)) {
+            if (!allLabel.equals(selected) && !type.equals(selected)) {
                 continue;
             }
             tableModel.addRow(new Object[]{type, item.getLocation(), item.getDescription()});
             shown++;
         }
         if (items.isEmpty()) {
-            statusLabel.setText("No @todo / @bug / @deprecated items found.");
+            statusLabel.setText(Messages.get("doxygen.todo.noItems"));
         } else {
-            statusLabel.setText(shown + " of " + items.size() + " items shown.");
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("doxygen.todo.countFormat"), shown, items.size()));
         }
     }
 
     private static String label(DoxXrefItem.Kind kind) {
         switch (kind) {
-            case TODO: return "Todo";
-            case BUG: return "Bug";
-            case DEPRECATED: return "Deprecated";
-            default: return "Other";
+            case TODO: return Messages.get("doxygen.todo.filter.todo");
+            case BUG: return Messages.get("doxygen.todo.filter.bug");
+            case DEPRECATED: return Messages.get("doxygen.todo.filter.deprecated");
+            default: return Messages.get("doxygen.todo.filter.other");
         }
     }
 }

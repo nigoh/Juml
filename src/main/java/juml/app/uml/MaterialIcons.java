@@ -44,9 +44,9 @@ public final class MaterialIcons implements Icon {
     public enum Glyph {
         // ── ファイル / プロジェクト操作 ──
         FOLDER_OPEN, ARCHIVE, SAVE, REFRESH, SEARCH, NOTE_ADD, CLOSE,
-        // ── 表示 / ズーム ──
+        // ── 表示 / ズーム / ナビゲーション ──
         ZOOM_IN, ZOOM_OUT, FIT_SCREEN, CENTER_FOCUS, SIDEBAR, CODE,
-        TERMINAL, FILTER,
+        TERMINAL, FILTER, ARROW_BACK, ARROW_FORWARD, CHEVRON_UP, CHEVRON_DOWN,
         // ── 設定 / スタイル ──
         SETTINGS, TUNE, PALETTE, DELETE_SWEEP, HELP, INFO,
         // ── 図種 / 構造 (ツリー & 図カテゴリ) ──
@@ -174,6 +174,10 @@ public final class MaterialIcons implements Icon {
             case LAYERS: layers(g); break;
             case GRID: grid(g); break;
             case ROUTE: route(g); break;
+            case ARROW_BACK: arrowBack(g); break;
+            case ARROW_FORWARD: arrowForward(g); break;
+            case CHEVRON_UP: chevronUp(g); break;
+            case CHEVRON_DOWN: chevronDown(g); break;
             default: break;
         }
     }
@@ -736,5 +740,27 @@ public final class MaterialIcons implements Icon {
         line(g, 20, 12.5, 12, 17);
         line(g, 4, 16, 12, 20.5);
         line(g, 20, 16, 12, 20.5);
+    }
+
+    private static void arrowBack(Graphics2D g) {
+        line(g, 5, 12, 19, 12);
+        line(g, 5, 12, 11, 6);
+        line(g, 5, 12, 11, 18);
+    }
+
+    private static void arrowForward(Graphics2D g) {
+        line(g, 5, 12, 19, 12);
+        line(g, 19, 12, 13, 6);
+        line(g, 19, 12, 13, 18);
+    }
+
+    private static void chevronUp(Graphics2D g) {
+        line(g, 6, 15, 12, 9);
+        line(g, 12, 9, 18, 15);
+    }
+
+    private static void chevronDown(Graphics2D g) {
+        line(g, 6, 9, 12, 15);
+        line(g, 12, 15, 18, 9);
     }
 }

@@ -80,6 +80,8 @@ public final class MenuBarBuilder {
         public Runnable closeActiveTab;
         /** Ctrl+Shift+T / File &gt; Reopen Closed Tab: 直近に閉じたタブを再オープン。 */
         public Runnable reopenClosedTab;
+        public Runnable closeOtherTabs;
+        public Runnable closeAllTabs;
         /** Ctrl+Shift+P / View &gt; Command Palette: コマンドパレットを開く。 */
         public Runnable openCommandPalette;
         /** Ctrl+B / View &gt; Toggle Sidebar: 左ツリーペインの折りたたみ。 */
@@ -90,6 +92,12 @@ public final class MenuBarBuilder {
         public Runnable addNoteToActiveTab;
         /** アクティブタブの付箋一覧サイドパネルを開閉する。 */
         public Runnable toggleNotesPanel;
+        /** Ctrl+Shift+E / View &gt; Focus Explorer: ツリーペインへフォーカスを移す。 */
+        public Runnable focusExplorer;
+        /** Alt+Left / View &gt; Navigate Back: 直前のタブに戻る。 */
+        public Runnable navigateBack;
+        /** Alt+Right / View &gt; Navigate Forward: 戻った先からひとつ進む。 */
+        public Runnable navigateForward;
         /** Help &gt; Error Log: アプリのエラーログビューアを開く。 */
         public Runnable openLogViewer;
     }
@@ -102,19 +110,23 @@ public final class MenuBarBuilder {
         public final Map<String, JRadioButtonMenuItem> themeItems;
         public final ButtonGroup diagramGroup;
         public final ButtonGroup themeGroup;
+        /** プロジェクト未ロード時に無効化するエクスポート系メニュー項目。 */
+        public final java.util.List<JMenuItem> exportItems;
 
         Result(JMenuBar menuBar,
                JMenuItem cancelLoadingItem,
                EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems,
                Map<String, JRadioButtonMenuItem> themeItems,
                ButtonGroup diagramGroup,
-               ButtonGroup themeGroup) {
+               ButtonGroup themeGroup,
+               java.util.List<JMenuItem> exportItems) {
             this.menuBar = menuBar;
             this.cancelLoadingItem = cancelLoadingItem;
             this.diagramItems = diagramItems;
             this.themeItems = themeItems;
             this.diagramGroup = diagramGroup;
             this.themeGroup = themeGroup;
+            this.exportItems = exportItems;
         }
     }
 
@@ -124,6 +136,7 @@ public final class MenuBarBuilder {
     private final Supplier<java.util.List<juml.ProjectRecord>> recentProjects;
     private final JOptionPane parentForDialogs;
     private final java.awt.Frame parentFrame;
+    private final java.util.List<JMenuItem> exportItems = new java.util.ArrayList<>();
 
     public MenuBarBuilder(DiagramKind initialKind, int menuMask, Callbacks cb,
                           java.awt.Frame parentFrame) {
@@ -165,7 +178,8 @@ public final class MenuBarBuilder {
         bar.add(buildHelpMenu());
 
         return new Result(bar, cancelLoadingItem, diagramItems, themeItems,
-                diagramGroup, themeGroup);
+                diagramGroup, themeGroup,
+                java.util.Collections.unmodifiableList(exportItems));
     }
 
     private JMenu buildFileMenu(JMenuItem cancelLoadingItem) {
@@ -191,17 +205,23 @@ public final class MenuBarBuilder {
         JMenuItem save = new JMenuItem(Messages.get("menubar.file.saveAs"));
         save.setMnemonic(KeyEvent.VK_S);
         save.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SAVE));
-        save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
+        save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S,
+                menuMask | InputEvent.SHIFT_DOWN_MASK));
         save.addActionListener(e -> cb.chooseAndExport.run());
+        save.setEnabled(false);
         JMenuItem perFolder = new JMenuItem(Messages.get("menubar.file.exportPerFolder"));
         perFolder.setMnemonic(KeyEvent.VK_P);
         perFolder.addActionListener(e -> cb.exportClassDiagramsPerFolder.run());
+        perFolder.setEnabled(false);
         JMenuItem functionList = new JMenuItem(Messages.get("menubar.file.exportFunctionList"));
         functionList.setMnemonic(KeyEvent.VK_F);
         functionList.addActionListener(e -> cb.exportFunctionList.run());
+        functionList.setEnabled(false);
         JMenuItem memberList = new JMenuItem(Messages.get("menubar.file.exportMembers"));
         memberList.setMnemonic(KeyEvent.VK_M);
         memberList.addActionListener(e -> cb.exportMemberList.run());
+        memberList.setEnabled(false);
+        exportItems.addAll(java.util.List.of(save, perFolder, functionList, memberList));
         JMenuItem refresh = new JMenuItem(Messages.get("menubar.file.refresh"));
         refresh.setMnemonic(KeyEvent.VK_R);
         refresh.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.REFRESH));
@@ -223,6 +243,7 @@ public final class MenuBarBuilder {
         m.add(open);
         m.add(openArchive);
         m.add(recent);
+        m.addSeparator();
         m.add(save);
         m.add(perFolder);
         m.add(functionList);
@@ -230,7 +251,18 @@ public final class MenuBarBuilder {
         m.addSeparator();
         m.add(refresh);
         m.add(cancelLoadingItem);
+        m.addSeparator();
         m.add(closeTab);
+        if (cb.closeOtherTabs != null) {
+            JMenuItem closeOthers = new JMenuItem(Messages.get("menubar.file.closeOthers"));
+            closeOthers.addActionListener(e -> cb.closeOtherTabs.run());
+            m.add(closeOthers);
+        }
+        if (cb.closeAllTabs != null) {
+            JMenuItem closeAll = new JMenuItem(Messages.get("menubar.file.closeAllTabs"));
+            closeAll.addActionListener(e -> cb.closeAllTabs.run());
+            m.add(closeAll);
+        }
         m.add(reopenTab);
         m.addSeparator();
         m.add(exit);
@@ -364,7 +396,8 @@ public final class MenuBarBuilder {
                 default: keyCode = KeyEvent.VK_UNDEFINED;
             }
             if (keyCode != KeyEvent.VK_UNDEFINED) {
-                mi.setAccelerator(KeyStroke.getKeyStroke(keyCode, menuMask));
+                mi.setAccelerator(KeyStroke.getKeyStroke(keyCode,
+                        InputEvent.ALT_DOWN_MASK));
             }
             seq++;
             final DiagramPreset preset = p;
@@ -416,8 +449,7 @@ public final class MenuBarBuilder {
         if (cb.openSourceForActiveTab != null) {
             JMenuItem openSource = new JMenuItem(Messages.get("menubar.view.openSource"));
             openSource.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.CODE));
-            openSource.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S,
-                    menuMask | InputEvent.SHIFT_DOWN_MASK));
+            openSource.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, menuMask));
             openSource.addActionListener(e -> cb.openSourceForActiveTab.run());
             m.add(openSource);
         }
@@ -432,8 +464,38 @@ public final class MenuBarBuilder {
         if (cb.toggleNotesPanel != null) {
             JMenuItem notesPanel = new JMenuItem(Messages.get("menubar.view.notesPanel"));
             notesPanel.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.NOTE_ADD));
+            notesPanel.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_J,
+                    menuMask | InputEvent.SHIFT_DOWN_MASK));
             notesPanel.addActionListener(e -> cb.toggleNotesPanel.run());
             m.add(notesPanel);
+        }
+        if (cb.focusExplorer != null) {
+            m.addSeparator();
+            JMenuItem explorer = new JMenuItem(Messages.get("menubar.view.focusExplorer"));
+            explorer.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SIDEBAR));
+            explorer.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E,
+                    menuMask | InputEvent.SHIFT_DOWN_MASK));
+            explorer.addActionListener(e -> cb.focusExplorer.run());
+            m.add(explorer);
+        }
+        if (cb.navigateBack != null || cb.navigateForward != null) {
+            m.addSeparator();
+            if (cb.navigateBack != null) {
+                JMenuItem back = new JMenuItem(Messages.get("menubar.view.navigateBack"));
+                back.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.ARROW_BACK));
+                back.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT,
+                        InputEvent.ALT_DOWN_MASK));
+                back.addActionListener(e -> cb.navigateBack.run());
+                m.add(back);
+            }
+            if (cb.navigateForward != null) {
+                JMenuItem fwd = new JMenuItem(Messages.get("menubar.view.navigateForward"));
+                fwd.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.ARROW_FORWARD));
+                fwd.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT,
+                        InputEvent.ALT_DOWN_MASK));
+                fwd.addActionListener(e -> cb.navigateForward.run());
+                m.add(fwd);
+            }
         }
         return m;
     }
@@ -441,8 +503,7 @@ public final class MenuBarBuilder {
     private JMenu buildStyleMenu(Map<String, JRadioButtonMenuItem> themeItems,
                                  ButtonGroup themeGroup) {
         JMenu m = new JMenu(Messages.get("menubar.style"));
-        // Settings に 'S' を譲り、Style は 'Y' (stYle) をニーモニックにする。
-        m.setMnemonic(KeyEvent.VK_Y);
+        m.setMnemonic(KeyEvent.VK_T);
         DiagramStyle current = PlantUmlRenderer.getStyle();
         for (String theme : StyleSettingsDialog.THEMES) {
             String label = theme.isEmpty() ? Messages.get("menubar.style.none") : theme;
@@ -497,10 +558,7 @@ public final class MenuBarBuilder {
         usage.addActionListener(e -> showUsageDialog());
         JMenuItem about = new JMenuItem(Messages.get("menubar.help.about"));
         about.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.INFO));
-        about.addActionListener(e -> JOptionPane.showMessageDialog(parentFrame,
-                Messages.get("menubar.help.about.message"),
-                Messages.get("menubar.help.about.title"),
-                JOptionPane.INFORMATION_MESSAGE));
+        about.addActionListener(e -> showAboutDialog());
         m.add(usage);
         if (cb.openLogViewer != null) {
             JMenuItem logViewer = new JMenuItem(Messages.get("menubar.help.logViewer"));
@@ -516,94 +574,25 @@ public final class MenuBarBuilder {
         return m;
     }
 
+    private void showAboutDialog() {
+        String appVer = MenuBarBuilder.class.getPackage().getImplementationVersion();
+        if (appVer == null) {
+            appVer = "dev";
+        }
+        String javaVer = System.getProperty("java.version", "?");
+        String body = Messages.get("menubar.help.about.message")
+                + "\n\n" + java.text.MessageFormat.format(
+                        Messages.get("about.version"), appVer)
+                + "\n" + java.text.MessageFormat.format(
+                        Messages.get("about.java"), javaVer);
+        JOptionPane.showMessageDialog(parentFrame, body,
+                Messages.get("menubar.help.about.title"),
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void showUsageDialog() {
         String mod = menuMask == InputEvent.META_DOWN_MASK ? "Cmd" : "Ctrl";
-        String text =
-                "Juml UML — 使い方 (Usage)\n"
-                        + "\n"
-                        + "■ プロジェクトを開く (Open Project)\n"
-                        + "  File > Open Project... (" + mod + "+O)\n"
-                        + "    Gradle / Java プロジェクトのルートディレクトリを指定すると、\n"
-                        + "    左ペインのツリーにモジュール・パッケージ・クラスが表示されます。\n"
-                        + "\n"
-                        + "■ 図種を切り替える (Diagram)\n"
-                        + "  Diagram メニューから Class / Sequence / Activity / Common / Layout などを選択。\n"
-                        + "  ウィンドウ上部のツールバーのトグルボタンでも同じ切替ができます。\n"
-                        + "  Common (共通クラス図) は他クラスから参照される回数 (fan-in) が多い\n"
-                        + "  「使い回されているクラス」上位 N 件をハイライト表示します。\n"
-                        + "  シーケンス図やアクティビティ図は起点メソッドの指定が必要です\n"
-                        + "  (Diagram > Choose Sequence Entry... / Choose Activity Method...)。\n"
-                        + "\n"
-                        + "■ どの図を見ればいい? (図種ガイド)\n"
-                        + "  - アプリ全体をまず把握: Component (画面・サービス等の部品全体像)\n"
-                        + "                          / Manifest (アプリ構成の一覧)\n"
-                        + "  - 画面の流れ (遷移) を知る: Screen Flow・Navigation (画面遷移図)\n"
-                        + "  - クラスの構造を見る: Class (構造) / Inheritance (継承) / Package (フォルダ依存)\n"
-                        + "  - 処理の流れを追う: Sequence (呼び出し順) / Activity (処理フロー) / Call Graph\n"
-                        + "  - 画面の見た目を確認: Layout (部品の入れ子) / Layout Screen (ワイヤーフレーム)\n"
-                        + "                        / Layout Render (実際の layout_* 値で実寸描画)\n"
-                        + "  - URL から画面を開く設定: Deep Link\n"
-                        + "  - 重要・要注意クラスを探す: Common (よく使われるクラス)\n"
-                        + "                            / Cycles (循環依存=赤で警告)\n"
-                        + "  ※ 各図の用途はツールバーのボタンにマウスを乗せると表示されます。\n"
-                        + "\n"
-                        + "■ 左ペインのツリー操作\n"
-                        + "  - クラスやメソッドを選択すると、対応する図に絞り込み表示します。\n"
-                        + "  - パッケージ / モジュール選択でスコープを切り替えられます。\n"
-                        + "\n"
-                        + "■ プレビュー (右ペイン) の操作\n"
-                        + "  - 左ドラッグ / 中ボタンドラッグ: パン (画面移動)\n"
-                        + "  - " + mod + " + マウスホイール: ポインタ位置を基点にズームイン/アウト\n"
-                        + "  - マウスホイールのみ: 縦スクロール\n"
-                        + "  - View > Zoom In / Out / 100% / Fit (" + mod + "+= / " + mod
-                        + "+- / " + mod + "+0 / " + mod + "+Shift+0)\n"
-                        + "\n"
-                        + "■ 付箋メモ (Notes / Markdown)\n"
-                        + "  - 図に Markdown の付箋を貼れます: View > 図に付箋メモを追加 ("
-                        + mod + "+Shift+N)、\n"
-                        + "    または図上で右クリック >「ここに付箋を追加」。\n"
-                        + "  - ダブルクリックで編集、ドラッグで移動、右下角でリサイズ、Delete で削除。\n"
-                        + "  - 付箋はズームに追従し、.juml/notes.json に保存されます\n"
-                        + "    (commit すればチームで共有可)。SVG/PNG エクスポートにも含まれます。\n"
-                        + "\n"
-                        + "■ ドリルダウン (図中のクリック可能要素)\n"
-                        + "  - 図中のクラス名やメソッド名のうち、人差し指 (👆) アイコンが\n"
-                        + "    表示される箇所はクリックで詳細表示に切り替わります。\n"
-                        + "    ※ アイコンが出ない箇所はクリック対象ではありません。\n"
-                        + "  - 右クリックでポップアップメニュー (関連図への遷移など)。\n"
-                        + "\n"
-                        + "■ 絞り込み / 検索\n"
-                        + "  - Diagram > Search Entities... (" + mod + "+F): クラス/メソッドを検索。\n"
-                        + "  - Diagram > Scope...: 表示範囲 (パッケージ等) を細かく指定。\n"
-                        + "  - Diagram > Filter Sequence Participants...: シーケンス図の登場人物を隠す。\n"
-                        + "  - Diagram > Preset > Minimal / Balanced / Detailed\n"
-                        + "    (" + mod + "+1 / " + mod + "+2 / " + mod
-                        + "+3): クラス図の表示密度を切替。\n"
-                        + "\n"
-                        + "■ 再描画 / キャンセル\n"
-                        + "  - File > Refresh (F5): 現在の図を再生成。\n"
-                        + "  - File > Cancel Loading: 重い解析を途中で中断。\n"
-                        + "\n"
-                        + "■ タブ操作 (Tabs)\n"
-                        + "  - File > Close Tab (" + mod + "+W): アクティブなタブを閉じる。\n"
-                        + "  - Ctrl+Tab / Ctrl+Shift+Tab・" + mod
-                        + "+PageDown / PageUp: タブを巡回。\n"
-                        + "\n"
-                        + "■ エクスポート (画像保存)\n"
-                        + "  - File > Save Diagram As... (" + mod + "+S): PNG / SVG / PUML で保存。\n"
-                        + "  - File > Export Class Diagrams Per Folder...: フォルダ単位で一括出力。\n"
-                        + "\n"
-                        + "■ スタイル (見た目)\n"
-                        + "  - Style メニュー: テーマ切替・詳細スタイル設定。\n"
-                        + "\n"
-                        + "■ エラーログ (Error Log)\n"
-                        + "  - Help > エラーログ... (" + mod + "+Shift+L): アプリのエラー・警告を一覧表示。\n"
-                        + "    解析やエクスポートが失敗したときの原因 (スタックトレース) を確認できます。\n"
-                        + "    内容は logs/juml.log にも保存され、再起動後も参照できます。\n"
-                        + "\n"
-                        + "■ ヒント\n"
-                        + "  - 右側タブの \"PlantUML Source\" で生成された .puml を確認できます。\n"
-                        + "  - Android プロジェクトでは \"Manifest Summary\" タブで概要を確認可能。";
+        String text = java.text.MessageFormat.format(Messages.get("dlg.usage.body"), mod);
 
         javax.swing.JTextArea area = new javax.swing.JTextArea(text);
         area.setEditable(false);

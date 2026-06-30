@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
 import juml.util.SystemFonts;
 
 import javax.swing.JComboBox;
@@ -55,9 +56,7 @@ final class FontPickerField {
                 combo.getEditor().setItem(init);
             }
         }
-        combo.setToolTipText(
-                "Pick an installed font. (Auto / 自動検出) = auto-detected Japanese font. "
-                + "日本語対応フォントが先頭にまとまります。");
+        combo.setToolTipText(Messages.get("fontPicker.comboTip"));
         // 選択・入力が変わるたびにプレビューを更新
         combo.addActionListener(e -> updatePreview());
         Component editor = combo.getEditor().getEditorComponent();
@@ -103,12 +102,12 @@ final class FontPickerField {
         int size = 14;
         if (fam.isEmpty()) {
             preview.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, size));
-            preview.setToolTipText("Auto-detected font is used at render time.");
+            preview.setToolTipText(Messages.get("fontPicker.autoTip"));
         } else {
             preview.setFont(new Font(fam, Font.PLAIN, size));
             preview.setToolTipText(SystemFonts.canDisplayJapanese(fam)
-                    ? "This font can display Japanese."
-                    : "This font may not display Japanese (文字化けの可能性)。");
+                    ? Messages.get("fontPicker.jaOk")
+                    : Messages.get("fontPicker.jaWarn"));
         }
     }
 

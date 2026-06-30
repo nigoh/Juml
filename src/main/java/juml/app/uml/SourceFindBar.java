@@ -36,7 +36,9 @@ import java.util.Locale;
  */
 final class SourceFindBar extends JPanel {
 
-    private static final Color COL_SEARCH_HIT = new Color(0xFFE9A8);
+    private static Color searchHitColor() {
+        return EditorColors.isDark() ? new Color(0x61, 0x4D, 0x0A) : new Color(0xFF, 0xE9, 0xA8);
+    }
 
     private final JTextComponent target;
     private final Runnable onLayoutChange;
@@ -56,14 +58,16 @@ final class SourceFindBar extends JPanel {
 
         JLabel lbl = new JLabel(Messages.get("source.find") + ":");
         field = new JTextField(20);
+        field.putClientProperty("JTextField.placeholderText",
+                Messages.get("source.find.placeholder"));
         info = new JLabel(" ");
         Color infoFg = javax.swing.UIManager.getColor("Label.disabledForeground");
         info.setForeground(infoFg != null ? infoFg : new Color(0x777777));
-        JButton prev = new JButton("▲");
+        JButton prev = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CHEVRON_UP, 16));
         prev.setToolTipText(Messages.get("source.find.prev"));
-        JButton next = new JButton("▼");
+        JButton next = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CHEVRON_DOWN, 16));
         next.setToolTipText(Messages.get("source.find.next"));
-        JButton close = new JButton("✕");
+        JButton close = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CLOSE, 16));
         close.setToolTipText(Messages.get("source.find.close"));
         prev.addActionListener(e -> move(-1));
         next.addActionListener(e -> move(1));
@@ -155,7 +159,7 @@ final class SourceFindBar extends JPanel {
         String needle = query.toLowerCase(Locale.ROOT);
         Highlighter h = target.getHighlighter();
         Highlighter.HighlightPainter painter =
-                new DefaultHighlighter.DefaultHighlightPainter(COL_SEARCH_HIT);
+                new DefaultHighlighter.DefaultHighlightPainter(searchHitColor());
         int from = 0;
         while (true) {
             int p = hay.indexOf(needle, from);

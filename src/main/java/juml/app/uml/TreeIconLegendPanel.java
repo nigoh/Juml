@@ -59,10 +59,20 @@ final class TreeIconLegendPanel extends JPanel {
 
         header.add(toggleLabel, BorderLayout.WEST);
         header.add(title, BorderLayout.CENTER);
+        header.setFocusable(true);
         header.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
                 toggle();
+            }
+        });
+        header.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_SPACE
+                        || e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER) {
+                    toggle();
+                }
             }
         });
 

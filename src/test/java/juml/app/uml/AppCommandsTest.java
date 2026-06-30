@@ -85,6 +85,23 @@ public class AppCommandsTest {
         assertTrue("2 つ目の実行で zoomOut が発火するはず", zoomOutFired.get());
     }
 
+    /** navigateBack/Forward アクションがコマンドパレットに登録される。 */
+    @Test
+    public void navigateBackForwardRegisteredAsCommands() {
+        AtomicBoolean backFired = new AtomicBoolean(false);
+        AtomicBoolean fwdFired = new AtomicBoolean(false);
+        Callbacks cb = new Callbacks();
+        cb.navigateBack = () -> backFired.set(true);
+        cb.navigateForward = () -> fwdFired.set(true);
+
+        List<CommandPalette.Command> cmds = AppCommands.from(cb);
+        assertEquals(2, cmds.size());
+        cmds.get(0).action.run();
+        assertTrue("navigateBack が発火するはず", backFired.get());
+        cmds.get(1).action.run();
+        assertTrue("navigateForward が発火するはず", fwdFired.get());
+    }
+
     /** applyPreset Consumer は非 CUSTOM の preset 数だけコマンドに展開され、値が渡る。 */
     @Test
     public void presetConsumerExpandsToOneCommandPerNonCustomPreset() {

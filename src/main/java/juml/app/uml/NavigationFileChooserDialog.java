@@ -65,7 +65,7 @@ public class NavigationFileChooserDialog extends JDialog {
         }
 
         JPanel north = new JPanel(new BorderLayout(4, 4));
-        north.add(new JLabel("Filter (file name / module substring):"), BorderLayout.NORTH);
+        north.add(new JLabel(Messages.get("dlg.filter.navigation")), BorderLayout.NORTH);
         north.add(filter, BorderLayout.CENTER);
         add(north, BorderLayout.NORTH);
 
@@ -88,8 +88,8 @@ public class NavigationFileChooserDialog extends JDialog {
         JPanel south = new JPanel(new BorderLayout());
         south.add(countLabel, BorderLayout.WEST);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        JButton ok = new JButton("OK");
-        JButton cancel = new JButton("Cancel");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         buttons.add(ok);
         buttons.add(cancel);
         south.add(buttons, BorderLayout.EAST);
@@ -171,8 +171,8 @@ public class NavigationFileChooserDialog extends JDialog {
     public static String chooseNavigationKey(Frame parent, ProjectAnalysisCache cache) {
         if (cache == null || !cache.isLoaded()) {
             JOptionPane.showMessageDialog(parent,
-                    "Open a project first.",
-                    "No project", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noProject.message"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
         AndroidProjectAnalysis analysis = cache.getAnalysis();
@@ -182,8 +182,8 @@ public class NavigationFileChooserDialog extends JDialog {
         NavigationFileChooserDialog dlg = new NavigationFileChooserDialog(parent, graphs);
         if (dlg.getCandidateCount() == 0) {
             JOptionPane.showMessageDialog(parent,
-                    "No navigation XML files found in this project.",
-                    "Navigation diagram", JOptionPane.INFORMATION_MESSAGE);
+                    Messages.get("dlg.noNavigation.message"),
+                    Messages.get("dlg.noNavigation.title"), JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
         dlg.setVisible(true);
@@ -201,7 +201,8 @@ public class NavigationFileChooserDialog extends JDialog {
             model.addElement(info);
             matched++;
         }
-        countLabel.setText(matched + " / " + allGraphs.size() + " graph(s)");
+        countLabel.setText(java.text.MessageFormat.format(
+                Messages.get("dlg.filter.countGraphs"), matched, allGraphs.size()));
         if (!model.isEmpty()) {
             list.setSelectedIndex(0);
         }

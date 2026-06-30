@@ -54,8 +54,15 @@ final class NoteRenderer {
     private static final BasicStroke LEADER_STROKE = new BasicStroke(1.2f);
     /** タグ表示 (付箋下端のストリップ)。 */
     private static final Font TAG_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
-    private static final Color TAG_BG = new Color(255, 255, 255, 190);
-    private static final Color TAG_FG = new Color(0x3A6EA5);
+    private static Color tagBg() {
+        return EditorColors.isDark()
+                ? new Color(0, 0, 0, 160) : new Color(255, 255, 255, 190);
+    }
+
+    private static Color tagFg() {
+        return EditorColors.isDark()
+                ? new Color(0x6EA5D4) : new Color(0x3A6EA5);
+    }
     /** 孤児 (追従先が消えた ELEMENT 付箋) を示す破線枠。 */
     private static final BasicStroke ORPHAN_STROKE = new BasicStroke(2f, BasicStroke.CAP_BUTT,
             BasicStroke.JOIN_MITER, 10f, new float[] {4f, 3f}, 0f);
@@ -313,11 +320,11 @@ final class NoteRenderer {
             sb.append('#').append(t);
         }
         int sy = py + ph - stripH;
-        g2.setColor(TAG_BG);
+        g2.setColor(tagBg());
         g2.fillRect(px + 1, sy, pw - 2, stripH);
         Shape clip = g2.getClip();
         g2.clipRect(px + 4, sy, pw - 8, stripH);
-        g2.setColor(TAG_FG);
+        g2.setColor(tagFg());
         g2.drawString(sb.toString(), px + 4, py + ph - fm.getDescent() - 1);
         g2.setClip(clip);
     }
@@ -333,8 +340,9 @@ final class NoteRenderer {
     private String html(String md) {
         // プレースホルダ (空本文) は locale 依存で安価なためキャッシュしない。
         if (md == null || md.trim().isEmpty()) {
+            String phColor = EditorColors.isDark() ? "#AAA" : "#777";
             return MarkdownRenderer.wrapDocument(
-                    "<span style=\"color:#999;\">"
+                    "<span style=\"color:" + phColor + ";\">"
                             + Messages.get("note.placeholder") + "</span>", 0, 11);
         }
         String cached = htmlCache.get(md);

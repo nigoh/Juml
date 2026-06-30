@@ -14,6 +14,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Cursor;
@@ -783,6 +784,12 @@ public class SvgPreviewPanel extends JPanel {
                 g2.drawRect(rx, ry, rw, rh);
                 g2.setStroke(oldStroke);
             }
+            if (isFocusOwner()) {
+                g2.setTransform(baseTransform);
+                Color fc = UIManager.getColor("Component.focusColor");
+                g2.setColor(fc != null ? fc : new Color(30, 100, 255, 120));
+                g2.drawRect(1, 1, getWidth() - 3, getHeight() - 3);
+            }
         } finally {
             g2.dispose();
         }
@@ -833,7 +840,7 @@ public class SvgPreviewPanel extends JPanel {
     }
 
     /** 全 SVG テキストをクリップボードへコピーする (Ctrl+A 相当)。 */
-    private void copyAllText() {
+    void copyAllText() {
         if (svgTexts.isEmpty()) {
             return;
         }
@@ -869,22 +876,30 @@ public class SvgPreviewPanel extends JPanel {
         }
     }
 
-    /** Ctrl+A = 全テキストコピーのキーバインドを設定する。 */
     private void setupKeyBindings() {
         setFocusable(true);
-        // WHEN_FOCUSED に限定。WHEN_IN_FOCUSED_WINDOW だとツリー等にフォーカスがある時も
-        // Ctrl+A がプレビューの全テキストコピーに横取りされてしまう。
-        getInputMap(JComponent.WHEN_FOCUSED).put(
-                KeyStroke.getKeyStroke(KeyEvent.VK_A, InputEvent.CTRL_DOWN_MASK),
-                "copyAllText");
-        getActionMap().put("copyAllText", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                copyAllText();
-            }
-        });
-        // 付箋メモのキーバインド (Delete=削除 / Enter=編集 / 矢印=移動) はレイヤ側に集約。
+        // WHEN_FOCUSED: ツリー等にフォーカスがある時にプレビューのキーを横取りしない。
+        javax.swing.InputMap im = getInputMap(JComponent.WHEN_FOCUSED);
+        int m = InputEvent.CTRL_DOWN_MASK;
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_A, m), "copyAllText");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, m), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, m | InputEvent.SHIFT_DOWN_MASK), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ADD, m), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, m), "zoomOut");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_SUBTRACT, m), "zoomOut");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_0, m), "zoomReset");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_NUMPAD0, m), "zoomReset");
+        bindAction("copyAllText", this::copyAllText);
+        bindAction("zoomIn", this::zoomIn);
+        bindAction("zoomOut", this::zoomOut);
+        bindAction("zoomReset", this::zoomReset);
         notesLayer.installKeyBindings(this);
+    }
+
+    private void bindAction(String name, Runnable action) {
+        getActionMap().put(name, new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { action.run(); }
+        });
     }
 
     /** 表示領域 (画面上の見えている範囲) のサイズ。 */

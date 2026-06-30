@@ -79,6 +79,9 @@ public class UmlMainFrame extends JFrame {
     /** ツールバー上の「図種切替」トグルボタン。メニュー側ラジオと選択状態を同期する。 */
     private java.util.EnumMap<DiagramKind, JToggleButton> diagramToggles;
     private javax.swing.JButton addNoteButton; // アクティブタブ無し時に無効化
+    /** プロジェクト未ロード時に無効化するエクスポート系 UI 要素。 */
+    private java.util.List<JMenuItem> exportMenuItems;
+    private javax.swing.JButton exportToolbarButton;
     private ButtonGroup themeGroup;
     private java.util.Map<String, JRadioButtonMenuItem> themeItems;
 
@@ -89,6 +92,7 @@ public class UmlMainFrame extends JFrame {
     /** 左右分割 (左: ツリーサイドバー / 右: タブ)。Ctrl+B で折りたたむ対象。 */
     private JSplitPane centerSplit;
     private CenterCardView centerCards; // Welcome 空状態 ↔ ワークスペース切替
+    private ActivityBar activityBar;
     /** コマンドパレット (Ctrl+Shift+P) のコマンド一覧。メニューと同じコールバック由来。 */
     private java.util.List<CommandPalette.Command> paletteCommands;
 
@@ -123,6 +127,14 @@ public class UmlMainFrame extends JFrame {
         controller = createDiagramController();
         controller.updateAvailableDiagrams(java.util.EnumSet.noneOf(DiagramKind.class));
         statusBar = new StatusBarView(status, loadProgress, zoomLabel);
+        zoomLabel.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        zoomLabel.setToolTipText(Messages.get("statusbar.zoom.tip"));
+        zoomLabel.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                tabPane.zoomResetActive();
+            }
+        });
         tabPane.setOnTabFocused(info -> {
             controller.onTabFocused(info);
             statusBar.setFocusedTab(info);
@@ -131,7 +143,8 @@ public class UmlMainFrame extends JFrame {
             }
         });
         add(statusBar.getComponent(), BorderLayout.SOUTH);
-        setGlassPane(loadingOverlay); // 解析中オーバーレイ (初期は非表示)
+        setGlassPane(loadingOverlay);
+        installDropTarget();
         applyInitialWindowSize();
         initPersistorsAndLoader();
 
@@ -156,6 +169,46 @@ public class UmlMainFrame extends JFrame {
         loadProgress.setStringPainted(true);
         loadProgress.setVisible(false);
         loadProgress.setPreferredSize(new Dimension(200, 16));
+    }
+
+    private void installDropTarget() {
+        setTransferHandler(new javax.swing.TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                return support.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.javaFileListFlavor);
+            }
+
+            @Override
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) {
+                    return false;
+                }
+                try {
+                    @SuppressWarnings("unchecked")
+                    java.util.List<File> files = (java.util.List<File>)
+                            support.getTransferable().getTransferData(
+                                    java.awt.datatransfer.DataFlavor.javaFileListFlavor);
+                    if (files.isEmpty()) {
+                        return false;
+                    }
+                    File f = files.get(0);
+                    if (f.isDirectory()) {
+                        loadProject(f);
+                    } else {
+                        String name = f.getName().toLowerCase(java.util.Locale.ROOT);
+                        if (name.endsWith(".jar") || name.endsWith(".aar")
+                                || name.endsWith(".class")) {
+                            projectLoader.startArchive(f);
+                        } else {
+                            loadProject(f);
+                        }
+                    }
+                    return true;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }
+        });
     }
 
     /** メニューバーを構築して各メニュー項目フィールドへ反映する。 */
@@ -205,12 +258,26 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomReset = () -> tabPane.zoomResetActive();
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
+        mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
+        mcb.closeAllTabs = () -> tabPane.closeAllTabs();
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
-        mcb.toggleSidebar = () -> AppShortcuts.toggleSidebar(centerSplit);
+        mcb.toggleSidebar = () -> {
+            AppShortcuts.toggleSidebar(centerSplit);
+            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
+        };
         mcb.openSourceForActiveTab = () -> tabPane.showSourceForActiveTab();
         mcb.addNoteToActiveTab = () -> tabPane.addNoteToActiveTab();
         mcb.toggleNotesPanel = () -> tabPane.toggleActiveNotesPanel();
+        mcb.focusExplorer = () -> {
+            if (centerSplit.getDividerLocation() <= 2) {
+                AppShortcuts.toggleSidebar(centerSplit);
+                activityBar.setSidebarActive(true);
+            }
+            treePanel.requestFocusInWindow();
+        };
+        mcb.navigateBack = () -> tabPane.navigateBack();
+        mcb.navigateForward = () -> tabPane.navigateForward();
         mcb.openLogViewer = () -> LogViewerDialog.showFor(this);
         paletteCommands = AppCommands.from(mcb);
         MenuBarBuilder.Result menuResult =
@@ -220,6 +287,7 @@ public class UmlMainFrame extends JFrame {
         diagramGroup = menuResult.diagramGroup;
         themeItems = menuResult.themeItems;
         themeGroup = menuResult.themeGroup;
+        exportMenuItems = menuResult.exportItems;
         setJMenuBar(menuResult.menuBar);
     }
 
@@ -270,6 +338,7 @@ public class UmlMainFrame extends JFrame {
         methodListPanel.setOnScopeChanged(this::updateFunctionList); // 表示範囲切替で即再生成
         memberListPanel.setOnScopeChanged(this::updateMemberList);
 
+        mainTabs.setMinimumSize(new Dimension(200, 100));
         centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treePanel, mainTabs);
         centerSplit.setResizeWeight(0.22);
         centerSplit.setDividerLocation(280);
@@ -280,11 +349,15 @@ public class UmlMainFrame extends JFrame {
         // VS Code 風の左端アクティビティバー (主要導線をアイコン縦列に集約)。
         ActivityBar.Actions acts = new ActivityBar.Actions();
         acts.openProject = this::chooseProject;
-        acts.toggleSidebar = () -> AppShortcuts.toggleSidebar(centerSplit);
+        acts.toggleSidebar = () -> {
+            AppShortcuts.toggleSidebar(centerSplit);
+            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
+        };
         acts.search = () -> controller.openEntitySearch();
         acts.commandPalette = () -> CommandPalette.show(this, paletteCommands);
         acts.preferences = this::openPreferences;
-        add(new ActivityBar(acts), BorderLayout.WEST);
+        activityBar = new ActivityBar(acts);
+        add(activityBar, BorderLayout.WEST);
     }
 
     /** 上部ツールバーを構築する。 */
@@ -300,8 +373,9 @@ public class UmlMainFrame extends JFrame {
                 new ToolBarBuilder(DiagramKind.CLASS, tcb).build();
         diagramToggles = toolBarResult.diagramToggles;
         addNoteButton = toolBarResult.addNoteButton;
+        exportToolbarButton = toolBarResult.saveButton;
         if (addNoteButton != null) {
-            addNoteButton.setEnabled(false); // 図タブが開かれるまで無効
+            addNoteButton.setEnabled(false);
         }
         add(toolBarResult.toolBarPanel, BorderLayout.NORTH);
     }
@@ -338,10 +412,15 @@ public class UmlMainFrame extends JFrame {
         loaderDeps.onLoadSuccess = root -> {
             persistAndRestoreProjectSettings(root);
             updateManifestSummary();
-            centerCards.showWorkspace(); // Welcome → ワークスペースへ
-            // 図種トグル/メニューを有効化し、既定タブ (Common 図) を開く。
+            centerCards.showWorkspace();
             controller.updateAvailableDiagrams(java.util.EnumSet.allOf(DiagramKind.class));
             controller.openDefaultDiagram();
+            if (exportMenuItems != null) {
+                exportMenuItems.forEach(item -> item.setEnabled(true));
+            }
+            if (exportToolbarButton != null) {
+                exportToolbarButton.setEnabled(true);
+            }
         };
         projectLoader = new ProjectLoader(loaderDeps);
     }

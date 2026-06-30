@@ -95,6 +95,26 @@ public class MenuBarBuilderTest {
     }
 
     @Test
+    public void build_viewMenuContainsNavigateBackAndForward() {
+        MenuBarBuilder.Callbacks cb = new MenuBarBuilder.Callbacks();
+        AtomicBoolean backFired = new AtomicBoolean(false);
+        AtomicBoolean fwdFired = new AtomicBoolean(false);
+        cb.navigateBack = () -> backFired.set(true);
+        cb.navigateForward = () -> fwdFired.set(true);
+        JMenuBar bar = new MenuBarBuilder(DiagramKind.CLASS, 0, cb, null).build().menuBar;
+        // View menu is index 2
+        JMenu viewMenu = bar.getMenu(2);
+        JMenuItem back = findItem(viewMenu, Messages.get("menubar.view.navigateBack"));
+        JMenuItem fwd = findItem(viewMenu, Messages.get("menubar.view.navigateForward"));
+        assertNotNull("View menu should contain Navigate Back item", back);
+        assertNotNull("View menu should contain Navigate Forward item", fwd);
+        back.doClick();
+        assertTrue("Navigate Back should invoke its callback", backFired.get());
+        fwd.doClick();
+        assertTrue("Navigate Forward should invoke its callback", fwdFired.get());
+    }
+
+    @Test
     public void build_reopenClosedTabItemInvokesCallback() {
         AtomicBoolean fired = new AtomicBoolean(false);
         MenuBarBuilder.Callbacks cb = new MenuBarBuilder.Callbacks();

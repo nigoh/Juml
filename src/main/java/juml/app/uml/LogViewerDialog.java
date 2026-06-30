@@ -140,6 +140,10 @@ final class LogViewerDialog extends JDialog {
 
     private JButton makeButton(String key, Runnable action) {
         JButton b = new JButton(Messages.get(key));
+        String tip = Messages.getOrNull(key + ".tip");
+        if (tip != null) {
+            b.setToolTipText(tip);
+        }
         b.addActionListener(e -> action.run());
         return b;
     }

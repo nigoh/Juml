@@ -124,7 +124,7 @@ final class WelcomePanel extends JPanel {
         boolean exists = root.isDirectory();
         String label = "<html><b>" + escape(r.getName()) + "</b><br>"
                 + "<span style='font-size:90%;color:" + subtleHex() + "'>" + escape(r.getPath())
-                + (exists ? "" : "  (missing)") + "</span></html>";
+                + (exists ? "" : "  " + Messages.get("welcome.missing")) + "</span></html>";
         JButton b = new JButton(label);
         b.setHorizontalAlignment(SwingConstants.LEFT);
         b.setAlignmentX(Component.LEFT_ALIGNMENT);

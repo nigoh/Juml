@@ -53,14 +53,16 @@ final class DiagramFindBar extends JPanel {
 
         JLabel lbl = new JLabel(Messages.get("diagram.find") + ":");
         field = new JTextField(20);
+        field.putClientProperty("JTextField.placeholderText",
+                Messages.get("diagram.find.placeholder"));
         info = new JLabel(" ");
         Color infoFg = javax.swing.UIManager.getColor("Label.disabledForeground");
         info.setForeground(infoFg != null ? infoFg : new Color(0x777777));
-        JButton prev = new JButton("▲");
+        JButton prev = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CHEVRON_UP, 16));
         prev.setToolTipText(Messages.get("source.find.prev"));
-        JButton next = new JButton("▼");
+        JButton next = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CHEVRON_DOWN, 16));
         next.setToolTipText(Messages.get("source.find.next"));
-        JButton close = new JButton("✕");
+        JButton close = new JButton(MaterialIcons.of(MaterialIcons.Glyph.CLOSE, 16));
         close.setToolTipText(Messages.get("source.find.close"));
         prev.addActionListener(e -> move(-1));
         next.addActionListener(e -> move(1));

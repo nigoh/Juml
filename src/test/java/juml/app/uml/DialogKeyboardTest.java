@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
 import org.assertj.swing.edt.GuiActionRunner;
 import org.junit.After;
 import org.junit.Assume;
@@ -125,8 +126,8 @@ public class DialogKeyboardTest {
     public void sequenceParticipantFilter_buttonOrder_okBeforeCancel() throws Exception {
         SequenceParticipantFilterDialog dlg = createParticipantFilter();
         List<String> labels = GuiActionRunner.execute(() -> collectButtonLabels(dlg));
-        int okIdx = labels.indexOf("OK");
-        int cancelIdx = labels.indexOf("Cancel");
+        int okIdx = labels.indexOf(Messages.get("dlg.ok"));
+        int cancelIdx = labels.indexOf(Messages.get("dlg.cancel"));
         assertTrue("SequenceParticipantFilterDialog: OK button should exist", okIdx >= 0);
         assertTrue("SequenceParticipantFilterDialog: Cancel button should exist", cancelIdx >= 0);
         assertTrue("SequenceParticipantFilterDialog: OK should precede Cancel",

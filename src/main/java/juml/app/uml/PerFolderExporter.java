@@ -69,8 +69,8 @@ final class PerFolderExporter {
                                   final JLabel status) {
         loadProgress.setVisible(true);
         loadProgress.setIndeterminate(true);
-        loadProgress.setString("Generating...");
-        status.setText("Exporting class diagrams per folder...");
+        loadProgress.setString(Messages.get("export.perFolder.generating"));
+        status.setText(Messages.get("export.perFolder.exporting"));
 
         final ProgressListener progress = ProgressListener.throttled((done, total, message) ->
                 SwingUtilities.invokeLater(() ->
@@ -101,8 +101,9 @@ final class PerFolderExporter {
                                     + outDir.getAbsolutePath(), error);
                     status.setText(" ");
                     JOptionPane.showMessageDialog(parent,
-                            "Failed to export class diagrams: " + error.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                            java.text.MessageFormat.format(
+                                    Messages.get("export.perFolder.failed"), error.getMessage()),
+                            Messages.get("dlg.error"), JOptionPane.ERROR_MESSAGE);
                     return;
                 }
                 PerFolderClassDiagrams.Result result;
@@ -110,20 +111,24 @@ final class PerFolderExporter {
                     result = get();
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(parent,
-                            "Failed to export class diagrams: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                            java.text.MessageFormat.format(
+                                    Messages.get("export.perFolder.failed"), ex.getMessage()),
+                            Messages.get("dlg.error"), JOptionPane.ERROR_MESSAGE);
                     return;
                 }
                 if (result == null) {
                     return;
                 }
-                status.setText("Exported " + result.getFolderCount() + " folder(s) to "
-                        + outDir.getAbsolutePath());
+                status.setText(java.text.MessageFormat.format(
+                        Messages.get("export.perFolder.statusDone"),
+                        result.getFolderCount(), outDir.getAbsolutePath()));
                 JOptionPane.showMessageDialog(parent,
-                        "Exported " + result.getFolderCount() + " folder(s), "
-                                + result.getClassCount() + " class(es) to:\n"
-                                + outDir.getAbsolutePath(),
-                        "Export complete", JOptionPane.INFORMATION_MESSAGE);
+                        java.text.MessageFormat.format(
+                                Messages.get("export.perFolder.done"),
+                                result.getFolderCount(), result.getClassCount(),
+                                outDir.getAbsolutePath()),
+                        Messages.get("export.perFolder.doneTitle"),
+                        JOptionPane.INFORMATION_MESSAGE);
             }
         }.execute();
     }
@@ -137,11 +142,15 @@ final class PerFolderExporter {
             bar.setMaximum(total);
             bar.setValue(Math.min(done, total));
             bar.setString(done + "/" + total);
-            status.setText("Exporting " + done + "/" + total
-                    + (message != null && !message.isEmpty() ? " — " + message : ""));
+            String progressMsg = done + "/" + total;
+            if (message != null && !message.isEmpty()) {
+                progressMsg += " — " + message;
+            }
+            status.setText(java.text.MessageFormat.format(
+                    Messages.get("export.perFolder.progress"), progressMsg));
         } else {
             bar.setIndeterminate(true);
-            bar.setString(message != null ? message : "Working...");
+            bar.setString(message != null ? message : Messages.get("export.perFolder.working"));
         }
     }
 

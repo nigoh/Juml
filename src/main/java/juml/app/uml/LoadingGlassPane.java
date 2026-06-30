@@ -3,9 +3,13 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -35,15 +39,24 @@ final class LoadingGlassPane extends JComponent {
 
     /** アニメ GIF。リソースが無ければ null (ステータスのみ表示)。 */
     private final ImageIcon icon;
-    private String status = juml.util.Messages.get("loading.initial");
+    private final JButton cancelButton;
+    private Runnable cancelAction;
+    private String status = Messages.get("loading.initial");
 
     LoadingGlassPane() {
         setOpaque(false);
         setVisible(false);
-        // 複数候補からランダムに 1 つ選ぶ (実在するものだけが対象)。
+        setLayout(null);
         URL gifUrl = LoadingGlassPane.class.getResource(LoadingGifs.pickResource());
         icon = gifUrl != null ? new ImageIcon(gifUrl) : null;
-        // 解析中は背後 UI を触らせない: イベントを握りつぶす空リスナ。
+        cancelButton = new JButton(Messages.get("loading.cancel"));
+        cancelButton.setVisible(false);
+        cancelButton.addActionListener(e -> {
+            if (cancelAction != null) {
+                cancelAction.run();
+            }
+        });
+        add(cancelButton);
         addMouseListener(new MouseAdapter() { });
         addMouseMotionListener(new MouseAdapter() { });
         addKeyListener(new KeyAdapter() { });
@@ -55,6 +68,12 @@ final class LoadingGlassPane extends JComponent {
         repaint();
     }
 
+    /** キャンセルアクションを設定する。非 null ならキャンセルボタンを表示する。 */
+    void setCancelAction(Runnable action) {
+        cancelAction = action;
+        cancelButton.setVisible(action != null);
+    }
+
     /** オーバーレイを表示する。フォーカスを奪い、解析中のキーボードショートカットを遮断する。 */
     void showOverlay() {
         setVisible(true);
@@ -64,6 +83,8 @@ final class LoadingGlassPane extends JComponent {
 
     /** オーバーレイを隠す。 */
     void hideOverlay() {
+        cancelAction = null;
+        cancelButton.setVisible(false);
         setFocusable(false);
         setVisible(false);
     }
@@ -81,6 +102,16 @@ final class LoadingGlassPane extends JComponent {
             repaint();
         }
         return isVisible();
+    }
+
+    @Override
+    public void doLayout() {
+        if (cancelButton.isVisible()) {
+            Dimension pref = cancelButton.getPreferredSize();
+            int bx = (getWidth() - pref.width) / 2;
+            int by = getHeight() / 2 + 60;
+            cancelButton.setBounds(bx, by, pref.width, pref.height);
+        }
     }
 
     @Override

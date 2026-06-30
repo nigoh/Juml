@@ -196,7 +196,7 @@ public final class PreferencesDialog extends JDialog {
 
         c.gridy = 1;
         c.gridx = 0;
-        form.add(new JLabel("Look & Feel:"), c);
+        form.add(new JLabel(Messages.get("pref.laf.label")), c);
         c.gridx = 1;
         c.fill = GridBagConstraints.HORIZONTAL;
         c.weightx = 1.0;
@@ -300,8 +300,8 @@ public final class PreferencesDialog extends JDialog {
 
     private JComponent buildButtons() {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        JButton ok = new JButton("OK");
-        JButton cancel = new JButton("Cancel");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         ok.addActionListener(e -> {
             LookAndFeelOption sel = (LookAndFeelOption) lafCombo.getSelectedItem();
             LanguageOption lang = (LanguageOption) languageCombo.getSelectedItem();

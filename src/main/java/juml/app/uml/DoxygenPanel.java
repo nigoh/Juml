@@ -8,6 +8,7 @@ import juml.core.formats.doxygen.DoxMember;
 import juml.core.formats.doxygen.DoxModel;
 import juml.core.formats.doxygen.DoxParam;
 import juml.core.formats.doxygen.DoxygenLocator;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -44,8 +45,8 @@ public final class DoxygenPanel extends JPanel {
 
     private final ProjectAnalysisCache projectCache;
     private final DoxygenResultCache resultCache;
-    private final JButton runButton = new JButton("Run Doxygen");
-    private final JButton locateButton = new JButton("Locate doxygen...");
+    private final JButton runButton = new JButton(Messages.get("doxygen.btn.run"));
+    private final JButton locateButton = new JButton(Messages.get("doxygen.btn.locate"));
     private final JLabel statusLabel = new JLabel(" ");
     private final DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode("Doxygen");
     private final DefaultTreeModel treeModel = new DefaultTreeModel(rootNode);
@@ -65,7 +66,7 @@ public final class DoxygenPanel extends JPanel {
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         input.add(runButton);
         input.add(locateButton);
-        input.add(new JLabel("Select a type or member to see its API reference (from doxygen XML)"));
+        input.add(new JLabel(Messages.get("doxygen.hint")));
         add(input, BorderLayout.NORTH);
 
         tree.setRootVisible(true);
@@ -98,30 +99,32 @@ public final class DoxygenPanel extends JPanel {
 
     private void onLocate(ActionEvent e) {
         JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Select doxygen executable");
+        fc.setDialogTitle(Messages.get("doxygen.selectExe"));
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
         if (DoxygenLocator.useDoxygenBinary(fc.getSelectedFile())) {
-            statusLabel.setText("doxygen set: " + DoxygenLocator.getDoxygenPath());
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("doxygen.status.set"), DoxygenLocator.getDoxygenPath()));
             refreshLocateVisibility();
         } else {
-            statusLabel.setText("Not an executable file: " + fc.getSelectedFile());
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("doxygen.status.notExe"), fc.getSelectedFile()));
         }
     }
 
     private void onRun(ActionEvent e) {
         if (!projectCache.isLoaded()) {
-            statusLabel.setText("No project loaded. Open a project first.");
+            statusLabel.setText(Messages.get("dlg.noProject.message"));
             return;
         }
         File root = projectCache.getProjectRoot();
         if (root == null || !root.isDirectory()) {
-            statusLabel.setText("Doxygen needs a project directory (archives are not supported).");
+            statusLabel.setText(Messages.get("doxygen.status.needsDir"));
             return;
         }
         if (!DoxygenLocator.isAvailable() && !DoxygenLocator.redetect()) {
-            statusLabel.setText("doxygen not found. Click \"Locate doxygen...\" to select it.");
+            statusLabel.setText(Messages.get("doxygen.status.notFound"));
             refreshLocateVisibility();
             return;
         }
@@ -129,9 +132,10 @@ public final class DoxygenPanel extends JPanel {
                 () -> {
                     runButton.setEnabled(false);
                     locateButton.setEnabled(false);
-                    statusLabel.setText("Running doxygen (this may take a while)...");
+                    statusLabel.setText(Messages.get("doxygen.status.running"));
                 },
-                msg -> statusLabel.setText("Doxygen failed: " + msg),
+                msg -> statusLabel.setText(java.text.MessageFormat.format(
+                        Messages.get("doxygen.status.failed"), msg)),
                 () -> {
                     runButton.setEnabled(true);
                     locateButton.setEnabled(true);
@@ -162,7 +166,7 @@ public final class DoxygenPanel extends JPanel {
         treeModel.reload();
         detail.setText(placeholderHtml());
         if (model.isEmpty()) {
-            statusLabel.setText("No types found. Check that the project contains *.java sources.");
+            statusLabel.setText(Messages.get("doxygen.status.noTypes"));
         } else {
             tree.expandPath(new TreePath(rootNode.getPath()));
             statusLabel.setText(model.getCompounds().size() + " types, "
@@ -259,7 +263,7 @@ public final class DoxygenPanel extends JPanel {
 
     private static String placeholderHtml() {
         return "<html><body style='font-family:sans-serif;color:gray'>"
-                + "<p>Run Doxygen, then select a type or member on the left.</p></body></html>";
+                + "<p>" + esc(Messages.get("doxygen.placeholder")) + "</p></body></html>";
     }
 
     /** ツリー上の compound ノード表示 (種別 + 短い名前、brief を淡色で添える)。 */

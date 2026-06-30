@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.BorderFactory;
 import javax.swing.JPanel;
 import javax.swing.JWindow;
@@ -22,7 +24,7 @@ final class SplashWindow extends JWindow {
         JPanel content = new JPanel(new BorderLayout());
         content.setBackground(new Color(32, 32, 44)); // stock_controller のローダ背景に合わせた暗色
         content.setBorder(BorderFactory.createEmptyBorder(24, 32, 24, 32));
-        content.add(new LoadingGifView("起動中..."), BorderLayout.CENTER);
+        content.add(new LoadingGifView(Messages.get("splash.loading")), BorderLayout.CENTER);
         setContentPane(content);
         pack();
         setLocationRelativeTo(null); // 画面中央

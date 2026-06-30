@@ -44,8 +44,8 @@ public final class InsightsPanel extends JPanel {
 
     private final ProjectAnalysisCache projectCache;
     private final ReferenceIndexCache refCache;
-    private final JButton runButton = new JButton("Analyze");
-    private final JButton saveButton = new JButton("Save Report...");
+    private final JButton runButton = new JButton(Messages.get("insights.btn.analyze"));
+    private final JButton saveButton = new JButton(Messages.get("insights.btn.save"));
     private final JLabel statusLabel = new JLabel(" ");
     private final JTextArea resultArea = new JTextArea();
 
@@ -61,8 +61,7 @@ public final class InsightsPanel extends JPanel {
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         input.add(runButton);
         input.add(saveButton);
-        input.add(new JLabel("Entry points / hotspots / package cycles /"
-                + " dead-code candidates / estimated layers"));
+        input.add(new JLabel(Messages.get("insights.hint")));
         add(input, BorderLayout.NORTH);
 
         resultArea.setEditable(false);
@@ -81,12 +80,12 @@ public final class InsightsPanel extends JPanel {
 
     private void onRun(ActionEvent e) {
         if (!projectCache.isLoaded()) {
-            statusLabel.setText("No project loaded. Open a project first.");
+            statusLabel.setText(Messages.get("dlg.noProject.message"));
             return;
         }
         runButton.setEnabled(false);
         saveButton.setEnabled(false);
-        statusLabel.setText("Building reference index...");
+        statusLabel.setText(Messages.get("impact.status.building"));
 
         new SwingWorker<String, Void>() {
             @Override
@@ -106,20 +105,21 @@ public final class InsightsPanel extends JPanel {
                 try {
                     String report = get();
                     if (report == null) {
-                        statusLabel.setText("No project loaded. Open a project first.");
+                        statusLabel.setText(Messages.get("dlg.noProject.message"));
                         return;
                     }
                     resultArea.setText(report);
                     resultArea.setCaretPosition(0);
                     saveButton.setEnabled(true);
-                    statusLabel.setText("Done. Scroll down to see the full report.");
+                    statusLabel.setText(Messages.get("insights.status.done"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error("InsightsPanel", "Insights analysis failed", cause);
-                    statusLabel.setText("Analysis failed: " + cause.getMessage());
+                    statusLabel.setText(java.text.MessageFormat.format(
+                            Messages.get("insights.status.failed"), cause.getMessage()));
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
-                    statusLabel.setText("Interrupted.");
+                    statusLabel.setText(Messages.get("insights.status.interrupted"));
                 }
             }
         }.execute();
@@ -133,7 +133,7 @@ public final class InsightsPanel extends JPanel {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle(Messages.get("dlg.saveInsightsReport"));
         fc.setAcceptAllFileFilterUsed(false);
-        fc.setFileFilter(new FileNameExtensionFilter("Markdown (*.md)", "md"));
+        fc.setFileFilter(new FileNameExtensionFilter(Messages.get("explore.diff.markdownFilter"), "md"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -143,11 +143,13 @@ public final class InsightsPanel extends JPanel {
         }
         try {
             Files.write(chosen.toPath(), content.getBytes(StandardCharsets.UTF_8));
-            statusLabel.setText("Saved to: " + chosen.getAbsolutePath());
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("insights.status.saved"), chosen.getAbsolutePath()));
         } catch (IOException ex) {
             juml.util.AppLog.error("InsightsPanel",
                     "Failed to save insights report: " + chosen.getAbsolutePath(), ex);
-            statusLabel.setText("Save failed: " + ex.getMessage());
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("insights.status.saveFailed"), ex.getMessage()));
         }
     }
 }

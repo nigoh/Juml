@@ -3,6 +3,8 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -39,7 +41,7 @@ final class SequenceParticipantFilterDialog extends JDialog {
     private SequenceParticipantFilterDialog(Window owner, String entryLabel,
                                              Set<String> allParticipants,
                                              Set<String> initiallyHidden) {
-        super(owner, "Filter Sequence Participants",
+        super(owner, Messages.get("dlg.seqFilter.title"),
                 Dialog.ModalityType.APPLICATION_MODAL);
         setLayout(new BorderLayout(8, 8));
         ((JPanel) getContentPane()).setBorder(
@@ -57,9 +59,11 @@ final class SequenceParticipantFilterDialog extends JDialog {
 
     private JPanel buildHeader(String entryLabel, int total) {
         JPanel p = new JPanel(new BorderLayout(4, 4));
-        p.add(new JLabel("Entry: " + entryLabel), BorderLayout.NORTH);
-        p.add(new JLabel("Check participants to keep; uncheck to hide them. "
-                + total + " participants total."), BorderLayout.CENTER);
+        p.add(new JLabel(Messages.get("dlg.seqFilter.entryPrefix") + " " + entryLabel),
+                BorderLayout.NORTH);
+        p.add(new JLabel(Messages.get("dlg.seqFilter.instruction")
+                + " " + total + Messages.get("dlg.seqFilter.totalSuffix")),
+                BorderLayout.CENTER);
         return p;
     }
 
@@ -79,17 +83,17 @@ final class SequenceParticipantFilterDialog extends JDialog {
     private JPanel buildButtons() {
         JPanel p = new JPanel(new BorderLayout());
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        JButton selectAll = new JButton("Select All");
+        JButton selectAll = new JButton(Messages.get("dlg.seqFilter.selectAll"));
         selectAll.addActionListener(e -> setAll(true));
-        JButton clearAll = new JButton("Clear All");
+        JButton clearAll = new JButton(Messages.get("dlg.seqFilter.clearAll"));
         clearAll.addActionListener(e -> setAll(false));
         left.add(selectAll);
         left.add(clearAll);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        JButton ok = new JButton("OK");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
         ok.addActionListener(e -> commit());
-        JButton cancel = new JButton("Cancel");
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         cancel.addActionListener(e -> {
             result = null;
             setVisible(false);
