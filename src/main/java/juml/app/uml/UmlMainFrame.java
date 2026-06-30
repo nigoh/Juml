@@ -92,6 +92,7 @@ public class UmlMainFrame extends JFrame {
     /** 左右分割 (左: ツリーサイドバー / 右: タブ)。Ctrl+B で折りたたむ対象。 */
     private JSplitPane centerSplit;
     private CenterCardView centerCards; // Welcome 空状態 ↔ ワークスペース切替
+    private ActivityBar activityBar;
     /** コマンドパレット (Ctrl+Shift+P) のコマンド一覧。メニューと同じコールバック由来。 */
     private java.util.List<CommandPalette.Command> paletteCommands;
 
@@ -259,13 +260,17 @@ public class UmlMainFrame extends JFrame {
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
-        mcb.toggleSidebar = () -> AppShortcuts.toggleSidebar(centerSplit);
+        mcb.toggleSidebar = () -> {
+            AppShortcuts.toggleSidebar(centerSplit);
+            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
+        };
         mcb.openSourceForActiveTab = () -> tabPane.showSourceForActiveTab();
         mcb.addNoteToActiveTab = () -> tabPane.addNoteToActiveTab();
         mcb.toggleNotesPanel = () -> tabPane.toggleActiveNotesPanel();
         mcb.focusExplorer = () -> {
             if (centerSplit.getDividerLocation() <= 2) {
                 AppShortcuts.toggleSidebar(centerSplit);
+                activityBar.setSidebarActive(true);
             }
             treePanel.requestFocusInWindow();
         };
@@ -342,11 +347,15 @@ public class UmlMainFrame extends JFrame {
         // VS Code 風の左端アクティビティバー (主要導線をアイコン縦列に集約)。
         ActivityBar.Actions acts = new ActivityBar.Actions();
         acts.openProject = this::chooseProject;
-        acts.toggleSidebar = () -> AppShortcuts.toggleSidebar(centerSplit);
+        acts.toggleSidebar = () -> {
+            AppShortcuts.toggleSidebar(centerSplit);
+            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
+        };
         acts.search = () -> controller.openEntitySearch();
         acts.commandPalette = () -> CommandPalette.show(this, paletteCommands);
         acts.preferences = this::openPreferences;
-        add(new ActivityBar(acts), BorderLayout.WEST);
+        activityBar = new ActivityBar(acts);
+        add(activityBar, BorderLayout.WEST);
     }
 
     /** 上部ツールバーを構築する。 */

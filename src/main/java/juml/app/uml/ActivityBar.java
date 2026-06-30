@@ -32,6 +32,9 @@ final class ActivityBar extends JPanel {
     private static final int BAR_WIDTH = 46;
     private static final int ICON = 22;
 
+    private boolean sidebarActive = true;
+    private JButton sidebarButton;
+
     /** アクティビティバーの各アイコンが呼ぶアクション。null のものはボタンを出さない。 */
     static final class Actions {
         Runnable openProject;
@@ -63,6 +66,15 @@ final class ActivityBar extends JPanel {
         add(bottom, BorderLayout.SOUTH);
     }
 
+    void setSidebarActive(boolean active) {
+        if (this.sidebarActive != active) {
+            this.sidebarActive = active;
+            if (sidebarButton != null) {
+                sidebarButton.repaint();
+            }
+        }
+    }
+
     private static JPanel column() {
         JPanel p = new JPanel();
         p.setOpaque(false);
@@ -79,14 +91,16 @@ final class ActivityBar extends JPanel {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                if (accentMarker) {
-                    // 左端にアクセントのインジケータ (現在ビュー=Explorer を示す)
+                if (accentMarker && sidebarActive) {
                     Graphics2D g2 = (Graphics2D) g;
                     g2.setColor(UiTheme.ACCENT);
                     g2.fillRect(0, getHeight() / 2 - 9, 2, 18);
                 }
             }
         };
+        if (accentMarker) {
+            sidebarButton = b;
+        }
         b.setToolTipText(Messages.get(tooltipKey));
         b.getAccessibleContext().setAccessibleName(Messages.get(tooltipKey));
         b.setBorderPainted(false);

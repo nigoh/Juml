@@ -43,14 +43,18 @@ public final class ProjectTreeCellRenderer extends DefaultTreeCellRenderer {
 
         if (user instanceof ModuleEntry) {
             setIcon(TreeNodeIcon.MODULE);
+            setToolTipText(((ModuleEntry) user).name);
         } else if (user instanceof PackageEntry) {
             setIcon(TreeNodeIcon.PACKAGE);
+            setToolTipText(((PackageEntry) user).name);
         } else if (user instanceof ClassEntry) {
             JavaClassInfo info = ((ClassEntry) user).info;
             setIcon(classIcon(info));
-            setToolTipText(info.getQualifiedName()); // 省略表示でも FQN を確認できる
+            setToolTipText(info.getQualifiedName());
         } else if (user instanceof MethodEntry) {
+            MethodEntry me = (MethodEntry) user;
             setIcon(TreeNodeIcon.METHOD);
+            setToolTipText(me.owner.getQualifiedName() + "." + me.method.getName() + "()");
         } else if (user instanceof MethodDiagramEntry) {
             setIcon(diagramIcon(((MethodDiagramEntry) user).kind));
         } else if (user instanceof ManifestEntry) {
