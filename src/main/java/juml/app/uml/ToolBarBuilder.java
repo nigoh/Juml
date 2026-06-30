@@ -61,15 +61,19 @@ public final class ToolBarBuilder {
         public final javax.swing.ButtonGroup diagramToolbarGroup;
         /** 「図に付箋を追加」ボタン (アクティブタブ無し時に無効化する用)。null 可。 */
         public final JButton addNoteButton;
+        /** エクスポートボタン (プロジェクト未ロード時に無効化する用)。 */
+        public final JButton saveButton;
 
         Result(JComponent toolBarPanel,
                EnumMap<DiagramKind, JToggleButton> diagramToggles,
                javax.swing.ButtonGroup diagramToolbarGroup,
-               JButton addNoteButton) {
+               JButton addNoteButton,
+               JButton saveButton) {
             this.toolBarPanel = toolBarPanel;
             this.diagramToggles = diagramToggles;
             this.diagramToolbarGroup = diagramToolbarGroup;
             this.addNoteButton = addNoteButton;
+            this.saveButton = saveButton;
         }
     }
 
@@ -77,6 +81,7 @@ public final class ToolBarBuilder {
     private final Callbacks cb;
     /** {@link #buildActionToolBar()} が生成する付箋ボタンの参照 (Result へ渡す)。 */
     private JButton addNoteButton;
+    private JButton saveButton;
 
     public ToolBarBuilder(DiagramKind initialKind, Callbacks cb) {
         this.initialKind = initialKind;
@@ -90,7 +95,7 @@ public final class ToolBarBuilder {
         EnumMap<DiagramKind, JToggleButton> toggles = new EnumMap<>(DiagramKind.class);
         javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
         container.add(buildDiagramKindToolBar(toggles, group), BorderLayout.SOUTH);
-        return new Result(container, toggles, group, addNoteButton);
+        return new Result(container, toggles, group, addNoteButton, saveButton);
     }
 
     private JToolBar buildActionToolBar() {
@@ -101,10 +106,12 @@ public final class ToolBarBuilder {
                 Messages.get("toolbar.open.tip"),
                 MaterialIcons.toolbar(MaterialIcons.Glyph.FOLDER_OPEN),
                 e -> cb.chooseProject.run()));
-        bar.add(makeButton(Messages.get("toolbar.save"),
+        saveButton = makeButton(Messages.get("toolbar.save"),
                 Messages.get("toolbar.save.tip"),
                 MaterialIcons.toolbar(MaterialIcons.Glyph.SAVE),
-                e -> cb.chooseAndExport.run()));
+                e -> cb.chooseAndExport.run());
+        saveButton.setEnabled(false);
+        bar.add(saveButton);
         bar.add(makeButton(Messages.get("toolbar.refresh"),
                 Messages.get("toolbar.refresh.tip"),
                 MaterialIcons.toolbar(MaterialIcons.Glyph.REFRESH),

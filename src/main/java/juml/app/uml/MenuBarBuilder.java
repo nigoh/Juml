@@ -104,19 +104,23 @@ public final class MenuBarBuilder {
         public final Map<String, JRadioButtonMenuItem> themeItems;
         public final ButtonGroup diagramGroup;
         public final ButtonGroup themeGroup;
+        /** プロジェクト未ロード時に無効化するエクスポート系メニュー項目。 */
+        public final java.util.List<JMenuItem> exportItems;
 
         Result(JMenuBar menuBar,
                JMenuItem cancelLoadingItem,
                EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems,
                Map<String, JRadioButtonMenuItem> themeItems,
                ButtonGroup diagramGroup,
-               ButtonGroup themeGroup) {
+               ButtonGroup themeGroup,
+               java.util.List<JMenuItem> exportItems) {
             this.menuBar = menuBar;
             this.cancelLoadingItem = cancelLoadingItem;
             this.diagramItems = diagramItems;
             this.themeItems = themeItems;
             this.diagramGroup = diagramGroup;
             this.themeGroup = themeGroup;
+            this.exportItems = exportItems;
         }
     }
 
@@ -126,6 +130,7 @@ public final class MenuBarBuilder {
     private final Supplier<java.util.List<juml.ProjectRecord>> recentProjects;
     private final JOptionPane parentForDialogs;
     private final java.awt.Frame parentFrame;
+    private final java.util.List<JMenuItem> exportItems = new java.util.ArrayList<>();
 
     public MenuBarBuilder(DiagramKind initialKind, int menuMask, Callbacks cb,
                           java.awt.Frame parentFrame) {
@@ -167,7 +172,8 @@ public final class MenuBarBuilder {
         bar.add(buildHelpMenu());
 
         return new Result(bar, cancelLoadingItem, diagramItems, themeItems,
-                diagramGroup, themeGroup);
+                diagramGroup, themeGroup,
+                java.util.Collections.unmodifiableList(exportItems));
     }
 
     private JMenu buildFileMenu(JMenuItem cancelLoadingItem) {
@@ -196,15 +202,20 @@ public final class MenuBarBuilder {
         save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S,
                 menuMask | InputEvent.SHIFT_DOWN_MASK));
         save.addActionListener(e -> cb.chooseAndExport.run());
+        save.setEnabled(false);
         JMenuItem perFolder = new JMenuItem(Messages.get("menubar.file.exportPerFolder"));
         perFolder.setMnemonic(KeyEvent.VK_P);
         perFolder.addActionListener(e -> cb.exportClassDiagramsPerFolder.run());
+        perFolder.setEnabled(false);
         JMenuItem functionList = new JMenuItem(Messages.get("menubar.file.exportFunctionList"));
         functionList.setMnemonic(KeyEvent.VK_F);
         functionList.addActionListener(e -> cb.exportFunctionList.run());
+        functionList.setEnabled(false);
         JMenuItem memberList = new JMenuItem(Messages.get("menubar.file.exportMembers"));
         memberList.setMnemonic(KeyEvent.VK_M);
         memberList.addActionListener(e -> cb.exportMemberList.run());
+        memberList.setEnabled(false);
+        exportItems.addAll(java.util.List.of(save, perFolder, functionList, memberList));
         JMenuItem refresh = new JMenuItem(Messages.get("menubar.file.refresh"));
         refresh.setMnemonic(KeyEvent.VK_R);
         refresh.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.REFRESH));
