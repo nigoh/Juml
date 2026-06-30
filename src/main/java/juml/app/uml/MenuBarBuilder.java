@@ -90,6 +90,8 @@ public final class MenuBarBuilder {
         public Runnable addNoteToActiveTab;
         /** アクティブタブの付箋一覧サイドパネルを開閉する。 */
         public Runnable toggleNotesPanel;
+        /** Ctrl+Shift+E / View &gt; Focus Explorer: ツリーペインへフォーカスを移す。 */
+        public Runnable focusExplorer;
         /** Help &gt; Error Log: アプリのエラーログビューアを開く。 */
         public Runnable openLogViewer;
     }
@@ -191,7 +193,8 @@ public final class MenuBarBuilder {
         JMenuItem save = new JMenuItem(Messages.get("menubar.file.saveAs"));
         save.setMnemonic(KeyEvent.VK_S);
         save.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SAVE));
-        save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
+        save.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S,
+                menuMask | InputEvent.SHIFT_DOWN_MASK));
         save.addActionListener(e -> cb.chooseAndExport.run());
         JMenuItem perFolder = new JMenuItem(Messages.get("menubar.file.exportPerFolder"));
         perFolder.setMnemonic(KeyEvent.VK_P);
@@ -223,6 +226,7 @@ public final class MenuBarBuilder {
         m.add(open);
         m.add(openArchive);
         m.add(recent);
+        m.addSeparator();
         m.add(save);
         m.add(perFolder);
         m.add(functionList);
@@ -230,6 +234,7 @@ public final class MenuBarBuilder {
         m.addSeparator();
         m.add(refresh);
         m.add(cancelLoadingItem);
+        m.addSeparator();
         m.add(closeTab);
         m.add(reopenTab);
         m.addSeparator();
@@ -364,7 +369,8 @@ public final class MenuBarBuilder {
                 default: keyCode = KeyEvent.VK_UNDEFINED;
             }
             if (keyCode != KeyEvent.VK_UNDEFINED) {
-                mi.setAccelerator(KeyStroke.getKeyStroke(keyCode, menuMask));
+                mi.setAccelerator(KeyStroke.getKeyStroke(keyCode,
+                        InputEvent.ALT_DOWN_MASK));
             }
             seq++;
             final DiagramPreset preset = p;
@@ -416,8 +422,7 @@ public final class MenuBarBuilder {
         if (cb.openSourceForActiveTab != null) {
             JMenuItem openSource = new JMenuItem(Messages.get("menubar.view.openSource"));
             openSource.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.CODE));
-            openSource.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S,
-                    menuMask | InputEvent.SHIFT_DOWN_MASK));
+            openSource.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, menuMask));
             openSource.addActionListener(e -> cb.openSourceForActiveTab.run());
             m.add(openSource);
         }
@@ -432,8 +437,19 @@ public final class MenuBarBuilder {
         if (cb.toggleNotesPanel != null) {
             JMenuItem notesPanel = new JMenuItem(Messages.get("menubar.view.notesPanel"));
             notesPanel.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.NOTE_ADD));
+            notesPanel.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_J,
+                    menuMask | InputEvent.SHIFT_DOWN_MASK));
             notesPanel.addActionListener(e -> cb.toggleNotesPanel.run());
             m.add(notesPanel);
+        }
+        if (cb.focusExplorer != null) {
+            m.addSeparator();
+            JMenuItem explorer = new JMenuItem(Messages.get("menubar.view.focusExplorer"));
+            explorer.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SIDEBAR));
+            explorer.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E,
+                    menuMask | InputEvent.SHIFT_DOWN_MASK));
+            explorer.addActionListener(e -> cb.focusExplorer.run());
+            m.add(explorer);
         }
         return m;
     }
@@ -441,8 +457,7 @@ public final class MenuBarBuilder {
     private JMenu buildStyleMenu(Map<String, JRadioButtonMenuItem> themeItems,
                                  ButtonGroup themeGroup) {
         JMenu m = new JMenu(Messages.get("menubar.style"));
-        // Settings に 'S' を譲り、Style は 'Y' (stYle) をニーモニックにする。
-        m.setMnemonic(KeyEvent.VK_Y);
+        m.setMnemonic(KeyEvent.VK_T);
         DiagramStyle current = PlantUmlRenderer.getStyle();
         for (String theme : StyleSettingsDialog.THEMES) {
             String label = theme.isEmpty() ? Messages.get("menubar.style.none") : theme;
@@ -577,8 +592,7 @@ public final class MenuBarBuilder {
                         + "  - Diagram > Scope...: 表示範囲 (パッケージ等) を細かく指定。\n"
                         + "  - Diagram > Filter Sequence Participants...: シーケンス図の登場人物を隠す。\n"
                         + "  - Diagram > Preset > Minimal / Balanced / Detailed\n"
-                        + "    (" + mod + "+1 / " + mod + "+2 / " + mod
-                        + "+3): クラス図の表示密度を切替。\n"
+                        + "    (Alt+1 / Alt+2 / Alt+3): クラス図の表示密度を切替。\n"
                         + "\n"
                         + "■ 再描画 / キャンセル\n"
                         + "  - File > Refresh (F5): 現在の図を再生成。\n"
@@ -590,7 +604,7 @@ public final class MenuBarBuilder {
                         + "+PageDown / PageUp: タブを巡回。\n"
                         + "\n"
                         + "■ エクスポート (画像保存)\n"
-                        + "  - File > Save Diagram As... (" + mod + "+S): PNG / SVG / PUML で保存。\n"
+                        + "  - File > Save Diagram As... (" + mod + "+Shift+S): PNG / SVG / PUML で保存。\n"
                         + "  - File > Export Class Diagrams Per Folder...: フォルダ単位で一括出力。\n"
                         + "\n"
                         + "■ スタイル (見た目)\n"

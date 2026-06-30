@@ -40,9 +40,10 @@ final class AppCommands {
         add(list, "cmd.file.cancelLoading", cb.cancelLoading);
         add(list, "cmd.file.exit", cb.exitApp);
         add(list, "cmd.view.toggleSidebar", cb.toggleSidebar, MOD + "B");
-        add(list, "cmd.view.openSource", cb.openSourceForActiveTab, MOD + SHIFT + "S");
+        add(list, "cmd.view.openSource", cb.openSourceForActiveTab, MOD + "U");
         add(list, "cmd.view.addNote", cb.addNoteToActiveTab, MOD + SHIFT + "N");
-        add(list, "cmd.view.notesPanel", cb.toggleNotesPanel);
+        add(list, "cmd.view.notesPanel", cb.toggleNotesPanel, MOD + SHIFT + "J");
+        add(list, "cmd.view.focusExplorer", cb.focusExplorer, MOD + SHIFT + "E");
         add(list, "cmd.diagram.findInDiagram", cb.findInDiagram, MOD + "F");
         add(list, "cmd.diagram.search", cb.openEntitySearch, MOD + SHIFT + "F");
         add(list, "cmd.diagram.seqEntry", cb.pickSequenceEntry);

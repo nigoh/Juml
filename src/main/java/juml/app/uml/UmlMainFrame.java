@@ -211,6 +211,12 @@ public class UmlMainFrame extends JFrame {
         mcb.openSourceForActiveTab = () -> tabPane.showSourceForActiveTab();
         mcb.addNoteToActiveTab = () -> tabPane.addNoteToActiveTab();
         mcb.toggleNotesPanel = () -> tabPane.toggleActiveNotesPanel();
+        mcb.focusExplorer = () -> {
+            if (centerSplit.getDividerLocation() <= 2) {
+                AppShortcuts.toggleSidebar(centerSplit);
+            }
+            treePanel.requestFocusInWindow();
+        };
         mcb.openLogViewer = () -> LogViewerDialog.showFor(this);
         paletteCommands = AppCommands.from(mcb);
         MenuBarBuilder.Result menuResult =

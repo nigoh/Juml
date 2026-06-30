@@ -89,7 +89,6 @@ final class ActivityBar extends JPanel {
         };
         b.setToolTipText(Messages.get(tooltipKey));
         b.getAccessibleContext().setAccessibleName(Messages.get(tooltipKey));
-        b.setFocusable(false);
         b.setBorderPainted(false);
         b.setContentAreaFilled(false);
         b.setOpaque(false);

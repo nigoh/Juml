@@ -14,6 +14,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Cursor;
@@ -783,6 +784,16 @@ public class SvgPreviewPanel extends JPanel {
                 g2.drawRect(rx, ry, rw, rh);
                 g2.setStroke(oldStroke);
             }
+            // フォーカスリング (キーボード操作中の状態を明示)
+            if (isFocusOwner()) {
+                g2.setTransform(baseTransform);
+                Color focusColor = UIManager.getColor("Component.focusColor");
+                if (focusColor == null) {
+                    focusColor = new Color(30, 100, 255, 120);
+                }
+                g2.setColor(focusColor);
+                g2.drawRect(1, 1, getWidth() - 3, getHeight() - 3);
+            }
         } finally {
             g2.dispose();
         }
@@ -882,6 +893,26 @@ public class SvgPreviewPanel extends JPanel {
             public void actionPerformed(ActionEvent e) {
                 copyAllText();
             }
+        });
+        // ズーム操作 (Ctrl+= / Ctrl+Shift+= / Ctrl+- / Ctrl+0 / numpad)
+        int zoomMask = InputEvent.CTRL_DOWN_MASK;
+        javax.swing.InputMap im = getInputMap(JComponent.WHEN_FOCUSED);
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, zoomMask), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS,
+                zoomMask | InputEvent.SHIFT_DOWN_MASK), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ADD, zoomMask), "zoomIn");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, zoomMask), "zoomOut");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_SUBTRACT, zoomMask), "zoomOut");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_0, zoomMask), "zoomReset");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_NUMPAD0, zoomMask), "zoomReset");
+        getActionMap().put("zoomIn", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { zoomIn(); }
+        });
+        getActionMap().put("zoomOut", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { zoomOut(); }
+        });
+        getActionMap().put("zoomReset", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { zoomReset(); }
         });
         // 付箋メモのキーバインド (Delete=削除 / Enter=編集 / 矢印=移動) はレイヤ側に集約。
         notesLayer.installKeyBindings(this);
