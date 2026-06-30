@@ -46,7 +46,7 @@ public final class MaterialIcons implements Icon {
         FOLDER_OPEN, ARCHIVE, SAVE, REFRESH, SEARCH, NOTE_ADD, CLOSE,
         // ── 表示 / ズーム / ナビゲーション ──
         ZOOM_IN, ZOOM_OUT, FIT_SCREEN, CENTER_FOCUS, SIDEBAR, CODE,
-        TERMINAL, FILTER, ARROW_BACK, ARROW_FORWARD,
+        TERMINAL, FILTER, ARROW_BACK, ARROW_FORWARD, CHEVRON_UP, CHEVRON_DOWN,
         // ── 設定 / スタイル ──
         SETTINGS, TUNE, PALETTE, DELETE_SWEEP, HELP, INFO,
         // ── 図種 / 構造 (ツリー & 図カテゴリ) ──
@@ -176,6 +176,8 @@ public final class MaterialIcons implements Icon {
             case ROUTE: route(g); break;
             case ARROW_BACK: arrowBack(g); break;
             case ARROW_FORWARD: arrowForward(g); break;
+            case CHEVRON_UP: chevronUp(g); break;
+            case CHEVRON_DOWN: chevronDown(g); break;
             default: break;
         }
     }
@@ -750,5 +752,15 @@ public final class MaterialIcons implements Icon {
         line(g, 5, 12, 19, 12);
         line(g, 19, 12, 13, 6);
         line(g, 19, 12, 13, 18);
+    }
+
+    private static void chevronUp(Graphics2D g) {
+        line(g, 6, 15, 12, 9);
+        line(g, 12, 9, 18, 15);
+    }
+
+    private static void chevronDown(Graphics2D g) {
+        line(g, 6, 9, 12, 15);
+        line(g, 12, 15, 18, 9);
     }
 }

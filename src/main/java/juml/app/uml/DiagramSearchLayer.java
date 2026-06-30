@@ -22,10 +22,29 @@ import java.util.List;
  */
 final class DiagramSearchLayer {
 
-    private static final Color FILL_OTHER = new Color(0xFF, 0xE9, 0xA8, 140);
-    private static final Color LINE_OTHER = new Color(0xC8, 0xA0, 0x40);
-    private static final Color FILL_CURRENT = new Color(0xFF, 0x96, 0x32, 120);
-    private static final Color LINE_CURRENT = new Color(0xE0, 0x6A, 0x00);
+    private static Color fillOther() {
+        return EditorColors.isDark()
+                ? new Color(0x61, 0x4D, 0x0A, 160)
+                : new Color(0xFF, 0xE9, 0xA8, 140);
+    }
+
+    private static Color lineOther() {
+        return EditorColors.isDark()
+                ? new Color(0xC8, 0xA0, 0x40)
+                : new Color(0xC8, 0xA0, 0x40);
+    }
+
+    private static Color fillCurrent() {
+        return EditorColors.isDark()
+                ? new Color(0xE0, 0x6A, 0x00, 140)
+                : new Color(0xFF, 0x96, 0x32, 120);
+    }
+
+    private static Color lineCurrent() {
+        return EditorColors.isDark()
+                ? new Color(0xFF, 0x96, 0x32)
+                : new Color(0xE0, 0x6A, 0x00);
+    }
 
     private final JComponent host;
     /** ヒット矩形 (SVG 座標)。空ならハイライト無し。 */
@@ -89,9 +108,9 @@ final class DiagramSearchLayer {
             int w = Math.max(2, (int) Math.round(r.getWidth() * zoom));
             int h = Math.max(2, (int) Math.round(r.getHeight() * zoom));
             boolean cur = (i == current);
-            g2.setColor(cur ? FILL_CURRENT : FILL_OTHER);
+            g2.setColor(cur ? fillCurrent() : fillOther());
             g2.fillRect(x, y, w, h);
-            g2.setColor(cur ? LINE_CURRENT : LINE_OTHER);
+            g2.setColor(cur ? lineCurrent() : lineOther());
             g2.setStroke(new BasicStroke(cur ? 2f : 1f));
             g2.drawRect(x, y, w, h);
         }
