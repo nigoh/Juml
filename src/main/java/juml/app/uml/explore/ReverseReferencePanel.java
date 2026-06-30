@@ -7,6 +7,7 @@ import juml.app.uml.ReferenceIndexCache;
 import juml.core.refs.ReferenceIndex;
 import juml.core.refs.ReferenceKey;
 import juml.core.refs.ReferenceSite;
+import juml.util.Messages;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -31,7 +32,10 @@ import java.util.List;
 public final class ReverseReferencePanel extends JPanel {
 
     private static final String[] COLUMNS = {
-            "Caller class", "Method", "Kind", "File"
+            Messages.get("explore.ref.col.callerClass"),
+            Messages.get("explore.ref.col.method"),
+            Messages.get("explore.ref.col.kind"),
+            Messages.get("explore.ref.col.file")
     };
 
     private final ReferenceIndexCache refCache;
@@ -49,11 +53,11 @@ public final class ReverseReferencePanel extends JPanel {
         this.refCache = refCache;
 
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
-        input.add(new JLabel("Symbol:"));
+        input.add(new JLabel(Messages.get("explore.ref.symbolLabel")));
         targetField = new JTextField(40);
-        targetField.setToolTipText("FQN (com.foo.Bar) or FQN.member (com.foo.Bar.doIt)");
+        targetField.setToolTipText(Messages.get("explore.ref.symbolTip"));
         input.add(targetField);
-        findButton = new JButton("Find references");
+        findButton = new JButton(Messages.get("explore.ref.btn.find"));
         input.add(findButton);
         add(input, BorderLayout.NORTH);
 
@@ -66,7 +70,7 @@ public final class ReverseReferencePanel extends JPanel {
         scroll.setPreferredSize(new Dimension(400, 300));
         add(scroll, BorderLayout.CENTER);
 
-        statusLabel = new JLabel("Open a project, then enter a symbol to find its references.");
+        statusLabel = new JLabel(Messages.get("explore.ref.hint"));
         statusLabel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
         add(statusLabel, BorderLayout.SOUTH);
 
@@ -83,11 +87,11 @@ public final class ReverseReferencePanel extends JPanel {
     private void onFind(ActionEvent e) {
         final String target = targetField.getText().trim();
         if (target.isEmpty()) {
-            statusLabel.setText("Enter a symbol to search.");
+            statusLabel.setText(Messages.get("explore.ref.enterSymbol"));
             return;
         }
         findButton.setEnabled(false);
-        statusLabel.setText("Building reference index...");
+        statusLabel.setText(Messages.get("explore.ref.building"));
         SwingWorker<List<ReferenceSite>, Void> worker =
                 new SwingWorker<List<ReferenceSite>, Void>() {
             @Override
@@ -105,16 +109,18 @@ public final class ReverseReferencePanel extends JPanel {
                 try {
                     List<ReferenceSite> sites = get();
                     if (sites == null) {
-                        statusLabel.setText("No project loaded. Open a project first.");
+                        statusLabel.setText(Messages.get("explore.ref.noProject"));
                         tableModel.setRowCount(0);
                         return;
                     }
                     populateTable(sites);
-                    statusLabel.setText(sites.size() + " reference(s) found.");
+                    statusLabel.setText(java.text.MessageFormat.format(
+                            Messages.get("explore.ref.countFormat"), sites.size()));
                 } catch (Exception ex) {
                     juml.util.AppLog.error("ReverseReferencePanel",
                             "Reference search failed", ex);
-                    statusLabel.setText("Search failed: " + ex.getMessage());
+                    statusLabel.setText(Messages.get("explore.ref.failed")
+                            + " " + ex.getMessage());
                 }
             }
         };

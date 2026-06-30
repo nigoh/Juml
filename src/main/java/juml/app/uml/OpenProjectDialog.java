@@ -79,9 +79,9 @@ final class OpenProjectDialog extends JDialog {
         gbc.gridy = 0;
 
         if (records.isEmpty()) {
-            center.add(new JLabel("最近開いたプロジェクトはありません"), gbc);
+            center.add(new JLabel(Messages.get("dlg.openProject.noRecent")), gbc);
         } else {
-            center.add(new JLabel("最近開いたプロジェクト:"), gbc);
+            center.add(new JLabel(Messages.get("dlg.openProject.recentLabel")), gbc);
 
             gbc.gridy = 1;
             gbc.fill = GridBagConstraints.BOTH;
@@ -108,7 +108,7 @@ final class OpenProjectDialog extends JDialog {
 
             JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
-            JButton openSelected = new JButton("開く");
+            JButton openSelected = new JButton(Messages.get("dlg.openProject.open"));
             openSelected.setEnabled(false);
             openSelected.addActionListener(e -> {
                 ProjectRecord sel = list.getSelectedValue();
@@ -120,17 +120,17 @@ final class OpenProjectDialog extends JDialog {
             });
 
             // 一覧から削除（ディスク上のプロジェクト本体は削除しない）
-            JButton remove = new JButton("一覧から削除");
+            JButton remove = new JButton(Messages.get("dlg.openProject.remove"));
             remove.setEnabled(false);
             remove.addActionListener(e -> removeSelected(list, model, onDelete));
 
-            JButton browse = new JButton("新しいフォルダを参照...");
+            JButton browse = new JButton(Messages.get("dlg.openProject.browseNew"));
             browse.addActionListener(e -> {
                 action = Action.BROWSE;
                 dispose();
             });
 
-            JButton cancel = new JButton("キャンセル");
+            JButton cancel = new JButton(Messages.get("dlg.openProject.cancel"));
             cancel.addActionListener(e -> dispose());
 
             list.addListSelectionListener(ev -> {
@@ -178,12 +178,12 @@ final class OpenProjectDialog extends JDialog {
             gbc.insets = new Insets(10, 0, 0, 0);
             JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
-            JButton browse = new JButton("フォルダを参照...");
+            JButton browse = new JButton(Messages.get("dlg.openProject.browse"));
             browse.addActionListener(e -> {
                 action = Action.BROWSE;
                 dispose();
             });
-            JButton cancel = new JButton("キャンセル");
+            JButton cancel = new JButton(Messages.get("dlg.openProject.cancel"));
             cancel.addActionListener(e -> dispose());
             buttons.add(browse);
             buttons.add(cancel);
@@ -210,10 +210,10 @@ final class OpenProjectDialog extends JDialog {
         if (sel == null) return;
         int answer = JOptionPane.showConfirmDialog(
                 this,
-                "<html>「<b>" + ProjectListRenderer.escapeHtml(sel.getName())
-                        + "</b>」を最近開いたプロジェクト一覧から削除しますか?<br>"
-                        + "<font color='#888888'>※ ディスク上のフォルダやファイルは削除されません。</font></html>",
-                "一覧から削除",
+                java.text.MessageFormat.format(
+                        Messages.get("dlg.openProject.removeConfirm"),
+                        ProjectListRenderer.escapeHtml(sel.getName())),
+                Messages.get("dlg.openProject.removeTitle"),
                 JOptionPane.OK_CANCEL_OPTION,
                 JOptionPane.WARNING_MESSAGE);
         if (answer != JOptionPane.OK_OPTION) return;
