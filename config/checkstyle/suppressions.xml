@@ -39,4 +39,9 @@
          フォーカス強調等) が増えるたびに伸びる。関係/凡例/フォーカスは別クラスへ分離済みで、
          本体は宣言・メンバー整形に集中しているため FileLength を許可する。 -->
     <suppress checks="FileLength" files="PlantUmlClassDiagram\.java" />
+
+    <!-- SvgPreviewPanel はマウス操作・ズーム・パン・キーボードバインド・フォーカスリング・
+         テキスト選択を 1 パネルに集約しており、アクセシビリティ対応でキーバインドが増加する。
+         描画・ズーム・選択ロジックは密結合のため分離より集約の方が保守しやすい。 -->
+    <suppress checks="FileLength" files="SvgPreviewPanel\.java" />
 </suppressions>
