@@ -160,6 +160,7 @@ public final class ProjectLoader {
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }
+                DiagramNotesLayer.clearClipboard();
                 projectRootSetter.accept(root);
                 treePanel.populate(cache.getAnalysis(), cache.getClasses(),
                         root.getName(), cache.getClassToModule(), cache.getIndex());
@@ -251,6 +252,7 @@ public final class ProjectLoader {
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }
+                DiagramNotesLayer.clearClipboard();
                 projectRootSetter.accept(archive);
                 treePanel.populate(cache.getAnalysis(), cache.getClasses(),
                         archive.getName(), cache.getClassToModule(), cache.getIndex());

@@ -276,6 +276,7 @@ public class UmlMainFrame extends JFrame {
         methodListPanel.setOnScopeChanged(this::updateFunctionList); // 表示範囲切替で即再生成
         memberListPanel.setOnScopeChanged(this::updateMemberList);
 
+        mainTabs.setMinimumSize(new Dimension(200, 100));
         centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treePanel, mainTabs);
         centerSplit.setResizeWeight(0.22);
         centerSplit.setDividerLocation(280);

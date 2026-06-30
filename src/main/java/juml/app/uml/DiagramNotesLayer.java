@@ -49,6 +49,11 @@ final class DiagramNotesLayer {
     /** 複製/ペースト用のクリップボード。タブ間で共有できるよう static。 */
     private static List<DiagramNote> clipboard = new ArrayList<>();
 
+    /** プロジェクト切替時にクリップボードをクリアし、旧プロジェクトの付箋混入を防ぐ。 */
+    static void clearClipboard() {
+        clipboard = new ArrayList<>();
+    }
+
     private enum Mode { NONE, MOVE, RESIZE }
 
     private final JComponent owner;

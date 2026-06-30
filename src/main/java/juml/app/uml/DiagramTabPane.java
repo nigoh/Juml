@@ -424,8 +424,9 @@ public final class DiagramTabPane {
             pushClosedTab(tab);
         }
         if (tab.activeWorker != null) {
-            tab.activeWorker.cancel(true); // 閉じるタブの描画を止めて CPU/メモリを返す
+            tab.activeWorker.cancel(true);
         }
+        tab.previewPanel.notes().setOnChange(null);
         int index = tabs.indexOfComponent(tab);
         if (index >= 0) {
             tabs.remove(index);
