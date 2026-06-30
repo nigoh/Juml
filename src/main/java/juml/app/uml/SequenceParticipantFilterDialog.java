@@ -91,9 +91,9 @@ final class SequenceParticipantFilterDialog extends JDialog {
         left.add(clearAll);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        JButton ok = new JButton("OK");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
         ok.addActionListener(e -> commit());
-        JButton cancel = new JButton("Cancel");
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         cancel.addActionListener(e -> {
             result = null;
             setVisible(false);

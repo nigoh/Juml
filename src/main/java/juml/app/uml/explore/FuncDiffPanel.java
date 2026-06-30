@@ -83,7 +83,7 @@ public class FuncDiffPanel extends JPanel {
         c.gridx = 2; form.add(makeBrowseButton(fileAField), c);
 
         addLabel(form, c, Messages.get("explore.diff.methodLabel"), 2, 0);
-        methodAField.setToolTipText("ClassName.methodName または methodName（クラス名省略可）");
+        methodAField.setToolTipText(Messages.get("explore.diff.methodHint"));
         c.gridx = 1; c.gridy = 2; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
         form.add(methodAField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
@@ -99,7 +99,7 @@ public class FuncDiffPanel extends JPanel {
         c.gridx = 2; form.add(makeBrowseButton(fileBField), c);
 
         addLabel(form, c, Messages.get("explore.diff.methodLabel"), 5, 0);
-        methodBField.setToolTipText("ClassName.methodName または methodName（クラス名省略可）");
+        methodBField.setToolTipText(Messages.get("explore.diff.methodHint"));
         c.gridx = 1; c.gridy = 5; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
         form.add(methodBField, c);
         c.fill = GridBagConstraints.NONE; c.weightx = 0;
@@ -260,7 +260,7 @@ public class FuncDiffPanel extends JPanel {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle(Messages.get("dlg.saveDiffReport"));
         fc.setAcceptAllFileFilterUsed(false);
-        fc.setFileFilter(new FileNameExtensionFilter("Markdown (*.md)", "md"));
+        fc.setFileFilter(new FileNameExtensionFilter(Messages.get("explore.diff.markdownFilter"), "md"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }

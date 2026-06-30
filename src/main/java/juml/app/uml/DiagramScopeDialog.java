@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Set;
 
 import juml.core.formats.uml.UmlGenerator;
+import juml.util.Messages;
 
 /**
  * クラス図 / パッケージ図の表示範囲 ({@link DiagramScope}) を編集するダイアログ。
@@ -59,7 +60,7 @@ public final class DiagramScopeDialog extends JDialog {
 
     public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
                               DiagramScope initial) {
-        super(owner, "Diagram Scope", ModalityType.APPLICATION_MODAL);
+        super(owner, Messages.get("dlg.scope.title"), ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
 
@@ -70,26 +71,23 @@ public final class DiagramScopeDialog extends JDialog {
         moduleList = new JList<>(modules.toArray(new String[0]));
         moduleList.setVisibleRowCount(5);
         regexField = new JTextField(20);
-        regexField.setToolTipText("Java regex on the class name, e.g. '^com\\.example\\.ui\\..*'");
+        regexField.setToolTipText(Messages.get("dlg.scope.regexTip"));
         maxClassesSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100_000, 50));
-        maxClassesSpinner.setToolTipText("0 = unlimited. Too many classes can make PlantUML slow or fail.");
+        maxClassesSpinner.setToolTipText(Messages.get("dlg.scope.maxClassesTip"));
         neighborHopsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 10, 1));
-        neighborHopsSpinner.setToolTipText(
-                "How many neighbor classes (by relation) to pull in around the selected ones.");
+        neighborHopsSpinner.setToolTipText(Messages.get("dlg.scope.neighborHopsTip"));
         presetCombo = new JComboBox<>(DiagramPreset.values());
         presetCombo.setSelectedItem(DiagramPreset.CUSTOM);
-        inheritanceCheckbox = new JCheckBox("Inheritance (extends)", true);
-        implementationCheckbox = new JCheckBox("Implementation (implements)", true);
-        usageCheckbox = new JCheckBox("Usage (field / param types)", true);
+        inheritanceCheckbox = new JCheckBox(Messages.get("dlg.scope.inheritance"), true);
+        implementationCheckbox = new JCheckBox(Messages.get("dlg.scope.implementation"), true);
+        usageCheckbox = new JCheckBox(Messages.get("dlg.scope.usage"), true);
         visibilityCombo = new JComboBox<>(VisibilityFilter.values());
         visibilityCombo.setSelectedItem(VisibilityFilter.ALL);
-        excludeExternalCheckbox = new JCheckBox(
-                "Exclude external libraries (java.*, android.*, kotlin.*, ...)");
-        parseModeFull = new JRadioButton("Full", true);
-        parseModeFull.setToolTipText("Parse method bodies too (needed for sequence / activity diagrams).");
-        parseModeHeaders = new JRadioButton("Headers only (light)");
-        parseModeHeaders.setToolTipText(
-                "Faster on huge projects: parse class/field/method signatures only, not bodies.");
+        excludeExternalCheckbox = new JCheckBox(Messages.get("dlg.scope.excludeExternal"));
+        parseModeFull = new JRadioButton(Messages.get("dlg.scope.parseFull"), true);
+        parseModeFull.setToolTipText(Messages.get("dlg.scope.parseFullTip"));
+        parseModeHeaders = new JRadioButton(Messages.get("dlg.scope.parseHeaders"));
+        parseModeHeaders.setToolTipText(Messages.get("dlg.scope.parseHeadersTip"));
         ButtonGroup pmGroup = new ButtonGroup();
         pmGroup.add(parseModeFull);
         pmGroup.add(parseModeHeaders);
@@ -143,45 +141,45 @@ public final class DiagramScopeDialog extends JDialog {
         // Preset row
         c.gridx = 0; c.gridy = 0; c.weighty = 0;
         JPanel presetRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        presetRow.add(new JLabel("Preset:"));
+        presetRow.add(new JLabel(Messages.get("dlg.scope.preset")));
         presetRow.add(Box.createHorizontalStrut(4));
         presetRow.add(presetCombo);
         p.add(presetRow, c);
 
         c.gridy = 1; c.weighty = 0;
-        p.add(new JLabel("Include packages (multi-select):"), c);
+        p.add(new JLabel(Messages.get("dlg.scope.includePackages")), c);
         c.gridy = 2; c.weighty = 1;
         p.add(new JScrollPane(packageList), c);
 
         c.gridy = 3; c.weighty = 0;
-        p.add(new JLabel("Exclude packages (multi-select):"), c);
+        p.add(new JLabel(Messages.get("dlg.scope.excludePackages")), c);
         c.gridy = 4; c.weighty = 1;
         p.add(new JScrollPane(excludePackageList), c);
 
         c.gridy = 5; c.weighty = 0;
-        p.add(new JLabel("Modules (multi-select):"), c);
+        p.add(new JLabel(Messages.get("dlg.scope.modules")), c);
         c.gridy = 6; c.weighty = 0.5;
         p.add(new JScrollPane(moduleList), c);
 
         c.gridy = 7; c.weighty = 0;
-        p.add(new JLabel("Class name regex (matches simple or qualified name):"), c);
+        p.add(new JLabel(Messages.get("dlg.scope.classRegex")), c);
         c.gridy = 8;
         p.add(regexField, c);
 
         c.gridy = 9;
         JPanel row = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        row.add(new JLabel("Max classes (0 = unlimited):"));
+        row.add(new JLabel(Messages.get("dlg.scope.maxClasses")));
         row.add(Box.createHorizontalStrut(4));
         row.add(maxClassesSpinner);
         row.add(Box.createHorizontalStrut(12));
-        row.add(new JLabel("Seed neighbor hops:"));
+        row.add(new JLabel(Messages.get("dlg.scope.neighborHops")));
         row.add(Box.createHorizontalStrut(4));
         row.add(neighborHopsSpinner);
         p.add(row, c);
 
         c.gridy = 10;
         JPanel relations = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        relations.add(new JLabel("Relation kinds:"));
+        relations.add(new JLabel(Messages.get("dlg.scope.relations")));
         relations.add(Box.createHorizontalStrut(4));
         relations.add(inheritanceCheckbox);
         relations.add(implementationCheckbox);
@@ -190,7 +188,7 @@ public final class DiagramScopeDialog extends JDialog {
 
         c.gridy = 11;
         JPanel vis = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        vis.add(new JLabel("Visibility:"));
+        vis.add(new JLabel(Messages.get("dlg.scope.visibility")));
         vis.add(Box.createHorizontalStrut(4));
         vis.add(visibilityCombo);
         vis.add(Box.createHorizontalStrut(12));
@@ -199,7 +197,7 @@ public final class DiagramScopeDialog extends JDialog {
 
         c.gridy = 12;
         JPanel mode = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        mode.add(new JLabel("Parse mode:"));
+        mode.add(new JLabel(Messages.get("dlg.scope.parseMode")));
         mode.add(Box.createHorizontalStrut(4));
         mode.add(parseModeFull);
         mode.add(parseModeHeaders);
@@ -210,7 +208,7 @@ public final class DiagramScopeDialog extends JDialog {
 
     private JPanel buildButtons() {
         JPanel bar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT));
-        JButton ok = new JButton("OK");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
         ok.addActionListener(e -> {
             // 不正な正規表現などで buildScope が null を返したら閉じずに修正を促す。
             DiagramScope scope = buildScope();
@@ -219,7 +217,7 @@ public final class DiagramScopeDialog extends JDialog {
                 dispose();
             }
         });
-        JButton cancel = new JButton("Cancel");
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         cancel.addActionListener(e -> {
             result = null;
             dispose();
@@ -273,8 +271,10 @@ public final class DiagramScopeDialog extends JDialog {
                 juml.util.AppLog.warn("DiagramScopeDialog",
                         "Invalid class-name regex in scope filter: " + regex, ex);
                 javax.swing.JOptionPane.showMessageDialog(this,
-                        "Invalid regex: " + ex.getMessage(),
-                        "Scope", javax.swing.JOptionPane.WARNING_MESSAGE);
+                        java.text.MessageFormat.format(
+                                Messages.get("dlg.scope.invalidRegex"), ex.getMessage()),
+                        Messages.get("dlg.scope.invalidRegexTitle"),
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
                 regexField.requestFocusInWindow();
                 return null; // 閉じずに修正させる
             }
