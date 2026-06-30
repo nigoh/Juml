@@ -6,6 +6,7 @@ package juml.app.uml.explore;
 import juml.app.uml.ReferenceIndexCache;
 import juml.core.impact.ImpactAnalyzer;
 import juml.core.impact.ImpactGraph;
+import juml.util.Messages;
 import juml.core.refs.ReferenceIndex;
 
 import javax.swing.BorderFactory;
@@ -60,16 +61,15 @@ public final class ImpactExplorerPanel extends JPanel {
 
         // 上部: 入力エリア
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
-        input.add(new JLabel("Symbol:"));
+        input.add(new JLabel(Messages.get("impact.symbol")));
         targetField = new JTextField(40);
-        targetField.setToolTipText("FQN (com.foo.Bar) or FQN.method (com.foo.Bar.doIt)");
+        targetField.setToolTipText(Messages.get("impact.symbolTip"));
         input.add(targetField);
-        input.add(new JLabel("Depth:"));
+        input.add(new JLabel(Messages.get("impact.depth")));
         depthSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 10, 1));
-        depthSpinner.setToolTipText(
-                "Number of reference layers to expand (1 = direct callers/users)");
+        depthSpinner.setToolTipText(Messages.get("impact.depthTip"));
         input.add(depthSpinner);
-        runButton = new JButton("Analyze");
+        runButton = new JButton(Messages.get("impact.btn.analyze"));
         input.add(runButton);
         add(input, BorderLayout.NORTH);
 
@@ -84,7 +84,7 @@ public final class ImpactExplorerPanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         // 下部: ステータス (初期は使い方を案内する)
-        statusLabel = new JLabel("Open a project, then enter a symbol to analyze impact.");
+        statusLabel = new JLabel(Messages.get("impact.status.initial"));
         statusLabel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
         add(statusLabel, BorderLayout.SOUTH);
 
@@ -101,12 +101,12 @@ public final class ImpactExplorerPanel extends JPanel {
     private void onRun(ActionEvent e) {
         final String target = targetField.getText().trim();
         if (target.isEmpty()) {
-            statusLabel.setText("Enter a symbol to analyze.");
+            statusLabel.setText(Messages.get("impact.status.enterSymbol"));
             return;
         }
         final int depth = (Integer) depthSpinner.getValue();
         runButton.setEnabled(false);
-        statusLabel.setText("Building reference index...");
+        statusLabel.setText(Messages.get("impact.status.building"));
 
         SwingWorker<ImpactGraph, Void> worker = new SwingWorker<ImpactGraph, Void>() {
             @Override
@@ -125,15 +125,17 @@ public final class ImpactExplorerPanel extends JPanel {
                 try {
                     ImpactGraph graph = get();
                     if (graph == null) {
-                        statusLabel.setText("No project loaded. Open a project first.");
+                        statusLabel.setText(Messages.get("dlg.noProject.message"));
                         return;
                     }
                     populateTree(graph);
-                    statusLabel.setText("Direct callers: " + graph.directCallerCount()
-                            + ", Transitive callers: " + graph.transitiveCallerCount());
+                    statusLabel.setText(java.text.MessageFormat.format(
+                            Messages.get("impact.status.result"),
+                            graph.directCallerCount(), graph.transitiveCallerCount()));
                 } catch (Exception ex) {
                     juml.util.AppLog.error("ImpactExplorerPanel", "Impact analysis failed", ex);
-                    statusLabel.setText("Analysis failed: " + ex.getMessage());
+                    statusLabel.setText(java.text.MessageFormat.format(
+                            Messages.get("impact.status.failed"), ex.getMessage()));
                 }
             }
         };

@@ -85,8 +85,8 @@ public class SequenceEntryDialog extends JDialog {
         JPanel south = new JPanel(new BorderLayout());
         south.add(countLabel, BorderLayout.WEST);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        JButton ok = new JButton("OK");
-        JButton cancel = new JButton("Cancel");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         buttons.add(ok);
         buttons.add(cancel);
         south.add(buttons, BorderLayout.EAST);

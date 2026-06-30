@@ -119,8 +119,8 @@ public class EntitySearchDialog extends JDialog {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         JButton drill = new JButton(juml.util.Messages.get("dlg.search.drilldown"));
         drill.setToolTipText(juml.util.Messages.get("dlg.search.drilldown.tip"));
-        JButton ok = new JButton("OK");
-        JButton cancel = new JButton("Cancel");
+        JButton ok = new JButton(Messages.get("dlg.ok"));
+        JButton cancel = new JButton(Messages.get("dlg.cancel"));
         buttons.add(drill);
         buttons.add(ok);
         buttons.add(cancel);
