@@ -546,10 +546,7 @@ public final class MenuBarBuilder {
         usage.addActionListener(e -> showUsageDialog());
         JMenuItem about = new JMenuItem(Messages.get("menubar.help.about"));
         about.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.INFO));
-        about.addActionListener(e -> JOptionPane.showMessageDialog(parentFrame,
-                Messages.get("menubar.help.about.message"),
-                Messages.get("menubar.help.about.title"),
-                JOptionPane.INFORMATION_MESSAGE));
+        about.addActionListener(e -> showAboutDialog());
         m.add(usage);
         if (cb.openLogViewer != null) {
             JMenuItem logViewer = new JMenuItem(Messages.get("menubar.help.logViewer"));
@@ -563,6 +560,22 @@ public final class MenuBarBuilder {
         m.addSeparator();
         m.add(about);
         return m;
+    }
+
+    private void showAboutDialog() {
+        String appVer = MenuBarBuilder.class.getPackage().getImplementationVersion();
+        if (appVer == null) {
+            appVer = "dev";
+        }
+        String javaVer = System.getProperty("java.version", "?");
+        String body = Messages.get("menubar.help.about.message")
+                + "\n\n" + java.text.MessageFormat.format(
+                        Messages.get("about.version"), appVer)
+                + "\n" + java.text.MessageFormat.format(
+                        Messages.get("about.java"), javaVer);
+        JOptionPane.showMessageDialog(parentFrame, body,
+                Messages.get("menubar.help.about.title"),
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void showUsageDialog() {

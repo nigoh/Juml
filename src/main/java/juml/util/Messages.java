@@ -71,4 +71,13 @@ public final class Messages {
             return key;
         }
     }
+
+    /** キーが存在すればその値を、存在しなければ {@code null} を返す。 */
+    public static String getOrNull(String key) {
+        try {
+            return bundle.getString(key);
+        } catch (MissingResourceException e) {
+            return null;
+        }
+    }
 }
