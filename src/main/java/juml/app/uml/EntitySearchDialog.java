@@ -102,6 +102,8 @@ public class EntitySearchDialog extends JDialog {
         JPanel north = new JPanel(new BorderLayout(4, 4));
         north.add(new JLabel(juml.util.Messages.get("dlg.search.filter")),
                 BorderLayout.NORTH);
+        filter.putClientProperty("JTextField.placeholderText",
+                Messages.get("dlg.search.placeholder"));
         north.add(filter, BorderLayout.CENTER);
         north.add(buildKindFilterBar(), BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
@@ -323,7 +325,9 @@ public class EntitySearchDialog extends JDialog {
         }
         treeModel.reload();
 
-        countLabel.setText(matched + " / " + allEntries.size() + " entries");
+        countLabel.setForeground(null);
+        countLabel.setText(matched + " / " + allEntries.size()
+                + " " + Messages.get("dlg.search.entries"));
 
         if (!q.isEmpty()) {
             // フィルタあり: 全展開で結果を見渡せるように
@@ -414,8 +418,8 @@ public class EntitySearchDialog extends JDialog {
                 return;
             }
         }
-        // エントリ (リーフ) 以外が選択された状態では確定できないことを明示する。
-        countLabel.setText("Select an entry (class / method / field) to open.");
+        countLabel.setForeground(java.awt.Color.RED);
+        countLabel.setText(Messages.get("dlg.search.selectEntry"));
         java.awt.Toolkit.getDefaultToolkit().beep();
     }
 

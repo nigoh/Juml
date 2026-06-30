@@ -69,8 +69,10 @@ public class SequenceEntryDialog extends JDialog {
         collectEntries(classes);
 
         JPanel north = new JPanel(new BorderLayout(4, 4));
-        north.add(new JLabel("Filter (package / class / method substring):"),
+        north.add(new JLabel(Messages.get("dlg.seqEntry.filterLabel")),
                 BorderLayout.NORTH);
+        filter.putClientProperty("JTextField.placeholderText",
+                Messages.get("dlg.seqEntry.filterPlaceholder"));
         north.add(filter, BorderLayout.CENTER);
         add(north, BorderLayout.NORTH);
 
@@ -209,7 +211,9 @@ public class SequenceEntryDialog extends JDialog {
         }
         treeModel.reload();
 
-        countLabel.setText(matched + " / " + allEntries.size() + " methods");
+        countLabel.setForeground(null);
+        countLabel.setText(matched + " / " + allEntries.size()
+                + " " + Messages.get("dlg.seqEntry.methods"));
 
         // フィルタあり: 全展開してマッチ結果を見渡せるように
         // フィルタなし: パッケージのみ展開し、クラス以下は折りたたんで一覧性を確保
@@ -276,8 +280,8 @@ public class SequenceEntryDialog extends JDialog {
                 return;
             }
         }
-        // メソッド (リーフ) 以外が選択された状態では確定できないことを明示する。
-        countLabel.setText("Select a method (Class.method) to open.");
+        countLabel.setForeground(java.awt.Color.RED);
+        countLabel.setText(Messages.get("dlg.seqEntry.selectMethod"));
         java.awt.Toolkit.getDefaultToolkit().beep();
     }
 

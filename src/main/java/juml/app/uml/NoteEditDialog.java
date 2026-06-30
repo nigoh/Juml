@@ -125,8 +125,8 @@ final class NoteEditDialog {
         JPanel buttonRow = new JPanel(new BorderLayout());
         buttonRow.add(hint, BorderLayout.WEST);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
-        buttons.add(cancel);
         buttons.add(ok);
+        buttons.add(cancel);
         buttonRow.add(buttons, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout());
         south.add(tagsRow, BorderLayout.NORTH);
