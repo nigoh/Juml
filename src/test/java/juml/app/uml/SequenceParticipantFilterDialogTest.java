@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
 import org.assertj.swing.edt.GuiActionRunner;
 import org.junit.After;
 import org.junit.Assume;
@@ -169,7 +170,7 @@ public class SequenceParticipantFilterDialogTest {
     public void cancelLeavesResultNull() throws Exception {
         create(abc(), Collections.emptySet());
         assertNull("commit 前 / cancel 時は result は null", result());
-        JButton cancel = findButton(dlg, "Cancel");
+        JButton cancel = findButton(dlg, Messages.get("dlg.cancel"));
         GuiActionRunner.execute(() -> {
             cancel.doClick();
             return null;
