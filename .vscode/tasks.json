@@ -1,0 +1,29 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "./gradlew build"
+        },
+        {
+            "label": "run",
+            "type": "shell",
+            "command": "./gradlew run",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "./gradlew clean"
+        },
+        {
+            "label": "check",
+            "type": "shell",
+            "command": "./gradlew check"
+        }
+    ]
+}

@@ -1,0 +1,717 @@
+/* Juml documentation site — shared styles */
+:root {
+  --bg: #0f1115;
+  --bg-soft: #161922;
+  --bg-card: #1b1f2a;
+  --bg-code: #11141b;
+  --border: #2a2f3d;
+  --text: #d7dce5;
+  --text-dim: #9aa3b2;
+  --text-faint: #6b7383;
+  --accent: #5eb3f6;
+  --accent-2: #7ee0c0;
+  --accent-3: #f6a35e;
+  --warn: #f6c95e;
+  --danger: #f2766e;
+  --pill-bg: #232838;
+  --sidebar-w: 280px;
+  --maxw: 1080px;
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f8fa; --bg-soft: #ffffff; --bg-card: #ffffff; --bg-code: #f0f2f6;
+    --border: #e1e5ee; --text: #1d2330; --text-dim: #4c5566; --text-faint: #8a93a4;
+    --accent: #1f72c8; --accent-2: #138a6b; --accent-3: #c8721f; --warn: #b8870f;
+    --danger: #c83c34; --pill-bg: #eef1f7;
+  }
+}
+* { box-sizing: border-box; }
+/* 横方向のはみ出しはルートでクリップする（全ページ共通の防御）。
+   index の装飾グロー（.hero-brand::before, width:460px）や、モバイルの
+   オフキャンバス・サイドバーが狭い画面でビューポートを超え、ページ全体が
+   左にずれて左端が切れる問題を防ぐ。clip は hidden と違いスクロール
+   コンテナを生成しないため、アンカースクロール / scroll-padding-top は維持される。 */
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; overflow-x: clip; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 15px; line-height: 1.65;
+  -webkit-font-smoothing: antialiased; overflow-x: clip; max-width: 100%;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, kbd { font-family: var(--mono); font-size: .86em; }
+code:not(pre code) {
+  background: var(--bg-code); padding: .12em .42em; border-radius: 5px;
+  border: 1px solid var(--border); color: var(--accent-2); white-space: nowrap;
+}
+kbd {
+  background: var(--pill-bg); border: 1px solid var(--border);
+  border-bottom-width: 2px; border-radius: 5px; padding: .1em .5em; font-size: .8em;
+  color: var(--text); white-space: nowrap;
+}
+pre {
+  background: var(--bg-code); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.1rem; overflow-x: auto; position: relative; margin: 1rem 0;
+}
+pre code { color: var(--text); font-size: .84em; line-height: 1.55; }
+.copy-btn {
+  position: absolute; top: .55rem; right: .55rem; background: var(--pill-bg);
+  border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px;
+  font-size: .72rem; padding: .25em .6em; cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Site nav (top bar across all pages) */
+.site-nav {
+  position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: .3rem;
+  background: color-mix(in srgb, var(--bg-soft) 92%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border); padding: .55rem clamp(.8rem, 3vw, 2rem); flex-wrap: wrap;
+}
+.site-nav .logo { font-weight: 700; font-size: 1.15rem; letter-spacing: .5px; margin-right: .8rem; color: var(--text); }
+.site-nav .logo small { font-size: .62rem; color: var(--text-faint); font-weight: 400; vertical-align: super; margin-left: .2rem; }
+.site-nav a.np {
+  padding: .3rem .75rem; border-radius: 7px; color: var(--text-dim); font-size: .86rem;
+}
+.site-nav a.np:hover { background: var(--pill-bg); color: var(--text); text-decoration: none; }
+.site-nav a.np.current { background: var(--pill-bg); color: var(--accent); font-weight: 600; }
+.site-nav .spacer { flex: 1 1 auto; }
+.site-nav .gh { font-size: .82rem; color: var(--text-faint); }
+
+/* Layout */
+.layout { display: flex; align-items: flex-start; }
+.sidebar {
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); position: sticky; top: 3.1rem;
+  height: calc(100vh - 3.1rem); overflow-y: auto; border-right: 1px solid var(--border);
+  background: var(--bg-soft); padding: 1.3rem 1rem 3rem;
+}
+.sidebar nav a {
+  display: block; padding: .32rem .6rem; border-radius: 7px; color: var(--text-dim);
+  font-size: .87rem; line-height: 1.35;
+}
+.sidebar nav a:hover { background: var(--pill-bg); text-decoration: none; color: var(--text); }
+.sidebar nav a.active { background: var(--pill-bg); color: var(--accent); font-weight: 600; }
+.sidebar nav a.sub { padding-left: 1.4rem; font-size: .82rem; }
+.sidebar nav .group { font-size: .68rem; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--text-faint); margin: 1.1rem .6rem .3rem; }
+
+.content { flex: 1 1 auto; min-width: 0; padding: 2.2rem clamp(1rem, 4vw, 3rem) 6rem; }
+.content-inner { max-width: var(--maxw); margin: 0 auto; }
+.content.narrow .content-inner { max-width: 880px; }
+
+/* Hero */
+.hero { margin-bottom: 2.5rem; }
+.hero h1 { font-size: clamp(1.9rem, 4vw, 2.7rem); margin: 0 0 .4rem; letter-spacing: -.5px; }
+.hero .tag { color: var(--text-dim); font-size: 1.05rem; margin: 0 0 1rem; }
+.badges { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
+.badge {
+  background: var(--pill-bg); border: 1px solid var(--border); border-radius: 999px;
+  padding: .25em .8em; font-size: .76rem; color: var(--text-dim);
+}
+.badge b { color: var(--accent-2); }
+
+section { margin: 0 0 3rem; scroll-margin-top: 4.5rem; }
+section > h2 {
+  font-size: 1.5rem; margin: 2.6rem 0 1rem; padding-bottom: .45rem;
+  border-bottom: 1px solid var(--border); letter-spacing: -.3px;
+}
+h3 { font-size: 1.12rem; margin: 1.8rem 0 .7rem; color: var(--text); }
+h4 { font-size: .98rem; margin: 1.3rem 0 .5rem; color: var(--text-dim); }
+p { margin: .6rem 0; }
+ul, ol { margin: .6rem 0; padding-left: 1.4rem; }
+li { margin: .25rem 0; }
+blockquote {
+  border-left: 3px solid var(--accent); background: var(--bg-soft); border-radius: 0 8px 8px 0;
+  padding: .5rem 1rem; margin: 1.1rem 0; color: var(--text-dim);
+}
+blockquote p { margin: .3rem 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+/* Cards grid */
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); margin: 1.2rem 0; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.1rem; display: block; color: inherit;
+}
+a.card:hover { border-color: var(--accent); text-decoration: none; transform: translateY(-2px); transition: .15s; }
+.card h4 { margin: 0 0 .35rem; color: var(--accent); font-size: .95rem; }
+.card p { margin: 0; font-size: .85rem; color: var(--text-dim); }
+.stat { font-size: 1.7rem; font-weight: 700; color: var(--text); line-height: 1.1; }
+.stat small { font-size: .8rem; color: var(--text-faint); font-weight: 400; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: 1.1rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+th, td { text-align: left; padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+thead th { background: var(--bg-soft); position: sticky; top: 0; font-weight: 600; color: var(--text); white-space: nowrap; z-index: 1; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-soft); }
+td code { white-space: nowrap; }
+.src { color: var(--text-faint); font-family: var(--mono); font-size: .76rem; }
+
+/* Callouts */
+.note, .warn, .tip {
+  border-left: 3px solid var(--accent); background: var(--bg-soft); border-radius: 0 8px 8px 0;
+  padding: .7rem 1rem; margin: 1.1rem 0; font-size: .88rem;
+}
+.warn { border-left-color: var(--warn); }
+.tip { border-left-color: var(--accent-2); }
+.note b, .warn b, .tip b { color: var(--text); }
+
+/* Pills */
+.pill { display: inline-block; background: var(--pill-bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: .05em .5em; font-family: var(--mono); font-size: .78rem; margin: .12em .12em; color: var(--accent-2); }
+
+/* Filter box */
+.filter {
+  width: 100%; max-width: 420px; background: var(--bg-soft); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: .55em .85em; font-size: .9rem; margin: .6rem 0 1rem;
+  font-family: var(--sans);
+}
+.filter:focus { outline: none; border-color: var(--accent); }
+tr.hidden { display: none; }
+.count-tag { color: var(--text-faint); font-size: .8rem; margin-left: .6rem; }
+
+details { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius); padding: .3rem 1rem; margin: 1rem 0; }
+details > summary { cursor: pointer; font-weight: 600; padding: .55rem 0; color: var(--text); }
+details[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: .6rem; }
+
+footer { border-top: 1px solid var(--border); margin-top: 3rem; padding-top: 1.4rem; color: var(--text-faint); font-size: .82rem; }
+
+.diagram-svg { width: 100%; max-width: 760px; margin: 1.2rem auto; display: block; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* ── UML figures (class / sequence diagrams) ─────────────────────────────
+   手描きインライン SVG 用の共有スタイル。配色は既存 .diagram-svg 系を踏襲。
+   各 SVG は <defs> に矢じり marker のみ持ち、色・線は下記クラスを参照する。 */
+figure.uml-fig { margin: 1.4rem auto; max-width: 860px; }
+figure.uml-fig .diagram-svg { margin: 0 auto .55rem; max-width: 100%; }
+figure.uml-fig figcaption {
+  color: var(--text-dim); font-size: .82rem; text-align: center; line-height: 1.5;
+}
+figure.uml-fig figcaption b { color: var(--accent); font-weight: 600; }
+
+/* SVG 内テキスト/図形の共通色（.diagram-svg 配下にスコープ） */
+.diagram-svg text { fill: var(--text); }
+.diagram-svg .u-dim { fill: var(--text-dim); }
+.diagram-svg .u-faint { fill: var(--text-faint); }
+.diagram-svg .u-acc { fill: var(--accent); }
+.diagram-svg .u-acc2 { fill: var(--accent-2); }
+.diagram-svg .u-warn { fill: var(--warn); }
+
+/* クラス図: クラスボックス（3 段コンパートメント） */
+.diagram-svg .u-cls { fill: var(--bg-soft); stroke: var(--border); }
+.diagram-svg .u-cls-hdr { fill: var(--pill-bg); stroke: var(--border); }
+.diagram-svg .u-name { fill: var(--text); font-weight: 600; }
+.diagram-svg .u-stereo { fill: var(--accent-3); font-style: italic; }
+.diagram-svg .u-member { fill: var(--text-dim); }
+.diagram-svg .u-vis { fill: var(--accent-2); font-weight: 600; }
+.diagram-svg .u-div { stroke: var(--border); stroke-width: 1; }
+
+/* 関係線（継承/実装/関連/依存/コンポジション） */
+.diagram-svg .u-rel { stroke: var(--accent); stroke-width: 1.3; fill: none; }
+.diagram-svg .u-rel-dash { stroke: var(--accent); stroke-width: 1.3; fill: none; stroke-dasharray: 5 3; }
+.diagram-svg .u-rel-lbl { fill: var(--text-faint); font-size: 10px; }
+.diagram-svg .u-mult { fill: var(--accent-2); font-size: 10px; }
+
+/* シーケンス図 */
+.diagram-svg .u-actor { fill: var(--pill-bg); stroke: var(--border); }
+.diagram-svg .u-life { stroke: var(--border); stroke-width: 1; stroke-dasharray: 4 4; }
+.diagram-svg .u-act { fill: var(--bg-card); stroke: var(--accent); stroke-width: 1; }
+.diagram-svg .u-msg { stroke: var(--accent); stroke-width: 1.3; fill: none; }
+.diagram-svg .u-ret { stroke: var(--text-faint); stroke-width: 1.1; fill: none; stroke-dasharray: 5 3; }
+.diagram-svg .u-msg-lbl { fill: var(--text); font-size: 10.5px; }
+.diagram-svg .u-self { fill: none; stroke: var(--accent); stroke-width: 1.3; }
+
+/* 状態遷移図（state machine） */
+.diagram-svg .u-state { fill: var(--bg-soft); stroke: var(--accent); stroke-width: 1.2; }
+.diagram-svg .u-state-nm { fill: var(--text); font-weight: 600; }
+.diagram-svg .u-state-sub { fill: var(--text-dim); }
+.diagram-svg .u-init { fill: var(--text); stroke: none; }
+.diagram-svg .u-final-o { fill: none; stroke: var(--text); stroke-width: 1.4; }
+.diagram-svg .u-final-i { fill: var(--text); stroke: none; }
+.diagram-svg .u-trans { stroke: var(--accent); stroke-width: 1.3; fill: none; }
+.diagram-svg .u-trans-lbl { fill: var(--text-dim); font-size: 10px; }
+
+/* アクティビティ図（activity） */
+.diagram-svg .u-act-node { fill: var(--bg-soft); stroke: var(--accent-2); stroke-width: 1.2; }
+.diagram-svg .u-act-nm { fill: var(--text); }
+.diagram-svg .u-dec { fill: var(--bg-card); stroke: var(--accent-3); stroke-width: 1.2; }
+.diagram-svg .u-start { fill: var(--text); stroke: none; }
+.diagram-svg .u-end-o { fill: none; stroke: var(--text); stroke-width: 1.6; }
+.diagram-svg .u-end-i { fill: var(--text); stroke: none; }
+
+/* ER 図（entity-relationship: SQLite index.db スキーマ）
+   エンティティ箱はクラス図の u-cls 系に近いが、行の種別（PK/FK/UNIQUE/通常）で
+   色分けし、関係線は crow's-foot marker で多重度を示す。 */
+.diagram-svg .u-ent { fill: var(--bg-soft); stroke: var(--border); }
+.diagram-svg .u-ent-hdr { fill: var(--pill-bg); stroke: var(--border); }
+.diagram-svg .u-ent-nm { fill: var(--text); font-weight: 600; }
+.diagram-svg .u-ent-div { stroke: var(--border); stroke-width: 1; }
+.diagram-svg .u-pk { fill: var(--accent); font-weight: 600; }     /* 主キー行 */
+.diagram-svg .u-fk { fill: var(--accent-2); }                     /* 外部キー行 */
+.diagram-svg .u-uq { fill: var(--accent-3); }                     /* UNIQUE 行 */
+.diagram-svg .u-col { fill: var(--text-dim); }                    /* 通常カラム */
+.diagram-svg .u-keytag { font-size: 8.5px; font-weight: 700; }
+/* 関係線: 実線 = ON DELETE CASCADE、破線 = SET NULL / 弱参照 */
+.diagram-svg .u-er-rel { stroke: var(--accent); stroke-width: 1.25; fill: none; }
+.diagram-svg .u-er-rel-weak { stroke: var(--text-faint); stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; }
+.diagram-svg .u-card { fill: var(--accent-2); font-size: 10px; }
+/* crow's-foot marker 用（多: 三叉、1: 縦棒） */
+.diagram-svg .mk-crow { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+.diagram-svg .mk-crow-weak { fill: none; stroke: var(--text-faint); stroke-width: 1.2; }
+.diagram-svg .mk-one { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+
+/* alt / loop / opt などの結合フラグメント枠 */
+.diagram-svg .u-frame { fill: none; stroke: var(--accent-3); stroke-width: 1; stroke-dasharray: 3 3; }
+.diagram-svg .u-frame-tab { fill: var(--bg-soft); stroke: var(--accent-3); stroke-width: 1; }
+.diagram-svg .u-frame-op { fill: var(--accent-3); font-size: 10px; font-weight: 700; }
+.diagram-svg .u-guard { fill: var(--text-dim); font-size: 10px; }
+.diagram-svg .u-frame-div { stroke: var(--accent-3); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* 矢じり marker 用の共通色（各 SVG は <defs> に固有 id の marker を置き、
+   その中の <path> へ下記クラスを付ける） */
+.diagram-svg .mk-tri { fill: var(--bg-soft); stroke: var(--accent); stroke-width: 1; }
+.diagram-svg .mk-open { fill: none; stroke: var(--accent); stroke-width: 1.3; }
+.diagram-svg .mk-fill { fill: var(--accent); }
+.diagram-svg .mk-dia { fill: var(--accent); stroke: var(--accent); }
+.diagram-svg .mk-ret { fill: none; stroke: var(--text-faint); stroke-width: 1.1; }
+.diagram-svg .mk-frame { fill: none; stroke: var(--accent-3); stroke-width: 1.1; }
+
+/* 凡例ブロック（各ページ・図種ごと） */
+.uml-legend {
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: .7rem 1rem; margin: 1rem auto 1.4rem; max-width: 860px; font-size: .82rem;
+}
+.uml-legend h4 { margin: 0 0 .5rem; color: var(--text-dim); font-size: .8rem;
+  text-transform: uppercase; letter-spacing: .6px; }
+.uml-legend .legend-grid { display: grid; gap: .35rem .9rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.uml-legend .li { display: flex; align-items: center; gap: .55rem; color: var(--text-dim); }
+.uml-legend .li svg { flex: 0 0 auto; }
+.uml-legend code { white-space: nowrap; }
+/* 凡例内のミニ SVG は .diagram-svg の width:100% を打ち消し、属性サイズを保つ */
+.uml-legend .diagram-svg { width: auto; max-width: none; flex: 0 0 auto; }
+
+/* ── 図のタップ拡大（ライトボックス） ───────────────────────────── */
+figure.uml-fig .diagram-svg { cursor: zoom-in; }
+.uml-lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.88);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.uml-lightbox:not(.open) { display: none; }
+.uml-lightbox .lb-scroll { position: absolute; inset: 0; overflow: auto;
+  -webkit-overflow-scrolling: touch; padding: 3rem .5rem 1rem; }
+.uml-lightbox svg.diagram-svg { max-width: none; height: auto; margin: 0 auto; cursor: default; }
+.uml-lightbox .lb-close { position: fixed; top: .5rem; right: .6rem; z-index: 201;
+  background: var(--pill-bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; font-size: 1.4rem; line-height: 1; padding: .05em .5em; cursor: pointer; }
+.uml-lightbox .lb-close:hover { color: var(--accent); border-color: var(--accent); }
+
+/* mobile */
+.menu-btn { display: none; background: var(--pill-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: .3em .65em; font-size: 1rem; cursor: pointer; }
+.backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 45; }
+.backdrop.show { display: block; }
+@media (max-width: 880px) {
+  .menu-btn { display: inline-block; }
+  .sidebar { position: fixed; left: 0; top: 0; height: 100vh; transform: translateX(-100%); transition: transform .2s; z-index: 50; box-shadow: 0 0 40px rgba(0,0,0,.4); }
+  .sidebar.open { transform: translateX(0); }
+  .site-nav a.np:not(.current) { display: none; }
+  /* Long inline tokens must wrap on phones, otherwise they force horizontal
+     scrolling and the page content looks shifted / cut off on the left. */
+  body { overflow-wrap: anywhere; }
+  code:not(pre code), .pill, kbd, td code {
+    white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+  }
+
+  /* 図はタップで拡大できる旨をキャプションに添える */
+  figure.uml-fig figcaption::after { content: " 🔍 タップで拡大"; color: var(--accent); white-space: nowrap; }
+
+  /* テーブルを 1 行 = 1 カードに再構成（app.js が data-label を付与） */
+  .table-wrap.cardify { overflow: visible; border: none; border-radius: 0; }
+  .table-wrap.cardify table, .table-wrap.cardify tbody,
+  .table-wrap.cardify tr, .table-wrap.cardify td { display: block; width: auto; }
+  .table-wrap.cardify thead { display: none; }
+  .table-wrap.cardify tr {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: .55rem .85rem; margin: 0 0 .7rem;
+  }
+  .table-wrap.cardify tr:hover { background: var(--bg-card); }
+  .table-wrap.cardify tr.hidden { display: none; }
+  .table-wrap.cardify td { border: none; padding: .22rem 0; }
+  .table-wrap.cardify td::before {
+    content: attr(data-label); display: block; color: var(--text-faint);
+    font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+    margin-bottom: .05rem;
+  }
+  .table-wrap.cardify td:first-child { color: var(--text); font-weight: 600; }
+  .table-wrap.cardify td:first-child::before { color: var(--accent); }
+  .table-wrap.cardify td:empty { display: none; }
+}
+
+/* ============================================================================
+   v2 試作スタイル（body.v2 にのみ適用）— 視覚階層 / 可読性 / 認知負荷 /
+   配色・アクセシビリティ / ナビゲーション / 図の見せ方を強化する。
+   コンテナ幅(1080)は変えず、本文の measure だけ快適幅に絞る。
+   ========================================================================== */
+
+/* --- 読書進捗バー（最上部） --- */
+.read-progress {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  z-index: 80; transition: width .08s linear; pointer-events: none;
+}
+/* --- トップへ戻る --- */
+.to-top {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 70;
+  width: 42px; height: 42px; border-radius: 50%;
+  background: var(--pill-bg); color: var(--text); border: 1px solid var(--border);
+  font-size: 1.2rem; cursor: pointer; opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s, border-color .2s; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+}
+.to-top.show { opacity: 1; transform: translateY(0); }
+.to-top:hover { border-color: var(--accent); color: var(--accent); }
+
+body.v2 {
+  font-size: 15.5px; line-height: 1.78;
+}
+
+/* --- 可読性: 本文(段落/リスト)の measure を快適幅に。表・図・コードは全幅維持 --- */
+body.v2 main.content section > p,
+body.v2 main.content section > ul,
+body.v2 main.content section > ol,
+body.v2 main.content .content-inner > p {
+  max-width: 44em;
+}
+body.v2 p { letter-spacing: .01em; }
+/* リード文: 各 section 見出し直後の段落を少し大きく・淡く */
+body.v2 section > h2 + p { font-size: 1.06rem; color: var(--text-dim); max-width: 46em; }
+
+/* --- 視覚階層: h2 / h3 / h4 を明確化 --- */
+body.v2 section > h2 {
+  font-size: 1.7rem; margin: 3.4rem 0 1.1rem; padding: 0 0 .5rem .9rem;
+  border-bottom: 1px solid var(--border); position: relative; letter-spacing: -.2px;
+}
+body.v2 section > h2::before {
+  content: ""; position: absolute; left: 0; top: .15em; bottom: .55rem; width: 5px;
+  border-radius: 3px; background: linear-gradient(var(--accent), var(--accent-2));
+}
+body.v2 h3 {
+  font-size: 1.22rem; font-weight: 650; color: var(--text); margin: 2.1rem 0 .7rem;
+  padding-left: .7rem; border-left: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+}
+body.v2 section > h4, body.v2 main.content .content-inner > h4 {
+  font-size: .82rem; color: var(--accent-2); text-transform: uppercase;
+  letter-spacing: .8px; margin: 1.5rem 0 .5rem; font-weight: 700;
+}
+
+/* --- 見出しのパーマリンク（# アンカー） --- */
+body.v2 .anchor {
+  margin-left: .4rem; color: var(--text-faint); opacity: 0; text-decoration: none;
+  font-weight: 400; transition: opacity .15s;
+}
+body.v2 h2:hover .anchor, body.v2 h3:hover .anchor, body.v2 .anchor:focus { opacity: 1; }
+body.v2 .anchor:hover { color: var(--accent); }
+
+/* --- セクション間リズム --- */
+body.v2 section { margin-bottom: 3.6rem; }
+
+/* --- ナビ: サイドバー現在地を強調 --- */
+body.v2 .sidebar nav a { position: relative; }
+body.v2 .sidebar nav a.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+}
+body.v2 .sidebar nav a.active::before {
+  content: ""; position: absolute; left: -1rem; top: 4px; bottom: 4px; width: 3px;
+  border-radius: 2px; background: var(--accent);
+}
+body.v2 .sidebar { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* --- 認知負荷: テーブルを軽く・走査しやすく --- */
+body.v2 .table-wrap { border-radius: 12px; }
+body.v2 table { font-size: .88rem; }
+body.v2 thead th {
+  background: var(--bg-soft); font-size: .74rem; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-dim);
+}
+body.v2 th, body.v2 td { padding: .6rem .9rem; }
+body.v2 tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
+body.v2 tbody tr:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* --- callout にアイコンを付与して種別を即判別 --- */
+body.v2 .note, body.v2 .tip, body.v2 .warn {
+  position: relative; padding-left: 2.6rem; border-radius: 0 10px 10px 0;
+}
+body.v2 .note::before, body.v2 .tip::before, body.v2 .warn::before {
+  position: absolute; left: .9rem; top: .65rem; font-size: 1rem; line-height: 1;
+}
+body.v2 .note::before { content: "ℹ"; color: var(--accent); }
+body.v2 .tip::before  { content: "💡"; }
+body.v2 .warn::before { content: "⚠"; color: var(--warn); }
+
+/* --- 配色 / アクセシビリティ --- */
+body.v2 .badge, body.v2 .src, body.v2 .count-tag { color: var(--text-dim); }
+body.v2 a:focus-visible, body.v2 button:focus-visible,
+body.v2 .sidebar nav a:focus-visible, body.v2 .site-nav a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 5px;
+}
+
+/* --- 図: 周囲と分離し、拡大できることを明示 --- */
+body.v2 figure.uml-fig {
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
+  padding: 1rem 1rem .4rem; margin: 2rem auto;
+}
+body.v2 figure.uml-fig .diagram-svg { background: var(--bg-card); border-radius: 10px; }
+body.v2 figure.uml-fig figcaption { margin-top: .7rem; }
+@media (min-width: 881px) {
+  body.v2 figure.uml-fig figcaption::after {
+    content: " 🔍 クリックで拡大"; color: var(--accent); white-space: nowrap;
+  }
+}
+
+/* --- モーション配慮 --- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .read-progress, .to-top, body.v2 .anchor { transition: none; }
+}
+
+/* --- モバイルの見出しを少し抑える（縦の消費を軽減） --- */
+@media (max-width: 880px) {
+  body.v2 section > h2 { font-size: 1.4rem; margin-top: 2.4rem; }
+  body.v2 h3 { font-size: 1.1rem; }
+  body.v2 main.content section > p,
+  body.v2 main.content .content-inner > p { max-width: none; }
+  body.v2 .to-top { right: .7rem; bottom: .7rem; }
+}
+
+/* ====================== v2 大胆版（差し色で鮮やかに） ====================== */
+
+/* --- 装飾ヒーロー（index）: 空手家ピクセルロゴ + グラデ文字 + フロア + アクセント光 --- */
+body.v2 .hero-brand {
+  display: flex; align-items: center; gap: clamp(1.2rem, 4vw, 2.6rem);
+  position: relative; padding: 1.4rem 0 1rem; margin-bottom: 2.4rem;
+}
+body.v2 .hero-brand::before {
+  content: ""; position: absolute; left: -8%; top: -40%; width: 460px; height: 320px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+body.v2 .hero-logo { position: relative; z-index: 1; flex: 0 0 auto; }
+body.v2 .karateka {
+  width: clamp(96px, 13vw, 150px); height: auto; display: block;
+  filter: drop-shadow(0 8px 22px rgba(0,0,0,.55));
+}
+body.v2 .karateka .k-gi  { fill: var(--text); }
+body.v2 .karateka .k-acc { fill: var(--danger); }
+body.v2 .karateka .k-out { fill: var(--border); }
+body.v2 .hero-floor {
+  display: block; height: 6px; margin: 8px auto 0; width: 78%; border-radius: 3px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent), transparent);
+}
+body.v2 .hero-text { position: relative; z-index: 1; min-width: 0; }
+body.v2 .hero-brand h1 { margin: 0 0 .35rem; }
+body.v2 .grad {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+@media (max-width: 560px) {
+  body.v2 .hero-brand { flex-direction: column; align-items: flex-start; }
+}
+
+/* --- Braille ASCII ロゴ（index ヒーロー）: サイバーパンク・グリッチ ---
+   点字（U+2800–28FF）で組んだ "JUML" ワードマーク。ネオン発光 + RGB ずれ
+   （chromatic aberration）+ 走査線 + フリッカーで cyberpunk 調に animate する。
+   prefers-reduced-motion では静止＋ネオン発光のみに落とす。 */
+.ascii-logo-wrap {
+  position: relative; display: flex; justify-content: center;
+  margin: .2rem 0 1.6rem; overflow: hidden;
+}
+.ascii-logo {
+  margin: 0; white-space: pre; font-weight: 700; line-height: 1.0; letter-spacing: 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: clamp(6px, 2.05vw, 13px);
+  color: var(--accent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 78%, transparent),
+               0 0 16px color-mix(in srgb, var(--accent) 42%, transparent);
+  animation: jml-flicker 5.5s infinite, jml-rgb 3.4s infinite, jml-shift 6.5s infinite;
+  will-change: transform, opacity, text-shadow;
+}
+/* 走査線（scanline）オーバーレイ */
+.ascii-logo-wrap::after {
+  content: ""; position: absolute; inset: -12% 0; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 2px,
+              color-mix(in srgb, var(--bg) 60%, transparent) 2px 3px);
+  opacity: .45; animation: jml-scan 9s linear infinite;
+}
+/* 上から下へ流れるネオン帯 */
+.ascii-logo-wrap::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -30%; height: 30%; z-index: 1; pointer-events: none;
+  background: linear-gradient(180deg, transparent,
+              color-mix(in srgb, var(--accent-2) 28%, transparent), transparent);
+  animation: jml-band 6.5s ease-in-out infinite;
+}
+@keyframes jml-flicker {
+  0%, 39%, 43%, 69%, 71%, 100% { opacity: 1; }
+  41% { opacity: .55; } 70% { opacity: .72; }
+}
+@keyframes jml-rgb {
+  0%, 100% { text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 78%, transparent),
+                          0 0 16px color-mix(in srgb, var(--accent) 42%, transparent); }
+  46% { text-shadow: -2px 0 #ff2d55, 2px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+  50% { text-shadow:  2px 0 #ff2d55, -2px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+  54% { text-shadow: -1px 0 #ff2d55, 1px 0 #00e5ff, 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent); }
+}
+@keyframes jml-shift {
+  0%, 44%, 60%, 100% { transform: translateX(0); }
+  46% { transform: translateX(-3px); }
+  48% { transform: translate(3px, 1px); }
+  52% { transform: translateX(-1px); }
+}
+@keyframes jml-scan { 0% { background-position: 0 0; } 100% { background-position: 0 120px; } }
+@keyframes jml-band { 0% { top: -30%; } 55%, 100% { top: 120%; } }
+@media (prefers-reduced-motion: reduce) {
+  .ascii-logo { animation: none; }
+  .ascii-logo-wrap::after, .ascii-logo-wrap::before { animation: none; }
+  .ascii-logo-wrap::before { display: none; }
+}
+
+/* --- 踊る柔道家（点字フリップブック）＋ JUML ロゴ の横並びロックアップ ---
+   柔道家は 6 フレームの点字を重ね、staggered animation-delay で 1 枚ずつ
+   表示する CSS スプライト方式（JS 不要）。GIF のように踊る。 */
+.logo-lockup {
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(.5rem, 2.4vw, 1.6rem); margin: .3rem 0 1.6rem; flex-wrap: nowrap;
+}
+.logo-lockup .ascii-logo-wrap { margin: 0; }
+.judoka {
+  position: relative; flex: 0 0 auto;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: clamp(5px, 1.7vw, 11px); line-height: 1.0; font-weight: 700; letter-spacing: 0;
+  color: var(--accent-2);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent-2) 70%, transparent),
+               0 0 13px color-mix(in srgb, var(--accent-2) 35%, transparent);
+}
+.judoka .jframe {
+  margin: 0; white-space: pre; opacity: 0;
+  animation: jd-cycle 1.5s steps(1, end) infinite;
+}
+.judoka .jframe:first-child { position: relative; }      /* 最初の1枚が箱サイズを決める */
+.judoka .jframe:not(:first-child) { position: absolute; inset: 0; }
+@keyframes jd-cycle { 0%, 16.66% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .judoka .jframe { animation: none; opacity: 0; }
+  .judoka .jframe:first-child { opacity: 1; }
+}
+@media (max-width: 420px) {
+  .logo-lockup { gap: .4rem; }
+}
+
+/* --- セクションのカテゴリ色（app.js が TOC グループ順に --cat を付与） --- */
+body.v2 section { --cat: var(--accent); }
+body.v2 section > h2::before { background: var(--cat); }
+body.v2 h3 { border-left-color: color-mix(in srgb, var(--cat) 65%, transparent); }
+/* サイドバー: グループ見出しとリンクにカテゴリ色 */
+body.v2 .sidebar nav .group { color: color-mix(in srgb, var(--cat, var(--text-faint)) 80%, var(--text-faint)); }
+body.v2 .sidebar nav a.active { background: color-mix(in srgb, var(--cat, var(--accent)) 16%, transparent); color: var(--cat, var(--accent)); }
+body.v2 .sidebar nav a.active::before { background: var(--cat, var(--accent)); }
+
+/* --- callout を色付きパネルに（淡い色面 + 強い左帯 + アイコン） --- */
+body.v2 .note, body.v2 .tip, body.v2 .warn {
+  border-left-width: 4px; background: color-mix(in srgb, var(--accent) 9%, var(--bg-soft));
+}
+body.v2 .note { border-left-color: var(--accent); }
+body.v2 .tip  { background: color-mix(in srgb, var(--accent-2) 10%, var(--bg-soft)); border-left-color: var(--accent-2); }
+body.v2 .warn { background: color-mix(in srgb, var(--warn) 12%, var(--bg-soft)); border-left-color: var(--warn); }
+
+/* --- コードブロックを装飾（ヘッダ帯 + 言語ラベル + 信号ドット） --- */
+body.v2 pre { padding-top: 2.4rem; }
+body.v2 pre::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1.9rem;
+  background: var(--bg-soft); border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+body.v2 pre::after {
+  content: "•••"; position: absolute; top: .15rem; left: .8rem; letter-spacing: .15em;
+  color: var(--accent-3); font-size: .9rem; line-height: 1.9rem;
+}
+body.v2 pre[data-lang]::after { content: "• " attr(data-lang); color: var(--text-dim); font-family: var(--mono); font-size: .72rem; }
+body.v2 pre .copy-btn { top: .35rem; opacity: .85; }
+
+/* --- 図パネルに accent の上帯 --- */
+body.v2 figure.uml-fig { border-top: 3px solid var(--accent); }
+
+/* --- 表→定義リスト（app.js が 2 列表を変換）。
+       「箱」にすると押下できそうな偽アフォーダンスになるため、カード化はせず
+       行区切り＋中立色の用語で「データ一覧」として見せる。 --- */
+body.v2 .deflist { margin: 1.1rem 0; border-top: 1px solid var(--border); }
+body.v2 .deflist .row {
+  display: grid; grid-template-columns: minmax(140px, 15em) 1fr; gap: .15rem 1.4rem;
+  padding: .6rem .3rem; border-bottom: 1px solid var(--border);
+}
+body.v2 .deflist dt { color: var(--text); font-weight: 650; margin: 0; }
+body.v2 .deflist dt::before {
+  content: ""; display: inline-block; width: .5em; height: .5em; margin-right: .5em;
+  border-radius: 2px; background: var(--cat, var(--accent)); vertical-align: middle;
+}
+body.v2 .deflist dd { color: var(--text-dim); margin: 0; }
+@media (max-width: 620px) {
+  body.v2 .deflist .row { grid-template-columns: 1fr; gap: .1rem; padding: .55rem .2rem; }
+}
+
+/* --- モバイルのテーブル→カードも「箱」をやめ、区切り線でレコードを分ける
+       （押下できそうな見た目を避ける）。--- */
+@media (max-width: 880px) {
+  body.v2 .table-wrap.cardify { border: none; }
+  body.v2 .table-wrap.cardify tr {
+    background: none; border: none; border-bottom: 1px solid var(--border);
+    border-radius: 0; padding: .7rem .2rem; margin: 0;
+  }
+  body.v2 .table-wrap.cardify tr:first-child { border-top: 1px solid var(--border); }
+  body.v2 .table-wrap.cardify td:first-child { color: var(--text); }
+  body.v2 .table-wrap.cardify td:first-child::before { color: var(--cat, var(--accent)); }
+}
+
+/* --- 折りたたみ図（details.fig）: 既定は閉じて長さを抑え、必要時に展開 --- */
+body.v2 details.fig { background: none; border: none; padding: 0; margin: 1.4rem 0; }
+body.v2 details.fig > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .55rem;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px;
+  padding: .5rem .9rem; color: var(--text-dim); font-size: .9rem; font-weight: 600;
+}
+body.v2 details.fig > summary::-webkit-details-marker { display: none; }
+body.v2 details.fig > summary::before { content: "▸"; color: var(--accent); font-size: .8rem; }
+body.v2 details.fig[open] > summary::before { content: "▾"; }
+body.v2 details.fig[open] > summary { border-radius: 10px 10px 0 0; border-bottom: none; }
+body.v2 details.fig .fig-badge { color: var(--accent); font-weight: 700; }
+body.v2 details.fig .fig-title { color: var(--text); font-weight: 600; }
+body.v2 details.fig > summary:hover { border-color: var(--accent); }
+body.v2 details.fig figure.uml-fig { margin: 0; border-top-left-radius: 0; }
+body.v2 details.fig[open] figure.uml-fig { border-top: 3px solid var(--accent); }
+
+/* --- カードのアフォーダンスを正直に：押せる(a.card)＝浮いた箱＋常時「↗」、
+       表示専用(div.card)＝フラットなパネル（押せる印象を出さない）。 --- */
+body.v2 .card:not(a) {
+  background: var(--bg-soft); cursor: default;
+}
+body.v2 a.card {
+  background: var(--bg-card); cursor: pointer; position: relative;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+body.v2 a.card h4 { padding-right: 1.3rem; }
+body.v2 a.card::after {
+  content: "↗"; position: absolute; top: .55rem; right: .7rem;
+  color: var(--accent); opacity: .55; font-size: .95rem;
+  transition: opacity .15s, transform .15s;
+}
+body.v2 a.card:hover {
+  border-color: var(--accent); transform: translateY(-3px);
+  box-shadow: 0 10px 26px rgba(0,0,0,.35);
+}
+body.v2 a.card:hover::after { opacity: 1; transform: translate(2px, -2px); }
+body.v2 a.card:focus-visible { border-color: var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  body.v2 a.card, body.v2 a.card::after { transition: none; }
+  body.v2 a.card:hover { transform: none; }
+}

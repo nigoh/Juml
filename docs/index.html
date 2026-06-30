@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Juml ドキュメント</title>
+<meta name="description" content="Juml (Java + UML) ドキュメントサイト。プロジェクト概要・GUI 操作マニュアル・開発者リファレンス。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np current" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+
+<main class="content narrow">
+<div class="content-inner">
+
+  <div class="logo-lockup">
+  <div class="judoka" role="img" aria-label="踊る柔道家（点字アニメーション）">
+    <div class="jframe" aria-hidden="true" style="animation-delay:0.000s">⠀⠀⠀⠀⠀⠀⣀⣀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣾⣿⣿⣷⡗⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠈⣛⣿⠋⠀⠀⠀⠀⠀
+⠀⠀⠀⣀⣴⠞⢻⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠈⠀⠘⢻⣿⠛⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢨⡿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢠⣿⡇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠛⠛⠀⠀⠀⠀⠀⠀⠀</div>
+    <div class="jframe" aria-hidden="true" style="animation-delay:-0.250s">⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣴⣿⣿⣦⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠙⠿⡿⠋⣀⣀⡄⠀⠀
+⠀⠀⠘⠉⠉⠉⢹⣿⠉⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠰⢾⣿⠶⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢠⣟⡟⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠛⠘⠃⠀⠀⠀⠀⠀⠀</div>
+    <div class="jframe" aria-hidden="true" style="animation-delay:-0.500s">⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣴⣿⣿⣦⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠻⣿⣿⠟⠀⠀⠀⠀⠀
+⠀⠀⢠⠤⠤⠒⢲⣷⠤⣄⣀⡀⠀⠀
+⠀⠀⠀⠀⠀⢠⣼⣿⣤⠀⠀⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⠸⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢰⡏⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠘⠃⠀⠀⠀⠀⠀⠀</div>
+    <div class="jframe" aria-hidden="true" style="animation-delay:-0.750s">⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣴⣿⣿⣦⠀⠀⠀⠀⠀
+⠀⠀⠰⠤⠤⣙⣿⡿⠋⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢸⣿⠒⠒⠒⠆⠀⠀
+⠀⠀⠀⠀⠀⠰⢾⣿⠶⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢠⣟⡟⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠛⠘⠃⠀⠀⠀⠀⠀⠀</div>
+    <div class="jframe" aria-hidden="true" style="animation-delay:-1.000s">⠀⠀⠀⠀⡀⠀⣀⣀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠈⠻⣾⣿⣿⣷⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠙⢿⣟⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢸⣿⠳⣦⣀⠀⠀⠀
+⠀⠀⠀⠀⠀⠘⢻⣿⠛⠀⠙⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⢨⣿⡄⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢠⡟⠈⣷⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠛⠀⠀⠘⠃⠀⠀⠀⠀</div>
+    <div class="jframe" aria-hidden="true" style="animation-delay:-1.250s">⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣴⣿⣿⣦⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠻⣿⣿⠟⠀⠀⠀⠀⠀
+⠀⠀⢠⠤⠤⠒⢲⣷⠤⣄⣀⡀⠀⠀
+⠀⠀⠀⠀⠀⢠⣼⣿⣤⠀⠀⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⠸⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢰⡏⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠘⠃⠀⠀⠀⠀⠀⠀</div>
+  </div>
+  <div class="ascii-logo-wrap">
+    <div class="ascii-logo" role="img" aria-label="JUML" data-text="JUML">⠀⠀⠀⠀⠀⣿⣿⠀⠀⣿⣿⡇⠀⠀⠀⣿⣿⠀⠀⢸⣿⣿⣿⠀⠀⠀⣾⣿⣿⡇⠀⣿⣿⡇⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣿⣿⠀⠀⣿⣿⡇⠀⠀⠀⣿⣿⠀⠀⢸⣿⣿⣿⡇⠀⢠⣿⣿⣿⡇⠀⣿⣿⡇⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣿⣿⠀⠀⣿⣿⡇⠀⠀⠀⣿⣿⠀⠀⢸⣿⣿⢻⣷⠀⣼⣿⢸⣿⡇⠀⣿⣿⡇⠀⠀⠀⠀⠀
+⢰⣶⡆⠀⢀⣿⣿⠀⠀⣿⣿⡇⠀⠀⠀⣿⣿⠀⠀⢸⣿⣿⠘⣿⣆⣿⡇⢸⣿⡇⠀⣿⣿⡇⠀⠀⠀⠀⠀
+⠘⢿⣿⣶⣾⣿⠏⠀⠀⠘⢿⣿⣶⣶⣿⣿⠟⠀⠀⢸⣿⣿⠀⢿⣿⣿⠀⢸⣿⡇⠀⣿⣿⣷⣶⣶⣶⣶⠀
+⠀⠀⠉⠉⠉⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠀⠀⠀⠀⠈⠉⠉⠀⠈⠉⠁⠀⠈⠉⠁⠀⠉⠉⠉⠉⠉⠉⠉⠀</div>
+  </div>
+  </div>
+  <header class="hero hero-brand">
+    <div class="hero-text">
+      <h1><span class="grad">Juml</span> ドキュメント</h1>
+      <p class="tag">Java / Android（Gradle + AndroidManifest.xml + AIDL）プロジェクトを解析し、PlantUML 経由で UML 図を生成する Swing + CLI ツール。</p>
+      <div class="badges">
+        <span class="badge">Version <b>2.1</b></span>
+        <span class="badge">Java <b>17+</b></span>
+        <span class="badge">License <b>MIT</b></span>
+        <span class="badge">図種 <b>15</b></span>
+        <span class="badge">Graphviz <b>不要</b>（Smetana 同梱）</span>
+      </div>
+    </div>
+  </header>
+
+  <h2 style="border-bottom:1px solid var(--border);padding-bottom:.45rem">ドキュメント</h2>
+  <div class="grid">
+    <a class="card" href="./project-summary.html">
+      <h4>プロジェクト概要</h4>
+      <p>何ができるか・構成・ビルド・主要依存ライブラリ。まずはここから。</p>
+    </a>
+    <a class="card" href="./operation-manual.html">
+      <h4>操作マニュアル</h4>
+      <p>入手・インストール（exe / jar / ビルド）から GUI・CLI の実運用・エクスポート・トラブル対処まで。少しコーディングできる人向けの通し導線。</p>
+    </a>
+    <a class="card" href="./gui-manual.html">
+      <h4>GUI 操作マニュアル</h4>
+      <p>起動・画面構成・ツールバー・各図種・スタイル設定・エクスポート・ショートカット。</p>
+    </a>
+    <a class="card" href="./gui-spec.html">
+      <h4>GUI 画面定義書</h4>
+      <p>画面の位置づけ・画面項目一覧・振る舞い（イベント / バリデーション）・メッセージ仕様・例外 / 非機能要件。</p>
+    </a>
+    <a class="card" href="./developer-reference.html">
+      <h4>開発者リファレンス</h4>
+      <p>CLI 全フラグ・図種カタログ・GUI 内部・解析エンジン・SQLite スキーマまでの機能棚卸し。</p>
+    </a>
+    <a class="card" href="./source-analysis.html">
+      <h4>ソース解析パイプライン</h4>
+      <p><code>core/formats</code> がソースから何を取得し、どう PlantUML へ変換して UML を作るか。</p>
+    </a>
+    <a class="card" href="./android-analysis.html">
+      <h4>Android プロジェクト解析</h4>
+      <p>Android Gradle プロジェクトを 2 系統でどう走査・解析するか。入口・スキャナ・データモデル・各パーサ・図生成・<b>改造／拡張ポイント</b>まで。</p>
+    </a>
+    <a class="card" href="./claude-code.html">
+      <h4>Claude Code 連携</h4>
+      <p>AOSP / AAOS 解析と Java 解析エンジンを支える <code>.claude/</code> 配下のエージェント・スキル・スラッシュコマンドのカタログと使い方。</p>
+    </a>
+  </div>
+
+  <section>
+    <h2>クイックスタート</h2>
+    <pre><code># GUI を起動（引数にプロジェクトを渡すと起動時に解析）
+java -jar Juml.jar ~/AndroidStudioProjects/MyApp
+
+# CLI でクラス図を SVG 出力
+java -jar Juml.jar -c -o class.svg ~/AndroidStudioProjects/MyApp
+
+# 全成果物を一括出力
+java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
+  </section>
+
+  <section>
+    <h2>このサイトについて</h2>
+    <p>Juml のドキュメントは <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html">「リッチな HTML を成果物にする」アプローチ</a>に倣い、<b>すべて HTML に統一</b>しています。各ページは共有スタイル（<code>assets/style.css</code> / <code>assets/app.js</code>）を読み込み、サイドバーナビ・スクロールスパイ・コピーボタン・CLI オプションのライブ絞り込みを備えます。GitHub Pages でそのまま公開できます。</p>
+    <div class="tip"><b>Claude Code 連携:</b> AOSP / AAOS 解析用のエージェント・スキル・スラッシュコマンドはリポジトリの <code>.claude/</code> 配下に置いています。カタログと使い方は <a href="./claude-code.html">Claude Code 連携</a>ページに、導入手順は <code>.claude/SETUP_CLAUDE_AGENTS_SKILLS.md</code> にまとめています。</div>
+  </section>
+
+  <footer>
+    <p>Juml 2.1 — MIT License — Copyright (c) 2015–2026 naou and contributors。同梱 PlantUML は MIT 版（<code>plantuml-mit</code>）。</p>
+    <p><a href="https://github.com/nigoh/Juml">github.com/nigoh/Juml</a></p>
+  </footer>
+
+</div>
+</main>
+<script src="./assets/app.js"></script>
+</body>
+</html>

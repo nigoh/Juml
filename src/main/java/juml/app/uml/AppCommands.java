@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.app.uml;
+
+import juml.util.Messages;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * コマンドパレット用のコマンド一覧を、メニューと同じ {@link MenuBarBuilder.Callbacks} から組み立てる。
+ * メニュー項目とアクションの単一ソースを共有することで、両者の挙動がずれないようにする。
+ *
+ * <p>表示ラベルは {@code cmd.*} の i18n キーで引く (メニュー同様に EN/JA を切り替えるため)。</p>
+ */
+final class AppCommands {
+
+    private AppCommands() {
+    }
+
+    /** プラットフォーム標準の修飾キー表記 (macOS は ⌘、その他は "Ctrl+")。 */
+    private static final String MOD =
+            MenuBarBuilder.menuShortcutMask() == java.awt.event.InputEvent.META_DOWN_MASK
+                    ? "⌘" : "Ctrl+";
+    private static final String SHIFT = "Shift+";
+
+    /** 現在のコールバックから、null でないアクションだけをコマンド化して返す。 */
+    static List<CommandPalette.Command> from(MenuBarBuilder.Callbacks cb) {
+        List<CommandPalette.Command> list = new ArrayList<>();
+        add(list, "cmd.file.openProject", cb.chooseProject, MOD + "O");
+        add(list, "cmd.file.openArchive", cb.openArchive);
+        add(list, "cmd.file.saveAs", cb.chooseAndExport, MOD + "S");
+        add(list, "cmd.file.exportPerFolder", cb.exportClassDiagramsPerFolder);
+        add(list, "cmd.file.exportFunctions", cb.exportFunctionList);
+        add(list, "cmd.file.exportMembers", cb.exportMemberList);
+        add(list, "cmd.file.refresh", cb.refreshDiagram, "F5");
+        add(list, "cmd.file.closeTab", cb.closeActiveTab, MOD + "W");
+        add(list, "cmd.file.reopenTab", cb.reopenClosedTab, MOD + SHIFT + "T");
+        add(list, "cmd.file.cancelLoading", cb.cancelLoading);
+        add(list, "cmd.file.exit", cb.exitApp);
+        add(list, "cmd.view.toggleSidebar", cb.toggleSidebar, MOD + "B");
+        add(list, "cmd.view.openSource", cb.openSourceForActiveTab, MOD + SHIFT + "S");
+        add(list, "cmd.view.addNote", cb.addNoteToActiveTab, MOD + SHIFT + "N");
+        add(list, "cmd.view.notesPanel", cb.toggleNotesPanel);
+        add(list, "cmd.diagram.findInDiagram", cb.findInDiagram, MOD + "F");
+        add(list, "cmd.diagram.search", cb.openEntitySearch, MOD + SHIFT + "F");
+        add(list, "cmd.diagram.seqEntry", cb.pickSequenceEntry);
+        add(list, "cmd.diagram.filterParticipants", cb.openParticipantFilterDialog);
+        add(list, "cmd.diagram.clearParticipants", cb.clearSequenceParticipants);
+        add(list, "cmd.diagram.activityMethod", cb.pickActivityEntry);
+        add(list, "cmd.diagram.layoutFile", cb.pickLayoutFile);
+        add(list, "cmd.diagram.navGraph", cb.pickNavigationGraph);
+        add(list, "cmd.diagram.scope", cb.openScopeDialog);
+        add(list, "cmd.diagram.clearScope", cb.clearScope);
+        add(list, "cmd.view.zoomIn", cb.zoomIn, MOD + "+");
+        add(list, "cmd.view.zoomOut", cb.zoomOut, MOD + "-");
+        add(list, "cmd.view.zoom100", cb.zoomReset, MOD + "0");
+        add(list, "cmd.view.zoomFit", cb.zoomToFit, MOD + SHIFT + "0");
+        add(list, "cmd.settings.style", cb.openStyleSettings);
+        add(list, "cmd.settings.prefs", cb.openPreferences, MOD + ",");
+        add(list, "cmd.settings.graphviz", cb.enableGraphviz);
+        add(list, "cmd.settings.clearCache", cb.clearAnalysisCache);
+        add(list, "cmd.help.logViewer", cb.openLogViewer, MOD + SHIFT + "L");
+        if (cb.applyPreset != null) {
+            for (DiagramPreset p : DiagramPreset.values()) {
+                if (p != DiagramPreset.CUSTOM) {
+                    list.add(new CommandPalette.Command(
+                            Messages.get("cmd.diagram.preset") + p.getDisplayName(),
+                            () -> cb.applyPreset.accept(p)));
+                }
+            }
+        }
+        return list;
+    }
+
+    private static void add(List<CommandPalette.Command> list, String labelKey, Runnable action) {
+        add(list, labelKey, action, null);
+    }
+
+    private static void add(List<CommandPalette.Command> list, String labelKey,
+                            Runnable action, String shortcut) {
+        if (action != null) {
+            list.add(new CommandPalette.Command(Messages.get(labelKey), shortcut, action));
+        }
+    }
+}

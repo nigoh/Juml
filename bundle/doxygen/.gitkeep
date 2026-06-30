@@ -1,0 +1,2 @@
+# Doxygen バイナリ同梱用ディレクトリ
+# リリース時に doxygen/<platform>/doxygen[.exe] を配置する (graphviz と同方式)。

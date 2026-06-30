@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.core.formats.java.jp;
+
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.Problem;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.ImportDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import juml.core.formats.java.JavaLexer;
+import juml.core.formats.uml.JavaClassInfo;
+import juml.util.ErrorListener;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * JavaParser を用いた Java ソースの解析フロントエンド。
+ *
+ * <p>{@link CompilationUnit} を {@link TypeDeclAdapter} / {@link MemberAdapter} /
+ * {@link ModuleAdapter} で既存モデル ({@link JavaClassInfo}) に変換して返す。
+ * P1 では構造（型・フィールド・メソッド署名・imports・アノテーション・モジュール）のみを移送し、
+ * メソッド本体の statement tree は後続フェーズで追加する。</p>
+ *
+ * <p>解析は寛容（{@link ParserConfiguration.LanguageLevel#BLEEDING_EDGE}）で行い、
+ * 構文エラーがあっても部分結果を返す。問題は {@link ErrorListener} に通知する。</p>
+ */
+public final class JavaParserFrontend {
+
+    private JavaParserFrontend() {
+    }
+
+    /** ソースを解析して {@link JavaClassInfo} のリストを返す。 */
+    public static List<JavaClassInfo> parse(String source, ErrorListener listener) {
+        return parse(source, false, listener, null);
+    }
+
+    /** {@code headersOnly} のときはメソッド本体の statement tree を構築しない。 */
+    public static List<JavaClassInfo> parse(String source, boolean headersOnly,
+                                            ErrorListener listener) {
+        return parse(source, headersOnly, listener, null);
+    }
+
+    /**
+     * {@code solver} が非 null なら SymbolSolver で呼び出し先を解決し、
+     * {@link juml.core.formats.uml.JavaMethodInfo.Call#getResolvedOwnerFqn()} を埋める。
+     */
+    public static List<JavaClassInfo> parse(String source, boolean headersOnly,
+                                            ErrorListener listener, JpSolver solver) {
+        ErrorListener l = listener != null ? listener : ErrorListener.silent();
+        List<JavaClassInfo> out = new ArrayList<>();
+        if (source == null || source.isEmpty()) {
+            return out;
+        }
+        // Java の Unicode エスケープ (\\uXXXX) は識別子/キーワードにも使えるため、字句解析前に展開する。
+        String expanded = JavaLexer.expandUnicodeEscapes(source);
+        boolean resolve = solver != null && !headersOnly;
+        JavaParser parser;
+        if (solver != null) {
+            parser = solver.newParser();
+        } else {
+            parser = new JavaParser(new ParserConfiguration()
+                    .setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE));
+        }
+        ParseResult<CompilationUnit> result = parser.parse(expanded);
+        if (!result.isSuccessful()) {
+            for (Problem p : result.getProblems()) {
+                l.onError(null, lineOf(p), p.getMessage());
+            }
+        }
+        CompilationUnit cu = result.getResult().orElse(null);
+        if (cu == null) {
+            return out;
+        }
+        String pkg = cu.getPackageDeclaration().map(pd -> pd.getNameAsString()).orElse("");
+        List<String> imports = new ArrayList<>();
+        for (ImportDeclaration imp : cu.getImports()) {
+            imports.add(importString(imp));
+        }
+        cu.getModule().ifPresent(m -> out.add(ModuleAdapter.adapt(m)));
+        JpContext ctx = new JpContext(pkg, imports, out, headersOnly,
+                new JpComments(expanded), resolve);
+        for (TypeDeclaration<?> td : cu.getTypes()) {
+            TypeDeclAdapter.adapt(td, null, ctx);
+        }
+        if (out.isEmpty()) {
+            // 重度に壊れたソース（途中で切れた宣言など）でも、宣言ヘッダが読めれば
+            // スケルトンだけは返す（既存パーサーの寛容さに合わせる）。
+            recoverSkeletons(expanded, pkg, out);
+        }
+        return out;
+    }
+
+    private static final java.util.regex.Pattern TYPE_DECL = java.util.regex.Pattern.compile(
+            "\\b(class|interface|enum|record|@interface)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
+
+    private static void recoverSkeletons(String src, String pkg, List<JavaClassInfo> out) {
+        java.util.regex.Matcher m = TYPE_DECL.matcher(src);
+        while (m.find()) {
+            JavaClassInfo c = new JavaClassInfo();
+            c.setPackageName(pkg);
+            c.setSimpleName(m.group(2));
+            c.setKind(skeletonKind(m.group(1)));
+            out.add(c);
+        }
+    }
+
+    private static JavaClassInfo.Kind skeletonKind(String kw) {
+        switch (kw) {
+            case "interface":
+                return JavaClassInfo.Kind.INTERFACE;
+            case "enum":
+                return JavaClassInfo.Kind.ENUM;
+            case "record":
+                return JavaClassInfo.Kind.RECORD;
+            case "@interface":
+                return JavaClassInfo.Kind.ANNOTATION;
+            default:
+                return JavaClassInfo.Kind.CLASS;
+        }
+    }
+
+    private static String importString(ImportDeclaration imp) {
+        String n = imp.getNameAsString();
+        if (imp.isAsterisk()) {
+            n = n + ".*";
+        }
+        if (imp.isStatic()) {
+            n = "static " + n;
+        }
+        return n;
+    }
+
+    private static int lineOf(Problem p) {
+        return p.getLocation()
+                .flatMap(loc -> loc.getBegin().getRange())
+                .map(r -> r.begin.line)
+                .orElse(-1);
+    }
+}

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GUI 画面定義書 — Juml docs</title>
+<meta name="description" content="Juml の Swing GUI 画面定義書：画面の位置づけ・画面項目一覧・振る舞い（イベント/アクション/バリデーション）・メッセージ仕様・例外/非機能要件。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np current" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">1. 画面の位置づけ</div>
+      <a href="#purpose">画面の目的・概要</a>
+      <a href="#screen-list">画面一覧</a>
+      <a href="#screen-transition">画面遷移</a>
+      <a href="#roles">利用者・権限・ロール</a>
+      <a href="#modes">画面の状態・モード</a>
+      <div class="group">2. 画面項目一覧</div>
+      <a href="#item-main">メインウィンドウ</a>
+      <a class="sub" href="#item-menu">メニューバー</a>
+      <a class="sub" href="#item-toolbar">ツールバー</a>
+      <a class="sub" href="#item-status">ステータスバー</a>
+      <a class="sub" href="#item-tree">プロジェクトツリー</a>
+      <a class="sub" href="#item-tabs">タブペイン</a>
+      <a href="#item-open">Open Project ダイアログ</a>
+      <a href="#item-scope">Scope ダイアログ</a>
+      <a href="#item-style">Style Settings ダイアログ</a>
+      <a href="#item-prefs">Preferences ダイアログ</a>
+      <a href="#item-search">Entity Search ダイアログ</a>
+      <a href="#item-entry">起点・フィルタ・ファイル選択</a>
+      <a href="#item-explore">ユーティリティパネル</a>
+      <div class="group">3. 振る舞い</div>
+      <a href="#behavior-actions">操作とアクション</a>
+      <a href="#behavior-flow">後続処理・遷移</a>
+      <a href="#behavior-validation">バリデーション</a>
+      <div class="group">4. メッセージ仕様</div>
+      <a href="#msg-error">エラー / 警告メッセージ</a>
+      <a href="#msg-info">情報・確認・完了メッセージ</a>
+      <div class="group">5. 例外・非機能</div>
+      <a href="#nf-render">描画失敗・エラー時の挙動</a>
+      <a href="#nf-perf">パフォーマンス</a>
+      <a href="#nf-responsive">レスポンシブ</a>
+      <a href="#nf-a11y">アクセシビリティ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero">
+      <h1>GUI 画面定義書</h1>
+      <p class="tag">Juml の Swing GUI（VS Code 風タブ中心モデル）の画面仕様。位置づけ・画面項目・振る舞い・メッセージ・非機能要件を、実装（<code>juml.app.uml</code>）に基づいて定義します。</p>
+      <div class="badges">
+        <span class="badge">対象: <b>GUI</b></span>
+        <span class="badge">画面 <b>主 1 + ダイアログ 11 + パネル 6</b></span>
+        <span class="badge">操作手順は <a href="./gui-manual.html">GUI マニュアル</a></span>
+      </div>
+    </header>
+
+    <div class="note"><b>本書の位置づけ:</b> 操作の流れ・ショートカット・図種カタログは <a href="./gui-manual.html">GUI 操作マニュアル</a>、内部実装・クラス責務は <a href="./developer-reference.html">開発者リファレンス</a>を参照。本書は「画面定義書（項目・属性・バリデーション・メッセージ）」に特化します。文言・初期値・範囲は <code>src/main/java/juml/app/uml/</code> 配下の実装に準拠しています。</div>
+
+    <!-- ===================================================================== -->
+    <!-- 1. 画面の位置づけ -->
+    <!-- ===================================================================== -->
+    <section id="purpose">
+      <h2>画面の目的・概要</h2>
+      <p>Juml の GUI は、Java / Android（Gradle + AndroidManifest.xml + AIDL）プロジェクトを解析し、PlantUML 経由で <b>15 種類の UML 図</b>を生成・閲覧・エクスポートするデスクトップアプリ（Java Swing 製）です。</p>
+      <ul>
+        <li><b>主目的:</b> ソースコードを読み込み、クラス図・シーケンス図・パッケージ図などを対話的に閲覧し、設計理解・影響調査・ドキュメント化を支援する。</li>
+        <li><b>UI モデル:</b> 「タブ＝エディタ」の VS Code 風モデル。1 つの図（題材 + 図種）が 1 タブに対応し、左ペインのツリー（ナビゲータ）から開く。特別な「Home 画面」は持たない。</li>
+        <li><b>主画面構成:</b> 単一のメインウィンドウ（<code>UmlMainFrame</code>）＋ モーダルダイアログ群（プロジェクト選択・スコープ・スタイル・検索など）＋ 右ペイン固定のユーティリティパネル群（Impact / References / Func Diff / Functions / Members / Manifest）。</li>
+      </ul>
+    </section>
+
+    <section id="screen-list">
+      <h2>画面一覧</h2>
+      <p>本 GUI が提供する画面（ウィンドウ / ダイアログ / 固定パネル）の一覧です。実装クラスは <code>juml.app.uml</code> パッケージ。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>分類</th><th>画面名</th><th>実装クラス</th><th>モーダル</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr><td>メイン</td><td>メインウィンドウ</td><td><code>UmlMainFrame</code></td><td>—（常駐）</td><td>メニュー / ツールバー / ツリー / タブ / ステータスバーの統括</td></tr>
+          <tr><td>ダイアログ</td><td>Open Project</td><td><code>OpenProjectDialog</code></td><td>あり</td><td>最近のプロジェクト選択 / フォルダ参照</td></tr>
+          <tr><td>ダイアログ</td><td>Scope（表示範囲）</td><td><code>DiagramScopeDialog</code></td><td>あり</td><td>クラス図の絞り込み条件設定</td></tr>
+          <tr><td>ダイアログ</td><td>Style Settings</td><td><code>StyleSettingsDialog</code></td><td>あり</td><td>テーマ・フォント・図種別スタイル設定</td></tr>
+          <tr><td>ダイアログ</td><td>Preferences</td><td><code>PreferencesDialog</code></td><td>あり</td><td>Look&amp;Feel・起動時動作などアプリ設定</td></tr>
+          <tr><td>ダイアログ</td><td>Entity Search</td><td><code>EntitySearchDialog</code></td><td>あり</td><td>クラス / メソッド / フィールドの横断検索</td></tr>
+          <tr><td>ダイアログ</td><td>Sequence / Activity / Call Graph Entry</td><td><code>SequenceEntryDialog</code></td><td>あり</td><td>図の起点メソッド選択</td></tr>
+          <tr><td>ダイアログ</td><td>Sequence Participant Filter</td><td><code>SequenceParticipantFilterDialog</code></td><td>あり</td><td>シーケンス図の participant の表示 / 非表示</td></tr>
+          <tr><td>ダイアログ</td><td>Layout File Chooser</td><td><code>LayoutFileChooserDialog</code></td><td>あり</td><td>layout XML の選択</td></tr>
+          <tr><td>ダイアログ</td><td>Navigation Graph Chooser</td><td><code>NavigationFileChooserDialog</code></td><td>あり</td><td>navigation XML の選択</td></tr>
+          <tr><td>ダイアログ</td><td>Usage / About</td><td><code>MenuBarBuilder</code></td><td>あり</td><td>使い方・バージョン情報の表示</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>Manifest</td><td><code>ManifestSummaryPanel</code></td><td>—</td><td>AndroidManifest.xml の Markdown サマリー</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>Impact</td><td><code>ImpactExplorerPanel</code></td><td>—</td><td>逆参照（影響範囲）解析</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>References</td><td><code>ReverseReferencePanel</code></td><td>—</td><td>逆参照の表形式一覧</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>Func Diff</td><td><code>FuncDiffPanel</code></td><td>—</td><td>2 メソッドの差分比較</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>Functions</td><td><code>MethodListPanel</code></td><td>—</td><td>全関数一覧（遅延生成）</td></tr>
+          <tr><td>パネル（右ペイン固定）</td><td>Members</td><td><code>MemberListPanel</code></td><td>—</td><td>全メンバー一覧（遅延生成）</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="screen-transition">
+      <h2>画面遷移（どこから来て、どこへ行くか / 遷移条件）</h2>
+      <p>メインウィンドウを起点に、メニュー / ツールバー / ツリーの操作でモーダルダイアログが開き、選択結果がアクティブタブに反映されます。アプリ全体・タブ単位の状態遷移図は <a href="./gui-manual.html#app-state">GUI マニュアルの状態遷移図</a>を参照。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>遷移元（トリガ）</th><th>遷移先（画面）</th><th>遷移条件 / ガード</th><th>戻り（後続）</th></tr></thead>
+        <tbody>
+          <tr><td>起動（引数なし）</td><td>メインウィンドウ（空状態）</td><td>—</td><td>Preferences で「前回プロジェクトを復元」が ON なら自動ロード</td></tr>
+          <tr><td>File › Open Project / <kbd>Ctrl+O</kbd> / ツールバー Open</td><td>Open Project ダイアログ</td><td>常時可</td><td>選択 → 解析中 → 既定 Package 図タブ／キャンセル → 空のまま</td></tr>
+          <tr><td>ツリーのノード選択 / ダブルクリック</td><td>（同一ウィンドウ内）図タブ</td><td>プロジェクトロード済み</td><td>既存タブはフォーカス、無ければ新規タブを非同期描画</td></tr>
+          <tr><td>Diagram › Scope…</td><td>Scope ダイアログ</td><td>ロード済み（未ロードなら「No project」通知）</td><td>OK → アクティブタブを再描画</td></tr>
+          <tr><td>Diagram › Search Entities / <kbd>Ctrl+Shift+F</kbd></td><td>Entity Search ダイアログ</td><td>ロード済み かつ 候補 &gt; 0 件</td><td>OK / Drill-down → 該当タブを開く</td></tr>
+          <tr><td>Diagram › Choose Sequence / Activity / Call Graph Entry</td><td>Sequence Entry ダイアログ</td><td>ロード済み かつ メソッド候補 &gt; 0 件</td><td>選択 → 対応する図タブを開く</td></tr>
+          <tr><td>Diagram › Choose Layout / Navigation</td><td>Layout / Navigation Chooser</td><td>ロード済み かつ 対象 XML &gt; 0 件</td><td>選択 → Layout / Navigation 図タブを開く</td></tr>
+          <tr><td>Style › Style Settings… / Settings › Style Settings…</td><td>Style Settings ダイアログ</td><td>常時可</td><td>OK → 全タブを再描画・設定を永続化</td></tr>
+          <tr><td>Settings › Preferences… / <kbd>Ctrl+,</kbd></td><td>Preferences ダイアログ</td><td>常時可</td><td>OK → 設定保存（L&amp;F 変更は再起動後反映）</td></tr>
+          <tr><td>Help › Usage / <kbd>F1</kbd>・Help › About</td><td>Usage / About ダイアログ</td><td>常時可</td><td>閉じる → メインウィンドウへ</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="roles">
+      <h2>利用者・権限・ロール（誰が使えるか）</h2>
+      <p>Juml は<b>単一ユーザのローカルデスクトップアプリ</b>で、ログイン・認証・サーバ側権限といった概念は持ちません。すべての機能はアプリを起動できる利用者（開発者）が等しく利用できます。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>観点</th><th>仕様</th></tr></thead>
+        <tbody>
+          <tr><td>ユーザ区分 / ロール</td><td>区分なし（全機能が単一ロールで利用可能）。アプリ内に権限制御は存在しない。</td></tr>
+          <tr><td>認証</td><td>なし（ログイン画面なし）。</td></tr>
+          <tr><td>実行に必要な権限</td><td>OS 上で対象プロジェクトフォルダの<b>読み取り権限</b>、エクスポート先の<b>書き込み権限</b>。Java 17+ 実行環境。</td></tr>
+          <tr><td>データの保存先</td><td>プロジェクト設定・ウィンドウ位置・解析キャッシュはローカル（SQLite / ディスクキャッシュ）。外部送信なし。</td></tr>
+          <tr><td>破壊的操作</td><td>解析は読み取りのみで対象ソースを変更しない。「一覧から削除」も最近リストの除去のみで<b>ディスク上のファイルは削除しない</b>。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="modes">
+      <h2>画面の状態・モード（新規 / 編集 / 参照など）</h2>
+      <p>Juml は文書を「新規作成 / 編集」するアプリではなく、ソースを<b>解析して図を閲覧・出力する</b>アプリです。モードは「アプリ全体の状態」と「各タブの状態」の二層で管理されます。</p>
+      <h3>アプリ全体の状態</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>状態</th><th>説明</th><th>主な操作可否</th></tr></thead>
+        <tbody>
+          <tr><td>空（No Project）</td><td>プロジェクト未ロード</td><td>図操作は不可（多くは「Open a project first.」通知）。Open / Preferences / Help は可。</td></tr>
+          <tr><td>解析中（Analyzing）</td><td>バックグラウンド解析（SwingWorker）。全面ローディングオーバーレイ表示。</td><td>UI 操作はオーバーレイで抑止。<b>Cancel Loading</b> のみ有効。</td></tr>
+          <tr><td>図表示（Diagram Shown）</td><td>解析完了・図タブ表示中</td><td>全機能利用可。タブ操作・図種切替・ズームは状態を変えない内部遷移。</td></tr>
+        </tbody>
+      </table></div>
+      <h3>タブの状態（参照モード中心）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>状態</th><th>説明</th></tr></thead>
+        <tbody>
+          <tr><td>未生成（None）</td><td>当該キーのタブが存在しない</td></tr>
+          <tr><td>描画中（Rendering）</td><td>SwingWorker による非同期描画中（"Rendering..." 表示）</td></tr>
+          <tr><td>表示 / フォーカス（Shown）</td><td>描画成功。アクティブなタブ。同一キー再要求はフォーカスのみ</td></tr>
+          <tr><td>非フォーカス（Background）</td><td>他タブ選択中。状態は保持され再選択で復帰</td></tr>
+          <tr><td>エラー表示（Error）</td><td>描画失敗。タブ内に原因と対処を表示</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">図・スタイル設定の編集は「設定ダイアログ → アクティブ／全タブ再描画」という形で行われ、図そのものを直接編集する <b>WYSIWYG 編集モードは存在しません</b>（出力は PlantUML / SVG / PNG）。</div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 2. 画面項目一覧 -->
+    <!-- ===================================================================== -->
+    <section id="item-main">
+      <h2>画面項目一覧 — メインウィンドウ</h2>
+      <p><code>UmlMainFrame</code>。初期タイトル <code>"Juml UML"</code>、初期サイズ <b>1200 × 800</b>（前回サイズが保存されていれば復元）。レイアウトは <code>BorderLayout</code>（北＝ツールバー、中央＝水平 <code>JSplitPane</code>〔左ツリー／右タブ〕、南＝ステータスバー）。左右分割は初期分割位置 280px・リサイズ比 0.22。</p>
+
+      <h3 id="item-menu">メニューバー</h3>
+      <p>各メニュー項目のラベル・ショートカット・活性条件。RadioButton / CheckBox 項目は初期選択状態を併記。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>メニュー</th><th>項目</th><th>種別</th><th>SC</th><th>初期値 / 活性条件</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="9">File</td><td>Open Project…</td><td>項目</td><td><kbd>Ctrl+O</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Open Recent ▸</td><td>サブメニュー</td><td>—</td><td>最大 10 件。存在しないパスは無効化（グレー）</td></tr>
+          <tr><td>Save Diagram As…</td><td>項目</td><td><kbd>Ctrl+S</kbd></td><td>常時 enable（図未生成時は通知）</td></tr>
+          <tr><td>Export Class Diagrams Per Folder…</td><td>項目</td><td>—</td><td>常時 enable（未ロード時は通知）</td></tr>
+          <tr><td>Export Function List…</td><td>項目</td><td>—</td><td>常時 enable（未ロード時は通知）</td></tr>
+          <tr><td>Export Members to Excel…</td><td>項目</td><td>—</td><td>常時 enable（未ロード時は通知）</td></tr>
+          <tr><td>Refresh</td><td>項目</td><td><kbd>F5</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Cancel Loading</td><td>項目</td><td>—</td><td><b>初期 disable</b>。解析中のみ enable</td></tr>
+          <tr><td>Exit</td><td>項目</td><td>—</td><td>常時 enable</td></tr>
+          <tr><td rowspan="3">Diagram</td><td>図種ラジオ × 15（Class / Package / Sequence / Activity / Callgraph / Common / Component / Dependency / Manifest / Layout / Navigation / Module / Inheritance / Screen Flow / Soong）</td><td>ラジオ</td><td>—</td><td>初期は <b>Class</b> 選択。1 つだけ選択。アクティブタブの図種と双方向同期</td></tr>
+          <tr><td>Search Entities… / Choose … Entry… / Filter / Clear Filter / Choose Layout / Navigation</td><td>項目</td><td><kbd>Ctrl+Shift+F</kbd>（Search）</td><td>常時表示（未ロード時は通知）</td></tr>
+          <tr><td>Preset ▸（Minimal / Balanced / Detailed）／ Scope… / Clear Scope</td><td>項目</td><td><kbd>Ctrl+1/2/3</kbd></td><td>常時表示</td></tr>
+          <tr><td rowspan="4">View</td><td>Zoom In</td><td>項目</td><td><kbd>Ctrl+=</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Zoom Out</td><td>項目</td><td><kbd>Ctrl+-</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Zoom 100%</td><td>項目</td><td><kbd>Ctrl+0</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Zoom to Fit</td><td>項目</td><td><kbd>Ctrl+F</kbd></td><td>常時 enable</td></tr>
+          <tr><td rowspan="2">Style</td><td>テーマ × 12（(None) / plain / cerulean / sketchy / mono / vibrant / materia / hacker / cyborg / mars / amiga / spacelab）</td><td>ラジオ</td><td>—</td><td>現在のテーマが選択状態</td></tr>
+          <tr><td>Style Settings…</td><td>項目</td><td>—</td><td>常時 enable</td></tr>
+          <tr><td rowspan="4">Settings</td><td>Preferences…</td><td>項目</td><td><kbd>Ctrl+,</kbd></td><td>常時 enable</td></tr>
+          <tr><td>Style Settings…</td><td>項目</td><td>—</td><td>常時 enable</td></tr>
+          <tr><td>Enable Graphviz (dot)…</td><td>項目</td><td>—</td><td>常時 enable</td></tr>
+          <tr><td>Clear Analysis Cache</td><td>項目</td><td>—</td><td>常時 enable（未ロード時は通知）</td></tr>
+          <tr><td rowspan="2">Help</td><td>Usage</td><td>項目</td><td><kbd>F1</kbd></td><td>常時 enable</td></tr>
+          <tr><td>About</td><td>項目</td><td>—</td><td>常時 enable</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="item-toolbar">ツールバー（上段アクション / 下段図種トグル）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>段</th><th>ボタン</th><th>種別</th><th>ツールチップ</th><th>初期状態 / 活性条件</th></tr></thead>
+        <tbody>
+          <tr><td>上段</td><td>Open</td><td>JButton</td><td>Open project (Ctrl+O)</td><td>常時 enable</td></tr>
+          <tr><td>上段</td><td>Save</td><td>JButton</td><td>Save diagram (Ctrl+S)</td><td>常時 enable</td></tr>
+          <tr><td>上段</td><td>Refresh</td><td>JButton</td><td>Refresh diagram (F5)</td><td>常時 enable</td></tr>
+          <tr><td>上段</td><td>Search</td><td>JButton</td><td>Search entities (Ctrl+Shift+F)</td><td>常時 enable</td></tr>
+          <tr><td>下段</td><td>図種トグル × 14（Class / Package / Sequence / Activity / Call Graph / Common / Component / Dependency / Manifest / Layout / Navigation / Module / Inherit / Soong）</td><td>JToggleButton（排他）</td><td>図種名 + 起点指定の案内</td><td>初期は <b>Class が selected</b>。選択中のツリーノード種別により押下可能な図種が制限される（パッケージ／クラス／メソッド／Android 等）</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">図種トグルは <code>DiagramKind</code> 順に並びます。下段は Diagram メニューのラジオと双方向同期し、押すと「フォーカス中タブ」を起点に当該図種タブを開きます（起点が必要な図種は選択ダイアログを誘導）。</div>
+
+      <h3 id="item-status">ステータスバー</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>種別</th><th>初期値</th><th>更新条件</th></tr></thead>
+        <tbody>
+          <tr><td>進捗 / 状態テキスト</td><td>JLabel（左寄せ）</td><td><code>" "</code>（空白）</td><td>解析・描画・エクスポート等で随時更新（例 <code>Analyzing 1234/56789</code>、<code>… rendered (WxH, SVG)</code>、<code>Saved: …</code>）</td></tr>
+          <tr><td>ロード進捗バー</td><td>JProgressBar（200×16, StringPainted）</td><td><b>非表示</b></td><td>解析中のみ表示。開始時は不定、件数判明後は <code>done/total</code> 表示</td></tr>
+          <tr><td>ズーム率</td><td>JLabel（右端）</td><td><code>100%</code></td><td>アクティブタブのズーム値変更時に更新</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="item-tree">プロジェクトツリー（左ペイン）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>ルート表示名</td><td>プロジェクト名（未ロード時は <code>(no project)</code>）。<code>rootVisible = true</code></td></tr>
+          <tr><td>ノード階層</td><td>module → package → class → method（concrete のみ）。Android モジュール直下に <code>[manifest]</code> 系ノード（Activities / Services / Receivers / Providers / Permissions / Features）</td></tr>
+          <tr><td>遅延展開</td><td>初期はパッケージまで構築。展開時にクラス／メソッドを追加。モジュールノードは populate 直後に自動展開</td></tr>
+          <tr><td>選択（左クリック）</td><td>ノード種別に応じて図種を切替（メソッド→Sequence、Activity リーフ→Activity、クラス→Class、パッケージ→Package、モジュール→Module、Manifest 系→Manifest）</td></tr>
+          <tr><td>ダブルクリック / 中クリック</td><td>当該ノードを<b>新規タブ</b>として開く（中クリックは選択を変えない）</td></tr>
+          <tr><td>右クリック（パッケージ上のみ）</td><td>ポップアップ「<b>Show class diagram of this package</b>」</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="item-tabs">タブペイン（右ペイン）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>動的タブ</td><td>1 図 = 1 タブ。タブ内は縦 <code>JSplitPane</code>（上 85%＝SVG プレビュー / 下＝PlantUML ソース）</td></tr>
+          <tr><td>重複防止キー</td><td><code>KIND:CLASS</code> / <code>CLASS:&lt;fqn&gt;</code> / <code>PKG:&lt;pkg&gt;</code> / <code>METHOD:&lt;fqn.method&gt;</code> / <code>LAYOUT:&lt;key&gt;</code> / <code>NAV:&lt;key&gt;</code>。同一キーは新規作成せずフォーカスのみ</td></tr>
+          <tr><td>初期タブ</td><td>プロジェクトロード成功直後に <b>Package 図</b>を 1 枚自動オープン</td></tr>
+          <tr><td>固定ユーティリティタブ（末尾 6 本）</td><td>Manifest / Impact / References / Func Diff / Functions / Members（常駐・閉じられない）</td></tr>
+          <tr><td>タブを閉じる</td><td>× ボタン / 中クリック / 右クリック「<b>Close</b> / <b>Close Others</b>（2 枚以上で有効）/ <b>Close All</b>（1 枚以上で有効）」</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="item-open">
+      <h2>画面項目一覧 — Open Project ダイアログ</h2>
+      <p><code>OpenProjectDialog</code>（モーダル）。最近開いたプロジェクトの選択、またはフォルダ参照。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>データ型</th><th>必須</th><th>初期値</th><th>活性 / 表示条件</th></tr></thead>
+        <tbody>
+          <tr><td>「Open Project」見出し</td><td>JLabel</td><td>表示のみ</td><td>—</td><td>固定</td><td>常時</td></tr>
+          <tr><td>最近開いたプロジェクト一覧</td><td>JList&lt;ProjectRecord&gt;（単一選択 / 最大 8 行表示）</td><td>名前 + パス</td><td>任意</td><td>呼出時に渡されたリスト</td><td>履歴がある場合に表示。存在しないフォルダは灰色</td></tr>
+          <tr><td>一覧見出し</td><td>JLabel</td><td>表示のみ</td><td>—</td><td>「最近開いたプロジェクト:」／「— はありません」</td><td>履歴の有無で文言分岐</td></tr>
+          <tr><td>一覧から削除</td><td>JButton（<kbd>Delete</kbd>/<kbd>BackSpace</kbd> でも可）</td><td>—</td><td>—</td><td>—</td><td>選択あり時のみ enable。押下で確認ダイアログ</td></tr>
+          <tr><td>開く</td><td>JButton</td><td>—</td><td>—</td><td>—</td><td>選択あり かつ そのフォルダが存在する場合のみ enable。ダブルクリックでも実行</td></tr>
+          <tr><td>新しいフォルダを参照…／フォルダを参照…</td><td>JButton</td><td>—</td><td>—</td><td>—</td><td>常時 enable。<code>JFileChooser</code>（ディレクトリのみ）を開く</td></tr>
+          <tr><td>キャンセル</td><td>JButton</td><td>—</td><td>—</td><td>—</td><td>常時 enable。何もせず閉じる</td></tr>
+        </tbody>
+      </table></div>
+      <div class="warn"><b>「一覧から削除」の確認:</b>「<code>「&lt;name&gt;」を最近開いたプロジェクト一覧から削除しますか?</code><br><code>※ ディスク上のフォルダやファイルは削除されません。</code>」（タイトル「一覧から削除」・OK / Cancel・WARNING）。<b>ディスク上のファイルは削除されず、履歴からの除去のみ</b>。</div>
+    </section>
+
+    <section id="item-scope">
+      <h2>画面項目一覧 — Scope ダイアログ</h2>
+      <p><code>DiagramScopeDialog</code>（モーダル）。クラス図の表示範囲を絞り込む。OK でアクティブタブを再描画。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>データ型・形式</th><th>桁数・範囲</th><th>必須</th><th>初期値</th></tr></thead>
+        <tbody>
+          <tr><td>Preset:</td><td>JComboBox&lt;DiagramPreset&gt;</td><td>列挙（CUSTOM ほか）</td><td>—</td><td>任意</td><td>呼出時のプリセット（無ければ CUSTOM）。変更で各項目へ反映</td></tr>
+          <tr><td>Include packages (multi-select):</td><td>JList&lt;String&gt;（複数選択 / 8 行）</td><td>パッケージ名</td><td>—</td><td>任意</td><td>現在の包含パッケージ</td></tr>
+          <tr><td>Exclude packages (multi-select):</td><td>JList&lt;String&gt;（複数選択 / 8 行）</td><td>パッケージ名</td><td>—</td><td>任意</td><td>現在の除外パッケージ</td></tr>
+          <tr><td>Modules (multi-select):</td><td>JList&lt;String&gt;（複数選択 / 5 行）</td><td>モジュール名</td><td>—</td><td>任意</td><td>現在の対象モジュール</td></tr>
+          <tr><td>Class name regex (…):</td><td>JTextField（20 桁）</td><td>正規表現</td><td>—</td><td>任意</td><td>現在のパターン（空可）。不正時はバリデーション</td></tr>
+          <tr><td>Max classes (0 = unlimited):</td><td>JSpinner</td><td>整数</td><td>min 0 / max 100000 / step 50</td><td>任意</td><td>現在値（既定 0＝無制限）</td></tr>
+          <tr><td>Seed neighbor hops:</td><td>JSpinner</td><td>整数</td><td>min 0 / max 10 / step 1</td><td>任意</td><td>現在値（既定 0）</td></tr>
+          <tr><td>Relation kinds: Inheritance / Implementation / Usage</td><td>JCheckBox × 3</td><td>真偽</td><td>—</td><td>—</td><td>現在の関係種別。全 OFF は自動的に全 ON へ補正</td></tr>
+          <tr><td>Visibility:</td><td>JComboBox&lt;VisibilityFilter&gt;</td><td>列挙</td><td>—</td><td>任意</td><td>現在の可視性フィルタ</td></tr>
+          <tr><td>Exclude external libraries (java.*, android.*, …)</td><td>JCheckBox</td><td>真偽</td><td>—</td><td>—</td><td>現在値</td></tr>
+          <tr><td>Parse mode: Full / Headers only (light)</td><td>JRadioButton × 2</td><td>列挙</td><td>—</td><td>—</td><td>現在のパースモード</td></tr>
+          <tr><td>OK / Cancel</td><td>JButton</td><td>—</td><td>—</td><td>—</td><td>OK→スコープ確定して再描画、Cancel→破棄</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="item-style">
+      <h2>画面項目一覧 — Style Settings ダイアログ</h2>
+      <p><code>StyleSettingsDialog</code>（モーダル）。テーマ・フォント・可読性・図種別スタイルを設定。OK で全タブを再描画し、SQLite に永続化。</p>
+      <h3>共通スタイル</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>データ型・形式</th><th>桁数・範囲</th><th>初期値</th></tr></thead>
+        <tbody>
+          <tr><td>Theme:</td><td>JComboBox&lt;String&gt;</td><td>列挙（空="(None)" + plain…spacelab の 12 種）</td><td>—</td><td>現在のテーマ</td></tr>
+          <tr><td>Background:</td><td>JTextField（10 桁）+ Pick… ボタン</td><td>PlantUML 色（例 #FFFFFF / white / transparent）</td><td>—</td><td>現在の背景色。Pick… は <code>JColorChooser</code></td></tr>
+          <tr><td>Font name:</td><td>FontPickerField（編集可コンボ）</td><td>フォント名</td><td>—</td><td>現在値。先頭「(Auto / 自動検出)」＝空＝日本語フォント自動検出。任意入力可</td></tr>
+          <tr><td>（フォントプレビュー）</td><td>JLabel（HTML）</td><td>表示のみ</td><td>—</td><td>"Aa Bb Cc あいう 漢字 カタカナ 0123"。日本語表示可否を注記</td></tr>
+          <tr><td>Font size:</td><td>JSpinner</td><td>整数（0=PlantUML 既定）</td><td>min 0 / max 48 / step 1</td><td>現在値</td></tr>
+          <tr><td>Direction:</td><td>JRadioButton × 3</td><td>Default(上→下) / Left to right / Top to bottom(明示)</td><td>—</td><td>現在の方向</td></tr>
+          <tr><td>Line type:</td><td>JComboBox</td><td>Default / Polyline / Ortho / Spline</td><td>—</td><td>現在値（Ortho は交差削減）</td></tr>
+          <tr><td>Shadowing:</td><td>JComboBox</td><td>Default / On / Off</td><td>—</td><td>現在値</td></tr>
+          <tr><td>Spacing: nodesep / ranksep</td><td>JSpinner × 2</td><td>整数（0=既定）</td><td>各 min 0 / max 200 / step 5</td><td>現在値</td></tr>
+          <tr><td>Custom skinparam:</td><td>JTextArea（6 行 × 32 桁）</td><td>PlantUML 行</td><td>—</td><td>現在値</td></tr>
+        </tbody>
+      </table></div>
+      <h3>シーケンス図スタイル</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>値</th><th>初期値 / 活性条件</th></tr></thead>
+        <tbody>
+          <tr><td>Comments: Show JavaDoc / source comments as notes</td><td>JCheckBox</td><td>真偽</td><td>現在値。OFF にすると下 2 項目が disable</td></tr>
+          <tr><td>Comment style:</td><td>JComboBox</td><td>INLINE / NOTE</td><td>現在値。Comments=ON のときのみ enable</td></tr>
+          <tr><td>Comment placement:</td><td>JComboBox</td><td>AT_CALL_SITE / PARTICIPANT_TOP</td><td>現在値。Comments=ON のときのみ enable</td></tr>
+          <tr><td>Call labels: Qualify with class name</td><td>JCheckBox</td><td>真偽</td><td>現在値（独立）</td></tr>
+        </tbody>
+      </table></div>
+      <h3>クラス図スタイル / コールグラフ</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>桁数・範囲</th><th>初期値</th></tr></thead>
+        <tbody>
+          <tr><td>Members: Show fields / Show methods / Show annotations</td><td>JCheckBox × 3</td><td>—</td><td>現在のクラス図プリセット値</td></tr>
+          <tr><td>Public only（非 public を隠す）</td><td>JCheckBox</td><td>—</td><td>現在値</td></tr>
+          <tr><td>Exclude external libraries</td><td>JCheckBox</td><td>—</td><td>現在値</td></tr>
+          <tr><td>Comment max length:</td><td>JSpinner</td><td>min 0 / max 500 / step 10（0=無効, 既定 80）</td><td>現在値</td></tr>
+          <tr><td>Hidden annotations:</td><td>JTextField（24 桁）</td><td>カンマ区切り（例 Override,Nullable）</td><td>現在値</td></tr>
+          <tr><td>Call Graph › Max depth:</td><td>JSpinner</td><td>min 1 / max 10 / step 1（既定 4）</td><td>現在値（範囲外は 1–10 にクランプ）</td></tr>
+        </tbody>
+      </table></div>
+      <p><b>ボタン:</b> <b>Optimize for Readability</b>（plain テーマ・影なし・ortho・広め間隔の推奨値を一括適用）／<b>Reset to Defaults</b>（全項目を既定へ）／<b>OK</b>（確定・全タブ再描画・永続化）／<b>Cancel</b>（破棄）。</p>
+    </section>
+
+    <section id="item-prefs">
+      <h2>画面項目一覧 — Preferences ダイアログ</h2>
+      <p><code>PreferencesDialog</code>（モーダル）。アプリ全体の外観・起動時動作。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>値</th><th>初期値</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><td>Look &amp; Feel:</td><td>JComboBox&lt;LookAndFeelOption&gt;</td><td>System (OS ネイティブ) / Cross-Platform (Metal) / Nimbus</td><td>現在の L&amp;F</td><td>変更は<b>再起動後</b>反映（ヒント表示）</td></tr>
+          <tr><td>前回開いたプロジェクトを起動時に復元する</td><td>JCheckBox</td><td>真偽</td><td>現在値</td><td>引数なし起動時に最後のプロジェクトを自動オープン</td></tr>
+          <tr><td>OK / Cancel</td><td>JButton</td><td>—</td><td>—</td><td>OK→設定保存、Cancel→破棄</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="item-search">
+      <h2>画面項目一覧 — Entity Search ダイアログ</h2>
+      <p><code>EntitySearchDialog</code>（モーダル / 640×640）。クラス・メソッド・フィールドを横断検索。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>データ型・形式</th><th>必須</th><th>初期値 / 活性条件</th></tr></thead>
+        <tbody>
+          <tr><td>Filter (substring of name / package / type):</td><td>JTextField</td><td>部分一致（大文字小文字無視）</td><td>任意</td><td>空。<b>150ms debounce</b> で候補を絞り込み。開いた直後にフォーカス</td></tr>
+          <tr><td>Kind: class / method / field</td><td>JCheckBox × 3</td><td>真偽</td><td>—</td><td><b>3 つとも初期 ON</b>。OFF の種別は候補から除外</td></tr>
+          <tr><td>候補ツリー</td><td>JTree（Kind→Package→Class→項目）</td><td>単一選択</td><td>任意</td><td>先頭エントリを自動選択。件数上限なし</td></tr>
+          <tr><td>件数表示</td><td>JLabel</td><td>"N / M entries"</td><td>—</td><td>フィルタ結果件数を動的更新</td></tr>
+          <tr><td>Drill-down</td><td>JButton</td><td>—</td><td>—</td><td>DETAILED プリセットで詳細クラス図（seed + neighborHops=1）を開く</td></tr>
+          <tr><td>OK</td><td>JButton</td><td>—</td><td>—</td><td>CLASS→クラス図 / METHOD→Sequence・Activity / FIELD→所属クラス図。ダブルクリック / <kbd>Enter</kbd> でも確定</td></tr>
+          <tr><td>Cancel</td><td>JButton</td><td>—</td><td>—</td><td>選択なしで閉じる</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">フィルタ欄で <kbd>↓</kbd> を押すとツリーへフォーカス移動。選択がない状態で OK / Drill-down を押しても何も起きません（キャンセル相当）。</div>
+    </section>
+
+    <section id="item-entry">
+      <h2>画面項目一覧 — 起点・フィルタ・ファイル選択ダイアログ</h2>
+      <p>シーケンス / アクティビティ / コールグラフの起点選択、participant フィルタ、layout / navigation ファイル選択。いずれも「フィルタ欄 + 一覧 + 件数 + OK/Cancel」という共通構成です。</p>
+
+      <h3>Sequence / Activity / Call Graph Entry（<code>SequenceEntryDialog</code>, 600×600）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>必須</th><th>初期値 / 挙動</th></tr></thead>
+        <tbody>
+          <tr><td>Filter (package / class / method substring):</td><td>JTextField</td><td>任意</td><td>空。150ms debounce。<kbd>↓</kbd> でツリーへ</td></tr>
+          <tr><td>候補ツリー（Package→Class→Method）</td><td>JTree（単一選択）</td><td>任意</td><td>呼出回数降順→メソッド名昇順で整列、先頭を自動選択</td></tr>
+          <tr><td>件数表示</td><td>JLabel</td><td>—</td><td>"N / M methods"</td></tr>
+          <tr><td>OK / Cancel</td><td>JButton</td><td>—</td><td>OK→<code>Class.method</code> を確定し対応図タブを開く。ダブルクリック / <kbd>Enter</kbd> でも確定</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Sequence Participant Filter（<code>SequenceParticipantFilterDialog</code>, 420×480）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>初期値</th></tr></thead>
+        <tbody>
+          <tr><td>Entry: &lt;起点&gt; / 説明（"Check participants to keep; uncheck to hide them. N participants total."）</td><td>JLabel</td><td>表示のみ</td></tr>
+          <tr><td>participant チェックボックス（複数）</td><td>JCheckBox</td><td>非表示でない participant は ON、隠し対象は OFF</td></tr>
+          <tr><td>Select All / Clear All</td><td>JButton</td><td>全 ON / 全 OFF</td></tr>
+          <tr><td>OK / Cancel</td><td>JButton</td><td>OK→未チェック分を「隠す participant」として再描画、Cancel→破棄（null）</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Layout / Navigation Chooser（<code>LayoutFileChooserDialog</code> / <code>NavigationFileChooserDialog</code>, 560×480）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目 / ラベル</th><th>種別</th><th>必須</th><th>初期値 / 挙動</th></tr></thead>
+        <tbody>
+          <tr><td>Filter（file name / module / qualifier substring）</td><td>JTextField</td><td>任意</td><td>空。入力で即時フィルタ（debounce なし）。<kbd>↓</kbd> で一覧へ</td></tr>
+          <tr><td>ファイル一覧</td><td>JList（単一選択）</td><td>任意</td><td>module→sourceSet→fileName(→qualifier) 順に整列、先頭を自動選択</td></tr>
+          <tr><td>件数表示</td><td>JLabel</td><td>—</td><td>"N / M layout(s)" / "N / M graph(s)"</td></tr>
+          <tr><td>OK / Cancel</td><td>JButton</td><td>—</td><td>OK→選択キーで Layout / Navigation 図タブを開く。ダブルクリック / <kbd>Enter</kbd> でも確定</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="item-explore">
+      <h2>画面項目一覧 — ユーティリティパネル（右ペイン固定）</h2>
+      <h3>Impact（<code>ImpactExplorerPanel</code>）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>種別</th><th>形式</th><th>範囲・初期値</th><th>必須</th></tr></thead>
+        <tbody>
+          <tr><td>Symbol</td><td>JTextField（幅 40）</td><td>FQN（<code>com.foo.Bar</code>）または FQN.method</td><td>—</td><td>必須（空なら「Enter a symbol to analyze.」）</td></tr>
+          <tr><td>Depth</td><td>JSpinner</td><td>整数</td><td>min 1 / max 10 / step 1 / 既定 3</td><td>任意</td></tr>
+          <tr><td>Analyze</td><td>JButton（<kbd>Enter</kbd> でも）</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>結果ツリー</td><td>JTree</td><td>Layer 別（0=Target / 1=直接 / 2+=推移）の呼び出し元</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <h3>References（<code>ReverseReferencePanel</code>）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>種別</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>Symbol</td><td>JTextField（幅 40, <kbd>Enter</kbd> で実行）</td><td>FQN またはメンバー（空なら「Enter a symbol to search.」）</td></tr>
+          <tr><td>Find references</td><td>JButton</td><td>逆参照を検索</td></tr>
+          <tr><td>結果テーブル</td><td>JTable（読み取り専用 / ソート可）</td><td>列: Caller class / Method / Kind / File</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Func Diff（<code>FuncDiffPanel</code>）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>項目</th><th>種別</th><th>形式 / 必須</th></tr></thead>
+        <tbody>
+          <tr><td>Method A / B — File</td><td>JTextField（幅 40）+ Browse（*.java）</td><td>ファイルパス / 必須</td></tr>
+          <tr><td>Method A / B — Method</td><td>JTextField（幅 30）</td><td><code>ClassName.method</code> または <code>method</code> / 必須</td></tr>
+          <tr><td>Compare</td><td>JButton</td><td>2 メソッドを比較（LCS / Levenshtein / Jaccard）。結果は Markdown</td></tr>
+          <tr><td>Save Report…</td><td>JButton</td><td>*.md 保存（比較結果生成後に有効）</td></tr>
+          <tr><td>結果</td><td>JTextArea（等幅・読み取り専用）</td><td>Markdown レポート</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Manifest / Functions / Members（テキスト表示パネル）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>パネル</th><th>種別</th><th>内容 / 生成タイミング</th></tr></thead>
+        <tbody>
+          <tr><td>Manifest（<code>ManifestSummaryPanel</code>）</td><td>JTextArea（等幅・読取専用）</td><td>AndroidManifest.xml の Markdown サマリー</td></tr>
+          <tr><td>Functions（<code>MethodListPanel</code>）</td><td>JTextArea（等幅・読取専用）</td><td>全関数の利用マップ（Markdown 表）。<b>タブ選択時に遅延生成</b></td></tr>
+          <tr><td>Members（<code>MemberListPanel</code>）</td><td>JTextArea（等幅・読取専用）</td><td>全クラスのメンバー一覧（CSV）。<b>タブ選択時に遅延生成</b></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 3. 振る舞い -->
+    <!-- ===================================================================== -->
+    <section id="behavior-actions">
+      <h2>振る舞い — 各操作で起きる処理</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>操作</th><th>処理内容</th></tr></thead>
+        <tbody>
+          <tr><td>Open（メニュー / ツールバー / <kbd>Ctrl+O</kbd>）</td><td>Open Project ダイアログ表示 → 選択フォルダをバックグラウンド解析（SwingWorker・進捗オーバーレイ）</td></tr>
+          <tr><td>Save（<kbd>Ctrl+S</kbd>）/ 右クリック Save as…</td><td>アクティブタブを保存。拡張子で形式自動判別（.svg ベクター / .png ラスター上限あり / .puml・.txt テキスト）</td></tr>
+          <tr><td>Refresh（<kbd>F5</kbd>）</td><td>アクティブタブを再生成（描画中状態へ）</td></tr>
+          <tr><td>図種トグル / Diagram ラジオ</td><td>フォーカス中タブの題材を保ったまま、選択図種のタブを開く / フォーカス。結果がツリー・ツールバー・ステータスへ逆同期</td></tr>
+          <tr><td>ツリーのノード選択</td><td>種別に応じた図へ切替（クラス→1 ホップ近傍、メソッド→Sequence など）</td></tr>
+          <tr><td>ツリーのダブル / 中クリック</td><td>新規タブで開く（同一キーは既存タブへフォーカス）</td></tr>
+          <tr><td>プレビュー上 クラス名クリック</td><td>DETAILED 詳細クラス図タブへドリルダウン（別キーの新タブ）</td></tr>
+          <tr><td>プレビュー上 メソッド横 ▶</td><td>Sequence / Activity を選ぶポップアップ → 対応タブを開く</td></tr>
+          <tr><td>Scope / Style / Participant Filter の OK</td><td>Scope・Participant はアクティブタブ再描画、Style は全タブ再描画</td></tr>
+          <tr><td>ズーム（<kbd>Ctrl+=/-/0/F</kbd> / <kbd>Ctrl</kbd>+ホイール）</td><td>プレビュー倍率変更（0.1〜8.0）。ステータスバーに反映。倍率はタブごとに独立</td></tr>
+          <tr><td>パン（左 / 中ドラッグ）／<kbd>Alt</kbd>+ドラッグ／<kbd>Ctrl+A</kbd></td><td>移動 / 範囲テキストコピー / 全テキストコピー</td></tr>
+          <tr><td>Clear Analysis Cache</td><td>確認後、メモリ + ディスクの解析キャッシュを破棄して再解析</td></tr>
+          <tr><td>Enable Graphviz (dot)…</td><td>dot を再検出 / 場所指定。有効化で開いている図をその場で再描画</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="behavior-flow">
+      <h2>振る舞い — 遷移先・後続処理</h2>
+      <p>状態の流れの詳細（状態機械図・シーケンス図）は <a href="./gui-manual.html#transitions">GUI マニュアルの状態遷移</a>を参照。要点は次のとおり。</p>
+      <ul>
+        <li><b>プロジェクトロード成功:</b> ツリー構築 → 既定 <b>Package 図</b>を 1 タブ開く → 図表示状態へ。</li>
+        <li><b>タブのフォーカス:</b> <code>mirrorToState()</code> でグローバル状態を更新し、ツリーのハイライト・ツールバー図種・ステータスへ逆同期（<code>suppressNotify</code> で循環を防止）。</li>
+        <li><b>スタイル / スコープ変更:</b> アクティブ（または全）タブを再描画し、結果を再びグローバル状態へ反映。</li>
+        <li><b>ダイアログの結果:</b> 起点・スコープ・layout / navigation キーなどを設定し、対応するタブを開く / 再描画する。</li>
+        <li><b>タブを閉じる / プロジェクト再オープン:</b> タブ状態は破棄。再オープン時はアクティブタブ状態をクリアし、スタイル等のプロジェクト設定は永続化から復元。</li>
+      </ul>
+    </section>
+
+    <section id="behavior-validation">
+      <h2>振る舞い — バリデーション（入力チェック）</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>対象</th><th>単位</th><th>条件</th><th>挙動</th></tr></thead>
+        <tbody>
+          <tr><td>Scope › Class name regex</td><td>項目</td><td>正規表現がコンパイル不能（<code>PatternSyntaxException</code>）</td><td>警告ダイアログ「Invalid regex: …」を表示し、当該パターンは適用しない</td></tr>
+          <tr><td>Scope › Relation kinds</td><td>項目間</td><td>3 つすべて OFF</td><td>意味がないため自動的に全 ON へ補正</td></tr>
+          <tr><td>Scope › Max classes / Seed hops</td><td>項目</td><td>範囲（Spinner で 0–100000 / 0–10 に制限）</td><td>Spinner のモデルで範囲外入力を抑止</td></tr>
+          <tr><td>Style › Font size / Spacing / Comment max length / Call Graph depth</td><td>項目</td><td>Spinner で範囲制限（48 / 200 / 500 / 1–10）</td><td>範囲外は抑止。Call Graph depth は 1–10 にクランプ</td></tr>
+          <tr><td>Impact › Symbol</td><td>画面</td><td>空</td><td>解析せずステータス「Enter a symbol to analyze.」</td></tr>
+          <tr><td>References › Symbol</td><td>画面</td><td>空</td><td>検索せずステータス「Enter a symbol to search.」</td></tr>
+          <tr><td>Func Diff</td><td>画面</td><td>File / Method のいずれか空、または spec パース失敗</td><td>比較せずステータスに理由表示（「Invalid spec: …」など）</td></tr>
+          <tr><td>Entity / Sequence / Layout / Navigation 選択</td><td>画面</td><td>選択なしで OK</td><td>何もせず閉じる（キャンセル相当）</td></tr>
+          <tr><td>各図ダイアログを開く前提</td><td>画面</td><td>プロジェクト未ロード / 候補 0 件 / 起点未設定</td><td>情報ダイアログで通知し処理中断（→ <a href="#msg-info">メッセージ仕様</a>）</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 4. メッセージ仕様 -->
+    <!-- ===================================================================== -->
+    <section id="msg-error">
+      <h2>メッセージ仕様 — エラー / 警告</h2>
+      <p>すべて <code>JOptionPane</code> によるモーダル通知（OK ボタン）。文言は実装準拠（一部は末尾に例外メッセージを連結）。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>メッセージ</th><th>タイトル</th><th>種別</th><th>発生条件</th></tr></thead>
+        <tbody>
+          <tr><td>Invalid regex: &lt;詳細&gt;</td><td>Scope</td><td>WARNING</td><td>Scope のクラス名正規表現が不正</td></tr>
+          <tr><td>Export failed: &lt;詳細&gt;</td><td>Error</td><td>ERROR</td><td>SVG/PNG/PUML・関数一覧・メンバー Excel のエクスポート時に例外</td></tr>
+          <tr><td>Failed to copy SVG: &lt;詳細&gt;</td><td>Error</td><td>ERROR</td><td>SVG のクリップボードコピー失敗</td></tr>
+          <tr><td>Failed to export class diagrams: &lt;詳細&gt;</td><td>Error</td><td>ERROR</td><td>フォルダ別クラス図一括出力で例外</td></tr>
+          <tr><td>Failed to analyze project: &lt;詳細&gt;</td><td>Error</td><td>ERROR</td><td>プロジェクト解析中に例外</td></tr>
+          <tr><td>Loaded project root is unavailable.</td><td>No project</td><td>WARNING</td><td>フォルダ別出力時にプロジェクトルートが無効</td></tr>
+          <tr><td>Couldn't render this diagram.（＋原因・対処、HTML）</td><td>（タブ内表示）</td><td>—</td><td>図の描画失敗（→ <a href="#nf-render">非機能</a>）</td></tr>
+          <tr><td>Save failed: &lt;詳細&gt;（ステータス表示）</td><td>—</td><td>—</td><td>Func Diff レポート保存失敗</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="msg-info">
+      <h2>メッセージ仕様 — 情報・確認・完了</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>メッセージ</th><th>タイトル</th><th>種別 / ボタン</th><th>発生条件</th></tr></thead>
+        <tbody>
+          <tr><td>Open a project first.</td><td>No project</td><td>INFORMATION / OK</td><td>未ロードで Scope / Search / 各 Entry / Layout / Navigation / フォルダ別出力を実行</td></tr>
+          <tr><td>Open a project first.</td><td>Functions / Members</td><td>INFORMATION / OK</td><td>未ロードで関数一覧 / メンバー Excel 出力</td></tr>
+          <tr><td>No entities found in this project.</td><td>Search</td><td>INFORMATION / OK</td><td>検索対象エンティティが 0 件</td></tr>
+          <tr><td>No methods found in this project.</td><td>Sequence diagram</td><td>INFORMATION / OK</td><td>起点候補メソッドが 0 件</td></tr>
+          <tr><td>Choose a sequence entry first (Diagram → Choose Sequence Entry...).</td><td>Sequence participants</td><td>INFORMATION / OK</td><td>起点未設定で participant フィルタを開いた</td></tr>
+          <tr><td>No layout XML files found in this project.</td><td>Layout diagram</td><td>INFORMATION / OK</td><td>layout XML が 0 件</td></tr>
+          <tr><td>No navigation XML files found in this project.</td><td>Navigation diagram</td><td>INFORMATION / OK</td><td>navigation XML が 0 件</td></tr>
+          <tr><td>No diagram to export yet. / No content to export. / No SVG to copy.</td><td>Export</td><td>INFORMATION / OK</td><td>出力対象が未生成 / 空</td></tr>
+          <tr><td>「&lt;name&gt;」を最近開いたプロジェクト一覧から削除しますか?<br>※ ディスク上のフォルダやファイルは削除されません。</td><td>一覧から削除</td><td>WARNING / OK・Cancel</td><td>Open Project で「一覧から削除」</td></tr>
+          <tr><td>現在のプロジェクトの解析キャッシュ (メモリ + ディスク) を破棄して再解析しますか?</td><td>Clear Analysis Cache</td><td>QUESTION / Yes・No</td><td>Settings › Clear Analysis Cache</td></tr>
+          <tr><td>クリアする解析キャッシュがありません (プロジェクト未読込)。</td><td>Clear Analysis Cache</td><td>INFORMATION / OK</td><td>未ロードで Clear Analysis Cache</td></tr>
+          <tr><td>Look &amp; Feel の変更はアプリの再起動後に反映されます。</td><td>Preferences</td><td>INFORMATION / OK</td><td>Preferences で L&amp;F を変更</td></tr>
+          <tr><td>Exported N folder(s), M class(es) to:&lt;パス&gt;</td><td>Export complete</td><td>INFORMATION / OK</td><td>フォルダ別クラス図出力の完了</td></tr>
+          <tr><td>Juml UML / Java + Android + Gradle UML diagram generator.…</td><td>About Juml UML</td><td>INFORMATION / OK</td><td>Help › About</td></tr>
+        </tbody>
+      </table></div>
+      <div class="tip">エクスポート成功時はステータスバーにも反映されます（例 <code>Saved: &lt;絶対パス&gt;</code> / <code>Exported N folder(s) to …</code>）。</div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 5. 例外・非機能 -->
+    <!-- ===================================================================== -->
+    <section id="nf-render">
+      <h2>例外・非機能 — 描画失敗・エラー時の挙動</h2>
+      <ul>
+        <li><b>描画失敗:</b> タブ内に「<b>Couldn't render this diagram.</b>」と原因・対処を表示し、下ペインに生成 PlantUML を残す。失敗してもアプリは継続。</li>
+        <li><b>Graphviz 無効時:</b> 「Graphviz が無効のため、純 Java の Smetana レイアウトを使用しています。Smetana は大きな図を描画できないことがあります。」と表示し、<b>Diagram → Enable Graphviz (dot)…</b> での有効化、または図を小さくする手順（単一パッケージ/クラス/メソッド選択・Preset・Scope）を案内。</li>
+        <li><b>Graphviz 有効・巨大図:</b> 「The diagram may be too large for the layout engine.」として同様の縮小手順を案内。</li>
+        <li><b>PNG エクスポートの上限:</b> キャンバス上限（既定 16384）で <code>scale max</code> 自動縮小。収まらない場合は SVG 出力を推奨。</li>
+        <li><b>解析エラー:</b> 「Failed to analyze project: …」ダイアログを表示し「空」状態へ戻る。キャンセル時はステータスに「Cancelled.」。</li>
+        <li><b>設定保存:</b> プロジェクト設定保存はベストエフォート（例外は握りつぶしてアプリ継続）。</li>
+      </ul>
+    </section>
+
+    <section id="nf-perf">
+      <h2>例外・非機能 — パフォーマンス</h2>
+      <ul>
+        <li><b>非同期解析:</b> プロジェクト解析・図描画・影響解析・差分比較はいずれも <code>SwingWorker</code> で背景実行し、EDT（UI スレッド）をブロックしない。</li>
+        <li><b>進捗スロットリング:</b> 解析進捗の UI 反映は約 150ms 単位でスロットルし、過度な再描画を防ぐ。</li>
+        <li><b>遅延生成・遅延展開:</b> ツリーはパッケージ→クラス→メソッドを展開時に構築。Functions / Members タブはタブ選択時に初めて生成。</li>
+        <li><b>キャッシュ:</b> 解析結果（メモリ + ディスク）・参照インデックスを再利用。<b>Clear Analysis Cache</b> で明示的に再構築。</li>
+        <li><b>軽量モード:</b> Scope の <b>Headers only (light)</b> や Max classes・Preset で大規模プロジェクトの描画コストを抑制。</li>
+        <li><b>巨大図対応:</b> SVG モードは PlantUML の 4096×4096 PNG キャンバス制限を回避。Graphviz (dot) でより堅牢なレイアウトに切替可能。</li>
+      </ul>
+    </section>
+
+    <section id="nf-responsive">
+      <h2>例外・非機能 — レスポンシブ / ウィンドウ</h2>
+      <ul>
+        <li><b>分割ペイン:</b> 左右（ツリー / タブ）と上下（プレビュー / ソース）の <code>JSplitPane</code> をユーザがドラッグでリサイズ可能。初期比は左右 0.22 / 上下 0.85。</li>
+        <li><b>ウィンドウサイズ永続化:</b> 既定 1200×800。前回サイズ・位置を保存し次回起動時に復元。</li>
+        <li><b>ズーム / パン:</b> プレビューは 0.1〜8.0 倍。<kbd>Ctrl</kbd>+ホイールはポインタ基点ズーム、通常ホイールは親スクロールへ委譲。Zoom to Fit はビューポートに合わせて自動調整。</li>
+        <li><b>ドキュメントサイト:</b> 本ドキュメント（HTML）はサイドバー折りたたみ・テーブルのカード化など、880px 以下のモバイル幅にも対応。</li>
+      </ul>
+    </section>
+
+    <section id="nf-a11y">
+      <h2>例外・非機能 — アクセシビリティ</h2>
+      <ul>
+        <li><b>キーボード操作:</b> 主要操作にショートカット（<kbd>Ctrl+O/S</kbd>・<kbd>F5</kbd>・<kbd>Ctrl+Shift+F</kbd>・<kbd>Ctrl+1/2/3</kbd>・<kbd>Ctrl+=/-/0/F</kbd>・<kbd>Ctrl+,</kbd>・<kbd>F1</kbd>）。メニューにニーモニックを設定。</li>
+        <li><b>ダイアログ共通:</b> <kbd>Esc</kbd> でキャンセル / クローズ、<kbd>Enter</kbd> で OK（デフォルトボタン）。検索系はフィルタ欄で <kbd>↓</kbd> により一覧へフォーカス移動、<kbd>Enter</kbd> / ダブルクリックで確定。開いた直後にフィルタ欄へ自動フォーカス。</li>
+        <li><b>プレビュー:</b> フォーカス可能で <kbd>Ctrl+A</kbd> によるテキスト全コピーに対応。リンク領域上ではハンドカーソルに変化。</li>
+        <li><b>日本語フォント:</b> フォント未指定時は実行環境の日本語フォントを自動検出し、文字化け（豆腐 □）を防止。Style Settings のプレビューで日本語表示可否を注記。</li>
+        <li><b>視認性:</b> 線種 Ortho・影オフ・間隔調整・テーマ切替や <b>Optimize for Readability</b> により可読性を調整可能。</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Juml — GUI 画面定義書。操作手順は <a href="./gui-manual.html">GUI 操作マニュアル</a>、内部実装は <a href="./developer-reference.html">開発者リファレンス</a>へ。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

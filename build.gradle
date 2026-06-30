@@ -1,0 +1,330 @@
+plugins {
+    id 'java'
+    id 'checkstyle'
+}
+
+group = 'com.juml'
+version = '2.1'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+    // Apktool が依存する com.android.tools.smali:* (smali/baksmali/dexlib2) は
+    // Maven Central には無く Google Maven (dl.google.com/android/maven2) でのみ配布される
+    // ため、APK 逆コンパイル機能のために google() を追加する。
+    google()
+    maven { url = uri('https://oss.sonatype.org/service/local/repositories/releases/content/') }
+}
+
+dependencies {
+    // FlatLaf (Apache-2.0). モダンでフラットな Swing Look & Feel。Light / Dark の
+    // 両テーマを同梱し、OS ネイティブ LAF より統一感のある外観とダークモードを提供する。
+    // fat jar に同梱され、起動時 / Preferences から切り替える (再起動不要のライブ適用)。
+    implementation 'com.formdev:flatlaf:3.5.4'
+    implementation 'org.apache.xmlgraphics:batik-svggen:1.17'
+    implementation 'org.apache.xmlgraphics:batik-dom:1.17'
+    // ベクター SVG プレビュー用: PlantUML が出力した SVG を GraphicsNode として
+    // 直接 Swing に描画するため Batik bridge を取り込む (transitively pulls in
+    // batik-anim / batik-bridge / batik-gvt / batik-css)。
+    implementation 'org.apache.xmlgraphics:batik-bridge:1.17'
+    implementation 'com.rover12421.opensource:JFontChooser:1.0.5-3'
+    // PlantUML (MIT 版アーティファクト plantuml-mit を使用)。UML 系出力を SVG として
+    // 直接書き出すために同梱する。PlantUML は同一機能を複数ライセンスの別アーティファクト
+    // で配布しており、-mit 版は class/sequence/package 図を全てサポートする (ditaa 等の
+    // 未使用機能のみ欠落)。fat jar 全体を MIT 互換に保つため GPL 版ではなくこれを選ぶ。
+    // graphviz/dot は不要 (PlantUmlRenderer が Smetana レイアウトを自動指定)。
+    implementation 'net.sourceforge.plantuml:plantuml-mit:1.2026.2'
+    // ASM: 依存 JAR/AAR からクラスヘッダ (名前・superclass・interfaces・public members)
+    // を読み取り、シーケンス図/クラス図に外部クラスを表示するために使用する。
+    // .class バイトコードは SKIP_CODE で読み飛ばし、ヘッダ情報のみを抽出する。
+    implementation 'org.ow2.asm:asm:9.7'
+    // Apktool (Apache-2.0). APK を逆コンパイルして smali + AndroidManifest を取り出す
+    // ためのライブラリ。Juml は brut.androlib.ApkDecoder を JVM 内で直接呼び出し、
+    // 外部プロセス (aapt 等) の起動やネットワークアクセスは行わない (decode は純 Java)。
+    // smali/baksmali/dexlib2 (com.android.tools.smali, Apache-2.0) と guava を推移取得する。
+    implementation 'org.apktool:apktool-lib:2.9.3'
+    // SQLite (Apache 2.0). 解析結果の永続インデックス (~/.juml/cache/<hash>/index.db)
+    // の格納先。fat jar に同梱され、JDBC 経由で参照関係・外部境界・コンポーネント集約を
+    // 横断クエリ可能にする。native lib は jar 内の META-INF から自動展開される。
+    implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
+    // JavaParser + JavaSymbolSolver (LGPL-3.0 OR Apache-2.0 のデュアル → Apache-2.0 を選択)。
+    // Java ソースの正規フロントエンド。完全な構文 AST に加え、SymbolSolver で
+    // 型・オーバーロード・継承・チェーン呼び出しを解決し、逆参照/シーケンス図の精度を上げる。
+    // symbol-solver-core が javaparser-core を推移取得する。native lib なし。
+    implementation 'com.github.javaparser:javaparser-symbol-solver-core:3.26.4'
+    // Apache POI (Apache 2.0). メンバー解析結果を .xlsx ワークブックとして書き出す。
+    // 複数シート・オートフィルタ・見出し固定に対応。fat jar に同梱される
+    // (poi / poi-ooxml / xmlbeans / commons-compress 等を推移取得)。
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    testImplementation 'junit:junit:4.13.2'
+    // Playwright (ブラウザ自動化) で生成 SVG をレンダリング・スナップショット検証する。
+    // 初回テスト実行時に `playwright install chromium` がトリガーされ Chromium が
+    // ~/.cache/ms-playwright 配下にダウンロードされる (~150MB)。
+    testImplementation 'com.microsoft.playwright:playwright:1.49.0'
+    // AssertJ-Swing で UmlMainFrame の Swing UI を Robot 経由でテストする。
+    testImplementation 'org.assertj:assertj-swing-junit:3.17.1'
+}
+
+def defaultEncoding = 'UTF-8'
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = defaultEncoding
+    // JDK 21+ でビルドしても Java 17 の API シグネチャに対してコンパイル検証する。
+    // これがないと List.getFirst() など Java 21 で追加された API が紛れ込み、
+    // 実際に JDK 17 でビルドしたユーザー環境でだけ "cannot find symbol" になる。
+    options.release = 17
+}
+
+test {
+    useJUnit()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = false
+    }
+
+    // Swing GUI テスト (AssertJ-Swing) と Playwright Chromium 用の環境調整。
+    // - DISPLAY が設定されていなければ Swing GUI テストは Assume.assumeFalse で skip。
+    //   ローカル/CI でも実行したい場合は `xvfb-run -a ./gradlew test` でラップ。
+    // - Playwright は ~/.cache/ms-playwright に Chromium をダウンロードする。
+    //   ネットワーク制限環境では Playwright.create() が失敗し、
+    //   PlantUmlSvgPlaywrightTest は Assume.assumeNoException で skip となる。
+    systemProperty 'java.awt.headless',
+            (System.getenv('DISPLAY') != null ? 'false' : 'true')
+}
+
+jar {
+    archiveFileName = 'Juml.jar'
+    manifest {
+        attributes(
+                'Main-Class': 'juml.Main',
+                'Implementation-Title': 'Juml',
+                'Implementation-Version': version,
+                'License': 'MIT'
+        )
+    }
+
+    // 依存ライブラリを同梱して単体実行可能な fat jar にする。
+    // 各依存 jar の META-INF/*.SF, *.DSA, *.RSA は署名検証で衝突を起こすので除外する。
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    // 配布 jar 自身にも本体のライセンスと第三者ライセンス表記を同梱する
+    // (Apache-2.0 / BSD 依存の表記保持義務を fat jar 配布側でも満たすため)。
+    metaInf {
+        from 'LICENSE'
+        from 'THIRD-PARTY-NOTICES.md'
+    }
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+checkstyle {
+    toolVersion = '10.21.1'
+    configFile = file("${projectDir}/config/checkstyle/checkstyle.xml")
+    ignoreFailures = false
+    maxWarnings = 0
+}
+
+tasks.named('checkstyleMain') { source = 'src/main/java' }
+tasks.named('checkstyleTest') { source = 'src/test/java' }
+
+// `Juml.jar` は単体で動く fat jar なので、配布 zip には起動補助ファイル
+// (Windows/Unix 起動スクリプト、デフォルト設定) と jar 本体だけを含める。
+// bundle/graphviz/ に dot バイナリが置かれていれば自動的に同梱される。
+tasks.register('makeZip', Zip) {
+    dependsOn 'jar'
+    outputs.upToDateWhen { false }
+
+    from 'bundle'
+    from 'build/libs/Juml.jar'
+}
+
+// --- jpackage による自己完結 exe / ネイティブイメージ生成 ---
+// JDK 17 標準の jpackage を使い、JRE を同梱した「Java 未インストールでも起動できる」
+// ネイティブイメージを生成する。Windows で実行すれば Juml.exe + runtime を含む
+// app-image が出来上がる (Launch4j のように別途 Java を要求しない)。
+//
+// 重要: jpackage は「実行しているホスト OS 向け」のイメージしか作れない。
+//   - Windows 上で実行 → build/jpackage/Juml/Juml.exe (+ runtime\)
+//   - Linux 上で実行   → build/jpackage/Juml/bin/Juml (+ lib/runtime/)
+//   - macOS 上で実行   → build/jpackage/Juml.app
+// したがって配布用の Windows .exe は Windows ランナー (CI の package-windows ジョブ)
+// で生成する。ローカル Linux/macOS では同 OS 向けイメージの動作確認に使える。
+
+// jpackage 実行ファイルのパスを解決する。JRE では同梱されないため JDK が必要。
+def resolveJpackage = {
+    def javaHome = System.getProperty('java.home')
+    def isWindows = System.getProperty('os.name', '').toLowerCase().contains('win')
+    def exe = isWindows ? 'jpackage.exe' : 'jpackage'
+    def candidate = new File(new File(javaHome, 'bin'), exe)
+    if (!candidate.isFile()) {
+        throw new GradleException(
+                "jpackage が見つかりません: ${candidate}\n" +
+                '自己完結 exe の生成には JRE ではなく JDK 17 以上が必要です。' +
+                ' JAVA_HOME を JDK に向けて再実行してください。')
+    }
+    return candidate.absolutePath
+}
+
+// JRE 同梱のネイティブイメージ (app-image) を build/jpackage/ に生成する。
+// Windows で実行すると build/jpackage/Juml/Juml.exe が出来上がる。
+tasks.register('jpackageImage', Exec) {
+    dependsOn 'jar'
+    group = 'distribution'
+    description = 'JRE 同梱の自己完結ネイティブイメージ (Windows なら Juml.exe) を生成する'
+
+    def destDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def isWindows = System.getProperty('os.name', '').toLowerCase().contains('win')
+    def iconFile = file('other/juml.ico')
+
+    doFirst {
+        // 既存イメージを掃除してから再生成する (jpackage は出力先が空であることを要求する)。
+        def imageDir = new File(destDir, 'Juml')
+        if (imageDir.exists()) {
+            delete imageDir
+        }
+        destDir.mkdirs()
+        def os = System.getProperty('os.name', '')
+        println "jpackage: ${os} 向け app-image を ${destDir} に生成します。"
+        if (!isWindows) {
+            println 'Note: Windows 以外で実行しているため、生成されるのはこの OS 向けの' +
+                    ' app-image です。配布用 Windows exe は Windows 上で生成してください。'
+        }
+    }
+
+    executable resolveJpackage()
+    args '--type', 'app-image',
+            '--name', 'Juml',
+            '--app-version', project.version.toString(),
+            '--vendor', 'naou and contributors',
+            '--description', 'Java + Android + Gradle UML Tool',
+            '--input', layout.buildDirectory.dir('libs').get().asFile.absolutePath,
+            '--main-jar', 'Juml.jar',
+            '--main-class', 'juml.Main',
+            '--dest', destDir.absolutePath
+    // Windows では .ico アイコンを埋め込む (他 OS は .ico を受け付けないため付けない)。
+    if (isWindows && iconFile.isFile()) {
+        args '--icon', iconFile.absolutePath
+    }
+}
+
+// 生成した app-image を配布用 ZIP に固める (Release 添付 / 手元配布用)。
+tasks.register('jpackageZip', Zip) {
+    dependsOn 'jpackageImage'
+    group = 'distribution'
+    description = 'jpackage の app-image を OS 別サフィックス付き ZIP に固める'
+
+    def os = System.getProperty('os.name', '').toLowerCase()
+    def osTag = os.contains('win') ? 'windows'
+            : (os.contains('mac') ? 'macos' : 'linux')
+    archiveFileName = "Juml-${osTag}-${project.version}.zip"
+    from layout.buildDirectory.dir('jpackage/Juml')
+    into 'Juml'
+}
+
+// --- Graphviz バイナリ同梱ヘルパー ---
+// 以下のタスクを手動実行して bundle/graphviz/ に dot バイナリを配置する。
+// 配置後は makeZip / jar を実行すれば ZIP に自動同梱される。
+//
+// Linux/Mac ユーザーは OS のパッケージマネージャ (apt/brew) でインストール済みの
+// dot バイナリを手動コピーするか、後述の copySystemDot タスクを使う。
+// Windows 用は graphviz.org の portable zip から dot.exe と依存 DLL をコピーする:
+//   https://graphviz.org/download/
+//   -> Windows の "Stable 64-bit EXE installer" または zip を展開して
+//      bin/dot.exe, *.dll を bundle/graphviz/windows-amd64/ に配置する。
+
+// システムインストール済みの dot を Linux/Mac 向けに bundle/graphviz/ へコピーする。
+// (静的リンクバイナリでなければ他マシンでは動作しない点に注意)
+tasks.register('copySystemDot') {
+    description = 'システム PATH 上の dot バイナリを bundle/graphviz/ へコピーする (動作確認用)'
+    group = 'graphviz'
+    // NOTE: 本体は copySystemDoxygen と同様。doxygen は下記参照。
+    doLast {
+        def dotPath = ['dot'].collect { cmd ->
+            def found = System.getenv('PATH')?.split(File.pathSeparator)?.collect { dir ->
+                new File(dir, cmd)
+            }?.find { it.canExecute() }
+            found?.absolutePath
+        }.find { it != null }
+
+        if (dotPath == null) {
+            throw new GradleException('dot コマンドが PATH 上に見つかりません。graphviz をインストールしてください。')
+        }
+
+        def os = System.getProperty('os.name', '').toLowerCase()
+        def arch = System.getProperty('os.arch', '').toLowerCase()
+        def archNorm = (arch.contains('aarch') || arch.contains('arm64')) ? 'aarch64' : 'amd64'
+        def platform = os.contains('mac') ? "mac-$archNorm" : "linux-$archNorm"
+        def destDir = file("bundle/graphviz/$platform")
+        destDir.mkdirs()
+
+        copy {
+            from dotPath
+            into destDir
+        }
+        def destFile = new File(destDir, new File(dotPath).name)
+        destFile.setExecutable(true)
+        println "Copied dot to $destFile (source: $dotPath)"
+        println "次に ./gradlew makeZip を実行すると配布 ZIP に自動同梱されます。"
+        println "起動後でも GUI の Diagram → Enable Graphviz (dot)… から dot を有効化できます。"
+        println "Note: このバイナリは動的リンクのため、同一 OS/ライブラリ環境でのみ動作します。"
+    }
+}
+
+// --- Doxygen バイナリ同梱ヘルパー (R5) ---
+// Juml の Doxygen 連携 (Doxygen / TODO / Groups タブ) は外部の doxygen バイナリを使う。
+// bundle/doxygen/<platform>/doxygen[.exe] が置かれていれば makeZip の `from 'bundle'` で
+// 配布 ZIP に自動同梱され、DoxygenLocator が jar 隣接の doxygen/<platform>/ から検出する。
+//
+// バイナリ入手の方針:
+//   - Linux/Mac: 下記 copySystemDoxygen でシステム導入済み doxygen を配置できる (動作確認用)。
+//   - Windows:  https://www.doxygen.nl/download.html の zip から doxygen.exe を
+//               bundle/doxygen/windows-amd64/ に配置する。
+//   - CI で各 OS 向けを自動取得して同梱したい場合は release.yml に取得ステップを足す
+//     (本リポジトリには未配置。下記ライセンス事項を確認のこと)。
+//
+// ライセンス事項 (重要):
+//   doxygen は GPLv2 で配布される。Juml 本体 (MIT) とは別プログラムを外部プロセスとして
+//   呼ぶだけなので「単なる集積 (mere aggregation)」に当たるが、doxygen バイナリを再配布する
+//   場合は doxygen のライセンス全文の同梱とソース入手手段の提示など GPL の義務を満たすこと。
+//   そのため doxygen バイナリは本リポジトリにはコミットせず、配布物作成時に投入する運用とする。
+tasks.register('copySystemDoxygen') {
+    description = 'システム PATH 上の doxygen バイナリを bundle/doxygen/ へコピーする (動作確認用)'
+    group = 'doxygen'
+    doLast {
+        def isWindows = System.getProperty('os.name', '').toLowerCase().contains('win')
+        def exe = isWindows ? 'doxygen.exe' : 'doxygen'
+        def doxPath = System.getenv('PATH')?.split(File.pathSeparator)?.collect { dir ->
+            new File(dir, exe)
+        }?.find { it.canExecute() }?.absolutePath
+
+        if (doxPath == null) {
+            throw new GradleException('doxygen コマンドが PATH 上に見つかりません。doxygen をインストールしてください。')
+        }
+
+        def os = System.getProperty('os.name', '').toLowerCase()
+        def arch = System.getProperty('os.arch', '').toLowerCase()
+        def archNorm = (arch.contains('aarch') || arch.contains('arm64')) ? 'aarch64' : 'amd64'
+        def platform = os.contains('win') ? "windows-$archNorm"
+                : (os.contains('mac') ? "mac-$archNorm" : "linux-$archNorm")
+        def destDir = file("bundle/doxygen/$platform")
+        destDir.mkdirs()
+
+        copy {
+            from doxPath
+            into destDir
+        }
+        def destFile = new File(destDir, new File(doxPath).name)
+        destFile.setExecutable(true)
+        println "Copied doxygen to $destFile (source: $doxPath)"
+        println "次に ./gradlew makeZip を実行すると配布 ZIP に自動同梱されます。"
+        println "Note: このバイナリは動的リンクのため、同一 OS/ライブラリ環境でのみ動作します。"
+        println "Note: doxygen は GPLv2 です。再配布時はライセンス義務を満たしてください。"
+    }
+}
+

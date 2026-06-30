@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Android プロジェクト解析 — Juml docs</title>
+<meta name="description" content="Juml が Android Gradle プロジェクトをどのように走査・解析しているかを、入口・スキャナ・2 系統のパイプライン・データモデル・各パーサ・図生成・拡張ポイントまで事細かく解説。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np current" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">全体像</div>
+      <a href="#overview">2 系統の解析</a>
+      <a href="#entry">入口（CLI / GUI / API）</a>
+      <div class="group">入力の収集</div>
+      <a href="#scanner">AndroidProjectScanner</a>
+      <a href="#module">モジュール名の推定</a>
+      <a href="#sourceset">ソースセット / qualifier</a>
+      <div class="group">系統 ①: 構造解析</div>
+      <a href="#struct-pipeline">並列パースの流れ</a>
+      <a href="#manifest-merge">Manifest マージ</a>
+      <a href="#dep-index">依存 JAR/AAR インデックス</a>
+      <div class="group">系統 ②: Android 資産解析</div>
+      <a href="#analyzer">AndroidProjectAnalyzer</a>
+      <a href="#analysis-model">AndroidProjectAnalysis</a>
+      <a href="#parsers">各パーサの詳細</a>
+      <div class="group">図 / レポート生成</div>
+      <a href="#diagrams">Android 系の図</a>
+      <a href="#secondary">派生解析（Room / 画面遷移 ほか）</a>
+      <div class="group">改造・拡張</div>
+      <a href="#extend-scan">新しいファイル種を拾う</a>
+      <a href="#extend-parser">新しいパーサを足す</a>
+      <a href="#extend-diagram">新しい図種を足す</a>
+      <a href="#pitfalls">改造時の注意点</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero" id="top">
+      <h1>Android プロジェクト解析</h1>
+      <p class="tag">Juml が <b>Android Gradle プロジェクト</b>をどう走査し、何を取り出して図にするか。<b>入口 → スキャナ → 2 系統のパイプライン → データモデル → 各パーサ → 図生成 → 拡張ポイント</b>までソースから棚卸し。<b>このアプリを改造・更新するため</b>の地図として読めるように構成しています。</p>
+      <div class="badges">
+        <span class="badge">入口 <b>CLI / GUI / API</b></span>
+        <span class="badge">解析系統 <b>2 本</b></span>
+        <span class="badge">Android パーサ <b>5</b></span>
+        <span class="badge">Android 系の図 <b>6+</b></span>
+      </div>
+      <div class="note">
+        このページは <code>src/main/java/juml/core/formats/android/</code>・<code>core/formats/java/AndroidProjectScanner.java</code>・<code>core/formats/uml/UmlGenerator.java</code>・<code>app/cli/AndroidCommands.java</code> を直接棚卸しした<b>Android 解析の内部解説</b>です。Java の字句・構文解析そのものの詳細は <a href="./source-analysis.html">ソース解析パイプライン</a>、CLI/GUI の使い方は <a href="./developer-reference.html">開発者リファレンス</a> / <a href="./gui-manual.html">GUI マニュアル</a> を参照してください。
+      </div>
+    </header>
+
+    <section id="overview">
+      <h2>まず押さえる: Android 解析は「2 系統」ある</h2>
+      <p>Juml が Android プロジェクトを読むとき、目的の違う <b>2 本のパイプライン</b>が並走します。改造するときは「自分がどちらを触っているか」を最初に見極めるのが近道です。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>系統</th><th>入口</th><th>読むもの</th><th>作る中心モデル</th><th>主な用途</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>① 構造解析</b><br>（Java/Kotlin/AIDL）</td>
+            <td><code>UmlGenerator.extractFromProjectDetailed()</code></td>
+            <td><code>.java</code> / <code>.kt</code> / <code>.aidl</code> ソース</td>
+            <td><code>List&lt;JavaClassInfo&gt;</code> + <code>ClassIndex</code></td>
+            <td>クラス図 / シーケンス図 / コールグラフ / 継承図 など「コードの図」</td>
+          </tr>
+          <tr>
+            <td><b>② Android 資産解析</b></td>
+            <td><code>AndroidProjectAnalyzer.analyze()</code></td>
+            <td><code>build.gradle(.kts)</code> / <code>settings.gradle</code> / <code>libs.versions.toml</code> / <code>AndroidManifest.xml</code> / <code>res/layout/*.xml</code> / <code>res/navigation/*.xml</code></td>
+            <td><code>AndroidProjectAnalysis</code></td>
+            <td>コンポーネント図 / Manifest 図 / 依存グラフ / Deep Link 図 / Navigation 図 / Layout 図</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <p>2 系統は独立して動かせますが、<b>1 か所で交差</b>します。①の <code>extractFromProjectDetailed()</code> は、最後に②を内部呼び出しして 2 つの情報を①側へ流し込みます。</p>
+      <ul>
+        <li><b>Manifest マージ</b>: ②で解析した <code>&lt;activity&gt;</code>/<code>&lt;service&gt;</code> 等の FQN を、①の <code>JavaClassInfo.androidComponentType</code> に書き戻す（→ クラス図でコンポーネント種別を色分けできる）。</li>
+        <li><b>依存インデックス</b>: ②の Gradle 依存宣言から <code>DependencyJarIndex</code> を組み、①のシーケンス図などで外部ライブラリのクラスを遅延ロードできるようにする。</li>
+      </ul>
+      <div class="note"><b>覚え方:</b> 「コードの形」を描きたいなら系統①、「アプリの構成（マニフェスト・ビルド・画面定義）」を描きたいなら系統②。両方が要る図（クラス図でコンポーネント色分け、シーケンス図で外部解決）は①が②を呼ぶことで成立します。</div>
+    </section>
+
+    <section id="entry">
+      <h2>入口 — CLI / GUI / API のどこから解析が始まるか</h2>
+
+      <h3>CLI（<code>app/cli/AndroidCommands</code>）</h3>
+      <p><code>CliDispatcher</code> がオプションを見て <code>AndroidCommands</code> の各ハンドラへ振り分けます。Android 関連の主なフラグ:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>フラグ（short / long）</th><th>ハンドラ</th><th>系統</th><th>出力</th></tr></thead>
+        <tbody>
+          <tr><td><code>-g</code> / <code>--gradle</code></td><td><code>handleGradleInput</code></td><td>②</td><td>1 ファイルの Gradle 解析テキスト</td></tr>
+          <tr><td><code>-m</code> / <code>--manifest</code></td><td><code>handleManifestInput</code></td><td>②</td><td>1 ファイルの Manifest 解析テキスト</td></tr>
+          <tr><td><code>-d</code> / <code>--component-diagram</code></td><td><code>handleComponentDiagram</code></td><td>②</td><td>コンポーネント図</td></tr>
+          <tr><td><code>-M</code> / <code>--manifest-diagram</code></td><td><code>handleManifestDiagram</code></td><td>②</td><td>Manifest 図</td></tr>
+          <tr><td><code>-D</code> / <code>--deeplink-diagram</code></td><td><code>handleDeepLinkDiagram</code></td><td>②</td><td>Deep Link 図</td></tr>
+          <tr><td><code>-G</code> / <code>--dependency-graph</code></td><td><code>handleDependencyGraph</code></td><td>②</td><td>Gradle 依存グラフ</td></tr>
+          <tr><td><code>--summary</code></td><td><code>handleSummary</code></td><td>②</td><td>プロジェクト概要 Markdown</td></tr>
+          <tr><td><code>--settings</code></td><td><code>handleSettings</code></td><td>②派生</td><td>設定（Preferences/SharedPreferences）レポート</td></tr>
+          <tr><td><code>--action-map</code></td><td><code>handleActionMap</code></td><td>②派生</td><td>UI アクションマップ</td></tr>
+          <tr><td><code>-A</code> / <code>--all</code></td><td><code>handleAll</code></td><td>①+②</td><td><b>8 種の成果物を一括出力</b>（下記）</td></tr>
+          <tr><td><code>--no-manifest-merge</code></td><td>（フラグ）</td><td>①</td><td>Manifest マージを無効化</td></tr>
+        </tbody>
+      </table></div>
+      <p><code>--all</code> は Android プロジェクトの「ひと通り」を 1 コマンドで出すフラッグシップ経路で、<code>handleAll()</code> が次の順に生成します: <span class="pill">[1] summary.md</span><span class="pill">[2] component-diagram.svg</span><span class="pill">[3] manifest-diagram.svg</span><span class="pill">[4] deeplink-diagram.svg</span><span class="pill">[5] dependency-graph.svg</span><span class="pill">[6] class-diagram.svg（①の Java/AIDL 走査）</span><span class="pill">[7] methods.txt</span><span class="pill">[8] sequence-diagrams/（ライフサイクル起点）</span>。系統①と②が両方走る唯一の CLI 経路です。</p>
+
+      <h3>GUI（<code>app/uml/DiagramService</code> → <code>DiagramKind</code>）</h3>
+      <p>GUI では各タブが <code>DiagramKind</code> を 1 つ持ち、<code>DiagramService</code> が種別に応じて系統①/②を呼び分けます。Android 系の <code>DiagramKind</code>:</p>
+      <p><span class="pill">COMPONENT</span><span class="pill">MANIFEST</span><span class="pill">DEPENDENCY</span><span class="pill">NAVIGATION</span><span class="pill">LAYOUT</span><span class="pill">SCREEN_FLOW</span><span class="pill">SOONG（Android.bp）</span> ＝ 系統② / 派生。<span class="pill">CLASS</span><span class="pill">SEQUENCE</span><span class="pill">CALLGRAPH</span><span class="pill">INHERITANCE</span><span class="pill">PACKAGE</span><span class="pill">COMMON</span><span class="pill">ACTIVITY</span><span class="pill">MODULE</span> ＝ 系統①。</p>
+      <p>プロジェクトを開いた瞬間の重い解析（系統①の並列パース）は <code>ProjectLoader</code> が <code>SwingWorker</code> で背景実行し、結果は <code>ProjectAnalysisCache</code> にキャッシュされます（流れは <a href="./source-analysis.html#stage">ソース解析・Stage A/B</a> の図7を参照）。②の Android 資産解析は比較的軽いので、図を開くタイミングで都度 <code>AndroidProjectAnalyzer.analyze()</code> が走ることが多いです。</p>
+
+      <h3>API（コードから直接）</h3>
+      <pre><code>// 系統① 構造解析（並列・進捗・キャンセル対応）
+UmlGenerator.ProjectParseResult r =
+    UmlGenerator.extractFromProjectDetailed(
+        root, scanOpts, errListener, progress, cancel,
+        /*mergeManifest=*/true, UmlGenerator.ParseMode.FULL);
+List&lt;JavaClassInfo&gt; classes = r.getClasses();
+
+// 系統② Android 資産解析
+AndroidProjectAnalysis a = AndroidProjectAnalyzer.analyze(root, errListener);
+a.getGradleByModule();        // モジュール → Gradle 情報
+a.allManifests();             // 全モジュールの Manifest
+a.allComponents();            // 全コンポーネント</code></pre>
+    </section>
+
+    <section id="scanner">
+      <h2>入力の収集 — AndroidProjectScanner</h2>
+      <p>両系統の最初の一歩は <code>AndroidProjectScanner.scan(root, opts)</code> による<b>ファイル列挙</b>です。<code>java.nio.file.Files.walkFileTree</code> ベースで、AOSP 級の巨大ツリーでも詰まらないように設計されています。</p>
+
+      <h3>何を拾うか（<code>Options</code> のフラグ）</h3>
+      <p><code>accept()</code> が拡張子・ファイル名・親ディレクトリ名で取捨選択します。<code>.java</code> は<b>常に</b>対象、それ以外は opt-in です。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Options フラグ</th><th>既定</th><th>拾うもの</th></tr></thead>
+        <tbody>
+          <tr><td>（常時）</td><td>—</td><td><code>*.java</code></td></tr>
+          <tr><td><code>includeKotlin</code></td><td>false</td><td><code>*.kt</code> / <code>*.kts</code></td></tr>
+          <tr><td><code>includeAidl</code></td><td>false</td><td><code>*.aidl</code></td></tr>
+          <tr><td><code>includeHidl</code></td><td>false</td><td><code>*.hal</code>（AOSP の HAL）</td></tr>
+          <tr><td><code>includeVintf</code></td><td>false</td><td><code>manifest.xml</code> / <code>compatibility_matrix.xml</code>（VINTF。ルート要素で AndroidManifest と区別）</td></tr>
+          <tr><td><code>includeGradle</code></td><td>false</td><td><code>*.gradle</code> / <code>*.gradle.kts</code></td></tr>
+          <tr><td><code>includeManifest</code></td><td>false</td><td><code>AndroidManifest.xml</code>（小文字一致）</td></tr>
+          <tr><td><code>includeLayout</code></td><td>false</td><td>親が <code>layout</code> / <code>layout-*</code> の <code>*.xml</code></td></tr>
+          <tr><td><code>includeNavigation</code></td><td>false</td><td>親が <code>navigation</code> / <code>navigation-*</code> の <code>*.xml</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>系統②の <code>AndroidProjectAnalyzer</code> は <code>includeGradle/Manifest/Layout/Navigation</code> をすべて true にして 1 回だけ <code>scan()</code> し、戻り値のファイルリストを名前で振り分けます。系統①の <code>extractFromProjectDetailed()</code> は <code>includeAidl=true</code> / <code>includeKotlin=true</code> を強制してから <code>.java/.kt/.aidl</code> だけを並列パースに回します。</p>
+
+      <h3>何を捨てるか（除外ディレクトリ）</h3>
+      <ul>
+        <li><b><code>DEFAULT_EXCLUDED_DIRS</code></b>: <code>build</code> / <code>.gradle</code> / <code>.idea</code> / <code>.git</code> / <code>out</code> / <code>bin</code> / <code>node_modules</code> / <code>.kotlin</code> / <code>captures</code> / <code>.cxx</code>。<code>preVisitDirectory</code> で <code>SKIP_SUBTREE</code>。</li>
+        <li><b><code>AOSP_EXTRA_EXCLUDED_DIRS</code></b>（<code>useAospDefaults=true</code> 時に合成）: <code>prebuilts</code> / <code>out-soong</code> / <code>.repo</code> / <code>test_mapping</code> / <code>.cache</code>。</li>
+        <li><b>テストソース</b>: <code>includeTests=false</code>（既定）なら <code>src/test</code> / <code>src/androidTest</code> 直下を除外。</li>
+      </ul>
+
+      <h3>暴走防止のつまみ</h3>
+      <p><span class="pill">maxFiles（上限到達で TERMINATE）</span><span class="pill">maxDepth（再帰深さ、内部で +1 換算）</span><span class="pill">cancelToken（preVisit/visit で都度チェック）</span><span class="pill">followSymlinks（既定 false）</span>。権限拒否は <code>visitFileFailed</code> で握りつぶして走査継続。読み込みは <code>readFile()</code> が<b>UTF-8 固定</b>で行単位に読み、改行を <code>\n</code> に正規化します。</p>
+    </section>
+
+    <section id="module">
+      <h2>モジュール名の推定 — <code>inferModuleName()</code></h2>
+      <p>マルチモジュール構成を扱うため、各ファイルが<b>どの Gradle モジュールに属すか</b>を相対パスから推定します。これは系統①（<code>ClassIndex</code> のモジュールキー）と②（<code>gradleByModule</code> 等のキー）の両方で使う共通ロジックです（<code>AndroidProjectAnalyzer.inferModuleName(root, file)</code>、static public）。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>ファイルパス（root 相対）</th><th>モジュール名</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/build.gradle</code></td><td><code>app</code></td></tr>
+          <tr><td><code>core/common/build.gradle</code></td><td><code>core:common</code></td></tr>
+          <tr><td><code>build.gradle</code>（ルート直下）</td><td><code>:root</code></td></tr>
+          <tr><td><code>app/src/main/AndroidManifest.xml</code></td><td><code>app</code>（<code>src/...</code> 以下を除去）</td></tr>
+        </tbody>
+      </table></div>
+      <p>要点: <b>ファイル名を除いた親パス</b>を取り、<code>/src/</code> 以降（ソースセット部分）を切り落とし、残りの <code>/</code> を <code>:</code> に変換します。空になればルートを表す <code>:root</code>。<code>settings.gradle</code> は特別扱いで、<code>analysis.setRootSettings()</code> に <code>:root</code> として格納されます。</p>
+    </section>
+
+    <section id="sourceset">
+      <h2>ソースセット / configuration qualifier の推定</h2>
+      <p>Android は同じ論理ファイルを flavor / build type / 画面構成ごとに複数持てます。<code>AndroidProjectAnalyzer</code> はパス階層からこれを推定し、各 info に付与します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>ヘルパ</th><th>入力例</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr><td><code>inferSourceSet</code>（Manifest）</td><td><code>src/debug/AndroidManifest.xml</code></td><td><code>debug</code>（<code>src/&lt;name&gt;/</code> の name、なければ <code>main</code>）</td></tr>
+          <tr><td><code>inferLayoutSourceSet</code></td><td><code>src/main/res/layout/a.xml</code></td><td><code>main</code></td></tr>
+          <tr><td><code>inferLayoutConfigQualifier</code></td><td><code>res/layout-sw600dp-v21/a.xml</code></td><td><code>sw600dp-v21</code>（素の <code>layout/</code> は <code>""</code>）</td></tr>
+        </tbody>
+      </table></div>
+      <p>コンポーネント図では <code>main</code> 以外のソースセットを <code>&lt;&lt;src:debug&gt;&gt;</code> のように付記し、Layout 図では qualifier 違いを別ノードとして扱えます。</p>
+    </section>
+
+    <section id="struct-pipeline">
+      <h2>系統① 構造解析 — 並列パースの流れ</h2>
+      <p>中心は <code>UmlGenerator.extractFromProjectDetailed(root, opts, listener, progress, cancel, mergeManifest, mode)</code>。Android プロジェクトの巨大なソースを現実的な時間で読むための心臓部です。</p>
+      <ol>
+        <li><b>スキャン</b>: <code>includeAidl/Kotlin=true</code> で <code>AndroidProjectScanner.scan()</code>。進捗 <code>"Scanning files..."</code>。</li>
+        <li><b>ソースルート推定</b>: <code>FULL</code> モード時のみ、<code>.../src/&lt;set&gt;/(java|kotlin)/</code> を正規表現 (<code>deriveSourceRoots()</code>) で抽出し、<code>JpSolver.fromSourceRoots()</code> でシンボル解決器を構築（呼び出し先 FQN/シグネチャ解決用）。<code>HEADERS_ONLY</code> では solver=null。</li>
+        <li><b>並列実行</b>: ワーカ数 = <code>max(2, CPU-1)</code> の daemon スレッドプール。<code>ExecutorCompletionService</code> に <code>.java/.kt/.aidl</code> 1 ファイル = 1 <code>ParseTask</code> を投入。</li>
+        <li><b>個別パース</b>: <code>ParseTask.call()</code> が <code>readFile()</code> → <code>extractFromSource()</code>（FULL）または <code>extractHeadersFromSource()</code>（HEADERS_ONLY）。拡張子で <code>AidlParser</code> / <code>KotlinLightScanner</code> / <code>JavaStructureExtractor</code> に分岐（詳細は <a href="./source-analysis.html#frontend">ソース解析</a>）。各クラスに <code>AaosPattern</code> / <code>JetpackPattern</code> のステレオタイプを付与。</li>
+        <li><b>集約</b>: 完了順に結果を <code>all</code> リストへ、<code>ClassIndex.put(c, file, module)</code> でインデックス化。進捗を <code>done/submitted</code> で通知。キャンセル時は <code>shutdownNow()</code>。</li>
+        <li><b>Manifest マージ</b>（<code>mergeManifest=true</code> 時）→ 次節。</li>
+        <li><b>依存インデックス構築</b> → <a href="#dep-index">後述</a>。</li>
+        <li><b>返却</b>: <code>ProjectParseResult(classes, ClassIndex, DependencyJarIndex)</code>。</li>
+      </ol>
+      <div class="note"><b>注意:</b> 並列実行のため <b>結果リストの順序は元のファイル順と一致しません</b>。順序に依存するテスト・処理は自前で再ソートしてください（Javadoc にも明記）。<code>JavaParser</code> はスレッド非安全なので <code>JpSolver</code> はワーカ毎にパーサを作ります。解決失敗（<code>UnsolvedSymbolException</code> 等）は無視して best-effort で続行します。</div>
+    </section>
+
+    <section id="manifest-merge">
+      <h2>Manifest マージ — ②の結果を①へ流し込む</h2>
+      <p><code>mergeManifestInto(classes, root, listener)</code> が系統②を内部で 1 回呼び（<code>AndroidProjectAnalyzer.analyze()</code>）、得た各 <code>AndroidComponentInfo</code> の FQN を <code>classes</code> の対応 <code>JavaClassInfo</code> に突き合わせて <code>androidComponentType</code> を設定します。</p>
+      <ul>
+        <li>マッチ判定 <code>matches()</code>: まず <b>FQN 完全一致</b>、ダメなら <b>単純名一致</b>（Manifest 側が package を省略した場合の救済）。</li>
+        <li>設定値は <code>component.getKind().label()</code>（<code>Activity</code> / <code>Service</code> / <code>BroadcastReceiver</code> / <code>ContentProvider</code>）。</li>
+        <li>マージ後、<code>ClassIndex</code> の header 側にも同じ値を反映（<code>all</code> と header は別インスタンスのため個別に書き戻し）。</li>
+      </ul>
+      <p>これにより、クラス図やパッケージ図で「このクラスは Activity」というステレオタイプ／色分けが可能になります。<code>AndroidManifest.xml</code> に現れない Fragment などは、別途 <code>AndroidSuperclassDetector</code> が <code>ClassIndex</code> の継承チェーンを辿って補完します（<a href="./source-analysis.html#stereotype">ステレオタイプ判定</a>参照）。</p>
+    </section>
+
+    <section id="dep-index">
+      <h2>依存 JAR/AAR インデックス — <code>DependencyJarIndex</code></h2>
+      <p><code>buildDependencyIndex()</code> が系統②を呼んで全モジュールの <code>GradleDependency</code> をフラットに集め、<code>DependencyJarIndex.build()</code> に渡します。これは「外部ライブラリのクラスを<b>必要になったときだけ</b>読む」遅延カタログで、シーケンス図などで外部 participant を <code>&lt;&lt;external&gt;&gt;</code> として正しく扱うために使われます（クラス本体は <code>ExternalClassReader</code> が ASM で宣言ヘッダのみ抽出。<a href="./source-analysis.html#external">外部 JAR ヘッダ抽出</a>）。失敗時は空の <code>DependencyJarIndex</code> を返すので、利用側は null/空チェックして best-effort で続行します。</p>
+    </section>
+
+    <section id="analyzer">
+      <h2>系統② Android 資産解析 — AndroidProjectAnalyzer.analyze()</h2>
+      <p>Gradle / Manifest / layout / navigation を 1 つの <code>AndroidProjectAnalysis</code> に束ねるファサード。処理順は<b>依存関係順</b>に組まれています。</p>
+      <ol>
+        <li><b>0. Version Catalog 先読み</b>: <code>gradle/libs.versions.toml</code> があれば <code>VersionCatalogParser</code> で読み、後段の Gradle パースに <code>catalog</code> として渡す（<code>libs.xxx</code> を実値に解決するため<b>先に</b>読む）。</li>
+        <li><b>1. settings.gradle を先にパース</b>: <code>GradleScriptParser.parse()</code> でサブプロジェクト構造を取得し <code>:root</code> として <code>setRootSettings()</code>。</li>
+        <li><b>2. 各ファイルを名前で振り分けてパース</b>:
+          <ul>
+            <li><code>build.gradle(.kts)</code> → <code>GradleScriptParser</code> → <code>gradleByModule[module]</code></li>
+            <li><code>navigation/</code> 配下の <code>*.xml</code> → <code>AndroidNavigationGraphParser</code> → <code>navigationsByModule</code></li>
+            <li><code>layout/</code> 配下の <code>*.xml</code> → <code>AndroidLayoutParser</code> → <code>layoutsByModule</code>（sourceSet + qualifier 付与）</li>
+            <li><code>androidmanifest.xml</code> → <code>AndroidManifestParser</code> → <code>manifestsByModule</code>（sourceSet 付与）</li>
+          </ul>
+          各パースは <code>try/catch(RuntimeException)</code> で囲い、1 ファイルの失敗は <code>listener.onError</code> に通知して<b>残りを継続</b>。</li>
+        <li><b>3. package のバックフィル</b> <code>backfillPackageFromGradle()</code>: モダンな Manifest は <code>package</code> 属性を持たないことがあるため、同モジュールの <code>gradle.namespace</code> で補い、<code>rewriteFqn()</code> でコンポーネント名を完全 FQN に再解決（先頭 <code>.</code> や package 無しの単純名を <code>namespace + name</code> に展開）。</li>
+        <li><b>4. サマリーログ</b>: gradle/manifest/layout/navigation の件数を listener に通知して <code>AndroidProjectAnalysis</code> を返す。</li>
+      </ol>
+      <div class="note"><b>順序が重要:</b> ① TOML → ② settings → 各 build.gradle、の順は「<code>libs.*</code> を解決するには catalog が先」「モジュール構造を知るには settings が先」という依存から来ています。ここを崩すと依存解決やモジュール対応が壊れるので、改造時は順序を保ってください。</div>
+    </section>
+
+    <section id="analysis-model">
+      <h2>データモデル — AndroidProjectAnalysis</h2>
+      <p>②の成果物。<b>モジュール名をキーにした Map</b> が基本構造で、同一モジュールに複数 manifest（flavor 上書きなど）があり得るので値はリストです。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>フィールド / メソッド</th><th>型</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td><code>rootSettings</code></td><td><code>GradleProjectInfo</code></td><td>ルート <code>settings.gradle</code>（<code>:root</code>）</td></tr>
+          <tr><td><code>gradleByModule</code></td><td><code>Map&lt;String, GradleProjectInfo&gt;</code></td><td>モジュール → build.gradle 解析結果</td></tr>
+          <tr><td><code>manifestsByModule</code></td><td><code>Map&lt;String, List&lt;AndroidManifestInfo&gt;&gt;</code></td><td>モジュール → Manifest 群</td></tr>
+          <tr><td><code>layoutsByModule</code></td><td><code>Map&lt;String, List&lt;AndroidLayoutInfo&gt;&gt;</code></td><td>モジュール → layout 群</td></tr>
+          <tr><td><code>navigationsByModule</code></td><td><code>Map&lt;String, List&lt;AndroidNavigationGraphInfo&gt;&gt;</code></td><td>モジュール → Navigation グラフ群</td></tr>
+          <tr><td><code>allManifests() / allLayouts() / allNavigationGraphs() / allComponents()</code></td><td>List</td><td>全モジュールを連結したフラットビュー</td></tr>
+          <tr><td><code>findComponentByFqn() / findLayoutByKey() / findNavigationByKey()</code></td><td>—</td><td>キー検索（図のクリックリンク解決などに使用）</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>主要な葉モデルのフィールド（抜粋）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>モデル</th><th>主なフィールド</th></tr></thead>
+        <tbody>
+          <tr><td><code>GradleProjectInfo</code></td><td><code>moduleName / moduleType / applicationId / namespace / compileSdk / minSdk / targetSdk / versionCode / versionName</code> ＋ <code>plugins / buildTypes / productFlavors / signingConfigs / flavorDimensions / dependencies(List&lt;GradleDependency&gt;)</code></td></tr>
+          <tr><td><code>AndroidManifestInfo</code></td><td><code>packageName / applicationClass / applicationLabel / applicationTheme / applicationDebuggable / applicationAllowBackup / minSdkVersion / targetSdkVersion / maxSdkVersion / usesCleartextTraffic / networkSecurityConfig / enableOnBackInvokedCallback / localeConfig / dataExtractionRules / hardwareAccelerated / largeHeap / appCategory</code> ＋ コンポーネント・権限・feature・meta-data のリスト、<code>sourceSet</code></td></tr>
+          <tr><td><code>AndroidComponentInfo</code></td><td><code>kind(ACTIVITY/SERVICE/RECEIVER/PROVIDER) / name(FQN) / exported / enabled / taskAffinity / process / permission / authorities / targetActivity / foregroundServiceType</code> ＋ <code>intentFilters</code></td></tr>
+          <tr><td><code>AndroidLayoutInfo</code></td><td><code>filePath / fileName / moduleName / sourceSet / configQualifier / root(LayoutViewNode 階層)</code></td></tr>
+          <tr><td><code>AndroidNavigationGraphInfo</code></td><td><code>filePath / fileName / moduleName / sourceSet / graphId / startDestination / label</code> ＋ <code>destinations / actions</code></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="parsers">
+      <h2>各パーサの詳細</h2>
+      <p>系統②が使う 5 つのパーサ。Android のビルド/リソースファイルは「厳密な文法より現場のパターン」が支配的なので、<b>best-effort（壊れても止まらない）</b>方針で書かれています。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>パーサ</th><th>方式</th><th>抽出するもの / 特徴</th></tr></thead>
+        <tbody>
+          <tr><td><code>GradleScriptParser</code></td><td>コメント除去＋文字列リテラル保持＋ブロック追跡＋正規表現（best-effort）</td><td>plugins / applicationId / namespace / 各種 SDK / versionCode・Name / buildTypes / productFlavors / signingConfigs / flavorDimensions / dependencies（scope・group・name・version・<code>project(":x")</code> モジュール参照）/ subprojects。<code>libs.*</code> 参照は <code>VersionCatalog</code> で実値解決。Groovy/KTS 両対応。</td></tr>
+          <tr><td><code>VersionCatalogParser</code></td><td>軽量 TOML</td><td><code>[versions]</code> / <code>[libraries]</code> / <code>[plugins]</code>。単純値＋インラインテーブル対応。<b>bundles・テーブル配列は未対応</b>（拡張余地）。</td></tr>
+          <tr><td><code>AndroidManifestParser</code></td><td>DOM（<b>XXE 無効化</b>: DOCTYPE 禁止・外部エンティティ無効）</td><td><code>&lt;application&gt;</code> の多数の属性、SDK、4 種コンポーネント（exported/enabled/launcher/intent-filter）、uses-permission / permission / uses-feature / meta-data。</td></tr>
+          <tr><td><code>AndroidLayoutParser</code></td><td>DOM 再帰</td><td>View 階層を <code>LayoutViewNode</code> ツリーに（viewType / id / text / width / height / isViewGroup / <code>&lt;include&gt;</code> / <code>&lt;fragment&gt;</code> / children）。</td></tr>
+          <tr><td><code>AndroidNavigationGraphParser</code></td><td>DOM</td><td>startDestination、Destination（type・className・arguments・deepLinks）、Action（destination・argOverrides・navOptions）。</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>セキュリティ:</b> XML 系パーサ（Manifest / Layout / Navigation / VINTF）は外部エンティティ展開（XXE）を無効化しています。新しい XML パーサを足すときは同じ防御設定（<code>AndroidManifestParser</code> の設定をコピー）を必ず入れてください。</div>
+    </section>
+
+    <section id="diagrams">
+      <h2>図 / レポート生成 — Android 系</h2>
+      <p>②の <code>AndroidProjectAnalysis</code>（または個別 info）を入力に PlantUML 文字列を組み立てる生成器群。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>生成器</th><th>DiagramKind</th><th>図化ロジック（要点）</th></tr></thead>
+        <tbody>
+          <tr><td><code>PlantUmlComponentDiagram</code></td><td>COMPONENT</td><td>4 種コンポーネントを <code>component</code> ノードに。<code>exported</code>→黄背景、launcher→<code>&lt;&lt;launcher&gt;&gt;</code>、非 main は <code>&lt;&lt;src:debug&gt;&gt;</code>。共通 action を参照する複数コンポーネント間に矢印。</td></tr>
+          <tr><td><code>PlantUmlManifestDiagram</code></td><td>MANIFEST</td><td><code>&lt;application&gt;</code> 属性を中央ノードに集約し、4 種コンポーネントをグループ化。権限・feature を周囲に配置（<code>FOREGROUND_SERVICE_*</code> は <code>&lt;&lt;fgs&gt;&gt;</code> 橙）。</td></tr>
+          <tr><td><code>PlantUmlGradleDependencyGraph</code></td><td>DEPENDENCY</td><td>モジュール参照（application/library/module）と外部ライブラリ（<code>group:name</code>）を分類。test スコープは既定除外、孤立ノードは Smetana 安定化のため除外。</td></tr>
+          <tr><td><code>PlantUmlDeepLinkDiagram</code></td><td>（CLI -D）</td><td><code>VIEW + BROWSABLE</code> の intent-filter を scheme 分類（http(s)→App Links / その他→Custom Scheme）。<code>autoVerify</code>→緑、MIME のみ→灰。対応 Activity へ矢印。</td></tr>
+          <tr><td><code>PlantUmlNavigationGraphDiagram</code></td><td>NAVIGATION</td><td>Destination を <code>state</code>（Fragment 青 / Activity 黄 / Dialog 緑 等）に。startDestination は <code>[*] --&gt;</code>、Action は <code>Src --&gt; Dst : actionId</code>。</td></tr>
+          <tr><td><code>PlantUmlLayoutDiagram</code></td><td>LAYOUT</td><td><code>LayoutViewNode</code> 階層を入れ子 <code>rectangle</code> で表現。<code>maxNodes</code>/<code>maxDepth</code> 超過は truncated note。</td></tr>
+          <tr><td><code>TextSummaryReport</code></td><td>（CLI --summary）</td><td>モジュール構成・SDK・依存・コンポーネント数などを Markdown 概要に。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="secondary">
+      <h2>派生解析 — Room / 画面遷移 / 設定 / AOSP / AAOS</h2>
+      <p>系統①の <code>JavaClassInfo</code>（コードの構造）や②の Android 資産を入力に、より特化した解析を行うモジュール群。Android プロジェクトを別角度から図化したいときの拡張テンプレートにもなります。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>パッケージ / クラス</th><th>入口（CLI）</th><th>何をするか</th></tr></thead>
+        <tbody>
+          <tr><td><code>core/dataflow</code>（<code>RoomAnalyzer</code> / <code>PlantUmlErDiagram</code>）</td><td><code>--er-diagram</code> / <code>--data-flow</code></td><td>Room の <code>@Entity</code>/<code>@Dao</code>/<code>@Database</code>（Java・Kotlin 両対応）を解析し ER 図・データフローに。</td></tr>
+          <tr><td><code>core/screen</code>（<code>IntentNavigationDetector</code> / <code>ComposeNavScanner</code> / <code>ScreenRouteBuilder</code>）</td><td><code>--screen-flow</code></td><td>Intent / Jetpack Navigation / Compose Navigation から画面遷移を抽出し <code>PlantUmlScreenFlowDiagram</code> に。</td></tr>
+          <tr><td><code>core/formats/android/settings</code>（<code>PreferencesXmlParser</code> / <code>SharedPreferencesScanner</code>）</td><td><code>--settings</code></td><td><code>res/xml</code> の Preference 画面と <code>SharedPreferences</code> 利用箇所を突き合わせて設定レポートに。</td></tr>
+          <tr><td><code>core/formats/android/actions</code>（<code>UiActionScanner</code>）</td><td><code>--action-map</code></td><td>クリックリスナー等の UI アクションを抽出してマップ化。</td></tr>
+          <tr><td><code>core/formats/android/init</code>（<code>AppInitAnnotationDetector</code>）</td><td><code>--init-flow</code></td><td>App Startup などの初期化アノテーションから起動フローを抽出。</td></tr>
+          <tr><td><code>core/aosp</code>（<code>AndroidBpParser</code> / <code>AndroidMkParser</code> / <code>SelinuxPolicyParser</code> / <code>RroOverlayDetector</code> / <code>VintfManifestParser</code>）</td><td><code>--android-bp</code> / <code>--selinux</code> / <code>--rro-overlays</code></td><td>AOSP のビルドシステム（Soong/legacy）・SELinux・RRO・VINTF を解析。Soong は GUI の <code>SOONG</code> 図にも。</td></tr>
+          <tr><td><code>core/aaos</code>（<code>VhalAnalyzer</code> / <code>AidlBindingResolver</code>）</td><td><code>--vhal-flow</code> / <code>--aidl-binding</code></td><td>Android Automotive の VHAL プロパティアクセスや AIDL バインディングを解析。</td></tr>
+        </tbody>
+      </table></div>
+      <p>AOSP / AAOS の踏み込んだ解析戦略は Claude Code のスキル（<code>/aosp-juml-analyzer</code> / <code>/aaos-juml-analyzer</code>）にもまとまっています（<a href="./claude-code.html">Claude Code 連携</a>）。</p>
+    </section>
+
+    <section id="extend-scan">
+      <h2>改造 ①: 新しいファイル種を解析対象にする</h2>
+      <p>例「<code>*.pro</code>（ProGuard）も拾いたい」。触る場所は <code>AndroidProjectScanner</code> だけです。</p>
+      <ol>
+        <li><code>Options</code> に <code>public boolean includeProguard = false;</code> を追加。</li>
+        <li><code>accept()</code> に <code>if (opts.includeProguard &amp;&amp; name.endsWith(".pro")) return true;</code> を追加。</li>
+        <li>必要なら除外ディレクトリ（<code>DEFAULT_EXCLUDED_DIRS</code>）も見直す。</li>
+        <li>呼び出し側（<code>AndroidProjectAnalyzer.analyze()</code> の opts 設定、または②の振り分け <code>for</code> ループ）でフラグを立て、ファイル名で分岐を足す。</li>
+      </ol>
+      <div class="note">opt-in（既定 false）にするのが鉄則です。<code>.java</code> 以外を常時 true にすると AOSP 級ツリーで走査コストが跳ね上がります。テストは <code>AndroidProjectScannerTest</code>（既存パターン: 「フラグ true で拾う / 既定では拾わない」の 2 ケース）に倣ってください。</div>
+    </section>
+
+    <section id="extend-parser">
+      <h2>改造 ②: 新しいパーサ／資産を足す</h2>
+      <p>例「<code>res/menu/*.xml</code> を解析してメニュー図を出したい」。系統②の各層に対応物を作るのがパターンです。</p>
+      <ol>
+        <li><b>モデル</b>: <code>core/formats/android/AndroidMenuInfo.java</code>（フィールド＋getter/setter、<code>filePath/moduleName/sourceSet/key</code> を既存 info に合わせる）。</li>
+        <li><b>パーサ</b>: <code>AndroidMenuParser.parse(content, listener)</code>。XML なら <code>AndroidManifestParser</code> の<b>XXE 無効設定をコピー</b>。失敗は throw せず listener 通知＋空返し。</li>
+        <li><b>スキャナ対応</b>: 改造①の手順で <code>includeMenu</code> と <code>menu/</code> 判定を追加。</li>
+        <li><b>集約</b>: <code>AndroidProjectAnalysis</code> に <code>menusByModule</code> Map と <code>allMenus()</code> を追加し、<code>AndroidProjectAnalyzer.analyze()</code> の振り分けループに分岐を 1 本足す（<code>moduleName</code>・<code>sourceSet</code> 付与を忘れず）。</li>
+        <li><b>テスト</b>: 単体（パーサ）＋ <code>AndroidProjectScannerTest</code> ＋ 必要なら <code>RealWorldSampleParseTest</code>。</li>
+      </ol>
+    </section>
+
+    <section id="extend-diagram">
+      <h2>改造 ③: 新しい図種を足す（CLI と GUI 両方）</h2>
+      <p><code>CHANGE.md</code> の「Soong 図を GUI に追加」が良い実例です。基本の足し場所:</p>
+      <ol>
+        <li><b>生成器</b>: <code>PlantUmlMenuDiagram.generate(analysis, opts): String</code>。出力は PlantUML 文字列で、レンダリングは既存の <code>PlantUmlRenderer</code> 等に任せる。</li>
+        <li><b>CLI</b>: <code>CliOptions</code> にフラグ（<code>new Option(null, "menu-diagram", false)</code>）、<code>CliDispatcher</code> に分岐、<code>AndroidCommands.handleMenuDiagram()</code> を追加。<code>--all</code> に載せるなら <code>handleAll()</code> のステップも増やす。</li>
+        <li><b>GUI</b>: <code>DiagramKind</code> に列挙子（ラベル）を追加 → <code>DiagramService</code> に <code>generateMenuPuml()</code> を実装し種別で呼び分け → <code>ToolBarBuilder</code>/<code>MenuBarBuilder</code> に項目 → <code>TreeNodeIcon</code> でアイコン割当 → 「Android 系」セット（<code>DIAGRAMS_ANDROID</code>）に追加。</li>
+        <li><b>空入力時の振る舞い</b>: 対象が 0 件なら空図でなく<b>案内ノート付き PlantUML</b>を返す（Soong 図の踏襲。ユーザが「壊れた」と誤解しないため）。</li>
+        <li><b>テスト</b>: <code>DiagramServiceTest</code> に「データあり → 期待ノード」「データ無し → 案内ノート」の 2 ケース。</li>
+      </ol>
+      <div class="note"><b>GUI のアーキテクチャ方針</b>（<code>CLAUDE.md</code>）に従い、図種切替は常に<b>アクティブタブ起点</b>で書きます。<code>DiagramState</code> はグローバル最小、タブ固有状態はタブ側へ。Home 前提の分岐は新規追加しないでください。</div>
+    </section>
+
+    <section id="pitfalls">
+      <h2>改造時の注意点（ハマりどころ）</h2>
+      <ul>
+        <li><b>解析順序を崩さない</b>: ②は「TOML → settings → build.gradle」の順。<code>libs.*</code> 解決とモジュール対応がこの順序に依存します。</li>
+        <li><b>best-effort を壊さない</b>: 1 ファイルの失敗で全体を止めない。新パーサも <code>try/catch(RuntimeException)</code> ＋ <code>listener.onError</code> 通知で続行。</li>
+        <li><b>並列性</b>: 系統①はマルチスレッド。共有状態を足すなら <code>ClassIndex</code> のように concurrent 安全に。<code>JavaParser</code> はワーカ毎に生成（スレッド非安全）。</li>
+        <li><b>結果順序は不定</b>: 系統①の <code>classes</code> はファイル順でない。順序が要るなら自前ソート。</li>
+        <li><b>FQN の揺れ</b>: モダン Manifest は package 無し。<code>namespace</code> バックフィル後の FQN を前提に。マッチは FQN→単純名のフォールバックを使う（<code>matches()</code> 参照）。</li>
+        <li><b>巨大ツリー対策</b>: AOSP 級では <code>useAospDefaults</code> / <code>maxFiles</code> / <code>maxDepth</code> / <code>cancelToken</code> を必ず尊重。新しい走査ロジックもこれらを貫通させる。</li>
+        <li><b>XXE 防御</b>: XML パーサは外部エンティティ無効化を必ず入れる。</li>
+        <li><b>Stage A/B</b>: ヘッダのみ（HEADERS_ONLY）では fields/methods/呼び出し列が空。本体が要る図は <code>ClassIndex.detail()</code> で昇格してから使う（<a href="./source-analysis.html#stage">参照</a>）。</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Juml — Android プロジェクト解析の内部解説。<code>core/formats/android</code> ・ <code>AndroidProjectScanner</code> ・ <code>UmlGenerator</code> ・ <code>app/cli/AndroidCommands</code> を棚卸しして作成。</p>
+      <p>関連: <a href="./source-analysis.html">ソース解析パイプライン</a> / <a href="./developer-reference.html">開発者リファレンス</a> / <a href="./claude-code.html">Claude Code 連携</a>。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

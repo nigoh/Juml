@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ソース解析パイプライン — Juml docs</title>
+<meta name="description" content="Juml の core/formats がソースから何を抽出し、どのように PlantUML へ変換して UML 図を生成するかの解説。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np current" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">全体像</div>
+      <a href="#pipeline">解析パイプライン</a>
+      <a href="#stage">Stage A / Stage B</a>
+      <div class="group">取得するもの</div>
+      <a href="#model">抽出データモデル</a>
+      <a href="#statements">Statement ツリー</a>
+      <div class="group">Java 解析</div>
+      <a href="#lexer">字句解析（Lexer）</a>
+      <a href="#frontend">JavaParser フロントエンド</a>
+      <a href="#adapters">Adapter 群の責務</a>
+      <a href="#solver">シンボル解決</a>
+      <a href="#stereotype">ステレオタイプ判定</a>
+      <a href="#external">外部 JAR ヘッダ抽出</a>
+      <div class="group">UML 生成</div>
+      <a href="#class">クラス図 / パッケージ図</a>
+      <a href="#sequence">シーケンス図</a>
+      <a href="#activity">アクティビティ図</a>
+      <a href="#callgraph">コールグラフ図</a>
+      <a href="#common">共通クラス図（fan-in）</a>
+      <a href="#module">モジュール図</a>
+      <div class="group">Android 解析</div>
+      <a href="#android-parse">Android パーサ群</a>
+      <a href="#android-diagram">Android 系の図生成</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero" id="overview">
+      <h1>ソース解析パイプライン</h1>
+      <p class="tag"><code>core/formats</code> がソースコードから<b>何を取得し</b>、どのように <b>PlantUML へ変換</b>して UML 図を生成するか。Java 解析・データモデル・各図種の生成ロジックをソースから棚卸し。</p>
+      <div class="badges">
+        <span class="badge">対象: <b>core/formats</b></span>
+        <span class="badge">サブパッケージ <b>java / uml / android</b></span>
+        <span class="badge">図種 <b>15</b></span>
+      </div>
+      <div class="note">
+        このページは <code>src/main/java/juml/core/formats/</code> のソースを直接棚卸しした<b>解析エンジンの内部解説</b>です。
+        CLI/GUI からの使い方は <a href="./developer-reference.html">開発者リファレンス</a> / <a href="./gui-manual.html">GUI マニュアル</a> を参照してください。
+      </div>
+    </header>
+
+    <section id="pipeline">
+      <h2>解析パイプライン全体</h2>
+      <p>入力（ソースファイル / プロジェクトルート）から UML 図までの流れは、大きく <b>スキャン → パース → データモデル構築 → 図生成</b> の 4 段です。エンジンには 2 つの入口があります。次のシーケンス図は、1 つの <code>.java</code> ソース文字列を <code>JavaStructureExtractor.extract()</code> に渡してから <code>PlantUmlClassDiagram</code> に至るまでの内部呼び出しを表します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="f5-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f5-ret" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-ret" d="M1,1 L10,5.5 L1,10"/></marker>
+        </defs>
+
+        <!-- lifelines -->
+        <line class="u-life" x1="110" y1="40" x2="110" y2="540"/>
+        <line class="u-life" x1="270" y1="40" x2="270" y2="540"/>
+        <line class="u-life" x1="410" y1="40" x2="410" y2="540"/>
+        <line class="u-life" x1="560" y1="40" x2="560" y2="540"/>
+        <line class="u-life" x1="710" y1="40" x2="710" y2="540"/>
+        <line class="u-life" x1="870" y1="40" x2="870" y2="540"/>
+
+        <!-- headers -->
+        <g font-size="9">
+          <rect class="u-actor" x="52" y="12" width="116" height="26" rx="6"/><text class="u-name" x="110" y="29" text-anchor="middle">JavaStructureExtractor</text>
+          <rect class="u-actor" x="214" y="12" width="112" height="26" rx="6"/><text class="u-name" x="270" y="29" text-anchor="middle">JavaParserFrontend</text>
+          <rect class="u-actor" x="360" y="12" width="100" height="26" rx="6"/><text class="u-name" x="410" y="29" text-anchor="middle">JavaLexer</text>
+          <rect class="u-actor" x="502" y="12" width="116" height="26" rx="6"/><text class="u-name" x="560" y="29" text-anchor="middle">TypeDeclAdapter</text>
+          <rect class="u-actor" x="654" y="12" width="112" height="26" rx="6"/><text class="u-name" x="710" y="29" text-anchor="middle">MemberAdapter</text>
+          <rect class="u-actor" x="808" y="12" width="124" height="26" rx="6"/><text class="u-name" x="870" y="29" text-anchor="middle">PlantUmlClassDiagram</text>
+        </g>
+
+        <!-- activations -->
+        <rect class="u-act" x="106" y="58" width="8" height="408"/>
+        <rect class="u-act" x="266" y="88" width="8" height="350"/>
+        <rect class="u-act" x="406" y="112" width="8" height="22"/>
+        <rect class="u-act" x="556" y="244" width="8" height="156"/>
+        <rect class="u-act" x="706" y="276" width="8" height="18"/>
+        <rect class="u-act" x="706" y="312" width="8" height="58"/>
+        <rect class="u-act" x="866" y="488" width="8" height="26"/>
+
+        <!-- messages -->
+        <path class="u-msg" d="M22,58 L104,58" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="24" y="53">extract(source)</text>
+        <path class="u-msg" d="M114,88 L264,88" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="118" y="83">parse(source, headersOnly, solver)</text>
+        <path class="u-msg" d="M274,112 L404,112" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="278" y="107">expandUnicodeEscapes(source)</text>
+        <text class="u-guard" x="330" y="124">[各 char を走査]</text>
+        <path class="u-ret" d="M404,132 L276,132" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="290" y="146">expanded: String</text>
+
+        <!-- self: JavaParser parse -->
+        <path class="u-self" d="M274,160 L330,160 L330,176 L276,176" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="334" y="164">new JavaParser(…).parse() ⇒ CompilationUnit</text>
+        <text class="u-faint" x="334" y="177">（JavaParser + SymbolSolver）</text>
+
+        <!-- opt: parse error -->
+        <rect class="u-frame" x="234" y="186" width="240" height="30"/>
+        <rect class="u-frame-tab" x="234" y="186" width="34" height="14"/>
+        <text class="u-frame-op" x="240" y="197">opt</text>
+        <text class="u-guard" x="272" y="197">[!successful]</text>
+        <text class="u-msg-lbl" x="278" y="211">→ listener.onError(line, message)</text>
+
+        <!-- loop: each TypeDeclaration -->
+        <rect class="u-frame" x="236" y="226" width="540" height="194"/>
+        <rect class="u-frame-tab" x="236" y="226" width="40" height="14"/>
+        <text class="u-frame-op" x="242" y="237">loop</text>
+        <text class="u-guard" x="280" y="237">[cu の各 TypeDeclaration]</text>
+
+        <path class="u-msg" d="M274,250 L554,250" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="300" y="245">adapt(td, enclosing, ctx)</text>
+
+        <path class="u-msg" d="M564,278 L704,278" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="566" y="273">addField(classInfo, fd, ctx)</text>
+        <text class="u-guard" x="600" y="290">[各 field]</text>
+
+        <path class="u-msg" d="M564,314 L704,314" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="566" y="309">addMethod(classInfo, md, ctx)</text>
+        <text class="u-guard" x="592" y="326">[各 method]</text>
+
+        <rect class="u-frame" x="640" y="332" width="150" height="30"/>
+        <rect class="u-frame-tab" x="640" y="332" width="34" height="14"/>
+        <text class="u-frame-op" x="646" y="343">opt</text>
+        <text class="u-guard" x="678" y="343">[!headersOnly]</text>
+        <text class="u-msg-lbl" x="646" y="357">emitBody() ⇒ Statement 木</text>
+
+        <path class="u-ret" d="M704,372 L566,372" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="576" y="386">JavaMethodInfo</text>
+
+        <path class="u-ret" d="M554,398 L276,398" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="360" y="412">JavaClassInfo</text>
+
+        <path class="u-ret" d="M264,438 L116,438" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="128" y="433">List&lt;JavaClassInfo&gt;</text>
+        <path class="u-ret" d="M104,464 L22,464" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="24" y="459">List&lt;JavaClassInfo&gt;</text>
+
+        <path class="u-msg" d="M22,488 L864,488" marker-end="url(#f5-arr)"/>
+        <text class="u-msg-lbl" x="300" y="483">PlantUmlClassDiagram.generate(classes, opts)</text>
+        <path class="u-ret" d="M864,514 L22,514" marker-end="url(#f5-ret)"/>
+        <text class="u-msg-lbl" x="300" y="509">puml: String  →  PlantUmlRenderer.renderSvg()</text>
+      </svg>
+      <figcaption><b>図6</b>　解析パイプライン内部（シーケンス図）。<code>extract()</code> から <code>JavaParserFrontend</code> が字句展開（<code>JavaLexer</code>）→ JavaParser 構文解析 → <code>TypeDeclAdapter</code>／<code>MemberAdapter</code> による <code>JavaClassInfo</code> 組み立てを行い、最終的に <code>PlantUmlClassDiagram.generate()</code> が PlantUML 文字列を返す。実線=同期呼び出し、破線=戻り値、<code>loop/opt</code>=反復・条件。</figcaption>
+      </figure>
+
+      <div class="uml-legend">
+        <h4>シーケンス図の凡例</h4>
+        <div class="legend-grid">
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lgs-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker></defs><line class="u-msg" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lgs-arr)"/></svg> 同期呼び出し（実線→）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lgs-ret" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-ret" d="M1,1 L10,5.5 L1,10"/></marker></defs><line class="u-ret" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lgs-ret)"/></svg> 戻り値（破線⇠）</div>
+          <div class="li"><svg width="34" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><rect class="u-act" x="14" y="2" width="8" height="16"/></svg> 活性区間（バー）</div>
+          <div class="li"><svg width="34" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><rect class="u-frame" x="2" y="2" width="30" height="16"/><rect class="u-frame-tab" x="2" y="2" width="16" height="9"/></svg> <code>alt/opt/loop</code> 結合フラグメント</div>
+        </div>
+      </div>
+
+      <h3>① Java / AIDL / Kotlin の構造抽出</h3>
+      <p>ファサードは <code>UmlGenerator</code>。拡張子で適切なパーサへ振り分け、パース後にステレオタイプを付与します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>段</th><th>担当</th><th>処理</th></tr></thead>
+        <tbody>
+          <tr><td>振り分け</td><td><code>UmlGenerator.extractFromSource</code></td><td><code>.aidl</code>→<code>AidlParser</code> / <code>.kt(s)</code>→<code>KotlinLightScanner</code> / それ以外→<code>JavaStructureExtractor</code></td></tr>
+          <tr><td>パース</td><td><code>JavaStructureExtractor</code> → <code>JavaParserFrontend</code></td><td>JavaParser + JavaSymbolSolver で AST を <code>JavaClassInfo</code> 群へ変換</td></tr>
+          <tr><td>装飾</td><td><code>AaosPattern</code> / <code>JetpackPattern</code></td><td>各クラスへ AAOS / Jetpack ステレオタイプを付与</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>② プロジェクト全体の解析</h3>
+      <p>入口は <code>UmlGenerator.extractFromProjectDetailed()</code>。AOSP 級の巨大ツリーでも回るよう、並列パースと遅延詳細化を組み合わせます。</p>
+      <ol>
+        <li><code>AndroidProjectScanner.scan(root, opts)</code> で対象ファイル（<code>.java</code>/<code>.aidl</code>/<code>.kt</code>）を収集</li>
+        <li><code>JpSolver.fromSourceRoots()</code> でシンボル解決器を構築（FULL モード時のみ）</li>
+        <li><code>ExecutorCompletionService</code>（ワーカ数 = CPU − 1）で <code>ParseTask</code> を並列実行</li>
+        <li>各ファイルの結果を <code>ClassIndex</code> に <code>put()</code></li>
+        <li><code>mergeManifestInto()</code> で <code>AndroidManifest.xml</code> を解析し各クラスへ <code>androidComponentType</code> を設定</li>
+        <li><code>DependencyJarIndex.build()</code> で依存 JAR/AAR の遅延ロード用カタログを構築</li>
+        <li><code>ProjectParseResult</code>（classes + ClassIndex + DependencyJarIndex）を返す</li>
+      </ol>
+
+      <h3>③ Android プロジェクト解析</h3>
+      <p>Gradle / Manifest / layout / navigation を束ねる入口が <code>AndroidProjectAnalyzer.analyze()</code>。<code>libs.versions.toml</code> を先読みし、<code>settings.gradle</code> でサブプロジェクト構造を確定してから各 <code>build.gradle</code> / XML を解析し、<code>AndroidProjectAnalysis</code> に集約します。</p>
+    </section>
+
+    <section id="stage">
+      <h2>Stage A / Stage B（2 段階解析）</h2>
+      <p>巨大プロジェクトでメモリと時間を抑えるため、まず<b>ヘッダだけ</b>を読み（Stage A）、図に必要なクラスだけ<b>本体を再パース</b>（Stage B）します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>段階</th><th>取得内容</th><th>メソッド</th></tr></thead>
+        <tbody>
+          <tr><td><b>Stage A</b>（ヘッダのみ）</td><td>package / simpleName / kind / modifiers / superClass / interfaces / annotations / moduleDirectives</td><td><code>JavaStructureExtractor.extractHeadersOnly()</code></td></tr>
+          <tr><td><b>Stage B</b>（詳細）</td><td>Stage A + fields / methods / enumConstants / comment / 本体の statement tree</td><td><code>JavaStructureExtractor.extract()</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Stage B への昇格は <code>ClassIndex.detail(qn, listener)</code> がオンデマンドで実行し、<code>detailedCache</code>（ConcurrentHashMap）で再パースを回避します。<code>JavaClassInfo.isDetailed()</code> がその状態を表します。</p>
+
+      <p>プロジェクト全体の解析は GUI からは非同期（<code>SwingWorker</code>）で実行されます。次のシーケンス図は <code>ProjectLoader.start()</code> がバックグラウンドで解析し、完了後に EDT でツリー更新・既定タブ表示まで行う流れです。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="f6-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f6-ret" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-ret" d="M1,1 L10,5.5 L1,10"/></marker>
+        </defs>
+
+        <line class="u-life" x1="130" y1="40" x2="130" y2="520"/>
+        <line class="u-life" x1="290" y1="40" x2="290" y2="520"/>
+        <line class="u-life" x1="440" y1="40" x2="440" y2="520"/>
+        <line class="u-life" x1="590" y1="40" x2="590" y2="520"/>
+        <line class="u-life" x1="730" y1="40" x2="730" y2="520"/>
+        <line class="u-life" x1="880" y1="40" x2="880" y2="520"/>
+
+        <g font-size="9">
+          <rect class="u-actor" x="74" y="12" width="112" height="26" rx="6"/><text class="u-name" x="130" y="29" text-anchor="middle">UmlMainFrame</text>
+          <rect class="u-actor" x="236" y="12" width="108" height="26" rx="6"/><text class="u-name" x="290" y="29" text-anchor="middle">ProjectLoader</text>
+          <rect class="u-actor" x="386" y="12" width="108" height="26" rx="6"/><text class="u-name" x="440" y="29" text-anchor="middle">SwingWorker</text>
+          <rect class="u-actor" x="528" y="12" width="124" height="26" rx="6"/><text class="u-name" x="590" y="29" text-anchor="middle">ProjectAnalysisCache</text>
+          <rect class="u-actor" x="676" y="12" width="108" height="26" rx="6"/><text class="u-name" x="730" y="29" text-anchor="middle">ProjectTreePanel</text>
+          <rect class="u-actor" x="822" y="12" width="116" height="26" rx="6"/><text class="u-name" x="880" y="29" text-anchor="middle">DiagramController</text>
+        </g>
+
+        <!-- activations -->
+        <rect class="u-act" x="126" y="58" width="8" height="455"/>
+        <rect class="u-act" x="286" y="86" width="8" height="64"/>
+        <rect class="u-act" x="436" y="146" width="8" height="360"/>
+        <rect class="u-act" x="586" y="190" width="8" height="54"/>
+        <rect class="u-act" x="726" y="396" width="8" height="20"/>
+        <rect class="u-act" x="876" y="440" width="8" height="32"/>
+
+        <path class="u-msg" d="M24,58 L124,58" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="26" y="53">loadProject(root)</text>
+        <path class="u-msg" d="M134,86 L284,86" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="150" y="81">start(root)</text>
+
+        <path class="u-self" d="M294,108 L348,108 L348,122 L296,122" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="352" y="113">UI 準備（status / progress / overlay）</text>
+        <text class="u-faint" x="352" y="126">EDT</text>
+
+        <path class="u-msg" d="M294,146 L434,146" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="300" y="141">execute()</text>
+        <text class="u-faint" x="388" y="166">doInBackground()（背景スレッド）</text>
+
+        <path class="u-msg" d="M444,190 L584,190" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="448" y="185">load(root, listener, prog, cancel)</text>
+
+        <!-- loop progress -->
+        <rect class="u-frame" x="150" y="204" width="330" height="24"/>
+        <rect class="u-frame-tab" x="150" y="204" width="40" height="14"/>
+        <text class="u-frame-op" x="156" y="215">loop</text>
+        <text class="u-guard" x="194" y="215">[進捗 throttled 150ms]</text>
+        <path class="u-msg" d="M436,222 L134,222" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="200" y="237">invokeLater(updateLoadProgress(done, total))</text>
+
+        <path class="u-ret" d="M584,244 L444,244" marker-end="url(#f6-ret)"/>
+        <text class="u-msg-lbl" x="470" y="258">load 完了</text>
+        <text class="u-faint" x="388" y="276">done()（EDT で後処理）</text>
+
+        <!-- alt -->
+        <rect class="u-frame" x="110" y="284" width="820" height="226"/>
+        <rect class="u-frame-tab" x="110" y="284" width="36" height="14"/>
+        <text class="u-frame-op" x="116" y="295">alt</text>
+        <text class="u-guard" x="150" y="295">[error != null]</text>
+        <path class="u-msg" d="M436,316 L134,316" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="150" y="311">showMessageDialog("Failed to analyze project …")</text>
+
+        <line class="u-frame-div" x1="110" y1="334" x2="930" y2="334"/>
+        <text class="u-guard" x="116" y="347">[cancelled]</text>
+        <path class="u-msg" d="M436,366 L134,366" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="150" y="361">status.setText("Cancelled.")</text>
+
+        <line class="u-frame-div" x1="110" y1="380" x2="930" y2="380"/>
+        <text class="u-guard" x="116" y="393">[success → onLoadSuccess]</text>
+        <path class="u-msg" d="M444,400 L724,400" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="470" y="395">populate(analysis, classes, classToModule)</text>
+        <path class="u-ret" d="M724,416 L444,416" marker-end="url(#f6-ret)"/>
+
+        <path class="u-msg" d="M444,444 L874,444" marker-end="url(#f6-arr)"/>
+        <text class="u-msg-lbl" x="470" y="439">openDefaultDiagram()</text>
+        <text class="u-faint" x="600" y="466">→ tabPane.openDiagram("KIND:PACKAGE")</text>
+        <path class="u-ret" d="M874,472 L444,472" marker-end="url(#f6-ret)"/>
+      </svg>
+      <figcaption><b>図7</b>　プロジェクト解析（シーケンス図）。<code>ProjectLoader.start()</code> が <code>SwingWorker</code> を起動し、背景スレッドの <code>doInBackground()</code> で <code>ProjectAnalysisCache.load()</code> を実行（進捗は <code>invokeLater</code> で EDT に通知）。完了後 <code>done()</code> が <code>alt</code> でエラー／キャンセル／成功を分岐し、成功時はツリー更新と既定（PACKAGE）タブ表示まで行う。</figcaption>
+      </figure>
+    </section>
+
+    <section id="model">
+      <h2>抽出データモデル</h2>
+      <p>パーサが「ソースから取り出して保持する」中心オブジェクトは <code>JavaClassInfo</code> です。フィールド／メソッドは Stage B のみ充填されます。次のクラス図は、字句解析から中心モデルまでの解析エンジンの主要型を表します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 960 450" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="f4-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker>
+          <marker id="f4-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f4-dia" markerWidth="18" markerHeight="12" refX="2" refY="6" orient="auto"><path class="mk-dia" d="M2,6 L9,2 L16,6 L9,10 Z"/></marker>
+        </defs>
+
+        <!-- relations -->
+        <path class="u-rel-dash" d="M190,80 L190,108" marker-end="url(#f4-vee)"/>
+        <path class="u-rel-dash" d="M110,153 L110,178" marker-end="url(#f4-vee)"/>
+        <text class="u-rel-lbl" x="114" y="170">expandUnicodeEscapes()</text>
+        <path class="u-rel-dash" d="M340,134 L398,142" marker-end="url(#f4-vee)"/>
+        <text class="u-rel-lbl" x="344" y="130">«create»</text>
+        <path class="u-rel-dash" d="M140,274 L140,298" marker-end="url(#f4-vee)"/>
+        <text class="u-rel-lbl" x="146" y="290">produces 0..*</text>
+        <path class="u-rel" d="M700,150 L738,150" marker-start="url(#f4-dia)" marker-end="url(#f4-arr)"/>
+        <text class="u-mult" x="704" y="145">fields 0..*</text>
+        <path class="u-rel" d="M700,205 L738,288" marker-start="url(#f4-dia)" marker-end="url(#f4-arr)"/>
+        <text class="u-mult" x="708" y="250">methods 0..*</text>
+        <path class="u-rel" d="M740,170 L632,360" marker-end="url(#f4-arr)"/>
+        <text class="u-rel-lbl" x="660" y="250">visibility</text>
+        <path class="u-rel" d="M740,300 L632,388" marker-end="url(#f4-arr)"/>
+
+        <!-- JavaStructureExtractor -->
+        <g>
+          <rect class="u-cls" x="40" y="14" width="300" height="66" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="14" width="300" height="30" rx="7"/>
+          <text class="u-stereo" x="190" y="27" text-anchor="middle">«façade · final»</text>
+          <text class="u-name" x="190" y="40" text-anchor="middle">JavaStructureExtractor</text>
+          <line class="u-div" x1="40" y1="44" x2="340" y2="44"/>
+          <text class="u-member" x="48" y="58"><tspan class="u-vis">+</tspan> extract(source): List&lt;JavaClassInfo&gt;</text>
+          <text class="u-member" x="48" y="73"><tspan class="u-vis">+</tspan> extractHeadersOnly(source, listener): List&lt;…&gt;</text>
+        </g>
+        <!-- JavaParserFrontend -->
+        <g>
+          <rect class="u-cls" x="40" y="110" width="300" height="43" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="110" width="300" height="22" rx="7"/>
+          <text class="u-name" x="190" y="125" text-anchor="middle">JavaParserFrontend  <tspan class="u-faint">«final»</tspan></text>
+          <line class="u-div" x1="40" y1="132" x2="340" y2="132"/>
+          <text class="u-member" x="48" y="146"><tspan class="u-vis">+</tspan> parse(source, headersOnly, listener, solver): List&lt;…&gt;</text>
+        </g>
+        <!-- JavaLexer -->
+        <g>
+          <rect class="u-cls" x="40" y="180" width="260" height="94" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="180" width="260" height="22" rx="7"/>
+          <text class="u-name" x="170" y="195" text-anchor="middle">JavaLexer  <tspan class="u-faint">«final»</tspan></text>
+          <line class="u-div" x1="40" y1="202" x2="300" y2="202"/>
+          <text class="u-member" x="48" y="216"><tspan class="u-vis">-</tspan> src: String</text>
+          <line class="u-div" x1="40" y1="223" x2="300" y2="223"/>
+          <text class="u-member" x="48" y="237"><tspan class="u-vis">+</tspan> tokenize(): List&lt;JavaToken&gt;</text>
+          <text class="u-member" x="48" y="252"><tspan class="u-vis">+</tspan> getSource(): String</text>
+          <text class="u-member" x="48" y="267"><tspan class="u-vis">~</tspan> expandUnicodeEscapes(src): String</text>
+        </g>
+        <!-- JavaToken -->
+        <g>
+          <rect class="u-cls" x="40" y="300" width="300" height="94" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="300" width="300" height="22" rx="7"/>
+          <text class="u-name" x="190" y="315" text-anchor="middle">JavaToken  <tspan class="u-faint">«final»</tspan></text>
+          <line class="u-div" x1="40" y1="322" x2="340" y2="322"/>
+          <text class="u-member" x="48" y="336"><tspan class="u-vis">+</tspan> type: Type</text>
+          <text class="u-member" x="48" y="351"><tspan class="u-vis">+</tspan> text: String</text>
+          <text class="u-member" x="48" y="366"><tspan class="u-vis">+</tspan> start, end, line: int</text>
+          <line class="u-div" x1="40" y1="373" x2="340" y2="373"/>
+          <text class="u-member" x="48" y="387"><tspan class="u-faint">enum Type =</tspan> IDENT|NUMBER|STRING|CHAR|PUNCT|OP|EOF</text>
+        </g>
+
+        <!-- JavaClassInfo (central) -->
+        <g>
+          <rect class="u-cls" x="400" y="110" width="300" height="139" rx="7"/>
+          <rect class="u-cls-hdr" x="400" y="110" width="300" height="22" rx="7"/>
+          <text class="u-name" x="550" y="125" text-anchor="middle">JavaClassInfo  <tspan class="u-faint">«final · 中核»</tspan></text>
+          <line class="u-div" x1="400" y1="132" x2="700" y2="132"/>
+          <text class="u-member" x="408" y="146"><tspan class="u-vis">-</tspan> packageName, simpleName: String</text>
+          <text class="u-member" x="408" y="161"><tspan class="u-vis">-</tspan> kind: Kind  <tspan class="u-faint">«enum»</tspan></text>
+          <text class="u-member" x="408" y="176"><tspan class="u-vis">-</tspan> superClass: String, interfaces: List</text>
+          <text class="u-member" x="408" y="191"><tspan class="u-vis">-</tspan> fields: List&lt;JavaFieldInfo&gt;</text>
+          <text class="u-member" x="408" y="206"><tspan class="u-vis">-</tspan> methods: List&lt;JavaMethodInfo&gt;</text>
+          <text class="u-member" x="408" y="221"><tspan class="u-vis">-</tspan> moduleDirectives: List&lt;JavaModuleDirective&gt;</text>
+          <line class="u-div" x1="400" y1="228" x2="700" y2="228"/>
+          <text class="u-member" x="408" y="242"><tspan class="u-vis">+</tspan> getKind() / getFields() / getMethods()</text>
+        </g>
+        <!-- JavaFieldInfo -->
+        <g>
+          <rect class="u-cls" x="740" y="110" width="210" height="88" rx="7"/>
+          <rect class="u-cls-hdr" x="740" y="110" width="210" height="22" rx="7"/>
+          <text class="u-name" x="845" y="125" text-anchor="middle">JavaFieldInfo  <tspan class="u-faint">«final»</tspan></text>
+          <line class="u-div" x1="740" y1="132" x2="950" y2="132"/>
+          <text class="u-member" x="748" y="146"><tspan class="u-vis">-</tspan> name, type: String</text>
+          <text class="u-member" x="748" y="161"><tspan class="u-vis">-</tspan> visibility: Visibility</text>
+          <text class="u-member" x="748" y="176"><tspan class="u-vis">-</tspan> isStatic: boolean</text>
+          <text class="u-member" x="748" y="191"><tspan class="u-vis">-</tspan> isFinal: boolean</text>
+        </g>
+        <!-- JavaMethodInfo -->
+        <g>
+          <rect class="u-cls" x="740" y="250" width="210" height="88" rx="7"/>
+          <rect class="u-cls-hdr" x="740" y="250" width="210" height="22" rx="7"/>
+          <text class="u-name" x="845" y="265" text-anchor="middle">JavaMethodInfo  <tspan class="u-faint">«final»</tspan></text>
+          <line class="u-div" x1="740" y1="272" x2="950" y2="272"/>
+          <text class="u-member" x="748" y="286"><tspan class="u-vis">-</tspan> name, returnType: String</text>
+          <text class="u-member" x="748" y="301"><tspan class="u-vis">-</tspan> visibility: Visibility</text>
+          <text class="u-member" x="748" y="316"><tspan class="u-vis">-</tspan> parameterTypes: List&lt;String&gt;</text>
+          <text class="u-member" x="748" y="331"><tspan class="u-vis">-</tspan> statements: List&lt;Statement&gt;</text>
+        </g>
+        <!-- Visibility enum -->
+        <g>
+          <rect class="u-cls" x="400" y="330" width="230" height="108" rx="7"/>
+          <rect class="u-cls-hdr" x="400" y="330" width="230" height="30" rx="7"/>
+          <text class="u-stereo" x="515" y="343" text-anchor="middle">«enumeration»</text>
+          <text class="u-name" x="515" y="356" text-anchor="middle">Visibility</text>
+          <line class="u-div" x1="400" y1="360" x2="630" y2="360"/>
+          <text class="u-member" x="408" y="374">PUBLIC(+)   PROTECTED(#)</text>
+          <text class="u-member" x="408" y="389">PACKAGE(~)   PRIVATE(-)</text>
+          <line class="u-div" x1="400" y1="396" x2="630" y2="396"/>
+          <text class="u-member" x="408" y="410"><tspan class="u-vis">-</tspan> mark: String</text>
+          <text class="u-member" x="408" y="425"><tspan class="u-vis">+</tspan> fromModifiers(Collection): Visibility</text>
+        </g>
+      </svg>
+      <figcaption><b>図8</b>　Java 解析エンジン（クラス図）。<code>JavaStructureExtractor</code> が <code>JavaParserFrontend</code> へ委譲し、<code>JavaLexer</code> が <code>JavaToken</code> を生成、結果が中核モデル <code>JavaClassInfo</code> に集約される。◆ はコンポジション（<code>fields</code>/<code>methods</code> を <code>0..*</code> 保持）、実線矢印は <code>Visibility</code> への関連、破線は生成・依存。</figcaption>
+      </figure>
+
+      <div class="uml-legend">
+        <h4>クラス図の凡例</h4>
+        <div class="legend-grid">
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg4-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker></defs><line class="u-rel" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lg4-arr)"/></svg> 関連（実線→）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg4-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker></defs><line class="u-rel-dash" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lg4-vee)"/></svg> 依存／生成（破線⇢）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg4-dia" markerWidth="18" markerHeight="12" refX="2" refY="6" orient="auto"><path class="mk-dia" d="M2,6 L9,2 L16,6 L9,10 Z"/></marker></defs><line class="u-rel" x1="46" y1="10" x2="14" y2="10" marker-end="url(#lg4-dia)"/></svg> コンポジション（◆）</div>
+          <div class="li"><code><b style="color:var(--accent-2)">+</b></code>public <code><b style="color:var(--accent-2)">#</b></code>protected <code><b style="color:var(--accent-2)">~</b></code>package <code><b style="color:var(--accent-2)">-</b></code>private ／ <code>0..*</code> 多重度</div>
+        </div>
+      </div>
+
+      <h3>JavaClassInfo</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>フィールド</th><th>型</th><th>取得元</th></tr></thead>
+        <tbody>
+          <tr><td><code>packageName</code></td><td>String</td><td><code>package</code> 宣言</td></tr>
+          <tr><td><code>simpleName</code></td><td>String</td><td>型宣言名</td></tr>
+          <tr><td><code>kind</code></td><td>Kind</td><td>CLASS / INTERFACE / ENUM / ANNOTATION / RECORD / MODULE / AIDL_INTERFACE</td></tr>
+          <tr><td><code>imports</code></td><td>List</td><td><code>import</code> 文（ワイルドカード含む）</td></tr>
+          <tr><td><code>modifiers</code></td><td>List</td><td>public / abstract / final / sealed など</td></tr>
+          <tr><td><code>annotations</code></td><td>List</td><td>アノテーション名（引数付きも保持）</td></tr>
+          <tr><td><code>superClass</code></td><td>String</td><td><code>extends</code>（sealed の <code>permits</code> も統合）</td></tr>
+          <tr><td><code>interfaces</code></td><td>List</td><td><code>implements</code> の型名</td></tr>
+          <tr><td><code>fields / methods</code></td><td>List</td><td>Stage B のみ</td></tr>
+          <tr><td><code>enumConstants</code></td><td>List</td><td>enum 定数名</td></tr>
+          <tr><td><code>enclosingClass</code></td><td>String</td><td>外側クラスの単純名チェーン（例 <code>Outer.Mid</code>）</td></tr>
+          <tr><td><code>aaosCategory</code></td><td>String</td><td><code>AaosPattern</code> 判定（CarManager / CarService / AIDL / AaosApi 等）</td></tr>
+          <tr><td><code>androidComponentType</code></td><td>String</td><td>Manifest 由来（Activity / Service / BroadcastReceiver / ContentProvider）</td></tr>
+          <tr><td><code>jetpackStereotypes</code></td><td>List</td><td><code>JetpackPattern</code> 判定</td></tr>
+          <tr><td><code>comment</code></td><td>String</td><td>JavaDoc / 直前コメント</td></tr>
+          <tr><td><code>origin</code></td><td>Origin</td><td>SOURCE / EXTERNAL_JAR / MISSING_JAR</td></tr>
+          <tr><td><code>jarPath / sourceFile</code></td><td>String</td><td>由来ファイル / JAR パス</td></tr>
+          <tr><td><code>moduleDirectives</code></td><td>List</td><td><code>module-info.java</code> の requires / exports / opens / uses / provides</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>JavaMethodInfo</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>フィールド</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td><code>name / startLine</code></td><td>メソッド名 / 宣言開始行（1-based）</td></tr>
+          <tr><td><code>returnType</code></td><td>戻り値型</td></tr>
+          <tr><td><code>parameterTypes / parameterNames</code></td><td>引数の型・名前リスト</td></tr>
+          <tr><td><code>visibility / isStatic / isAbstract / isConstructor</code></td><td>可視性と種別フラグ</td></tr>
+          <tr><td><code>annotations / throwsTypes</code></td><td>アノテーション / <code>throws</code> の例外型</td></tr>
+          <tr><td><code>statements</code></td><td>本体の構造化文ツリー（Stage B のみ）</td></tr>
+          <tr><td><code>comment / bodyComments</code></td><td>JavaDoc / 本体内インラインコメント</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>JavaFieldInfo / JavaModuleDirective</h3>
+      <ul>
+        <li><b>JavaFieldInfo</b>: name / type / visibility / isStatic / isFinal / annotations / comment。フィールド初期化子がラムダ・匿名クラスなら、そのコールバック本体を <code>inlineMethods</code> に取り込みます。</li>
+        <li><b>JavaModuleDirective</b>: Kind（REQUIRES / EXPORTS / OPENS / USES / PROVIDES）+ <code>name</code>（主語）+ <code>modifiers</code>（transitive / static）+ <code>targets</code>（<code>to…</code> / <code>with…</code>）。</li>
+      </ul>
+    </section>
+
+    <section id="statements">
+      <h2>Statement ツリー（メソッド本体の構造化）</h2>
+      <p>メソッド本体は、平坦なテキストではなく<b>構造化文ツリー</b>として保持されます。これがシーケンス図・アクティビティ図・コールグラフ・逆参照の共通基盤です。</p>
+      <p><b>Statement サブタイプ:</b> <span class="pill">Call</span><span class="pill">Block</span><span class="pill">Return</span><span class="pill">Throw</span><span class="pill">Yield</span><span class="pill">Break</span><span class="pill">Continue</span><span class="pill">LocalVar</span><span class="pill">InlineComment</span></p>
+      <p><code>Call</code> が保持する追加情報:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>フィールド</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td><code>receiver</code></td><td>レシーバ文字列（空=this コール）</td></tr>
+          <tr><td><code>methodName</code></td><td>呼び出しメソッド名</td></tr>
+          <tr><td><code>resolvedOwnerFqn</code></td><td>シンボル解決済み宣言型 FQN（<code>JpSolver</code> が設定）</td></tr>
+          <tr><td><code>resolvedSignature</code></td><td>解決済みシグネチャ</td></tr>
+          <tr><td><code>firstArgLabel</code></td><td>第 1 引数が定数シンボルの場合のラベル</td></tr>
+          <tr><td><code>inlineMethods</code></td><td>ラムダ / 匿名クラス本体から抽出したコールバックメソッド</td></tr>
+        </tbody>
+      </table></div>
+      <p><code>Block</code> の <b>Kind は 7 種</b>（<code>IF / WHILE / FOR / DO_WHILE / SWITCH / TRY / SYNCHRONIZED</code>）で、各 Block は <code>Branch</code>（条件ラベル付きの分岐）を子に持ちます。この共通表現が、後段でシーケンス／アクティビティの異なる PlantUML 構文へ射影されます。</p>
+    </section>
+
+    <section id="lexer">
+      <h2>字句解析（JavaLexer）</h2>
+      <p>JavaParser を使う前段や軽量処理向けに、自前の <code>JavaLexer</code> / <code>JavaToken</code> を備えます。</p>
+      <ul>
+        <li>行コメント（<code>//</code>）・ブロックコメント（<code>/* */</code>）はトークン列に含めずスキップ</li>
+        <li>Java 15+ テキストブロック（<code>""" … """</code>）も STRING トークンとして処理</li>
+        <li>演算子は 3 文字（<code>&gt;&gt;&gt;</code> <code>&lt;&lt;=</code> <code>...</code> 等）→ 2 文字（<code>==</code> <code>-&gt;</code> <code>::</code> 等）→ 1 文字の順で貪欲マッチ</li>
+        <li><code>( ) { } [ ] , ; . : @ ?</code> は PUNCT、その他記号は OP に分類</li>
+        <li><code>expandUnicodeEscapes()</code> が JLS §3.3 の <code>\uXXXX</code> を展開（偶数個バックスラッシュは展開しない）</li>
+      </ul>
+      <p><code>JavaToken</code> は <code>type / text / line（1-based）/ start / end（半開区間）</code> を保持します。</p>
+    </section>
+
+    <section id="frontend">
+      <h2>JavaParser フロントエンド</h2>
+      <p>本体の構造抽出は <code>JavaParserFrontend</code> が JavaParser ライブラリへ委譲します。</p>
+      <ul>
+        <li><code>LanguageLevel.BLEEDING_EDGE</code> で最新言語仕様に寛容</li>
+        <li>パース前に <code>JavaLexer.expandUnicodeEscapes()</code> を適用</li>
+        <li><code>JpSolver</code> が渡されれば <code>JavaSymbolSolver</code> を仕込んだ <code>JavaParser</code> を使用</li>
+        <li>構文エラーがあっても <code>isSuccessful()==false</code> の<b>部分結果を継続使用</b></li>
+        <li>完全失敗時は正規表現で型宣言キーワードを拾う <code>recoverSkeletons()</code> にフォールバック</li>
+      </ul>
+    </section>
+
+    <section id="adapters">
+      <h2>Adapter 群の責務分担</h2>
+      <p>AST → データモデルの変換は、ノード種別ごとに専用 Adapter が担います。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Adapter</th><th>担当</th></tr></thead>
+        <tbody>
+          <tr><td><code>TypeDeclAdapter</code></td><td>class / interface / enum / @interface / record を <code>JavaClassInfo</code> へ。ネスト型は <code>enclosingClass</code> を設定してフラットに追加。<code>extends</code>→superClass、<code>implements</code>/<code>permits</code>→interfaces</td></tr>
+          <tr><td><code>MemberAdapter</code></td><td>フィールド（<code>int a, b;</code> は変数ごとに分割）・メソッド・コンストラクタを生成。インタフェースの非 default/static メソッドは <code>isAbstract</code>。<code>headersOnly</code> 時は本体パースをスキップ</td></tr>
+          <tr><td><code>StatementAdapter</code></td><td>メソッド本体を <code>Statement</code> ツリーへ。制御構造を <code>Block</code>+<code>Branch</code> に構造化（次節以降のマッピング元）</td></tr>
+          <tr><td><code>ExpressionAdapter</code></td><td>式から <code>Call</code> を抽出。レシーバ文字列の構築、第 1 引数のラムダ／定数の扱い、<code>Foo::bar</code> メソッド参照の Call 化</td></tr>
+        </tbody>
+      </table></div>
+      <p><b>条件式内の Call 持ち上げ:</b> <code>if</code>/<code>while</code>/<code>for</code>/<code>synchronized</code> の条件式中のメソッド呼び出しは、<code>ExpressionAdapter.emitCalls()</code> で Block の直前の兄弟 Call として配置されます（条件評価の副作用を図に残すため）。</p>
+    </section>
+
+    <section id="solver">
+      <h2>シンボル解決（JpSolver）</h2>
+      <p>呼び出し先の「実際の宣言型」を解決し、<code>Call.resolvedOwnerFqn</code> を埋めるのが <code>JpSolver</code> の役割です。シーケンス図の participant 同定の精度を左右します。</p>
+      <ul>
+        <li><code>CombinedTypeSolver</code> に <code>ReflectionTypeSolver(false)</code> + <code>JavaParserTypeSolver(sourceRoot)</code> を登録</li>
+        <li>ソースルートは標準レイアウト <code>src/&lt;set&gt;/java|kotlin</code> 配下から正規表現で自動推定</li>
+        <li><code>JavaParser</code> はスレッド非安全のため、ワーカ毎に <code>newParser()</code> で生成</li>
+        <li>解決失敗（<code>UnsolvedSymbolException</code> 等）は無視し、<code>resolvedOwnerFqn=null</code> のまま続行（best-effort）</li>
+      </ul>
+    </section>
+
+    <section id="stereotype">
+      <h2>ステレオタイプ判定</h2>
+      <p>クラスの「役割」を推定し、図にステレオタイプ（<code>&lt;&lt;CarManager&gt;&gt;</code> 等）として反映します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>判定器</th><th>ロジック（抜粋）</th></tr></thead>
+        <tbody>
+          <tr><td><code>AaosPattern</code></td><td><code>AIDL_INTERFACE</code>→"AIDL" / <code>Car…Manager</code>+AAOS pkg→"CarManager" / <code>Car…Service</code>→"CarService" / <code>ICar…</code> interface→"ICarInterface" / API アノテーション→"AaosApi"。さらに <code>@hide</code>/<code>@SystemApi</code>/<code>@TestApi</code> の可視性、<code>.Stub</code> 継承の binder、<code>@AddedIn</code> 等の API レベルバッジ</td></tr>
+          <tr><td><code>JetpackPattern</code></td><td>superClass 単純名で Fragment / ViewModel 系を判定。アノテーション短名で <code>@AndroidEntryPoint</code> / <code>@HiltViewModel</code> / <code>@HiltAndroidApp</code> / <code>@Module+@InstallIn</code> を、コンストラクタ <code>@Inject</code> で Injectable を判定</td></tr>
+          <tr><td><code>AndroidSuperclassDetector</code></td><td><code>ClassIndex</code> の superClass を最大 16 段辿り、Application / Activity / Service / Receiver / Provider / Fragment の基底クラス（FQN・単純名両対応）を特定。Manifest に現れない Fragment の検出に有用</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="external">
+      <h2>外部 JAR からのヘッダ抽出</h2>
+      <p>依存ライブラリのクラスは <code>ExternalClassReader</code> が ASM で読み取ります。<code>ClassReader</code> を <code>SKIP_CODE | SKIP_DEBUG | SKIP_FRAMES</code> で走らせ、<b>宣言・親クラス・実装インタフェース・公開メソッドシグネチャ・公開フィールド</b>のみを取得し、<code>origin = EXTERNAL_JAR</code> の <code>JavaClassInfo</code> を返します。これにより、シーケンス図などで外部クラスを <code>&lt;&lt;external&gt;&gt;</code> として正しく扱えます。</p>
+    </section>
+
+    <section id="class">
+      <h2>クラス図 / パッケージ図の生成</h2>
+      <h3>PlantUmlClassDiagram</h3>
+      <p>入力は <code>List&lt;JavaClassInfo&gt;</code> + Options。次の順で PlantUML を組み立てます。</p>
+      <ol>
+        <li><code>Kind.MODULE</code> を除外、<code>excludeExternalLibraries</code> / <code>publicOnly</code> でフィルタ、<code>maxClasses</code> で切り詰め</li>
+        <li>全クラスに <code>C{seq}</code> エイリアスを発行（<code>a.b.c</code> の名前空間誤解釈を防止）</li>
+        <li><code>groupByPackage</code> なら <code>package "…" { }</code> に分類して <code>emitClass()</code></li>
+        <li><code>PlantUmlClassRelations.emitInheritance()</code> → 継承 <code>&lt;|--</code> / 実装 <code>&lt;|..</code></li>
+        <li><code>emitUsage()</code> → フィールド型から利用矢印 <code>..&gt;</code></li>
+        <li><code>PlantUmlClassLegend.emit()</code> で凡例</li>
+      </ol>
+      <p><b>emitClass() が出力する内容:</b> キーワード（class/abstract/interface/enum/annotation）+ ステレオタイプ（Origin / AAOS / API 可視性 / binder / API バッジ / Car App Library / androidComponentType / aidl / record / sealed / Jetpack）+ コメント（INLINE は <code>.. text ..</code>、NOTE は <code>note top of</code>）+ フィールド（<code>{vis}[{static}][{final}][@Ann] name: Type</code>）+ メソッド（<code>{vis}[…][@Ann] name(p: Type): Ret</code>）。<code>interactiveLinks</code> 時は <code>[[juml://class/FQN]]</code> 等のクリックリンクを付与。</p>
+      <p>利用関係のターゲットは <code>PlantUmlClassRelations.pickUsageTarget()</code> が、<code>Map&lt;String, Foo&gt;</code> のようなフィールド型からジェネリクスを深さ 1 で展開し、既知クラス名と照合して決定します。</p>
+
+      <h3>PlantUmlPackageDiagram</h3>
+      <p>各パッケージを <code>package "name\nN classes"</code> として出力し、extends / implements / フィールド型（<code>pickUsageTarget</code> で 1 段）を集計。<b>異なるパッケージ間</b>のみ <code>P1 --&gt; P2</code> を引き、既定では自パッケージ内参照（self-loop）を抑制します。</p>
+    </section>
+
+    <section id="sequence">
+      <h2>シーケンス図の生成</h2>
+      <p>入力は <code>List&lt;JavaClassInfo&gt;</code> + 起点 <code>Class.method</code> + Options。起点メソッドの <code>Statement</code> ツリーを再帰走査して呼び出し連鎖を描きます。</p>
+      <ol>
+        <li>起点を <code>Caller -&gt; EntryClass: method()</code> として出力</li>
+        <li><code>walkStatements()</code> で Statement ツリーを再帰走査</li>
+        <li><code>emitCall()</code> が呼び先を解決: <code>resolvedOwnerFqn</code> → receiver 文字列 → フィールド型 → receiver 先頭シンボル の順</li>
+        <li><code>SeqEmitters.emitBlock()</code> が制御構造を PlantUML へ変換（下表）</li>
+        <li><code>return</code>/<code>throw</code> は <code>note over Participant</code> として表示</li>
+        <li>走査後 <code>resolveParticipantOrigins()</code> で外部 JAR を解決し <code>&lt;&lt;external&gt;&gt;</code>/<code>&lt;&lt;missing&gt;&gt;</code> を付与</li>
+      </ol>
+      <h3>制御構造マッピング（SeqEmitters）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Java 構文</th><th>PlantUML</th></tr></thead>
+        <tbody>
+          <tr><td><code>if</code>（分岐なし）</td><td><code>opt 条件 … end</code></td></tr>
+          <tr><td><code>if / else if / else</code></td><td><code>alt 条件 / else 条件2 / end</code></td></tr>
+          <tr><td><code>while</code> / <code>for</code> / <code>do-while</code></td><td><code>loop while(cond) / for(header) / do-while(cond) … end</code></td></tr>
+          <tr><td><code>switch</code></td><td><code>alt switch(sel)/case X / else case Y / end</code></td></tr>
+          <tr><td><code>try / catch / finally</code></td><td><code>group try / else catch E / else finally / end</code></td></tr>
+          <tr><td><code>synchronized</code></td><td><code>critical synchronized(lock) / end</code></td></tr>
+        </tbody>
+      </table></div>
+      <h3>participant の色分け</h3>
+      <p><span class="pill">project（自プロジェクト, 既定 #LightSkyBlue）</span><span class="pill">&lt;&lt;external&gt;&gt;（EXTERNAL_JAR）</span><span class="pill">&lt;&lt;missing&gt;&gt;（JAR 不在）</span><span class="pill">&lt;&lt;inline&gt;&gt;（ラムダ/匿名コールバック）</span><span class="pill">&lt;&lt;binder&gt;&gt;（AIDL Stub 実装）</span></p>
+      <p>コメントは <code>AT_CALL_SITE</code>（既定: 各呼び出し直下に <code>note right of</code>）と <code>PARTICIPANT_TOP</code>（participant 宣言直後に集約）の 2 モード。<code>forEach</code> 系 + コールバックは <code>loop</code> で囲みます。</p>
+    </section>
+
+    <section id="activity">
+      <h2>アクティビティ図の生成</h2>
+      <p>シーケンス図と同じ <code>Statement</code> ツリーを使いますが、対象は<b>1 メソッド内部のフロー</b>（クラス間展開なし）で、PlantUML の activity 構文へ射影します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Java 構文</th><th>PlantUML（activity）</th></tr></thead>
+        <tbody>
+          <tr><td><code>if / else if / else</code></td><td><code>if (cond) then (yes) / elseif / else (no) / endif</code></td></tr>
+          <tr><td><code>while</code></td><td><code>while (cond) is (true) … endwhile (false)</code></td></tr>
+          <tr><td><code>for</code> / for-each</td><td><code>while (for: header) is (loop) … endwhile (done)</code></td></tr>
+          <tr><td><code>do-while</code></td><td><code>repeat … repeat while (cond) is (yes) not (no)</code></td></tr>
+          <tr><td><code>switch</code></td><td><code>switch (expr) / case (X) … endswitch</code></td></tr>
+          <tr><td><code>try / catch / finally</code></td><td><code>partition "try" / "catch (E)" / "finally" { }</code></td></tr>
+          <tr><td><code>synchronized</code></td><td><code>partition "synchronized(lock)" { }</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Call → <code>:receiver.method();</code>、LocalVar → <code>:Type var = expr;</code>、InlineComment → <code>note right</code>、ラムダ/コールバックは <code>partition "method → callback()" { }</code> で展開。開始/終了/例外終端は <code>start</code>/<code>stop</code>/<code>kill</code>。</p>
+    </section>
+
+    <section id="callgraph">
+      <h2>コールグラフ図の生成</h2>
+      <p><code>PlantUmlCallGraphDiagram</code> は WBS（<code>@startwbs … @endwbs</code>）でメソッド呼び出し階層を描きます。DFS で <code>callDepth×2</code>=クラスノード、<code>callDepth×2+1</code>=メソッドノードの深さを与え、パス上の祖先に同じ <code>className.methodName</code> があれば <code>[↩]</code> を付けて展開を停止（循環検出）。プロジェクト内クラスは色付け、外部クラスは色なしです。</p>
+    </section>
+
+    <section id="common">
+      <h2>共通クラス図（fan-in 集計）</h2>
+      <p><code>PlantUmlCommonClassesDiagram.analyze()</code> が「他クラスから多く参照されるハブ」を抽出します。</p>
+      <ol>
+        <li>外部ライブラリを除いたクラス集合を構築</li>
+        <li>各クラスの<b>参照対象型</b>を <code>collectReferencedTypes()</code> で収集:
+          <span class="pill">superClass</span><span class="pill">interfaces</span><span class="pill">フィールド型（ジェネリクス込み）</span><span class="pill">メソッド戻り値型</span><span class="pill">メソッド引数型</span></li>
+        <li><code>resolveKnown()</code> で型文字列を既知クラス QN に解決（FQN→単純名フォールバック）</li>
+        <li>参照元 QN を <code>referrersByQn</code> に蓄積</li>
+        <li>参照回数の降順（同数は QN 昇順）でソートし上位 N（既定 20）を返す</li>
+      </ol>
+      <p>図ではハブを <code>#LightGoldenRodYellow</code> + <code>&lt;&lt;common&gt;&gt;</code> + <code>N refs</code> で強調し、参照元から <code>referer ..&gt; hub : uses</code> の破線矢印を引きます。設計上のボトルネック候補の発見に使えます。</p>
+    </section>
+
+    <section id="module">
+      <h2>モジュール図の生成</h2>
+      <p><code>PlantUmlModuleDiagram</code> は <code>Kind.MODULE</code>（<code>module-info.java</code>）のみを対象に <code>component "moduleName"</code> ノードを出力。<code>requires transitive</code> → <code>==&gt;</code>、通常 <code>requires</code> → <code>--&gt;</code>、<code>exports</code>/<code>opens</code> は <code>note bottom of</code> に列挙します。</p>
+    </section>
+
+    <section id="android-parse">
+      <h2>Android パーサ群</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>パーサ</th><th>方式</th><th>主な抽出内容</th></tr></thead>
+        <tbody>
+          <tr><td><code>GradleScriptParser</code></td><td>コメント除去 + リテラル保持 + ブロック追跡 + 正規表現（best-effort）</td><td>plugins / applicationId / namespace / SDK 各種 / versionCode・Name / buildTypes / productFlavors / signingConfigs / flavorDimensions / dependencies（scope/group/name/version/モジュール参照）/ subprojects。<code>libs.*</code> は VersionCatalog で実値解決</td></tr>
+          <tr><td><code>VersionCatalogParser</code></td><td>軽量 TOML</td><td><code>[versions]</code> / <code>[libraries]</code> / <code>[plugins]</code>（シンプル値 + インラインテーブル。bundles・テーブル配列は未対応）</td></tr>
+          <tr><td><code>AndroidManifestParser</code></td><td>DOM（XXE 無効化）</td><td>application 各属性（class/label/theme/debuggable/allowBackup/cleartext/networkSecurityConfig/backInvokedCallback/localeConfig 等）/ SDK / Activity・Service・Receiver・Provider（exported/enabled/launcher/intent-filter）/ uses-permission / permission / uses-feature / meta-data</td></tr>
+          <tr><td><code>AndroidLayoutParser</code></td><td>DOM 再帰</td><td>View 階層（viewType / id / text / width / height / isViewGroup / include / fragment / children）</td></tr>
+          <tr><td><code>AndroidNavigationGraphParser</code></td><td>DOM</td><td>startDestination / Destination（type・className・arguments・deepLinks）/ Action（destination・argOverrides・navOptions）</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="android-diagram">
+      <h2>Android 系の図生成</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>生成器</th><th>図化ロジック</th></tr></thead>
+        <tbody>
+          <tr><td><code>PlantUmlComponentDiagram</code></td><td>4 種コンポーネントを <code>component</code> ノード化。<code>exported</code>→黄背景、launcher→<code>&lt;&lt;launcher&gt;&gt;</code>。<code>main</code> 以外の sourceSet は <code>&lt;&lt;src:debug&gt;&gt;</code> 等で付記。共通 action を参照する複数コンポーネント間に矢印</td></tr>
+          <tr><td><code>PlantUmlManifestDiagram</code></td><td><code>&lt;application&gt;</code> 属性を中央ノードに集約し、配下に 4 種コンポーネントをグループ化。uses-permission / uses-feature を周囲のボックスに配置（<code>FOREGROUND_SERVICE_*</code> は <code>&lt;&lt;fgs&gt;&gt;</code> 橙）</td></tr>
+          <tr><td><code>PlantUmlGradleDependencyGraph</code></td><td>モジュール参照（<code>&lt;&lt;application&gt;&gt;</code>/<code>&lt;&lt;library&gt;&gt;</code>/<code>&lt;&lt;module&gt;&gt;</code>）と外部ライブラリ（<code>group:name</code>）を分類。test スコープは既定除外、孤立ノードは Smetana 安定化のため除外</td></tr>
+          <tr><td><code>PlantUmlDeepLinkDiagram</code></td><td><code>VIEW + BROWSABLE</code> の intent-filter を抽出し scheme で分類（http(s)→App Links / その他→Custom Scheme）。<code>autoVerify</code>→<code>&lt;&lt;applink&gt;&gt;</code> 緑、通常→<code>&lt;&lt;deeplink&gt;&gt;</code> 青、MIME のみ→<code>&lt;&lt;mime&gt;&gt;</code> 灰。対応 Activity へ矢印</td></tr>
+          <tr><td><code>PlantUmlNavigationGraphDiagram</code></td><td>Destination → <code>state</code>（種別で色分け: Fragment 青 / Activity 黄 / Dialog 緑 / Navigation 灰 / Include 桃）。startDestination は <code>[*] --&gt;</code>、Action は <code>Src --&gt; Dst : actionId</code>。arguments は内部表示、deepLinks は note</td></tr>
+          <tr><td><code>PlantUmlLayoutDiagram</code></td><td><code>LayoutViewNode</code> 階層を入れ子 <code>rectangle</code> で表現（ViewGroup/View/include/fragment/merge を色分け）。<code>maxNodes</code>/<code>maxDepth</code> 超過は truncated note</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <footer>
+      <p>Juml — ソース解析パイプライン解説。<code>src/main/java/juml/core/formats/</code> のソースを棚卸しして作成。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

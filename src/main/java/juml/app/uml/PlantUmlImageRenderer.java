@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.app.uml;
+
+import net.sourceforge.plantuml.FileFormat;
+import net.sourceforge.plantuml.FileFormatOption;
+import net.sourceforge.plantuml.SourceStringReader;
+import juml.core.formats.uml.PlantUmlRenderer;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
+/**
+ * PlantUML テキストを画面プレビュー用の {@link BufferedImage} に変換する。
+ *
+ * <p>レンダリングは同梱の PlantUML jar が提供する PNG 直接出力経由で実施するため、
+ * SVG → 画像化用に Apache Batik を経由する必要がない。SVG / PDF へのエクスポート時のみ
+ * {@link PlantUmlRenderer#renderSvg(String, java.io.OutputStream)} 等を使用する。</p>
+ */
+public final class PlantUmlImageRenderer {
+
+    private PlantUmlImageRenderer() {
+    }
+
+    /**
+     * PlantUML テキストをレンダリングして {@link BufferedImage} を返す。
+     *
+     * <p>{@code @startuml} 直後に Smetana レイアウトを自動注入するため、Graphviz/dot の
+     * インストールは不要。{@code @startuml} を含まない文字列が渡された場合は
+     * 何もせずそのまま PlantUML に解釈させる。</p>
+     */
+    public static BufferedImage toBufferedImage(String puml) throws IOException {
+        if (puml == null) {
+            throw new IllegalArgumentException("puml is null");
+        }
+        // PlantUML 以外の図種が直接生成した SVG は Batik でラスタライズする。
+        if (PlantUmlRenderer.looksLikeSvg(puml)) {
+            return rasterizeSvg(puml);
+        }
+        // 上限を超える巨大な図は切り詰めではなく縮小して収める (PNG キャンバス上限対策)。
+        String prepared = PlantUmlRenderer.injectScaleMax(puml, PlantUmlRenderer.imageLimit());
+        SourceStringReader reader = new SourceStringReader(PlantUmlRenderer.injectLayout(prepared));
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            reader.outputImage(baos, new FileFormatOption(FileFormat.PNG));
+            byte[] bytes = baos.toByteArray();
+            if (bytes.length == 0) {
+                return null;
+            }
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+                return ImageIO.read(bais);
+            }
+        }
+    }
+
+    /** 既製 SVG 文字列を Batik で {@link BufferedImage} へラスタライズする。 */
+    private static BufferedImage rasterizeSvg(String svg) throws IOException {
+        PlantUmlSvgRenderer.RenderedSvg rendered = PlantUmlSvgRenderer.render(svg);
+        if (rendered == null || rendered.getRoot() == null) {
+            return null;
+        }
+        int w = Math.max(1, (int) Math.ceil(rendered.getWidth()));
+        int h = Math.max(1, (int) Math.ceil(rendered.getHeight()));
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        try {
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            rendered.getRoot().paint(g);
+        } finally {
+            g.dispose();
+        }
+        return img;
+    }
+}

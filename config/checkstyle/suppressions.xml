@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- Legacy naming conventions that cannot be safely changed -->
+    <suppress checks="LocalVariableName" files="ViewListView\.java" />
+    <suppress checks="MethodName" files="SwitchView\.java" />
+
+    <!-- StyleSettingsDialog.buildForm は GridBag フォームの行を順に積むため、
+         フィールドが増えるたびに行数が伸びる。1 関数に収めた方が UI の縦並びが直感的。 -->
+    <suppress checks="MethodLength" files="StyleSettingsDialog\.java" />
+
+    <!-- テストメソッドは BDD 風に method_condition_expected のようなアンダースコア命名を
+         意図的に用いるため、テストソースに限り MethodName を許可する。 -->
+    <suppress checks="MethodName" files=".*Test\.java" />
+    <suppress checks="MethodName" files=".*IT\.java" />
+
+    <!-- 多数のケースを 1 クラスに集約したパラメトリックなテストスイートで、
+         分割するより 1 ファイルにまとめた方がケースの対応関係を追いやすいため、
+         テストに限りファイル長を許可する。 -->
+    <suppress checks="FileLength" files="MethodDiffAnalyzerTest\.java" />
+    <suppress checks="FileLength" files="PlantUmlClassDiagramTest\.java" />
+
+    <!-- MethodUsageReport.Row は CSV/Markdown 出力用の不変データホルダで、列が増えるたびに
+         コンストラクタ引数が増える。意味のある分割が難しいため ParameterNumber を許可する。 -->
+    <suppress checks="ParameterNumber" files="MethodUsageReport\.java" />
+
+    <!-- StyleSettingsDialog.ClassDiagramPrefs はクラス図設定の不変データホルダで、設定項目が
+         増えるたびにコンストラクタ引数が増える。同上の理由で ParameterNumber を許可する。 -->
+    <suppress checks="ParameterNumber" files="StyleSettingsDialog\.java" />
+
+    <!-- UmlMainFrame は各図機能を配線する中枢クラスで、機能追加のたびに数行ずつ増える。
+         分割するより配線を 1 箇所に集約した方が追いやすいため FileLength を許可する。 -->
+    <suppress checks="FileLength" files="UmlMainFrame\.java" />
+
+    <!-- PlantUmlClassDiagram はクラス図テキスト生成の中核で、描画オプション (色分け/
+         フォーカス強調等) が増えるたびに伸びる。関係/凡例/フォーカスは別クラスへ分離済みで、
+         本体は宣言・メンバー整形に集中しているため FileLength を許可する。 -->
+    <suppress checks="FileLength" files="PlantUmlClassDiagram\.java" />
+</suppressions>

@@ -1,0 +1,13 @@
+# Created by .ignore support plugin (hsz.mobi)
+/.idea
+/.gradle
+/settings.xml
+/build
+/bin
+# AppLog の出力先 (<basePath>/logs/juml.log)。実行時生成物のため無視する。
+/logs
+
+# Juml の図付箋メモは <project>/.juml/notes.json に保存され、コミットすればチームで共有できます。
+# 個人メモとして共有したくない場合は、対象プロジェクト側の .gitignore に「.juml/」を追加してください。
+# (このリポジトリ自身の .juml は生成物のため無視します。)
+/.juml

@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>開発者リファレンス — Juml docs</title>
+<meta name="description" content="Juml (Java + UML) の全機能・GUI 動作・解析エンジンを網羅した開発者向けドキュメント。CLI リファレンス、図種カタログ、内部アーキテクチャ。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np current" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">はじめに</div>
+      <a href="#overview">概要</a>
+      <a href="#architecture">アーキテクチャ</a>
+      <a href="#pipeline">解析パイプライン</a>
+      <div class="group">機能リファレンス</div>
+      <a href="#diagrams">図種カタログ（全15種）</a>
+      <a href="#cli">CLI リファレンス</a>
+      <a href="#cli-options" class="sub">オプション一覧</a>
+      <a href="#cli-modes" class="sub">モードと出力</a>
+      <a href="#cli-index" class="sub">index サブコマンド</a>
+      <a href="#gui">GUI ガイド</a>
+      <a href="#gui-layout" class="sub">画面構成</a>
+      <a href="#gui-menu" class="sub">メニュー / ツールバー</a>
+      <a href="#gui-tabs" class="sub">タブとフォーカス連動</a>
+      <a href="#gui-interact" class="sub">操作とインタラクション</a>
+      <a href="#gui-shortcuts" class="sub">ショートカット</a>
+      <div class="group">内部実装</div>
+      <a href="#engine">解析エンジン (core)</a>
+      <a href="#android">Android / AAOS / AOSP</a>
+      <a href="#db">永続化・SQLite インデックス</a>
+      <a href="#db-schema" class="sub">スキーマ（ER 図）</a>
+      <a href="#db-dao" class="sub">DAO・Ingest 層</a>
+      <a href="#render">PlantUML 描画</a>
+      <div class="group">運用</div>
+      <a href="#build">ビルドと実行</a>
+      <a href="#inputs">解析対象と既知の制約</a>
+      <a href="#freshness">ドキュメント鮮度メモ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero" id="overview">
+      <h1>Juml — 開発者ドキュメント</h1>
+      <p class="tag">Java / Android (Gradle・AndroidManifest・AIDL) プロジェクトを解析し、PlantUML 経由で UML 図を生成する Swing + CLI ツールの全機能棚卸し。</p>
+      <div class="badges">
+        <span class="badge">Version <b>2.1</b></span>
+        <span class="badge">Java <b>17+</b></span>
+        <span class="badge">License <b>MIT</b>（同梱 PlantUML は GPLv3）</span>
+        <span class="badge">図種 <b>15</b></span>
+        <span class="badge">CLI フラグ <b>50+</b></span>
+      </div>
+      <div class="grid" style="margin-top:1.6rem">
+        <div class="card"><div class="stat">256<small> files</small></div><p>本体ソース（約 48.6k LoC）</p></div>
+        <div class="card"><div class="stat">136<small> files</small></div><p>テスト（約 26k LoC / <b>1,553</b> @Test）</p></div>
+        <div class="card"><div class="stat">15</div><p>対応図種（<code>DiagramKind</code>）</p></div>
+        <div class="card"><div class="stat">0<small> 追加依存</small></div><p>PlantUML + Smetana 同梱で Graphviz 不要</p></div>
+      </div>
+      <div class="note">
+        この文書は <code>src/main/java/juml/</code> のソースを直接棚卸しして生成した <b>開発者向け</b>リファレンスです。
+        ユーザー向けの操作マニュアルは <a href="./gui-manual.html">GUI 操作マニュアル</a> を参照してください。
+      </div>
+    </header>
+
+    <section id="architecture">
+      <h2>アーキテクチャ</h2>
+      <p>Juml は大きく <b>CLI/GUI エントリ層</b>・<b>UML GUI 層</b>・<b>解析エンジン (core)</b> の 3 層で構成されます。エントリは <code>juml.Main</code>。引数なし（または図モード非該当）で Swing GUI が起動し、図モードフラグがあれば CLI として単発／一括出力を行います。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 760 430" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="12">
+        <defs>
+          <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5eb3f6"/>
+          </marker>
+          <style>
+            .box{fill:#1b1f2a;stroke:#2a2f3d;rx:8;} .t{fill:#d7dce5;} .ti{fill:#9aa3b2;}
+            .acc{fill:#5eb3f6;} .lab{fill:#7ee0c0;font-weight:600;}
+            line{stroke:#5eb3f6;stroke-width:1.4;} .grp{fill:#161922;stroke:#2a2f3d;stroke-dasharray:4 3;}
+          </style>
+        </defs>
+        <rect class="box" x="300" y="12" width="160" height="44" rx="8"/>
+        <text class="lab" x="380" y="30" text-anchor="middle">juml.Main</text>
+        <text class="ti" x="380" y="46" text-anchor="middle">エントリ / ディスパッチ</text>
+
+        <rect class="box" x="60" y="100" width="200" height="50" rx="8"/>
+        <text class="t" x="160" y="122" text-anchor="middle">app/uml — Swing GUI</text>
+        <text class="ti" x="160" y="138" text-anchor="middle">UmlMainFrame / DiagramTabPane</text>
+
+        <rect class="box" x="500" y="100" width="200" height="50" rx="8"/>
+        <text class="t" x="600" y="122" text-anchor="middle">app/cli — CLI</text>
+        <text class="ti" x="600" y="138" text-anchor="middle">CliDispatcher / *Commands</text>
+
+        <rect class="grp" x="40" y="190" width="680" height="170" rx="10"/>
+        <text class="acc" x="58" y="210" font-weight="600">core — 解析エンジン</text>
+
+        <rect class="box" x="60" y="226" width="150" height="44" rx="8"/>
+        <text class="t" x="135" y="244" text-anchor="middle">formats/java</text>
+        <text class="ti" x="135" y="260" text-anchor="middle">Lexer / JavaParser</text>
+
+        <rect class="box" x="230" y="226" width="150" height="44" rx="8"/>
+        <text class="t" x="305" y="244" text-anchor="middle">formats/uml</text>
+        <text class="ti" x="305" y="260" text-anchor="middle">PlantUml*Diagram</text>
+
+        <rect class="box" x="400" y="226" width="150" height="44" rx="8"/>
+        <text class="t" x="475" y="244" text-anchor="middle">formats/android</text>
+        <text class="ti" x="475" y="260" text-anchor="middle">Manifest/Gradle/XML</text>
+
+        <rect class="box" x="570" y="226" width="130" height="44" rx="8"/>
+        <text class="t" x="635" y="244" text-anchor="middle">aaos / aosp</text>
+        <text class="ti" x="635" y="260" text-anchor="middle">VHAL / Soong</text>
+
+        <rect class="box" x="60" y="296" width="150" height="44" rx="8"/>
+        <text class="t" x="135" y="314" text-anchor="middle">refs / impact</text>
+        <text class="ti" x="135" y="330" text-anchor="middle">逆参照・影響</text>
+
+        <rect class="box" x="230" y="296" width="150" height="44" rx="8"/>
+        <text class="t" x="305" y="314" text-anchor="middle">dataflow / screen</text>
+        <text class="ti" x="305" y="330" text-anchor="middle">Room / 画面遷移</text>
+
+        <rect class="box" x="400" y="296" width="150" height="44" rx="8"/>
+        <text class="t" x="475" y="314" text-anchor="middle">uml/db (SQLite)</text>
+        <text class="ti" x="475" y="330" text-anchor="middle">index.db キャッシュ</text>
+
+        <rect class="box" x="570" y="296" width="130" height="44" rx="8"/>
+        <text class="t" x="635" y="314" text-anchor="middle">PlantUmlRenderer</text>
+        <text class="ti" x="635" y="330" text-anchor="middle">Smetana → SVG</text>
+
+        <line x1="340" y1="56" x2="180" y2="100" marker-end="url(#arr)"/>
+        <line x1="420" y1="56" x2="580" y2="100" marker-end="url(#arr)"/>
+        <line x1="160" y1="150" x2="150" y2="226" marker-end="url(#arr)"/>
+        <line x1="600" y1="150" x2="320" y2="226" marker-end="url(#arr)"/>
+      </svg>
+      <figcaption><b>図1</b>　Juml の 3 層アーキテクチャ（<code>juml.Main</code> を起点に Swing GUI 層・CLI 層・解析エンジン <code>core</code> へ分岐）。矢印は主要な制御の流れ。</figcaption>
+      </figure>
+
+      <h3>パッケージ責務マップ</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>パッケージ</th><th>責務（入力 → 出力）</th><th>中核クラス</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/uml</code></td><td>VS Code 風タブ中心の Swing GUI。配線のみ</td><td>UmlMainFrame, DiagramTabPane, DiagramController, DiagramState</td></tr>
+          <tr><td><code>app/cli</code></td><td>引数ディスパッチと単発/一括出力</td><td>CliDispatcher, Uml/Android/Analysis/Aosp Commands</td></tr>
+          <tr><td><code>core/formats/java</code></td><td>.java 列挙・字句解析・構造抽出</td><td>JavaLexer, AndroidProjectScanner, jp/JavaParserFrontend, JpSolver</td></tr>
+          <tr><td><code>core/formats/uml</code></td><td>JavaClassInfo → PlantUML / レポート / モデル</td><td>UmlGenerator, PlantUml*Diagram, PlantUmlRenderer, AidlParser/HidlParser</td></tr>
+          <tr><td><code>core/formats/uml/db</code></td><td>解析結果 → SQLite <code>index.db</code></td><td>IndexDatabase, SchemaInitializer, IndexWriter/Reader, IncrementalScanner</td></tr>
+          <tr><td><code>core/formats/android</code></td><td>Manifest / Gradle / layout / nav XML 解析と図化</td><td>AndroidProjectAnalyzer, *Parser, PlantUml*Diagram</td></tr>
+          <tr><td><code>core/refs</code></td><td>逆参照インデックス構築</td><td>ReferenceIndex, ReferenceIndexBuilder, NameResolver</td></tr>
+          <tr><td><code>core/impact</code></td><td>逆参照 BFS による変更影響解析</td><td>ImpactAnalyzer, ImpactGraph, PlantUmlImpactDiagram</td></tr>
+          <tr><td><code>core/dataflow</code></td><td>Room エンティティ → ER 図</td><td>RoomAnalyzer, PlantUmlErDiagram</td></tr>
+          <tr><td><code>core/funcdiff</code></td><td>2 メソッドの呼び出し列差分・類似度</td><td>MethodDiffAnalyzer</td></tr>
+          <tr><td><code>core/screen</code></td><td>Intent / Compose / NavGraph → 画面遷移</td><td>IntentNavigationDetector, ComposeNavScanner, ScreenRouteBuilder</td></tr>
+          <tr><td><code>core/aaos</code></td><td>VHAL アクセス / AIDL バインディング</td><td>VhalAnalyzer, VehiclePropertyCatalog, AidlBindingResolver</td></tr>
+          <tr><td><code>core/aosp</code></td><td>Android.bp / .mk / SELinux / VINTF / RRO</td><td>AndroidBpParser, SelinuxPolicyParser, RroOverlayDetector</td></tr>
+          <tr><td><code>util</code></td><td>OptionParser / Messages / PathUtil / CacheKey 等</td><td>OptionParser, Messages</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="tip"><b>設計方針:</b> GUI は「タブ = エディタ」の VS Code 風モデル。<code>DiagramState</code>=状態保持のみ、<code>DiagramController</code>=状態遷移と UI 同期、<code>DiagramTabPane</code>=タブのライフサイクル、<code>*Builder</code>=UI 構築のみ、と責務を分離。Home タブは廃止済み。</div>
+    </section>
+
+    <section id="pipeline">
+      <h2>解析パイプライン</h2>
+      <p>中核モデルは <code>JavaClassInfo</code>（Kind: CLASS / INTERFACE / ENUM / ANNOTATION / AIDL_INTERFACE / RECORD / MODULE）。プロジェクト解析は次の流れで進みます。</p>
+      <ol>
+        <li><b>列挙</b> — <code>AndroidProjectScanner.scan</code> が <code>walkFileTree</code> でソースを収集（キャンセル・上限対応）。</li>
+        <li><b>並列パース</b> — <code>UmlGenerator.extractFromProjectDetailed</code> がスレッドプールで各ファイルを処理。<code>ParseMode</code> は <span class="pill">FULL</span> / <span class="pill">HEADERS_ONLY</span>。</li>
+        <li><b>ディスパッチ</b> — 拡張子で分岐：<code>.aidl</code>→AidlParser、<code>.kt/.kts</code>→KotlinLightScanner、その他→JavaStructureExtractor。</li>
+        <li><b>字句解析（前処理）</b> — <code>JavaLexer</code> はコメント/文字列/数値を切り出す簡易レキサ。Java 本体は JavaParser に委譲し、Lexer は Unicode エスケープ展開と AIDL/HIDL のトークン供給に使用。</li>
+        <li><b>構造抽出</b> — <code>JavaParserFrontend</code> が <b>JavaParser + SymbolSolver</b> を <code>BLEEDING_EDGE</code> レベルで寛容にパース。構文エラーでも部分結果を返し、壊れたソースは正規表現で型ヘッダだけ復元。</li>
+        <li><b>シンボル解決</b> — FULL 時のみ <code>JpSolver</code> を構築し、呼び出し先 FQN を <code>Call.resolvedOwnerFqn</code> に解決。</li>
+        <li><b>メソッド本体</b> — <code>StatementAdapter</code> が if/while/for/do/switch/synchronized/try を <code>Block</code>/<code>Branch</code> の構造化ツリーへ。シーケンス図・アクティビティ図・メトリクスの源。</li>
+        <li><b>後処理</b> — AAOS カテゴリ付与、Jetpack ステレオタイプ付与、Manifest マージ。</li>
+        <li><b>生成</b> — <code>PlantUml*Diagram.generate</code> へ。</li>
+      </ol>
+      <div class="note"><b>Stage A / B 二相:</b> <code>extractHeadersOnly</code> でヘッダのみ軽量保持し、<code>ClassIndex</code> が FQN→ヘッダを全件メモリ保持、必要時に詳細（Stage B）へオンデマンド昇格。大規模プロジェクトの初期表示を高速化する。</div>
+      <p><b>AIDL / HIDL 対応:</b> あり。<code>AidlParser</code> が <code>in/out/inout</code>・<code>oneway</code> を抽出し <code>Kind.AIDL_INTERFACE</code> を生成。<code>HidlParser</code> は <code>.hal</code> のバージョン付きパッケージと <code>generates</code> 句を扱う。</p>
+    </section>
+
+    <section id="diagrams">
+      <h2>図種カタログ（全 15 種）</h2>
+      <p>GUI のツールバー / Diagram メニューは <code>DiagramKind.values()</code> の順に 15 種を提供します。CLI では一部のみフラグで直接生成可能（下表「CLI」列）。生成器はすべて <code>core/formats/.../PlantUml*Diagram</code>。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>図種</th><th>GUI 表示名</th><th>CLI</th><th>入力 / 起点</th><th>特徴的ロジック</th></tr></thead>
+        <tbody>
+          <tr><td><b>Class</b></td><td>Class Diagram</td><td><code>-c</code></td><td>class/package/module/全体</td><td>可視性記号・継承線（extends <code>&lt;|--</code> / impl <code>&lt;|..</code>）・凡例。クラス名クリックでドリルダウン</td></tr>
+          <tr><td><b>Package</b></td><td>Package Diagram</td><td>—</td><td>パッケージ集約</td><td>継承/実装/フィールド型経由のパッケージ間参照。<b>ロード後の既定タブ</b></td></tr>
+          <tr><td><b>Sequence</b></td><td>Sequence Diagram</td><td><code>-q Class.method</code></td><td>メソッド起点</td><td>制御構造→PlantUML：if→<code>opt</code>/<code>alt</code>、loop→<code>loop</code>、switch→<code>alt</code>、try→<code>group</code>、synchronized→<code>critical</code>。participant フィルタ対応</td></tr>
+          <tr><td><b>Activity</b></td><td>Activity Diagram</td><td>—</td><td>1 メソッド本体</td><td>制御フローをフローチャート化。呼び出し先は展開せずノード化</td></tr>
+          <tr><td><b>Component</b></td><td>Component Diagram</td><td><code>-d</code></td><td>Manifest / Gradle</td><td>コンポーネント node 化、intent-filter の action を矢印化</td></tr>
+          <tr><td><b>Dependency</b></td><td>Dependency Graph</td><td><code>-G</code></td><td>Gradle 解析</td><td>モジュール間 + 外部ライブラリ依存。<code>libs.versions.toml</code> 自動解決</td></tr>
+          <tr><td><b>Manifest</b></td><td>Manifest Diagram</td><td><code>-M</code></td><td>AndroidProjectAnalysis</td><td><code>&lt;application&gt;</code> 属性を中央配置、sourceSet ごとに別 Application ノード</td></tr>
+          <tr><td><b>Layout</b></td><td>Layout View Hierarchy</td><td>—</td><td>layout XML 選択</td><td>View 階層を nested <code>rectangle</code> 化、上限超過で truncated note</td></tr>
+          <tr><td><b>Common</b></td><td>Common Classes</td><td>—</td><td>全クラス</td><td>fan-in（被参照数）上位 N 件を中心化。設計ボトルネック発見用</td></tr>
+          <tr><td><b>Cycles</b></td><td>Package Cycles</td><td><code>--insights</code></td><td>逆参照インデックス</td><td>パッケージ間の循環依存（Tarjan SCC）を赤太線でハイライト。循環参加パッケージは赤背景</td></tr>
+          <tr><td><b>Navigation</b></td><td>Navigation Graph</td><td>—<sup>※</sup></td><td>navigation XML 選択</td><td>Destination を <code>state</code> 化、Action→<code>--&gt;</code>、start→<code>[*] --&gt;</code></td></tr>
+          <tr><td><b>Module</b></td><td>Module Diagram</td><td>—</td><td>module-info.java</td><td>requires/exports/opens。<code>requires transitive</code>→<code>==&gt;</code></td></tr>
+          <tr><td><b>Inherit</b></td><td>Inheritance Diagram</td><td>—</td><td>extends/implements</td><td>継承階層のみの軽量図。全体は大規模警告対象</td></tr>
+          <tr><td><b>Call Graph</b></td><td>Call Graph</td><td>—</td><td>メソッド起点</td><td>WBS 図。DFS 再帰展開、循環は <code>[↩]</code>、既定 maxDepth=4</td></tr>
+          <tr><td><b>Screen Flow</b></td><td>Screen Flow</td><td><code>--screen-flow</code></td><td>プロジェクトルート</td><td>Intent 起動 + Car App Library <code>Screen.push</code> を統合した状態遷移図</td></tr>
+          <tr><td><b>Soong</b></td><td>Soong (Android.bp)</td><td><code>--android-bp</code></td><td>プロジェクトルート</td><td>Android.bp 走査。カテゴリ別 package、外部は <code>external</code> 枠</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="src">※ Navigation は CLI フラグではなく GUI の <code>DiagramService NAVIGATION</code> 経路で処理。Deep Link 図（<code>-D</code>）・ER 図（<code>--er-diagram</code>）・VHAL フロー図（<code>--vhal-flow</code>）は CLI 専用の追加図種。</p>
+
+      <h3>解析 → 図解化のディスパッチ</h3>
+      <p>GUI のトグル / メニューは <code>DiagramController.selectDiagramKind</code> → <code>DiagramService.generatePuml(request, cache)</code> 経由で各生成器へ振り分けられます。入力源は 3 系統に分かれ、<b>パースの起点</b>（解析済みモデルの再利用か、生成時の再走査か）が異なります。</p>
+      <div class="grid">
+        <div class="card"><h4>① 解析済み Java モデル</h4><p><code>List&lt;JavaClassInfo&gt;</code> を再利用。<code>applyScope</code> で絞り込み、<code>promoteToDetailed</code>（<code>ClassIndex#detail</code>）で必要分だけ Stage B 昇格してから描画。<br><b>Class / Inherit / Package / Common / Cycles / Module / Sequence / Activity / Call Graph</b></p></div>
+        <div class="card"><h4>② Android / Gradle 解析</h4><p><code>AndroidProjectAnalysis</code>（Manifest・layout・navigation・Gradle のパース済み結果）から生成。Layout / Navigation は <code>findLayoutByKey</code> / <code>findNavigationByKey</code> で対象 1 件を引く。<br><b>Component / Dependency / Manifest / Layout / Navigation</b></p></div>
+        <div class="card"><h4>③ 生成時に再走査</h4><p>キャッシュではなく <code>cache.getProjectRoot()</code> 配下を改めて走査。Screen Flow は <code>IntentNavigationDetector</code>（regex）、Soong は <code>AndroidBpParser</code>（軽量 Blueprint パーサ）。<br><b>Screen Flow / Soong</b></p></div>
+      </div>
+      <p>各図種の「どの入力をどう解析し、どんな PlantUML 要素にマップするか」と生成器ファイルの対応は次の通りです。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>図種</th><th>生成器ファイル</th><th>解析（パース）</th><th>図解化（PlantUML マッピング）</th></tr></thead>
+        <tbody>
+          <tr><td><b>Class</b></td><td><code>uml/PlantUmlClassDiagram</code><br><span class="src">(+ PlantUmlClassRelations / PlantUmlClassLegend)</span></td><td>クラス宣言・フィールド型・継承 / 実装関係を走査。<code>Setting</code> の表示設定 + Scope の関係線フィルタを反映</td><td><code>class "FQN" as C0 { fields; methods }</code>、継承 <code>&lt;|--</code> / 実装 <code>&lt;|..</code> / 使用 <code>--&gt;</code>。<code>maxClasses</code> 截断・凡例</td></tr>
+          <tr><td><b>Package</b></td><td><code>uml/PlantUmlPackageDiagram</code></td><td>パッケージ名でクラスを集約・カウント。継承 / 実装 / フィールド型からパッケージ間参照を集計（ジェネリクス剥がし）</td><td><code>package "pkg" { }</code>（クラス数表示）+ パッケージ間 <code>--&gt;</code>。自己ループ抑止オプション</td></tr>
+          <tr><td><b>Sequence</b></td><td><code>uml/PlantUmlSequenceDiagram</code><br><span class="src">(+ SeqEmitters / SeqRender / PlantUmlSequenceComments)</span></td><td>メソッド本体の <code>Statement</code>（Call / Block / Return / Throw）を DFS 再帰展開。<code>maxDepth</code>・スタックで循環検出、Stream API / 汎用 SAM を除外</td><td><code>participant</code>（projectColor 着色・外部 <code>&lt;&lt;external&gt;&gt;</code>）+ メッセージ矢印。if→<code>opt/alt</code>、loop→<code>loop</code>、switch→<code>alt</code>、try→<code>group</code>、synchronized→<code>critical</code></td></tr>
+          <tr><td><b>Activity</b></td><td><code>uml/PlantUmlActivityDiagram</code></td><td>起点メソッド本体の制御構造を <code>walkStatements</code> で順次処理。呼び出し先は展開せずアクション化、コールバックは partition 展開</td><td><code>:action;</code>、<code>if/elseif/else/endif</code>、<code>while/repeat</code>、<code>switch/case/endswitch</code>、try→<code>partition "try/catch/finally"</code></td></tr>
+          <tr><td><b>Component</b></td><td><code>android/PlantUmlComponentDiagram</code></td><td>AndroidManifest の Activity / Service / Receiver / Provider + intent-filter を <code>allComponents()</code> で重複排除して取得</td><td><code>component "FQN" &lt;&lt;Activity&gt;&gt;</code>（exported は着色）、action <code>usecase &lt;&lt;action&gt;&gt;</code> → <code>--&gt;</code>、permission を <code>package</code> 化</td></tr>
+          <tr><td><b>Dependency</b></td><td><code>android/PlantUmlGradleDependencyGraph</code></td><td>build.gradle(.kts) の dependencies（<code>project(...)</code> / <code>group:name</code>）を解析。孤立ノードは除外（Smetana 回避）</td><td><code>component</code>（<code>&lt;&lt;application&gt;&gt;</code> / <code>&lt;&lt;library&gt;&gt;</code> / <code>&lt;&lt;external&gt;&gt;</code>）+ scope 別 <code>--&gt;</code> / <code>..&gt;</code></td></tr>
+          <tr><td><b>Manifest</b></td><td><code>android/PlantUmlManifestDiagram</code></td><td><code>&lt;application&gt;</code> 属性 + 4 種コンポーネント + permission / feature を sourceSet 別に抽出。FQN は単純名へ短縮</td><td>Application <code>rectangle</code> を中心に <code>package "Activities (N)"</code> 等でグループ化、包含 <code>*--</code>。FGS 系 permission は別色</td></tr>
+          <tr><td><b>Layout</b></td><td><code>android/PlantUmlLayoutDiagram</code></td><td><code>AndroidLayoutInfo</code> の View 階層を再帰分類（ViewGroup / View / include / fragment / merge）</td><td>入れ子 <code>rectangle</code>（id / text / size を注記）。<code>maxNodes</code> / <code>maxDepth</code> 超過で truncated note</td></tr>
+          <tr><td><b>Common</b></td><td><code>uml/PlantUmlCommonClassesDiagram</code></td><td>各クラスの fan-in（継承 / 実装 / フィールド型 / 引数型 / 戻り値型での被参照数）を集計し降順上位 topN（既定 20）を抽出。外部ライブラリ除外</td><td>ハブを <code>class &lt;&lt;common&gt;&gt; #LightGoldenRodYellow</code>（参照数表示）、参照元から <code>..&gt; : uses</code></td></tr>
+          <tr><td><b>Navigation</b></td><td><code>android/PlantUmlNavigationGraphDiagram</code></td><td><code>AndroidNavigationGraphInfo</code> の Destination（fragment / activity / dialog / nested / include）と Action（id 参照）を解析</td><td><code>state "name\n--\nargs" &lt;&lt;fragment&gt;&gt;</code>、Action <code>--&gt;</code>、start <code>[*] --&gt;</code>、global action / Deep Link を注記</td></tr>
+          <tr><td><b>Module</b></td><td><code>uml/PlantUmlModuleDiagram</code></td><td><code>Kind.MODULE</code> の <code>JavaModuleDirective</code>（requires / exports / opens / uses / provides）を抽出</td><td><code>component "name" as M0</code>（open は <code>&lt;&lt;open&gt;&gt;</code>）、requires <code>--&gt;</code> / requires transitive <code>==&gt;</code>、exports / opens は note</td></tr>
+          <tr><td><b>Inherit</b></td><td><code>uml/PlantUmlClassDiagram</code><br><span class="src">(Class と同一生成器・固定オプション)</span></td><td>Class 図生成器を継承 / 実装関係のみに固定（フィールド / メソッド / 可視性非表示、package ボックス無効、上→下レイアウト）</td><td>継承 <code>&lt;|--</code> / 実装 <code>&lt;|..</code> のツリー。兄弟 5 個超で折返し（<code>maxSiblingsPerRow=5</code>）</td></tr>
+          <tr><td><b>Call Graph</b></td><td><code>uml/PlantUmlCallGraphDiagram</code></td><td>起点から呼び出しを <code>collectCalls</code> で抽出しクラス単位にまとめ、DFS でパス（<code>Set&lt;String&gt;</code>）を辿り循環検出。既定 maxDepth=4</td><td>WBS（<code>*</code>=起点 / <code>**</code>=クラス / <code>***</code>=メソッド）。プロジェクト内は着色、循環は <code>[↩]</code></td></tr>
+          <tr><td><b>Screen Flow</b></td><td><code>screen/PlantUmlScreenFlowDiagram</code><br><span class="src">(+ IntentNavigationDetector)</span></td><td>プロジェクトルートを再走査し、Java / Kotlin を 6 種の正規表現で解析。<code>new Intent(ctx, X.class)</code> / <code>X::class.java</code> / <code>Screen.push</code> / Fragment txn / Navigation action / Compose navigate を検出</td><td><code>state</code> + 遷移 Kind ごとに色分けした矢印（START_ACTIVITY / FOR_RESULT / SCREEN_PUSH / FRAGMENT_TXN…）。重複は <code>×N</code></td></tr>
+          <tr><td><b>Soong</b></td><td><code>aosp/PlantUmlSoongDependencyDiagram</code><br><span class="src">(+ AndroidBpParser)</span></td><td>プロジェクトルートを再走査し <code>Android.bp</code> をパース。コメント除去 → <code>ident { }</code> ブロックから name と <code>shared_libs</code> / <code>static_libs</code> / <code>required</code> / <code>defaults</code> 等の依存キーを抽出</td><td><code>component "name\n&lt;&lt;type&gt;&gt;"</code> をカテゴリ別（cc / java / android / aidl / hidl…）<code>package</code> に配置 + 依存 <code>--&gt;</code>。未定義モジュールは <code>external</code> 枠</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="cli">
+      <h2>CLI リファレンス</h2>
+      <p>エントリは <code>juml.Main</code>。<code>args[0] == "index"</code> のときのみ <code>IndexCommand</code> へ早期分岐し、それ以外は <code>CliOptions.parse</code> → <code>CliDispatcher.dispatch</code>。どのモードにも当たらなければ GUI が起動します（第 1 位置引数を初期プロジェクトとして渡す）。</p>
+      <pre><code># GUI 起動（引数なし、または初期プロジェクト指定）
+java -jar Juml.jar [projectDir]
+
+# クラス図を SVG 出力
+java -jar Juml.jar -c -o class.svg ~/AndroidStudioProjects/MyApp
+
+# メソッド起点のシーケンス図
+java -jar Juml.jar -q "MainActivity.onCreate" -o seq.svg MainActivity.java
+
+# 全成果物を一括出力（要 -o ディレクトリ）
+java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
+
+      <div class="warn"><b>OptionParser の制約:</b> 短縮形の連結（<code>-vc</code>）や <code>--opt=value</code> 形式は <b>非対応</b>（<code>--opt value</code> と空白区切りで指定）。例外として <code>index</code> サブコマンドの <code>--db=path</code> のみ手動対応。未知オプションは exit 1。</div>
+
+      <h3 id="cli-options">オプション一覧</h3>
+      <p>下のボックスでフラグ名・説明を <b>絞り込み</b>できます。<span class="count-tag" id="optCount"></span></p>
+      <input class="filter" id="optFilter" type="text" placeholder="フラグや説明で絞り込み（例: sequence, impact, manifest）…" aria-label="オプション絞り込み">
+      <div class="table-wrap">
+      <table id="optTable">
+        <thead><tr><th>短縮</th><th>長形式</th><th>引数</th><th>既定</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>-h</code></td><td><code>--help</code></td><td>—</td><td>off</td><td>Usage 表示後 exit 1</td></tr>
+          <tr><td><code>-o</code></td><td><code>--output</code></td><td>有</td><td>標準出力</td><td>出力先ファイル / ディレクトリ</td></tr>
+          <tr><td><code>-c</code></td><td><code>--class-diagram</code></td><td>—</td><td>off</td><td>PlantUML クラス図</td></tr>
+          <tr><td><code>-q</code></td><td><code>--sequence-diagram</code></td><td>有</td><td>—</td><td><code>Class.method</code> 起点のシーケンス図</td></tr>
+          <tr><td><code>-v</code></td><td><code>--verbose</code></td><td>—</td><td>off</td><td>per-file 警告 + Smetana ログを stderr へ</td></tr>
+          <tr><td><code>-L</code></td><td><code>--legend</code> / <code>--no-legend</code></td><td>—</td><td>UML は ON</td><td>凡例の強制 ON / OFF</td></tr>
+          <tr><td><code>-g</code></td><td><code>--gradle</code></td><td>—</td><td>off</td><td>build.gradle → Markdown サマリー</td></tr>
+          <tr><td><code>-m</code></td><td><code>--manifest</code></td><td>—</td><td>off</td><td>AndroidManifest.xml → Markdown サマリー</td></tr>
+          <tr><td><code>-d</code></td><td><code>--component-diagram</code></td><td>—</td><td>off</td><td>Android コンポーネント図</td></tr>
+          <tr><td><code>-M</code></td><td><code>--manifest-diagram</code></td><td>—</td><td>off</td><td>Manifest 構造図</td></tr>
+          <tr><td><code>-D</code></td><td><code>--deeplink-diagram</code></td><td>—</td><td>off</td><td>Deep Link / App Links 図</td></tr>
+          <tr><td><code>-G</code></td><td><code>--dependency-graph</code></td><td>—</td><td>off</td><td>Gradle 依存グラフ図</td></tr>
+          <tr><td>—</td><td><code>--summary</code></td><td>—</td><td>off</td><td>プロジェクト全体 Markdown サマリー</td></tr>
+          <tr><td><code>-A</code></td><td><code>--all</code></td><td>—</td><td>off</td><td>全成果物を一括出力（要 -o dir）</td></tr>
+          <tr><td>—</td><td><code>--no-manifest-merge</code></td><td>—</td><td>merge ON</td><td>クラス図の Manifest 自動マージ無効化</td></tr>
+          <tr><td>—</td><td><code>--no-comments</code></td><td>—</td><td>preset</td><td>JavaDoc / コメント描画 OFF</td></tr>
+          <tr><td>—</td><td><code>--comment-style</code></td><td>有</td><td>inline</td><td><code>inline</code> / <code>note</code></td></tr>
+          <tr><td>—</td><td><code>--no-annotations</code></td><td>—</td><td>preset</td><td>注釈描画 OFF</td></tr>
+          <tr><td>—</td><td><code>--no-enum-constants</code></td><td>—</td><td>preset</td><td>enum 定数描画 OFF</td></tr>
+          <tr><td>—</td><td><code>--no-final</code></td><td>—</td><td>preset</td><td><code>{final}</code> マーカー OFF</td></tr>
+          <tr><td>—</td><td><code>--list-methods</code></td><td>—</td><td>off</td><td><code>-q</code> 用 <code>Class.method</code> 候補一覧</td></tr>
+          <tr><td>—</td><td><code>--function-list</code></td><td>—</td><td>off</td><td>全クラス全関数 + 利用側 + 実行条件</td></tr>
+          <tr><td>—</td><td><code>--function-list-format</code></td><td>有</td><td>table</td><td><code>table</code> / <code>csv</code></td></tr>
+          <tr><td>—</td><td><code>--seq-depth</code></td><td>有</td><td>5</td><td>シーケンストレース深さ（0=無制限）</td></tr>
+          <tr><td><code>-Q</code></td><td><code>--sequence-diagrams</code></td><td>—</td><td>off</td><td>ライフサイクル起点の seq 図一括出力（要 -o dir）</td></tr>
+          <tr><td>—</td><td><code>--jetpack</code></td><td>—</td><td>off</td><td>Jetpack ステレオタイプ有効化</td></tr>
+          <tr><td><code>-P</code></td><td><code>--per-folder</code></td><td>—</td><td>off</td><td><code>-c</code> 併用：フォルダ別クラス図出力（要 -o dir）</td></tr>
+          <tr><td>—</td><td><code>--preset</code></td><td>有</td><td>balanced</td><td><code>minimal</code> / <code>balanced</code> / <code>detailed</code></td></tr>
+          <tr><td>—</td><td><code>--no-fields</code> / <code>--no-methods</code></td><td>—</td><td>preset</td><td>クラス図でフィールド / メソッド非表示</td></tr>
+          <tr><td>—</td><td><code>--public-only</code></td><td>—</td><td>off</td><td>public のみ表示</td></tr>
+          <tr><td>—</td><td><code>--exclude-external</code></td><td>—</td><td>off</td><td>java.* / android.* / kotlin.* 等を除外</td></tr>
+          <tr><td>—</td><td><code>--exclude-package</code></td><td>有(複数)</td><td>空</td><td>パッケージ接頭辞で除外</td></tr>
+          <tr><td>—</td><td><code>--relation</code></td><td>有</td><td>preset</td><td><code>inherit,impl,use</code> CSV で関係線限定</td></tr>
+          <tr><td>—</td><td><code>--mode</code></td><td>有</td><td>full</td><td><code>headers-only</code> / <code>full</code></td></tr>
+          <tr><td>—</td><td><code>--interactive-svg</code></td><td>—</td><td>off</td><td>SVG にクリック可能リンク埋め込み</td></tr>
+          <tr><td>—</td><td><code>--hidden-annotations</code></td><td>有</td><td>preset</td><td>隠す注釈名 CSV 上書き</td></tr>
+          <tr><td>—</td><td><code>--comment-max-length</code></td><td>有</td><td>preset</td><td>インラインコメント最大長（0=無効）</td></tr>
+          <tr><td>—</td><td><code>--impact</code></td><td>有</td><td>—</td><td>逆参照インパクト解析（FQN / FQN.method）</td></tr>
+          <tr><td>—</td><td><code>--impact-depth</code></td><td>有</td><td>3</td><td><code>--impact</code> の BFS 深さ</td></tr>
+          <tr><td>—</td><td><code>--ref-find</code></td><td>有</td><td>—</td><td>参照箇所を grep 互換テキストで列挙</td></tr>
+          <tr><td>—</td><td><code>--vhal-flow</code></td><td>—</td><td>off</td><td>CarPropertyManager GET/SET/SUBSCRIBE フロー</td></tr>
+          <tr><td>—</td><td><code>--aidl-binding</code></td><td>—</td><td>off</td><td>AIDL ↔ Stub 実装表</td></tr>
+          <tr><td>—</td><td><code>--er-diagram</code></td><td>—</td><td>off</td><td>Room <code>@Entity</code> の ER 図</td></tr>
+          <tr><td>—</td><td><code>--data-flow</code></td><td>—</td><td>off</td><td>Room Entity/Dao/Database レポート + ER</td></tr>
+          <tr><td>—</td><td><code>--screen-flow</code></td><td>—</td><td>off</td><td>Intent 画面遷移 Markdown + 状態図</td></tr>
+          <tr><td>—</td><td><code>--android-bp</code></td><td>—</td><td>off</td><td>Android.bp(Soong) モジュール + 依存図</td></tr>
+          <tr><td>—</td><td><code>--selinux</code></td><td>—</td><td>off</td><td><code>*.te</code> SELinux ポリシーレポート</td></tr>
+          <tr><td>—</td><td><code>--rro-overlays</code></td><td>—</td><td>off</td><td><code>&lt;overlay&gt;</code> RRO 検出</td></tr>
+          <tr><td>—</td><td><code>--settings</code></td><td>—</td><td>off</td><td>SharedPreferences / Preference XML レポート</td></tr>
+          <tr><td>—</td><td><code>--init-flow</code></td><td>—</td><td>off</td><td>Application onCreate 等の初期化 seq 図（要 -o dir）</td></tr>
+          <tr><td>—</td><td><code>--action-map</code></td><td>—</td><td>off</td><td>onClick / Compose / menu ハンドラ Markdown</td></tr>
+          <tr><td>—</td><td><code>--func-diff</code></td><td>有</td><td>—</td><td>2 メソッドの呼び出し列比較レポート</td></tr>
+          <tr><td>—</td><td><code>--insights</code></td><td>—</td><td>off</td><td>アーキテクチャ俯瞰（エントリポイント / ホットスポット / パッケージ循環 / デッドコード候補 / 推定レイヤ）Markdown + 循環図</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="note">ディスパッチは <code>CliDispatcher</code> の if 連鎖順で <b>先勝ち</b>。複数モード同時指定時は先に判定されたモードのみ実行（例：<code>-c</code> と <code>-P</code> 同時は per-folder 経路）。値が複数渡された場合は多くが「最後の値」を採用（<code>--exclude-package</code> のみ全値を集合に追加）。</div>
+
+      <h3 id="cli-modes">モードと出力フォーマット</h3>
+      <div class="grid">
+        <div class="card"><h4>単発出力</h4><p><code>-c</code>/<code>-q</code>/<code>-d</code>/<code>-M</code>/<code>-D</code>/<code>-G</code> 等。<code>-o</code> なしは標準出力、ありはファイル。</p></div>
+        <div class="card"><h4>一括出力（要 -o dir）</h4><p><code>-A</code>（8 種一括）/<code>-Q</code>（ライフサイクル seq 群）/<code>-P</code>（フォルダ別）/<code>--init-flow</code>。</p></div>
+        <div class="card"><h4>一覧 / 解析</h4><p><code>--list-methods</code>/<code>--function-list</code>/<code>--ref-find</code>/<code>--impact</code>/<code>--func-diff</code>/<code>--insights</code>。</p></div>
+      </div>
+      <h4>出力フォーマットの決定</h4>
+      <ul>
+        <li><b>PlantUML 系</b>：<code>-o</code> 拡張子が <code>.svg</code> なら同梱 PlantUML で SVG レンダリング、それ以外は PlantUML テキスト。SVG 失敗時は同名 <code>.puml</code> をサイドカー保存して <b>exit 2</b>。</li>
+        <li><b>Markdown / テキスト系</b>：そのまま書き込み（<code>-g</code>/<code>-m</code>/<code>--summary</code>/<code>--action-map</code>/<code>--ref-find</code> 等）。</li>
+        <li><b>二重成果物系</b>：拡張子で <code>.md</code>/<code>.puml</code>/<code>.svg</code> を分岐。<b>拡張子なしなら .md と .puml を両方出力</b>（<code>--impact</code>/<code>--data-flow</code>/<code>--screen-flow</code>/<code>--vhal-flow</code>/<code>--android-bp</code>/<code>--insights</code>）。</li>
+      </ul>
+      <h4><code>--all</code> の出力内訳（8 ステップ）</h4>
+      <p><span class="pill">summary.md</span><span class="pill">component-diagram.svg</span><span class="pill">manifest-diagram.svg</span><span class="pill">deeplink-diagram.svg</span><span class="pill">dependency-graph.svg</span><span class="pill">class-diagram.svg</span><span class="pill">methods.txt</span><span class="pill">sequence-diagrams/&lt;Class.method&gt;.svg</span></p>
+
+      <h4>終了コード</h4>
+      <div class="table-wrap"><table>
+        <thead><tr><th>コード</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>正常終了（<code>index</code> は明示 return 0）</td></tr>
+          <tr><td><code>1</code></td><td>ヘルプ表示 / 未知オプション / 入力エラー / 不正オプション値 / 前提条件違反 / <code>-o</code> のみ指定</td></tr>
+          <tr><td><code>2</code></td><td>SVG レンダリング失敗（puml サイドカー保存後）/ <code>index</code> の引数エラー</td></tr>
+        </tbody>
+      </table></div>
+      <div class="warn"><b>キャンセル:</b> <code>CancelToken</code> は存在するが CLI 経路では未使用（全呼び出しで <code>null</code> = <code>NONE</code> を渡す）。キャンセルは GUI 専用機構。</div>
+
+      <h3 id="cli-index">index サブコマンド（SQLite インデックス構築）</h3>
+      <pre><code>java -jar Juml.jar index &lt;projectRoot&gt; [--db &lt;path&gt;]</code></pre>
+      <p>図生成系の CLI は <b>毎回ファイルシステムを新規走査</b>し SQLite を読まないのに対し、<code>index</code> サブコマンド<b>のみ</b>が <code>~/.juml/cache/&lt;hash&gt;/index.db</code> を構築・増分更新します。2 回目以降は mtime/size 差分（<code>IncrementalScanner</code>）で stale ファイルのみ再パース。完了時に <code>[juml] index complete: ...</code> を stderr へ出力。</p>
+    </section>
+
+    <section id="gui">
+      <h2>GUI ガイド</h2>
+      <p>ルートは <code>UmlMainFrame extends JFrame</code>（BorderLayout）。「タブ = エディタ」の VS Code 風モデルで、特別な Home タブは廃止済み。次のクラス図は、その配線（<code>UmlMainFrame</code>）と状態遷移（<code>DiagramController</code>）・タブ管理（<code>DiagramTabPane</code>）・状態保持（<code>DiagramState</code>）の責務分離を表します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 970 600" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="f2-tri" markerWidth="15" markerHeight="13" refX="13" refY="6.5" orient="auto"><path class="mk-tri" d="M1,1 L13,6.5 L1,12 Z"/></marker>
+          <marker id="f2-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker>
+          <marker id="f2-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f2-dia" markerWidth="18" markerHeight="12" refX="2" refY="6" orient="auto"><path class="mk-dia" d="M2,6 L9,2 L16,6 L9,10 Z"/></marker>
+        </defs>
+
+        <!-- relations (drawn first, under boxes) -->
+        <path class="u-rel" d="M390,159 L250,440" marker-start="url(#f2-dia)"/>
+        <path class="u-rel" d="M470,159 L490,205" marker-start="url(#f2-dia)"/>
+        <path class="u-rel" d="M495,159 L150,250" marker-start="url(#f2-dia)"/>
+        <path class="u-rel" d="M655,95 L700,150" marker-start="url(#f2-dia)"/>
+        <path class="u-rel" d="M800,244 L800,300" marker-start="url(#f2-dia)"/>
+        <text class="u-mult" x="808" y="285">1..*</text>
+        <text class="u-rel-lbl" x="808" y="272">openTabs</text>
+
+        <path class="u-rel" d="M650,250 L700,205" marker-end="url(#f2-arr)"/>
+        <text class="u-rel-lbl" x="652" y="222">openDiagram()</text>
+        <path class="u-rel" d="M350,300 L276,332" marker-end="url(#f2-arr)"/>
+        <text class="u-rel-lbl" x="286" y="318">selectClassNode()</text>
+        <path class="u-rel" d="M500,329 L500,468" marker-end="url(#f2-arr)"/>
+        <text class="u-rel-lbl" x="506" y="400">state</text>
+        <path class="u-rel" d="M720,244 L645,470" marker-end="url(#f2-arr)"/>
+        <text class="u-rel-lbl" x="660" y="380">state</text>
+        <path class="u-rel" d="M150,440 L150,369" marker-end="url(#f2-arr)"/>
+        <text class="u-rel-lbl" x="156" y="405">populate()</text>
+
+        <path class="u-rel-dash" d="M276,262 L348,250" marker-end="url(#f2-vee)"/>
+        <text class="u-rel-lbl" x="250" y="245">onClassSelected()</text>
+        <path class="u-rel-dash" d="M800,417 L800,478" marker-end="url(#f2-vee)"/>
+        <text class="u-rel-lbl" x="808" y="452">generatePuml()</text>
+
+        <!-- UmlMainFrame -->
+        <g>
+          <rect class="u-cls" x="330" y="12" width="330" height="147" rx="7"/>
+          <rect class="u-cls-hdr" x="330" y="12" width="330" height="30" rx="7"/>
+          <text class="u-stereo" x="495" y="25" text-anchor="middle">«JFrame»</text>
+          <text class="u-name" x="495" y="38" text-anchor="middle">UmlMainFrame</text>
+          <line class="u-div" x1="330" y1="42" x2="660" y2="42"/>
+          <text class="u-member" x="338" y="56"><tspan class="u-vis">-</tspan> state: DiagramState</text>
+          <text class="u-member" x="338" y="71"><tspan class="u-vis">-</tspan> treePanel: ProjectTreePanel</text>
+          <text class="u-member" x="338" y="86"><tspan class="u-vis">-</tspan> tabPane: DiagramTabPane</text>
+          <text class="u-member" x="338" y="101"><tspan class="u-vis">-</tspan> controller: DiagramController</text>
+          <text class="u-member" x="338" y="116"><tspan class="u-vis">-</tspan> projectLoader: ProjectLoader</text>
+          <line class="u-div" x1="330" y1="123" x2="660" y2="123"/>
+          <text class="u-member" x="338" y="137"><tspan class="u-vis">-</tspan> createDiagramController(): DiagramController</text>
+          <text class="u-member" x="338" y="152"><tspan class="u-vis">-</tspan> loadProject(File): void</text>
+        </g>
+
+        <!-- DiagramController -->
+        <g>
+          <rect class="u-cls" x="350" y="205" width="300" height="124" rx="7"/>
+          <rect class="u-cls-hdr" x="350" y="205" width="300" height="22" rx="7"/>
+          <text class="u-name" x="500" y="220" text-anchor="middle">DiagramController</text>
+          <line class="u-div" x1="350" y1="227" x2="650" y2="227"/>
+          <text class="u-member" x="358" y="241"><tspan class="u-vis">#</tspan> state: DiagramState</text>
+          <text class="u-member" x="358" y="256"><tspan class="u-vis">-</tspan> tabPane: DiagramTabPane</text>
+          <text class="u-member" x="358" y="271"><tspan class="u-vis">-</tspan> treePanel: ProjectTreePanel</text>
+          <line class="u-div" x1="350" y1="278" x2="650" y2="278"/>
+          <text class="u-member" x="358" y="292"><tspan class="u-vis">+</tspan> onTreeClassSelected(JavaClassInfo)</text>
+          <text class="u-member" x="358" y="307"><tspan class="u-vis">+</tspan> selectDiagramKind(DiagramKind)</text>
+          <text class="u-member" x="358" y="322"><tspan class="u-vis">+</tspan> onTabFocused(FocusedTab)</text>
+        </g>
+
+        <!-- DiagramTabPane -->
+        <g>
+          <rect class="u-cls" x="700" y="120" width="255" height="124" rx="7"/>
+          <rect class="u-cls-hdr" x="700" y="120" width="255" height="22" rx="7"/>
+          <text class="u-name" x="827" y="135" text-anchor="middle">DiagramTabPane</text>
+          <line class="u-div" x1="700" y1="142" x2="955" y2="142"/>
+          <text class="u-member" x="708" y="156"><tspan class="u-vis">-</tspan> tabs: JTabbedPane</text>
+          <text class="u-member" x="708" y="171"><tspan class="u-vis">-</tspan> openTabs: Map&lt;String,DiagramTab&gt;</text>
+          <text class="u-member" x="708" y="186"><tspan class="u-vis">-</tspan> state: DiagramState</text>
+          <line class="u-div" x1="700" y1="193" x2="955" y2="193"/>
+          <text class="u-member" x="708" y="207"><tspan class="u-vis">+</tspan> addOrFocusTab(TreeNodeOpenRequest)</text>
+          <text class="u-member" x="708" y="222"><tspan class="u-vis">+</tspan> openDiagram(key, label, …, spec)</text>
+          <text class="u-member" x="708" y="237"><tspan class="u-vis">+</tspan> rerenderAllTabs()</text>
+        </g>
+
+        <!-- DiagramTab (inner) -->
+        <g>
+          <rect class="u-cls" x="700" y="300" width="255" height="117" rx="7"/>
+          <rect class="u-cls-hdr" x="700" y="300" width="255" height="30" rx="7"/>
+          <text class="u-stereo" x="827" y="313" text-anchor="middle">«inner class»</text>
+          <text class="u-name" x="827" y="326" text-anchor="middle">DiagramTab</text>
+          <line class="u-div" x1="700" y1="330" x2="955" y2="330"/>
+          <text class="u-member" x="708" y="344"><tspan class="u-vis">-</tspan> spec: DiagramRequest</text>
+          <text class="u-member" x="708" y="359"><tspan class="u-vis">-</tspan> previewPanel: SvgPreviewPanel</text>
+          <text class="u-member" x="708" y="374"><tspan class="u-vis">-</tspan> sourcePanel: PumlSourcePanel</text>
+          <line class="u-div" x1="700" y1="381" x2="955" y2="381"/>
+          <text class="u-member" x="708" y="395"><tspan class="u-vis">~</tspan> startRender(): void  <tspan class="u-faint">«SwingWorker»</tspan></text>
+          <text class="u-member" x="708" y="410"><tspan class="u-vis">~</tspan> mirrorToState(): void</text>
+        </g>
+
+        <!-- DiagramState -->
+        <g>
+          <rect class="u-cls" x="360" y="470" width="280" height="109" rx="7"/>
+          <rect class="u-cls-hdr" x="360" y="470" width="280" height="22" rx="7"/>
+          <text class="u-name" x="500" y="485" text-anchor="middle">DiagramState  <tspan class="u-faint">«状態保持のみ»</tspan></text>
+          <line class="u-div" x1="360" y1="492" x2="640" y2="492"/>
+          <text class="u-member" x="368" y="506"><tspan class="u-vis">#</tspan> sequenceEntry: String</text>
+          <text class="u-member" x="368" y="521"><tspan class="u-vis">#</tspan> currentScope: DiagramScope</text>
+          <text class="u-member" x="368" y="536"><tspan class="u-vis">#</tspan> currentPuml: String</text>
+          <text class="u-member" x="368" y="551"><tspan class="u-vis">#</tspan> currentSvgXml: String</text>
+          <line class="u-div" x1="360" y1="558" x2="640" y2="558"/>
+          <text class="u-member" x="368" y="572"><tspan class="u-vis">#</tspan> setAllMethodEntries(String)</text>
+        </g>
+
+        <!-- ProjectTreePanel -->
+        <g>
+          <rect class="u-cls" x="24" y="250" width="252" height="119" rx="7"/>
+          <rect class="u-cls-hdr" x="24" y="250" width="252" height="30" rx="7"/>
+          <text class="u-stereo" x="150" y="263" text-anchor="middle">«JPanel»</text>
+          <text class="u-name" x="150" y="276" text-anchor="middle">ProjectTreePanel</text>
+          <line class="u-div" x1="24" y1="280" x2="276" y2="280"/>
+          <text class="u-member" x="32" y="294"><tspan class="u-vis">-</tspan> onClassSelected: Consumer</text>
+          <text class="u-member" x="32" y="309"><tspan class="u-vis">-</tspan> onMethodSelected: Consumer</text>
+          <text class="u-member" x="32" y="324"><tspan class="u-vis">-</tspan> onOpenInNewTab: Consumer</text>
+          <line class="u-div" x1="24" y1="331" x2="276" y2="331"/>
+          <text class="u-member" x="32" y="345"><tspan class="u-vis">+</tspan> populate(analysis, classes, …)</text>
+          <text class="u-member" x="32" y="360"><tspan class="u-vis">+</tspan> selectClassNode(String)</text>
+        </g>
+
+        <!-- ProjectLoader -->
+        <g>
+          <rect class="u-cls" x="24" y="440" width="252" height="87" rx="7"/>
+          <rect class="u-cls-hdr" x="24" y="440" width="252" height="30" rx="7"/>
+          <text class="u-stereo" x="150" y="453" text-anchor="middle">«SwingWorker ラッパ»</text>
+          <text class="u-name" x="150" y="466" text-anchor="middle">ProjectLoader</text>
+          <line class="u-div" x1="24" y1="470" x2="276" y2="470"/>
+          <text class="u-member" x="32" y="484"><tspan class="u-vis">-</tspan> cache: ProjectAnalysisCache</text>
+          <text class="u-member" x="32" y="499"><tspan class="u-vis">-</tspan> onLoadSuccess: Consumer&lt;File&gt;</text>
+          <line class="u-div" x1="24" y1="506" x2="276" y2="506"/>
+          <text class="u-member" x="32" y="520"><tspan class="u-vis">+</tspan> start(File): void</text>
+        </g>
+
+        <!-- DiagramService -->
+        <g>
+          <rect class="u-cls" x="690" y="478" width="265" height="51" rx="7"/>
+          <rect class="u-cls-hdr" x="690" y="478" width="265" height="30" rx="7"/>
+          <text class="u-stereo" x="822" y="491" text-anchor="middle">«utility»</text>
+          <text class="u-name" x="822" y="504" text-anchor="middle">DiagramService</text>
+          <line class="u-div" x1="690" y1="508" x2="955" y2="508"/>
+          <text class="u-member" x="698" y="522"><tspan class="u-vis">+</tspan> generatePuml(DiagramRequest, cache): String</text>
+        </g>
+      </svg>
+      <figcaption><b>図2</b>　GUI タブアーキテクチャ（クラス図）。◆ はコンポジション（<code>UmlMainFrame</code> が各パネルを保持／<code>DiagramTabPane</code> が <code>DiagramTab</code> を <code>1..*</code> 保持）、実線矢印は関連、破線矢印は依存（ツリーのコールバック・<code>DiagramService</code> 呼び出し）。状態は <code>DiagramState</code> に集約。</figcaption>
+      </figure>
+
+      <div class="uml-legend">
+        <h4>クラス図の凡例</h4>
+        <div class="legend-grid">
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg2-tri" markerWidth="13" markerHeight="11" refX="11" refY="5.5" orient="auto"><path class="mk-tri" d="M1,1 L11,5.5 L1,10 Z"/></marker></defs><line class="u-rel" x1="2" y1="10" x2="44" y2="10" marker-end="url(#lg2-tri)"/></svg> 継承 / 実装（▷）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg2-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker></defs><line class="u-rel" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lg2-arr)"/></svg> 関連（実線→）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg2-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker></defs><line class="u-rel-dash" x1="2" y1="10" x2="46" y2="10" marker-end="url(#lg2-vee)"/></svg> 依存（破線⇢）</div>
+          <div class="li"><svg width="58" height="20" class="diagram-svg" style="border:none;background:none;margin:0"><defs><marker id="lg2-dia" markerWidth="18" markerHeight="12" refX="2" refY="6" orient="auto"><path class="mk-dia" d="M2,6 L9,2 L16,6 L9,10 Z"/></marker></defs><line class="u-rel" x1="46" y1="10" x2="14" y2="10" marker-end="url(#lg2-dia)"/></svg> コンポジション（◆）</div>
+          <div class="li"><code><b class="u-vis" style="color:var(--accent-2)">+</b></code> public ／ <code><b style="color:var(--accent-2)">#</b></code> protected ／ <code><b style="color:var(--accent-2)">~</b></code> package ／ <code><b style="color:var(--accent-2)">-</b></code> private</div>
+          <div class="li"><code>1..*</code> 多重度 ／ <code>«stereotype»</code> ステレオタイプ ／ 3 段（名前・属性・操作）</div>
+        </div>
+      </div>
+
+      <h3 id="gui-layout">画面構成</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>領域</th><th>コンポーネント</th><th>責務</th></tr></thead>
+        <tbody>
+          <tr><td>上部</td><td>メニューバー</td><td>UI 構築のみ。操作は <code>Callbacks</code> 経由で委譲</td></tr>
+          <tr><td>NORTH</td><td>ツールバー（2 段）</td><td>上段=アクション、下段=図種トグル</td></tr>
+          <tr><td>CENTER 左</td><td><code>ProjectTreePanel</code></td><td>サイドバー。module→package→class→method の遅延ツリー + 凡例</td></tr>
+          <tr><td>CENTER 右</td><td><code>DiagramTabPane</code></td><td>動的ダイアグラムタブ + 末尾固定ユーティリティタブ 6 本</td></tr>
+          <tr><td>SOUTH</td><td>ステータスバー</td><td>中央=メッセージ、右=プログレスバー + ズーム率</td></tr>
+          <tr><td>GlassPane</td><td><code>LoadingGlassPane</code></td><td>解析中の全面 GIF オーバーレイ</td></tr>
+        </tbody>
+      </table></div>
+      <p>各図タブは SVG プレビュー（<code>SvgPreviewPanel</code>）と PlantUML ソース（<code>PumlSourcePanel</code>）を上下分割。固定ユーティリティタブは <b>Manifest / Impact / References / Func Diff / Functions / Members</b> の 6 本。</p>
+
+      <h3 id="gui-menu">メニュー / ツールバー</h3>
+      <details>
+        <summary>File メニュー</summary>
+        <div class="table-wrap"><table>
+          <thead><tr><th>項目</th><th>SC</th><th>挙動</th></tr></thead>
+          <tbody>
+            <tr><td>Open Project…</td><td><kbd>Ctrl/Cmd+O</kbd></td><td>OpenProjectDialog → 選択でロード</td></tr>
+            <tr><td>Open Recent ▶</td><td>—</td><td>展開時に最近 10 件を再構築（存在しないパスは無効化）</td></tr>
+            <tr><td>Save Diagram As…</td><td><kbd>Ctrl/Cmd+S</kbd></td><td>アクティブタブを SVG/PNG/PUML 保存</td></tr>
+            <tr><td>Export Class Diagrams Per Folder…</td><td>—</td><td>フォルダ単位で classes.puml + classes.svg 一括</td></tr>
+            <tr><td>Export Function List…</td><td>—</td><td>関数使用マップを Markdown 表 / CSV</td></tr>
+            <tr><td>Export Members to Excel…</td><td>—</td><td>全クラスのメンバーを .xlsx</td></tr>
+            <tr><td>Refresh</td><td><kbd>F5</kbd></td><td>アクティブタブ再描画</td></tr>
+            <tr><td>Cancel Loading</td><td>—</td><td>ロード中のみ。<code>CancelToken.cancel()</code></td></tr>
+            <tr><td>Exit</td><td>—</td><td>ウィンドウ状態保存 → dispose</td></tr>
+          </tbody>
+        </table></div>
+      </details>
+      <details>
+        <summary>Diagram メニュー</summary>
+        <p>先頭に全 15 図種のラジオボタン（ツールバートグルと双方向同期）。続いて：</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>項目</th><th>SC</th><th>挙動</th></tr></thead>
+          <tbody>
+            <tr><td>Search Entities…</td><td><kbd>Ctrl/Cmd+Shift+F</kbd></td><td>EntitySearchDialog</td></tr>
+            <tr><td>Choose Sequence Entry…</td><td>—</td><td>SequenceEntryDialog → Sequence タブ</td></tr>
+            <tr><td>Filter / Clear Sequence Participants</td><td>—</td><td>participant フィルタの設定 / 解除</td></tr>
+            <tr><td>Choose Activity Method…</td><td>—</td><td>Activity 起点選択</td></tr>
+            <tr><td>Choose Layout File… / Navigation Graph…</td><td>—</td><td>Layout / Navigation チューザ</td></tr>
+            <tr><td>Preset ▶ Minimal/Balanced/Detailed</td><td><kbd>Ctrl/Cmd+1/2/3</kbd></td><td>スコープにプリセット適用 → 再描画</td></tr>
+            <tr><td>Scope… / Clear Scope</td><td>—</td><td>DiagramScopeDialog / スコープ解除</td></tr>
+          </tbody>
+        </table></div>
+      </details>
+      <details>
+        <summary>View / Style / Settings / Help メニュー</summary>
+        <p><b>View:</b> Zoom In <kbd>Ctrl/Cmd+=</kbd> / Zoom Out <kbd>Ctrl/Cmd+-</kbd> / Zoom 100% <kbd>Ctrl/Cmd+0</kbd> / Zoom to Fit <kbd>Ctrl/Cmd+F</kbd>。</p>
+        <p><b>Style:</b> テーマラジオ群（None, plain, cerulean, sketchy, mono, vibrant, materia, hacker, cyborg, mars, amiga, spacelab）+ Style Settings…（背景色・フォント・方向・カスタム skinparam・シーケンス / クラス図 / コールグラフ固有設定）。</p>
+        <p><b>Settings:</b> Preferences… <kbd>Ctrl/Cmd+,</kbd>（外観 / 起動時の動作。<code>PreferencesDialog</code> → <code>Setting.lookAndFeel</code> / <code>restoreLastProjectOnStartup</code>）/ Style Settings…（Style メニューへの導線）/ Enable Graphviz (dot)…（dot 検出 / 指定 → 全タブ再描画）/ Clear Analysis Cache（メモリ + ディスクキャッシュ破棄 → 再解析）。</p>
+        <p><b>Help:</b> Usage <kbd>F1</kbd> / About。</p>
+      </details>
+      <h4>ツールバー</h4>
+      <p>上段アクション：<span class="pill">Open</span><span class="pill">Save</span><span class="pill">Refresh</span><span class="pill">Search</span>。下段は <code>DiagramKind.values()</code> 全 18 種の排他トグル（Class / Package / Sequence / Activity / Component / Dependency / Manifest / Layout / Screen / Resources / Common / Cycles / Navigation / Module / Inherit / Call Graph / Screen Flow / Soong）。</p>
+
+      <h3 id="gui-tabs">タブのライフサイクルとフォーカス連動</h3>
+      <ul>
+        <li><b>重複抑止:</b> <code>openTabs</code>(LinkedHashMap) に <code>key</code> が既存ならフォーカスのみ移動。新規は固定タブ 6 本の手前に挿入。METHOD タブは <code>kind:Class.method</code>、CLASS タブは <code>CLASS:fqn</code> で識別。</li>
+        <li><b>連動フロー:</b> タブ選択 → <code>handleTabSelectionChanged</code> → <code>onTabFocused(FocusedTab)</code> → <code>syncToFocusedTab</code>（ツリーをハイライト）+ <code>setCurrentKind</code> + <code>reflectKindInToolbar</code>（メニューラジオ + トグルを選択）。アクティブタブ↔サイドバー↔ツールバーが常に同期。</li>
+        <li><b>描画:</b> 各 <code>DiagramTab</code> が自前の SwingWorker で <code>DiagramService.generatePuml</code> → <code>PlantUmlSvgRenderer.render</code>。CardLayout で「Rendering… / プレビュー / 失敗・空」を切替。</li>
+        <li><b>図種切替:</b> メソッド系タブ（Sequence/Activity/CallGraph）にフォーカス中は、同じ <code>Class.method</code> の別図種を新タブで開く。</li>
+        <li><b>タブ操作:</b> ×ボタン / 中クリック / 右クリック「Close / Close Others / Close All」。固定 6 タブは常に残る。</li>
+      </ul>
+
+      <h3 id="gui-interact">操作とインタラクション</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>操作</th><th>挙動</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Ctrl/Cmd</kbd>+ホイール</td><td>ポインタ基点でズーム（範囲 0.1〜8.0、係数 1.1）</td></tr>
+          <tr><td>左 / 中ドラッグ</td><td>パン</td></tr>
+          <tr><td><kbd>Alt</kbd>+左ドラッグ</td><td>ラバーバンド選択 → 範囲内テキストをクリップボードへ</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+A（プレビュー上）</td><td>全テキストコピー</td></tr>
+          <tr><td>リンク左クリック</td><td>クラス（<code>juml://class/&lt;fqn&gt;</code>）→ そのクラスタブ / メソッド → Sequence・Activity 選択ポップアップ</td></tr>
+          <tr><td>プレビュー右クリック</td><td>Save as SVG / PNG / PlantUML エクスポートポップアップ</td></tr>
+        </tbody>
+      </table></div>
+      <h4>ユーティリティタブ（解析）</h4>
+      <div class="grid">
+        <div class="card"><h4>Impact</h4><p>シンボル + Depth(1–10, 既定 3) → Layer 別ツリー（リスク・スコア・理由）。</p></div>
+        <div class="card"><h4>References</h4><p>シンボルの逆参照を JTable（Caller class/Method/Kind/File）。<code>--ref-find</code> 相当。</p></div>
+        <div class="card"><h4>Func Diff</h4><p>2 メソッドを LCS / Levenshtein / Jaccard で比較し Markdown レポート。</p></div>
+      </div>
+      <p><b>エンティティ検索:</b> Class/Method/Field 横断、Kind フィルタ + 部分一致（150ms debounce）。OK=通常選択、Drill-down=DETAILED 詳細図。<br>
+      <b>スコープ:</b> Include/Exclude パッケージ・モジュール・クラス名 regex・Max classes・Seed neighbor hops・関連種別・可視性・外部除外・Parse mode。<br>
+      <b>設定の自動保存:</b> プロジェクトごとに style / sequence / classDiagram 設定を SQLite に保存し、開き直すと復元。ウィンドウ位置・サイズも保存。</p>
+
+      <h3 id="gui-shortcuts">キーボードショートカット</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>SC</th><th>機能</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Ctrl/Cmd+O</kbd></td><td>Open Project</td></tr>
+          <tr><td><kbd>Ctrl/Cmd+S</kbd></td><td>Save Diagram As</td></tr>
+          <tr><td><kbd>F5</kbd></td><td>Refresh</td></tr>
+          <tr><td><kbd>Ctrl/Cmd+Shift+F</kbd></td><td>Search Entities</td></tr>
+          <tr><td><kbd>Ctrl/Cmd+1/2/3</kbd></td><td>Preset Minimal / Balanced / Detailed</td></tr>
+          <tr><td><kbd>Ctrl/Cmd+= / - / 0 / F</kbd></td><td>Zoom In / Out / 100% / Fit</td></tr>
+          <tr><td><kbd>F1</kbd></td><td>Usage</td></tr>
+          <tr><td><kbd>Ctrl+A</kbd></td><td>プレビュー全テキストコピー（Mac でも Ctrl）</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="engine">
+      <h2>解析エンジン (core) の詳細</h2>
+      <div class="note"><b>関連:</b> <code>core/formats</code> がソースから何を取得し、どのように PlantUML へ変換して各図を組み立てるかは、専用ページ <a href="./source-analysis.html">ソース解析パイプライン</a>に詳しくまとめています（データモデル / Adapter 群 / 図種別の生成ロジック）。</div>
+      <p>シーケンス図の制御構造変換が最も特徴的です。<code>StatementAdapter</code> が構造化したツリーを <code>SeqEmitters</code> が PlantUML フラグメントに射影します。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Java 構文</th><th>PlantUML</th></tr></thead>
+        <tbody>
+          <tr><td>単一 <code>if</code></td><td><code>opt</code></td></tr>
+          <tr><td>複数分岐 <code>if/else</code></td><td><code>alt / else</code></td></tr>
+          <tr><td><code>while / for / do</code></td><td><code>loop</code></td></tr>
+          <tr><td><code>switch</code></td><td><code>alt</code> 連結</td></tr>
+          <tr><td><code>try / catch</code></td><td><code>group</code> + <code>else catch</code></td></tr>
+          <tr><td><code>synchronized</code></td><td><code>critical</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Stream 操作 / SAM は除外フィルタ（<code>STREAM_OPS</code>）でノイズを抑制。</p>
+      <h4>専門解析パッケージ</h4>
+      <div class="grid">
+        <div class="card"><h4>impact</h4><p><code>ReferenceIndex</code> 上を BFS で逆方向（呼出元・継承元・型参照元）に辿る。影響度スコア <code>1/(layer+1)</code>。</p></div>
+        <div class="card"><h4>funcdiff</h4><p>呼び出し列を LCS 類似度 / Levenshtein / Jaccard で比較。マッチ信頼度は receiver*0.4 + firstArg*0.3 + position*0.3。</p></div>
+        <div class="card"><h4>dataflow</h4><p>Room <code>@Entity/@Dao/@Database</code> をアノテーション正規表現で検出 → ER 図 / Markdown。</p></div>
+        <div class="card"><h4>screen</h4><p>Intent / Compose / NavGraph の 3 経路で画面遷移を検出し、入次数 0 起点から多段パス列挙。</p></div>
+      </div>
+    </section>
+
+    <section id="android">
+      <h2>Android / AAOS / AOSP 連携</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>対象</th><th>パーサ</th><th>解析範囲</th></tr></thead>
+        <tbody>
+          <tr><td>AndroidManifest.xml</td><td>AndroidManifestParser</td><td>DOM（XXE 無効化）。4 コンポーネント、intent-filter、uses-permission/feature、application 属性</td></tr>
+          <tr><td>build.gradle(.kts)</td><td>GradleScriptParser</td><td>コメント除去 + リテラルマスク + 正規表現の best-effort。plugins / android{} / dependencies / settings include</td></tr>
+          <tr><td>libs.versions.toml</td><td>VersionCatalogParser</td><td><code>[versions]/[libraries]/[plugins]</code>（bundles 等は未対応）</td></tr>
+          <tr><td>layout XML</td><td>AndroidLayoutParser</td><td>DataBinding <code>&lt;layout&gt;</code> / include / fragment、tools: 属性除外</td></tr>
+          <tr><td>navigation XML</td><td>AndroidNavigationGraphParser</td><td>fragment/activity/dialog/action/argument/deepLink、ネスト + include</td></tr>
+          <tr><td>UI 操作</td><td>UiActionScanner</td><td>setOnClickListener / onOptionsItemSelected / Compose clickable / android:onClick</td></tr>
+        </tbody>
+      </table></div>
+      <h4>AAOS（Android Automotive）</h4>
+      <p><b>VhalAnalyzer</b>：<code>CarPropertyManager</code> の get/set/register/unregister 呼出を検出し「どこからどの Property を読み書き / 購読しているか」を抽出。<b>VehiclePropertyCatalog</b>：<code>VehiclePropertyIds</code> から名前→ID マッピング構築。<b>AidlBindingResolver</b>：AIDL interface と <code>extends X.Stub</code> 実装を紐付け。</p>
+      <h4>AOSP（プラットフォーム）</h4>
+      <p><b>AndroidBpParser</b>（Soong）/ <b>AndroidMkParser</b>（legacy）/ <b>SelinuxPolicyParser</b>（<code>.te/.cil</code>）/ <b>VintfManifestParser</b>（HAL 宣言・カーネル要求）/ <b>RroOverlayDetector</b>（<code>&lt;overlay&gt;</code> の targetPackage/isStatic/priority）。</p>
+    </section>
+
+    <section id="db">
+      <h2>永続化・SQLite インデックス</h2>
+      <p>配置は <code>~/.juml/cache/&lt;shortHash&gt;/index.db</code>（Windows は <code>%LOCALAPPDATA%/Juml/cache/...</code>）。<code>shortHash</code> はプロジェクトルートの canonical path のみから計算し、ファイル差分は DB 内の <code>files.mtime/size</code> で検知します。</p>
+      <ul>
+        <li><b>マイグレーション無し</b>：<code>SCHEMA_VERSION</code> 不一致時は <code>index.db.discarded-*</code> へ退避して再構築。PRAGMA は WAL / synchronous=NORMAL / foreign_keys=ON。</li>
+        <li><b>主要テーブル</b>：<span class="pill">modules</span><span class="pill">files</span><span class="pill">classes</span><span class="pill">class_interfaces</span><span class="pill">class_imports</span><span class="pill">fields</span><span class="pill">methods</span><span class="pill">refs</span><span class="pill">unresolved</span><span class="pill">manifests</span><span class="pill">components</span><span class="pill">intent_filters</span><span class="pill">aidl_interfaces</span><span class="pill">aidl_methods</span><span class="pill">aidl_bindings</span><span class="pill">external_endpoints</span></li>
+        <li><b>書き込み</b>：<code>IndexWriter</code> が 1 ファイル = 1 トランザクション（path DELETE → CASCADE → INSERT → <code>ClassIngestor</code> 系）。集約系は毎回 wipe → 再構築で冪等。</li>
+        <li><b>増分</b>：<code>IncrementalScanner</code> が <code>files</code> と現 FS を mtime + size で突合（ハッシュ不使用）。<code>GradleProjectScope</code> がモジュール境界を拾い AOSP 級ツリーの全走査を回避。</li>
+      </ul>
+
+      <h3 id="db-schema">スキーマ（ER 図）</h3>
+      <p><code>SchemaInitializer</code>（<code>SCHEMA_VERSION = 6</code>）が一括 CREATE する <b>16 テーブル + <code>meta</code></b> の関係を示します。各エンティティはキー列（<span class="pill">PK</span><span class="pill">FK</span><span class="pill">UQ</span>）に絞って表示し、全カラムは上記説明と <code>SchemaInitializer.java</code> に対応します。FK 線の <b>実線 = <code>ON DELETE CASCADE</code></b>（親が消えると子も消える）、<b>破線 = <code>SET NULL</code> / 弱参照</b>。crow's-foot（三叉）が <code>*</code>（多）、縦棒が <code>1</code> を表します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 1000 510" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="10.5">
+        <defs>
+          <marker id="erN" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker>
+          <marker id="erNw" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow-weak" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker>
+          <marker id="er1" markerWidth="12" markerHeight="14" refX="7" refY="7" orient="auto"><path class="mk-one" d="M6,1 L6,13"/></marker>
+        </defs>
+
+        <!-- ── relationship lines (draw first, behind entities) ── -->
+        <!-- modules 1—* files (SET NULL, weak) -->
+        <path class="u-er-rel-weak" d="M182,80 C196,100 196,135 206,139" marker-end="url(#erNw)"/>
+        <!-- files 1—* {classes, refs, unresolved, external_endpoints}, files 1—1 manifests -->
+        <path class="u-er-rel" d="M370,130 C386,118 386,60 398,60" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,150 C386,150 388,154 398,154" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,160 C388,200 388,240 398,240" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M370,168 C388,290 388,326 398,326" marker-end="url(#er1)"/>
+        <path class="u-er-rel" d="M370,174 C388,400 388,412 398,412" marker-end="url(#erN)"/>
+        <!-- classes 1—* {class_interfaces, class_imports, fields, methods}, classes 1—1 aidl_interfaces -->
+        <path class="u-er-rel" d="M562,52 C586,48 588,47 606,47" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,60 C588,90 588,119 606,119" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,70 C588,180 588,198 606,198" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,80 C590,270 590,284 606,284" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M562,90 C592,360 592,370 606,370" marker-end="url(#er1)"/>
+        <!-- manifests 1—* components -->
+        <path class="u-er-rel" d="M562,330 C588,400 588,454 606,454" marker-end="url(#erN)"/>
+        <!-- aidl_interfaces 1—* aidl_methods ; components 1—* intent_filters -->
+        <path class="u-er-rel" d="M770,370 L812,370" marker-end="url(#erN)"/>
+        <path class="u-er-rel" d="M770,454 L812,454" marker-end="url(#erN)"/>
+
+        <!-- ── entities ── -->
+        <!-- modules -->
+        <g>
+          <rect class="u-ent" x="18" y="44" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="18" y="44" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="100" y="59" text-anchor="middle">modules</text>
+          <line class="u-ent-div" x1="18" y1="66" x2="182" y2="66"/>
+          <text class="u-pk" x="26" y="78"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="26" y="92"><tspan class="u-keytag">UQ</tspan> name</text>
+          <text class="u-col" x="26" y="106">path</text>
+        </g>
+        <!-- meta -->
+        <g>
+          <rect class="u-ent" x="18" y="150" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="18" y="150" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="100" y="165" text-anchor="middle">meta <tspan class="u-faint">（独立）</tspan></text>
+          <line class="u-ent-div" x1="18" y1="172" x2="182" y2="172"/>
+          <text class="u-pk" x="26" y="184"><tspan class="u-keytag">PK</tspan> key</text>
+          <text class="u-col" x="26" y="198">value</text>
+        </g>
+        <!-- files -->
+        <g>
+          <rect class="u-ent" x="206" y="96" width="164" height="86" rx="6"/><rect class="u-ent-hdr" x="206" y="96" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="288" y="111" text-anchor="middle">files</text>
+          <line class="u-ent-div" x1="206" y1="118" x2="370" y2="118"/>
+          <text class="u-pk" x="214" y="130"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="214" y="144"><tspan class="u-keytag">UQ</tspan> path</text>
+          <text class="u-fk" x="214" y="158"><tspan class="u-keytag">FK</tspan> module_id ▸modules</text>
+          <text class="u-col" x="214" y="172">kind, mtime, size</text>
+        </g>
+        <!-- classes -->
+        <g>
+          <rect class="u-ent" x="398" y="18" width="164" height="86" rx="6"/><rect class="u-ent-hdr" x="398" y="18" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="33" text-anchor="middle">classes</text>
+          <line class="u-ent-div" x1="398" y1="40" x2="562" y2="40"/>
+          <text class="u-pk" x="406" y="52"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="406" y="66"><tspan class="u-keytag">UQ</tspan> qn</text>
+          <text class="u-fk" x="406" y="80"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="94">kind, super_class</text>
+        </g>
+        <!-- refs -->
+        <g>
+          <rect class="u-ent" x="398" y="118" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="118" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="133" text-anchor="middle">refs <tspan class="u-faint">（逆参照）</tspan></text>
+          <line class="u-ent-div" x1="398" y1="140" x2="562" y2="140"/>
+          <text class="u-pk" x="406" y="152"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="166"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="180">callee_owner_qn, caller_qn</text>
+        </g>
+        <!-- unresolved -->
+        <g>
+          <rect class="u-ent" x="398" y="204" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="204" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="219" text-anchor="middle">unresolved</text>
+          <line class="u-ent-div" x1="398" y1="226" x2="562" y2="226"/>
+          <text class="u-pk" x="406" y="238"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="252"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="266">symbol</text>
+        </g>
+        <!-- manifests -->
+        <g>
+          <rect class="u-ent" x="398" y="290" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="290" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="305" text-anchor="middle">manifests</text>
+          <line class="u-ent-div" x1="398" y1="312" x2="562" y2="312"/>
+          <text class="u-pk" x="406" y="324"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="338"><tspan class="u-keytag">FK·UQ</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="352">package_name, source_set</text>
+        </g>
+        <!-- external_endpoints -->
+        <g>
+          <rect class="u-ent" x="398" y="376" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="398" y="376" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="480" y="391" text-anchor="middle">external_endpoints</text>
+          <line class="u-ent-div" x1="398" y1="398" x2="562" y2="398"/>
+          <text class="u-pk" x="406" y="410"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="406" y="424"><tspan class="u-keytag">FK</tspan> file_id ▸files</text>
+          <text class="u-col" x="406" y="438">source_kind, to_qn</text>
+        </g>
+        <!-- class_interfaces -->
+        <g>
+          <rect class="u-ent" x="606" y="18" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="606" y="18" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="33" text-anchor="middle">class_interfaces</text>
+          <line class="u-ent-div" x1="606" y1="40" x2="770" y2="40"/>
+          <text class="u-fk" x="614" y="52"><tspan class="u-keytag">PK·FK</tspan> class_id ▸classes</text>
+          <text class="u-pk" x="614" y="66"><tspan class="u-keytag">PK</tspan> iface_qn</text>
+        </g>
+        <!-- class_imports -->
+        <g>
+          <rect class="u-ent" x="606" y="90" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="606" y="90" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="105" text-anchor="middle">class_imports</text>
+          <line class="u-ent-div" x1="606" y1="112" x2="770" y2="112"/>
+          <text class="u-fk" x="614" y="124"><tspan class="u-keytag">PK·FK</tspan> class_id ▸classes</text>
+          <text class="u-pk" x="614" y="138"><tspan class="u-keytag">PK</tspan> imp, is_static</text>
+        </g>
+        <!-- fields -->
+        <g>
+          <rect class="u-ent" x="606" y="162" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="162" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="177" text-anchor="middle">fields</text>
+          <line class="u-ent-div" x1="606" y1="184" x2="770" y2="184"/>
+          <text class="u-pk" x="614" y="196"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="210"><tspan class="u-keytag">FK</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="224">name, type, visibility</text>
+        </g>
+        <!-- methods -->
+        <g>
+          <rect class="u-ent" x="606" y="248" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="248" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="263" text-anchor="middle">methods</text>
+          <line class="u-ent-div" x1="606" y1="270" x2="770" y2="270"/>
+          <text class="u-pk" x="614" y="282"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="296"><tspan class="u-keytag">FK</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="310">name, return_type, params</text>
+        </g>
+        <!-- aidl_interfaces -->
+        <g>
+          <rect class="u-ent" x="606" y="334" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="334" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="349" text-anchor="middle">aidl_interfaces</text>
+          <line class="u-ent-div" x1="606" y1="356" x2="770" y2="356"/>
+          <text class="u-pk" x="614" y="368"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="382"><tspan class="u-keytag">FK·UQ</tspan> class_id ▸classes</text>
+          <text class="u-col" x="614" y="396">package_name, simple_name</text>
+        </g>
+        <!-- components -->
+        <g>
+          <rect class="u-ent" x="606" y="418" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="606" y="418" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="688" y="433" text-anchor="middle">components</text>
+          <line class="u-ent-div" x1="606" y1="440" x2="770" y2="440"/>
+          <text class="u-pk" x="614" y="452"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="614" y="466"><tspan class="u-keytag">FK</tspan> manifest_id ▸manifests</text>
+          <text class="u-uq" x="614" y="480"><tspan class="u-keytag">UQ</tspan> comp_type, class_qn</text>
+        </g>
+        <!-- aidl_bindings -->
+        <g>
+          <rect class="u-ent" x="812" y="44" width="164" height="58" rx="6"/><rect class="u-ent-hdr" x="812" y="44" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="59" text-anchor="middle">aidl_bindings <tspan class="u-faint">（独立）</tspan></text>
+          <line class="u-ent-div" x1="812" y1="66" x2="976" y2="66"/>
+          <text class="u-pk" x="820" y="78"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-uq" x="820" y="92"><tspan class="u-keytag">UQ</tspan> aidl_qn, impl_qn</text>
+        </g>
+        <!-- aidl_methods -->
+        <g>
+          <rect class="u-ent" x="812" y="334" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="812" y="334" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="349" text-anchor="middle">aidl_methods</text>
+          <line class="u-ent-div" x1="812" y1="356" x2="976" y2="356"/>
+          <text class="u-pk" x="820" y="368"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="820" y="382"><tspan class="u-keytag">FK</tspan> aidl_id ▸aidl_interfaces</text>
+          <text class="u-col" x="820" y="396">name, oneway, return_type</text>
+        </g>
+        <!-- intent_filters -->
+        <g>
+          <rect class="u-ent" x="812" y="418" width="164" height="72" rx="6"/><rect class="u-ent-hdr" x="812" y="418" width="164" height="22" rx="6"/>
+          <text class="u-ent-nm" x="894" y="433" text-anchor="middle">intent_filters</text>
+          <line class="u-ent-div" x1="812" y1="440" x2="976" y2="440"/>
+          <text class="u-pk" x="820" y="452"><tspan class="u-keytag">PK</tspan> id</text>
+          <text class="u-fk" x="820" y="466"><tspan class="u-keytag">FK</tspan> component_id ▸components</text>
+          <text class="u-col" x="820" y="480">filter_index, actions</text>
+        </g>
+      </svg>
+      <figcaption><b>図3</b>　SQLite インデックス <code>index.db</code> のスキーマ（ER 図・<code>SCHEMA_VERSION 6</code>）。<code>files</code> を中心に <code>classes</code>／<code>refs</code>／<code>manifests</code> 等が <code>ON DELETE CASCADE</code>（実線・crow's-foot = 多）でぶら下がり、<code>modules → files</code> のみ <code>SET NULL</code>（破線）。<code>file_id</code> が UNIQUE な <code>manifests</code> と <code>class_id</code> が UNIQUE な <code>aidl_interfaces</code> は <code>1—1</code>（縦棒）。<code>meta</code> と <code>aidl_bindings</code> は FK を持たない独立テーブル。1 ファイル削除で子行が連鎖削除されるため、増分再構築（<code>IncrementalScanner</code>）が冪等になる。</figcaption>
+      </figure>
+
+      <div class="uml-legend">
+        <h4>ER 図の凡例</h4>
+        <div class="legend-grid">
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-pk" x="2" y="12"><tspan class="u-keytag">PK</tspan></text></svg> 主キー（primary key）</span>
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-fk" x="2" y="12"><tspan class="u-keytag">FK</tspan></text></svg> 外部キー（references）</span>
+          <span class="li"><svg class="diagram-svg" width="44" height="16" viewBox="0 0 44 16"><text class="u-uq" x="2" y="12"><tspan class="u-keytag">UQ</tspan></text></svg> UNIQUE 制約</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><defs><marker id="lg-erN" markerWidth="14" markerHeight="14" refX="1" refY="7" orient="auto"><path class="mk-crow" d="M1,7 L13,1 M1,7 L13,7 M1,7 L13,13"/></marker></defs><line class="u-er-rel" x1="2" y1="8" x2="34" y2="8" marker-end="url(#lg-erN)"/></svg> 1—* （CASCADE）</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><defs><marker id="lg-er1" markerWidth="12" markerHeight="14" refX="7" refY="7" orient="auto"><path class="mk-one" d="M6,1 L6,13"/></marker></defs><line class="u-er-rel" x1="2" y1="8" x2="36" y2="8" marker-end="url(#lg-er1)"/></svg> 1—1 （UNIQUE FK）</span>
+          <span class="li"><svg class="diagram-svg" width="48" height="16" viewBox="0 0 48 16"><line class="u-er-rel-weak" x1="2" y1="8" x2="40" y2="8"/></svg> SET NULL / 弱参照</span>
+        </div>
+      </div>
+
+      <h3 id="db-dao">書き込み / 読み出しの責務（DAO・Ingest 層）</h3>
+      <p>上記スキーマへの出し入れは <b>3 つの層</b>に分かれます。<code>Ingestor</code>（解析結果 → 行への変換アダプタ）、<code>Dao</code>（1 テーブル = 1 クラスの CRUD・SQL 隠蔽）、そして <code>IndexWriter</code>（1 ファイル = 1 トランザクションの書き込み窓口）/ <code>IndexReader</code>（DB → メモリへの復元 API）。書き込みは上段（左→右で SQLite へ）、読み出しは下段（SQLite → メモリモデル → 図生成）に流れます。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 820 440" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="10.5">
+        <defs>
+          <marker id="f16-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+          <marker id="f16-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker>
+        </defs>
+
+        <!-- ── bootstrap row ── -->
+        <g>
+          <rect class="u-cls" x="18" y="16" width="150" height="44" rx="6"/><rect class="u-cls-hdr" x="18" y="16" width="150" height="24" rx="6"/>
+          <text class="u-name" x="93" y="32" text-anchor="middle">DbBootstrap</text>
+          <text class="u-member" x="26" y="54">キャッシュ位置を解決</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="188" y="16" width="168" height="44" rx="6"/><rect class="u-cls-hdr" x="188" y="16" width="168" height="24" rx="6"/>
+          <text class="u-name" x="272" y="32" text-anchor="middle">IndexDatabase</text>
+          <text class="u-member" x="196" y="54">接続 / PRAGMA / 版チェック</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="376" y="16" width="176" height="44" rx="6"/><rect class="u-cls-hdr" x="376" y="16" width="176" height="24" rx="6"/>
+          <text class="u-name" x="464" y="32" text-anchor="middle">SchemaInitializer <tspan class="u-faint">«static»</tspan></text>
+          <text class="u-member" x="384" y="54">16 テーブルを一括 CREATE</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="576" y="16" width="176" height="44" rx="6"/><rect class="u-cls-hdr" x="576" y="16" width="176" height="24" rx="6"/>
+          <text class="u-name" x="664" y="32" text-anchor="middle">IncrementalScanner</text>
+          <text class="u-member" x="584" y="54">mtime/size で stale 判定</text>
+        </g>
+        <path class="u-rel" d="M168,38 L188,38" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,38 L376,38" marker-end="url(#f16-arr)"/>
+        <path class="u-rel-dash" d="M520,60 C620,82 692,96 706,118" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="610" y="90">«create»</text>
+        <path class="u-rel-dash" d="M606,60 C556,80 520,92 500,138" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="508" y="84">diff ▸ FilesDao</text>
+
+        <!-- ── WRITE lane ── -->
+        <g>
+          <rect class="u-cls" x="18" y="150" width="152" height="74" rx="6"/><rect class="u-cls-hdr" x="18" y="150" width="152" height="30" rx="6"/>
+          <text class="u-stereo" x="94" y="163" text-anchor="middle">«synchronized»</text>
+          <text class="u-name" x="94" y="176" text-anchor="middle">IndexWriter</text>
+          <line class="u-div" x1="18" y1="180" x2="170" y2="180"/>
+          <text class="u-member" x="26" y="194"><tspan class="u-vis">+</tspan> upsertFile(path,…)</text>
+          <text class="u-member" x="26" y="208">1 file = 1 TX</text>
+          <text class="u-member" x="26" y="221"><tspan class="u-faint">DELETE→CASCADE→INSERT</tspan></text>
+        </g>
+
+        <!-- ingest frame -->
+        <rect class="u-frame" x="190" y="100" width="176" height="158" rx="8"/>
+        <rect class="u-frame-tab" x="190" y="100" width="176" height="20"/>
+        <text class="u-frame-op" x="198" y="114">ingest/（解析→DAO アダプタ）</text>
+        <text class="u-member" x="200" y="140">▸ ClassIngestor</text>
+        <text class="u-member" x="200" y="160">▸ RefsIngestor</text>
+        <text class="u-member" x="200" y="180">▸ ManifestIngestor</text>
+        <text class="u-member" x="200" y="200">▸ ComponentIngestor</text>
+        <text class="u-member" x="200" y="220">▸ AidlIngestor</text>
+        <text class="u-member" x="200" y="240">▸ EndpointAggregator</text>
+
+        <!-- dao frame -->
+        <rect class="u-frame" x="388" y="100" width="214" height="200" rx="8"/>
+        <rect class="u-frame-tab" x="388" y="100" width="214" height="20"/>
+        <text class="u-frame-op" x="396" y="114">dao/（12 テーブル DAO・SQL 隠蔽）</text>
+        <text class="u-member" x="398" y="140">ClassesDao</text>
+        <text class="u-member" x="398" y="160">MembersDao</text>
+        <text class="u-member" x="398" y="180">FilesDao</text>
+        <text class="u-member" x="398" y="200">ModulesDao</text>
+        <text class="u-member" x="398" y="220">RefsDao</text>
+        <text class="u-member" x="398" y="240">UnresolvedDao</text>
+        <text class="u-member" x="498" y="140">ManifestsDao</text>
+        <text class="u-member" x="498" y="160">ComponentsDao</text>
+        <text class="u-member" x="498" y="180">IntentFiltersDao</text>
+        <text class="u-member" x="498" y="200">AidlInterfacesDao</text>
+        <text class="u-member" x="498" y="220">AidlBindingsDao</text>
+        <text class="u-member" x="498" y="240">EndpointsDao</text>
+
+        <!-- SQLite cylinder -->
+        <g>
+          <rect class="u-cls" x="636" y="135" width="150" height="110"/>
+          <ellipse class="u-cls" cx="711" cy="245" rx="75" ry="14"/>
+          <ellipse class="u-cls-hdr" cx="711" cy="135" rx="75" ry="14"/>
+          <text class="u-name" x="711" y="170" text-anchor="middle">index.db</text>
+          <text class="u-member" x="711" y="188" text-anchor="middle">SQLite · schema v6</text>
+          <text class="u-member" x="711" y="205" text-anchor="middle">16 tables</text>
+        </g>
+
+        <path class="u-rel" d="M170,178 L190,178" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M366,170 L388,170" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="368" y="164">ingest()</text>
+        <path class="u-rel" d="M602,160 L636,160" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="606" y="154">INSERT · upsert</text>
+
+        <!-- ── READ lane ── -->
+        <g>
+          <rect class="u-cls" x="18" y="324" width="160" height="92" rx="6"/><rect class="u-cls-hdr" x="18" y="324" width="160" height="24" rx="6"/>
+          <text class="u-name" x="98" y="340" text-anchor="middle">IndexReader</text>
+          <line class="u-div" x1="18" y1="348" x2="178" y2="348"/>
+          <text class="u-member" x="26" y="362"><tspan class="u-vis">+</tspan> loadStageAClassIndex()</text>
+          <text class="u-member" x="26" y="377"><tspan class="u-vis">+</tspan> fieldsOf() / methodsOf()</text>
+          <text class="u-member" x="26" y="392"><tspan class="u-vis">+</tspan> loadReferenceIndex()</text>
+          <text class="u-member" x="26" y="408"><tspan class="u-faint">DB → メモリ復元</tspan></text>
+        </g>
+        <g>
+          <rect class="u-cls" x="206" y="322" width="150" height="34" rx="6"/>
+          <text class="u-name" x="281" y="343" text-anchor="middle">ClassIndex</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="206" y="364" width="150" height="34" rx="6"/>
+          <text class="u-name" x="281" y="385" text-anchor="middle">ReferenceIndex</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="392" y="338" width="178" height="44" rx="6"/><rect class="u-cls-hdr" x="392" y="338" width="178" height="24" rx="6"/>
+          <text class="u-name" x="481" y="354" text-anchor="middle">UmlGenerator ほか</text>
+          <text class="u-member" x="400" y="376">図種ごとの PlantUml*Diagram</text>
+        </g>
+
+        <!-- read arrows (SQLite → DAO → IndexReader → models → 図生成) -->
+        <path class="u-rel-dash" d="M690,250 C600,310 520,300 478,300" marker-end="url(#f16-vee)"/>
+        <text class="u-rel-lbl" x="560" y="296">SELECT</text>
+        <path class="u-rel" d="M388,278 C260,300 220,330 180,356" marker-end="url(#f16-arr)"/>
+        <text class="u-rel-lbl" x="250" y="318">DAO 経由で読み出し</text>
+        <path class="u-rel" d="M178,352 L206,340" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M178,372 L206,380" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,340 C374,344 376,356 392,358" marker-end="url(#f16-arr)"/>
+        <path class="u-rel" d="M356,380 C374,376 376,366 392,362" marker-end="url(#f16-arr)"/>
+      </svg>
+      <figcaption><b>図4</b>　SQLite インデックス層の責務分離（クラス図）。上段=<b>書き込み</b>：<code>IndexWriter</code> が 1 ファイル = 1 トランザクションで <code>ingest/</code>（解析結果→行アダプタ）→ <code>dao/</code>（テーブルごとの CRUD）→ <code>index.db</code> へ流す。下段=<b>読み出し</b>：<code>IndexReader</code> が同じ <code>dao/</code> 経由で <code>ClassIndex</code> / <code>ReferenceIndex</code> をメモリ復元し、図生成（<code>UmlGenerator</code>）へ渡す。上の <code>DbBootstrap → IndexDatabase → SchemaInitializer</code> が DB を用意し、<code>IncrementalScanner</code> が差分だけ再書き込みする。実線=呼び出し/関連、破線=生成/読み出し。</figcaption>
+      </figure>
+    </section>
+
+    <section id="render">
+      <h2>PlantUML 描画</h2>
+      <p>入口は <code>PlantUmlRenderer.renderSvg</code>。同梱 PlantUML jar の <code>SourceStringReader.outputImage(FileFormat.SVG)</code> を使用します。</p>
+      <ul>
+        <li><b>Smetana:</b> <code>injectLayout</code> が <code>@startuml</code> 直後に <code>!pragma layout smetana</code> を挿入し、Graphviz/dot 不在環境でも描画可能に。dot 検出時は挿入をスキップ（<code>GraphvizLocator</code> がプロパティ → 環境変数 → 同梱 → PATH の順で探索）。</li>
+        <li><b>エラー検出:</b> PlantUML の "An error has occured" マーカーを先頭 8KB で検査し、検出時は例外を送出（壊れた SVG 保存を回避）。</li>
+        <li><b>日本語フォント:</b> スタイル未指定時 <code>JapaneseFontSupport.defaultFontFamily()</code> を <code>skinparam defaultFontName</code> で補い文字化け防止。既定は jar 同梱の見やすい UD 書体 <b>BIZ UDPGothic</b>（OFL）で、起動時に <code>GraphicsEnvironment.registerFont</code> へ登録するためどの実行環境でも同じ表示になる。同梱フォントを使えない場合のみインストール済みフォントを探索する。</li>
+        <li><b>Batik:</b> SVG → ラスタ表示 / GraphicsNode 描画は GUI 層（Apache Batik）。core はバイト列を返すのみ。</li>
+      </ul>
+
+      <p>図生成層は <b>共通の基底クラス・インターフェースを持たない独立した <code>final</code> クラス群</b>で、いずれも <code>+ generate(List&lt;JavaClassInfo&gt;[, entry…], Options): String</code> という同形のエントリを公開します。<code>UmlGenerator</code> がそれらを呼び分け、出力 PlantUML 文字列を <code>PlantUmlRenderer</code> が SVG 化します。</p>
+
+      <figure class="uml-fig">
+      <svg class="diagram-svg" viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="11">
+        <defs>
+          <marker id="f3-vee" markerWidth="12" markerHeight="11" refX="10" refY="5.5" orient="auto"><path class="mk-open" d="M1,1 L10,5.5 L1,10"/></marker>
+          <marker id="f3-arr" markerWidth="11" markerHeight="10" refX="9" refY="5" orient="auto"><path class="mk-fill" d="M0,0 L9,5 L0,10 Z"/></marker>
+        </defs>
+
+        <!-- relations -->
+        <path class="u-rel-dash" d="M205,110 L205,148" marker-end="url(#f3-vee)"/>
+        <text class="u-rel-lbl" x="212" y="132">«create» extract → generate()</text>
+        <path class="u-rel" d="M430,360 L628,392" marker-end="url(#f3-arr)"/>
+        <text class="u-rel-lbl" x="470" y="368">puml: String</text>
+        <path class="u-rel" d="M628,382 L344,452" marker-end="url(#f3-arr)"/>
+        <text class="u-rel-lbl" x="430" y="430">currentStyle</text>
+        <path class="u-rel-dash" d="M790,406 L790,438" marker-end="url(#f3-vee)"/>
+        <text class="u-rel-lbl" x="796" y="426">«throws»</text>
+        <path class="u-rel-dash" d="M595,200 L628,188" marker-end="url(#f3-vee)"/>
+        <path class="u-rel-dash" d="M595,212 L628,258" marker-end="url(#f3-vee)"/>
+        <text class="u-rel-lbl" x="600" y="234">uses</text>
+
+        <!-- UmlGenerator -->
+        <g>
+          <rect class="u-cls" x="40" y="14" width="340" height="96" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="14" width="340" height="30" rx="7"/>
+          <text class="u-stereo" x="210" y="27" text-anchor="middle">«façade»</text>
+          <text class="u-name" x="210" y="40" text-anchor="middle">UmlGenerator</text>
+          <line class="u-div" x1="40" y1="44" x2="380" y2="44"/>
+          <text class="u-member" x="48" y="58"><tspan class="u-vis">+</tspan> extractFromSource(src, …): List&lt;JavaClassInfo&gt;</text>
+          <text class="u-member" x="48" y="73"><tspan class="u-vis">+</tspan> extractFromProjectDetailed(…): ProjectParseResult</text>
+          <text class="u-member" x="48" y="88"><tspan class="u-vis">+</tspan> classDiagram(src): String</text>
+          <text class="u-member" x="48" y="103"><tspan class="u-vis">+</tspan> sequenceDiagram(src, cls, m): String</text>
+        </g>
+
+        <!-- group frame -->
+        <rect class="u-frame" x="40" y="150" width="560" height="212" rx="8"/>
+        <rect class="u-frame-tab" x="40" y="150" width="320" height="20"/>
+        <text class="u-frame-op" x="48" y="164">PlantUml*Diagram（独立 final・共通基底/IF なし）</text>
+
+        <!-- group cells -->
+        <g>
+          <rect class="u-cls" x="55" y="185" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="55" y="185" width="170" height="24" rx="6"/>
+          <text class="u-name" x="140" y="201" text-anchor="middle">PlantUmlPackageDiagram</text>
+          <text class="u-member" x="63" y="224"><tspan class="u-vis">+</tspan> generate(): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="240" y="185" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="240" y="185" width="170" height="24" rx="6"/>
+          <text class="u-name" x="325" y="201" text-anchor="middle">PlantUmlSequenceDiagram</text>
+          <text class="u-member" x="248" y="224"><tspan class="u-vis">+</tspan> generate(…, entry): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="425" y="185" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="425" y="185" width="170" height="24" rx="6"/>
+          <text class="u-name" x="510" y="201" text-anchor="middle">PlantUmlClassDiagram</text>
+          <text class="u-member" x="433" y="224"><tspan class="u-vis">+</tspan> generate(): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="55" y="250" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="55" y="250" width="170" height="24" rx="6"/>
+          <text class="u-name" x="140" y="266" text-anchor="middle">PlantUmlModuleDiagram</text>
+          <text class="u-member" x="63" y="289"><tspan class="u-vis">+</tspan> generate(): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="240" y="250" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="240" y="250" width="170" height="24" rx="6"/>
+          <text class="u-name" x="325" y="266" text-anchor="middle">PlantUmlCallGraphDiagram</text>
+          <text class="u-member" x="248" y="289"><tspan class="u-vis">+</tspan> generate(…, entry): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="425" y="250" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="425" y="250" width="170" height="24" rx="6"/>
+          <text class="u-name" x="510" y="266" text-anchor="middle">PlantUmlActivityDiagram</text>
+          <text class="u-member" x="433" y="289"><tspan class="u-vis">+</tspan> generate(…, entry): String</text>
+        </g>
+        <g>
+          <rect class="u-cls" x="55" y="315" width="170" height="46" rx="6"/><rect class="u-cls-hdr" x="55" y="315" width="170" height="24" rx="6"/>
+          <text class="u-name" x="140" y="331" text-anchor="middle">PlantUmlCommonClasses…</text>
+          <text class="u-member" x="63" y="354"><tspan class="u-vis">+</tspan> generate(): String</text>
+        </g>
+        <text class="u-faint" x="248" y="332">共通シグネチャ:</text>
+        <text class="u-member" x="248" y="348">+ generate(List&lt;JavaClassInfo&gt;,</text>
+        <text class="u-member" x="248" y="361">          [entry…], Options): String</text>
+
+        <!-- PlantUmlClassRelations -->
+        <g>
+          <rect class="u-cls" x="630" y="150" width="320" height="73" rx="7"/>
+          <rect class="u-cls-hdr" x="630" y="150" width="320" height="22" rx="7"/>
+          <text class="u-name" x="790" y="165" text-anchor="middle">PlantUmlClassRelations  <tspan class="u-faint">«~ helper»</tspan></text>
+          <line class="u-div" x1="630" y1="172" x2="950" y2="172"/>
+          <text class="u-member" x="638" y="186"><tspan class="u-vis">~</tspan> emitInheritance(out, c, o, …)</text>
+          <text class="u-member" x="638" y="200"><tspan class="u-vis">~</tspan> emitUsage(out, c, known, …)</text>
+          <text class="u-member" x="638" y="214"><tspan class="u-vis">~</tspan> pickUsageTarget(type, known): String</text>
+        </g>
+        <!-- PlantUmlClassLegend -->
+        <g>
+          <rect class="u-cls" x="630" y="240" width="320" height="46" rx="7"/>
+          <rect class="u-cls-hdr" x="630" y="240" width="320" height="24" rx="7"/>
+          <text class="u-name" x="790" y="256" text-anchor="middle">PlantUmlClassLegend  <tspan class="u-faint">«~ helper»</tspan></text>
+          <text class="u-member" x="638" y="279"><tspan class="u-vis">~</tspan> emit(out, classes, o)</text>
+        </g>
+        <!-- PlantUmlRenderer -->
+        <g>
+          <rect class="u-cls" x="630" y="310" width="320" height="96" rx="7"/>
+          <rect class="u-cls-hdr" x="630" y="310" width="320" height="22" rx="7"/>
+          <text class="u-name" x="790" y="325" text-anchor="middle">PlantUmlRenderer  <tspan class="u-faint">«utility»</tspan></text>
+          <line class="u-div" x1="630" y1="332" x2="950" y2="332"/>
+          <text class="u-member" x="638" y="346"><tspan class="u-vis">+</tspan> renderSvg(puml, out|file): void</text>
+          <text class="u-member" x="638" y="361"><tspan class="u-vis">+</tspan> injectLayout(puml, style): String</text>
+          <text class="u-member" x="638" y="376"><tspan class="u-vis">+</tspan> injectScaleMax(puml, maxPx): String</text>
+          <text class="u-member" x="638" y="391"><tspan class="u-vis">+</tspan> getStyle() / setStyle(style)</text>
+        </g>
+        <!-- DiagramStyle -->
+        <g>
+          <rect class="u-cls" x="40" y="400" width="300" height="147" rx="7"/>
+          <rect class="u-cls-hdr" x="40" y="400" width="300" height="30" rx="7"/>
+          <text class="u-stereo" x="190" y="413" text-anchor="middle">«value object»</text>
+          <text class="u-name" x="190" y="426" text-anchor="middle">DiagramStyle</text>
+          <line class="u-div" x1="40" y1="430" x2="340" y2="430"/>
+          <text class="u-member" x="48" y="444"><tspan class="u-vis">-</tspan> theme: String</text>
+          <text class="u-member" x="48" y="459"><tspan class="u-vis">-</tspan> fontName: String</text>
+          <text class="u-member" x="48" y="474"><tspan class="u-vis">-</tspan> fontSize: int</text>
+          <text class="u-member" x="48" y="489"><tspan class="u-vis">-</tspan> direction: Direction</text>
+          <text class="u-member" x="48" y="504"><tspan class="u-vis">-</tspan> lineType: LineType</text>
+          <line class="u-div" x1="40" y1="511" x2="340" y2="511"/>
+          <text class="u-member" x="48" y="525"><tspan class="u-vis">+</tspan> defaults() / readable(): DiagramStyle</text>
+          <text class="u-member" x="48" y="540"><tspan class="u-vis">+</tspan> copy(): DiagramStyle</text>
+        </g>
+        <!-- PlantUmlRenderFailedException -->
+        <g>
+          <rect class="u-cls" x="630" y="438" width="320" height="54" rx="7"/>
+          <rect class="u-cls-hdr" x="630" y="438" width="320" height="30" rx="7"/>
+          <text class="u-stereo" x="790" y="451" text-anchor="middle">«exception» ↳ extends java.io.IOException</text>
+          <text class="u-name" x="790" y="464" text-anchor="middle">PlantUmlRenderFailedException</text>
+          <line class="u-div" x1="630" y1="468" x2="950" y2="468"/>
+          <text class="u-member" x="638" y="483"><tspan class="u-vis">+</tspan> PlantUmlRenderFailedException(String)</text>
+        </g>
+      </svg>
+      <figcaption><b>図5</b>　PlantUML 図生成階層（クラス図）。<code>UmlGenerator</code>（façade）が独立 <code>final</code> クラス群を呼び、各 <code>generate()</code> が返す <code>String</code> を <code>PlantUmlRenderer</code> が SVG 化（<code>DiagramStyle</code> を <code>currentStyle</code> として参照、失敗時 <code>PlantUmlRenderFailedException</code> を送出）。<code>PlantUmlClassDiagram</code> だけが補助 <code>~</code> ヘルパ 2 種に依存。</figcaption>
+      </figure>
+    </section>
+
+    <section id="build">
+      <h2>ビルドと実行</h2>
+      <pre><code>./gradlew test       # ユニットテスト（約 1,553 ケース）
+./gradlew check      # テスト + Checkstyle (maxWarnings = 0)
+./gradlew jar        # build/libs/Juml.jar（依存内包 fat jar）
+./gradlew makeZip    # 起動補助スクリプト付き配布 zip</code></pre>
+      <div class="table-wrap"><table>
+        <thead><tr><th>依存</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td>PlantUML (mit)</td><td>UML 描画（Smetana で Graphviz 不要）</td></tr>
+          <tr><td>Apache Batik</td><td>SVG をベクターのまま Swing にレンダリング</td></tr>
+          <tr><td>JavaParser + SymbolSolver</td><td>Java 構造抽出・シンボル解決</td></tr>
+          <tr><td>ASM</td><td>外部 JAR/AAR からクラスヘッダ抽出</td></tr>
+          <tr><td>sqlite-jdbc</td><td>解析結果の永続インデックス</td></tr>
+          <tr><td>JFontChooser</td><td>フォント選択ダイアログ</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="inputs">
+      <h2>解析対象と既知の制約</h2>
+
+      <h3>入力として渡せるもの</h3>
+      <ul>
+        <li><code>.java</code> / <code>.aidl</code> ファイル単体</li>
+        <li>Gradle / Android プロジェクトのルートディレクトリ（<code>build.gradle</code> / <code>settings.gradle</code> / <code>gradle/libs.versions.toml</code> を自動検出）</li>
+        <li>Kotlin DSL（<code>*.kts</code>）もパース対象</li>
+      </ul>
+
+      <h3>自動除外</h3>
+      <p>プロジェクト走査時、次のディレクトリは自動的に除外されます。</p>
+      <p><span class="pill">build/</span><span class="pill">.gradle/</span><span class="pill">.idea/</span><span class="pill">.git/</span><span class="pill">out/</span><span class="pill">bin/</span><span class="pill">node_modules/</span><span class="pill">.kotlin/</span><span class="pill">captures/</span><span class="pill">.cxx/</span></p>
+      <p>テストソース（<code>src/test/</code> / <code>src/androidTest/</code>）もデフォルトで除外されます。</p>
+
+      <h3>既知の制約</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>領域</th><th>制約</th></tr></thead>
+        <tbody>
+          <tr><td>Java パーサ</td><td>制御フローと型の抽出は best-effort の簡易実装。Kotlin / Java 21+ の新構文（record, sealed, pattern matching の一部）は完全には扱えません。</td></tr>
+          <tr><td>Gradle DSL</td><td><code>android { ... }</code> 直下の代表的な宣言と <code>dependencies</code> ブロックを正規表現で抽出。動的構文（関数呼び出し / 条件分岐）は best-effort 扱いです。</td></tr>
+          <tr><td>AIDL</td><td><code>interface</code> 宣言とそのメソッドを抽出。<code>parcelable</code> 前方宣言は読み飛ばします。</td></tr>
+          <tr><td>PlantUML キャンバス上限</td><td><code>PLANTUML_LIMIT_SIZE</code> は PNG 出力にのみ作用。GUI プレビューおよび SVG 出力はベクター描画のため影響を受けません。Juml は既定値を 16384 に引き上げ、PNG エクスポート時は <code>scale max</code> を自動注入して上限超過を「切り詰め」ではなく「縮小」で収めます。<code>-DPLANTUML_LIMIT_SIZE=&lt;px&gt;</code> または同名の環境変数で上書き可能（大きすぎる値はメモリ消費に注意）。</td></tr>
+          <tr><td>Smetana レイアウト</td><td>同梱 PlantUML の SVG 描画は Smetana を自動指定するため Graphviz 不要で動作しますが、巨大グラフのレイアウトに失敗することがあります。その場合は Graphviz (dot) を有効にすると安定します（<a href="./gui-manual.html#graphviz">GUI マニュアルの対処手順</a>を参照）。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="freshness">
+      <h2>ソース整合性メモ</h2>
+      <p>このドキュメントは v2.1 のソースから棚卸ししたものです。旧 Markdown ドキュメント（HTML 統一に伴い削除済み）に存在した次の乖離は、本 HTML 群で解消済みです。</p>
+      <ul>
+        <li>旧 <code>PROJECT_SUMMARY</code> のメトリクス（「61 ファイル / 10.7k LoC・テスト 30 ファイル / 360 ケース・v2.0」）は古く、実際は <b>256 ファイル / 48.6k LoC・テスト 136 ファイル / 1,553 ケース・v2.1</b>。本サイトは現状値を記載。</li>
+        <li>旧 GUI マニュアルの「メソッドノードをクリックすると Sequence/Activity/CallGraph の 3 エントリを同時設定」は現行コードと相違。<code>onTreeMethodSelected</code> は <b>Sequence タブを直接開く</b>のみで、<code>setAllMethodEntries</code> はツリー選択経路から未配線（本サイトでは修正済みの記述）。</li>
+        <li>多数の CLI 解析機能（<code>--impact</code> / <code>--ref-find</code> / <code>--vhal-flow</code> / <code>--aidl-binding</code> / <code>--er-diagram</code> / <code>--data-flow</code> / <code>--screen-flow</code> / <code>--android-bp</code> / <code>--selinux</code> / <code>--rro-overlays</code> / <code>--settings</code> / <code>--init-flow</code> / <code>--action-map</code> / <code>--func-diff</code> / <code>--function-list</code> / <code>index</code> サブコマンド）は旧マニュアル未記載だったが、本サイトの <a href="#cli">CLI リファレンス</a>で網羅。</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Juml 2.1 — 開発者ドキュメント / 機能棚卸し。ソース（<code>src/main/java/juml/</code>）から自動棚卸しして生成。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。同梱 PlantUML は GPLv3。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+
+<script src="./assets/app.js"></script>
+</body>
+</html>

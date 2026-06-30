@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code 連携 — Juml docs</title>
+<meta name="description" content="Juml リポジトリに同梱した Claude Code のエージェント・スキル・スラッシュコマンドのカタログと使い方。AOSP / AAOS 解析と Java 解析エンジンの設計相談を支援する .claude/ 配下の定義を解説。">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="v2">
+
+<header class="site-nav">
+  <button class="menu-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  <a class="logo" href="./index.html">Juml<small>docs</small></a>
+  <a class="np" href="./index.html">ホーム</a>
+  <a class="np" href="./operation-manual.html">操作マニュアル</a>
+  <a class="np" href="./developer-reference.html">開発者リファレンス</a>
+  <a class="np" href="./source-analysis.html">ソース解析</a>
+  <a class="np" href="./android-analysis.html">Android 解析</a>
+  <a class="np" href="./gui-manual.html">GUI マニュアル</a>
+  <a class="np" href="./gui-spec.html">GUI 画面定義書</a>
+  <a class="np" href="./project-summary.html">プロジェクト概要</a>
+  <a class="np current" href="./claude-code.html">Claude Code 連携</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/nigoh/Juml">GitHub ↗</a>
+</header>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <nav id="toc">
+      <div class="group">はじめに</div>
+      <a href="#overview">概要</a>
+      <a href="#concepts">3 つの構成要素</a>
+      <a href="#layout">.claude/ ディレクトリ構成</a>
+      <div class="group">カタログ</div>
+      <a href="#agents">エージェント（agents）</a>
+      <a href="#skills">スキル（skills）</a>
+      <a href="#commands">スラッシュコマンド（commands）</a>
+      <a href="#commands-aosp" class="sub">AOSP / AAOS 系</a>
+      <a href="#commands-java" class="sub">Java 解析系</a>
+      <a href="#commands-ops" class="sub">運用系</a>
+      <div class="group">使い方</div>
+      <a href="#setup">セットアップ</a>
+      <a href="#workflow">典型的なワークフロー</a>
+      <a href="#authoring">独自定義の追加</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+  <div class="content-inner">
+
+    <header class="hero" id="overview">
+      <h1>Claude Code 連携</h1>
+      <p class="tag">Juml リポジトリの <code>.claude/</code> 配下に同梱した、Claude Code 用の <b>エージェント・スキル・スラッシュコマンド</b>のカタログと使い方。AOSP / AAOS の大規模ソース解析と、Juml 自身の Java 解析エンジンの設計相談を支援します。</p>
+      <div class="badges">
+        <span class="badge">エージェント <b>3</b></span>
+        <span class="badge">スキル <b>2</b>（+ チートシート 9）</span>
+        <span class="badge">コマンド <b>9</b></span>
+        <span class="badge">対象 <b>Claude Code</b></span>
+      </div>
+      <div class="note">
+        ここで扱うのは <b>Claude Code（Anthropic の CLI / エージェント）向けの定義ファイル</b>であり、Juml 本体（Java/Swing アプリ）の機能ではありません。
+        Juml 本体の機能は <a href="./developer-reference.html">開発者リファレンス</a>、操作は <a href="./gui-manual.html">GUI マニュアル</a> を参照してください。
+        導入手順の原典はリポジトリの <code>.claude/SETUP_CLAUDE_AGENTS_SKILLS.md</code> です。
+      </div>
+    </header>
+
+    <section id="concepts">
+      <h2>3 つの構成要素</h2>
+      <p>Claude Code は <code>.claude/</code> 配下の定義を読み込み、会話の文脈に応じてエージェント・スキルを自動ロードしたり、ユーザーが入力したスラッシュコマンドを実行したりします。それぞれの役割は次のとおりです。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>要素</th><th>場所</th><th>役割</th><th>呼び出し方</th></tr></thead>
+        <tbody>
+          <tr><td><b>エージェント</b><br><span class="src">(agent / subagent)</span></td><td><code>.claude/agents/*.md</code></td><td>特定領域に特化した<b>サブエージェント</b>。独立した文脈で調査・設計を行い、結論だけを親に返す。</td><td>親エージェントが委譲 / コマンドから起動</td></tr>
+          <tr><td><b>スキル</b><br><span class="src">(skill)</span></td><td><code>.claude/skills/&lt;name&gt;/SKILL.md</code></td><td>領域知識・手順書・チートシートの<b>ナレッジベース</b>。description に合致する話題で自動ロードされる。</td><td>文脈一致で自動 / 明示的に参照</td></tr>
+          <tr><td><b>スラッシュコマンド</b><br><span class="src">(slash command)</span></td><td><code>.claude/commands/*.md</code></td><td>ユーザーが <code>/name</code> で起動する<b>定型タスク</b>。エージェント委譲やコマンド生成のテンプレート。</td><td><code>/コマンド名 引数</code> を入力</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="tip"><b>関係性:</b> スラッシュコマンドが入口、エージェントが「考える人」、スキルが「参照する資料」。たとえば <code>/juml-explore aaos --carservice</code> は <code>aaos-juml-explorer</code> エージェントを起動し、そのエージェントが <code>aaos-juml-analyzer</code> スキルの知識を使って解析戦略を設計します。</div>
+    </section>
+
+    <section id="layout">
+      <h2>.claude/ ディレクトリ構成</h2>
+      <pre><code>.claude/
+├── SETUP_CLAUDE_AGENTS_SKILLS.md     導入手順（原典）
+├── agents/                           サブエージェント定義
+│   ├── aosp-juml-explorer.md         汎用 AOSP 解析戦略
+│   ├── aaos-juml-explorer.md         AAOS（自動車）専門解析戦略
+│   └── java-analyst.md               Juml の Java 解析エンジン設計相談役
+├── skills/                           ナレッジベース
+│   ├── aosp-juml-analyzer/           AOSP 図化手順 + チートシート 4 種
+│   │   ├── SKILL.md
+│   │   ├── cheatsheet-build.md       Soong / Android.bp / Gradle
+│   │   ├── cheatsheet-partition.md   system / vendor / product / odm
+│   │   ├── cheatsheet-hal.md         AIDL / HAL / HIDL / VINTF
+│   │   └── cheatsheet-sepolicy.md    SELinux / sepolicy / avc denied
+│   └── aaos-juml-analyzer/           AAOS 図化手順 + チートシート 4 種
+│       ├── SKILL.md
+│       ├── cheatsheet-carservice.md  CarService / CarManager / ICar
+│       ├── cheatsheet-vhal.md        Vehicle HAL / IVehicle / subscribe
+│       ├── cheatsheet-ui-rro.md      CarSystemUI / CarLauncher / RRO
+│       └── cheatsheet-security.md    MultiUser / permissions / sepolicy
+└── commands/                         スラッシュコマンド
+    ├── README.md                     コマンド一覧
+    ├── juml-explore.md               統合解析（エージェント + スキル）
+    ├── juml-quick.md                 直接実行（図化コマンド生成）
+    ├── aosp-help.md / aaos-help.md   トピック別リファレンス
+    ├── java-analyze.md               Java 解析エンジンの設計相談
+    ├── java-lex.md / java-struct.md  字句 / 構造抽出の検証
+    ├── java-diagram.md               PlantUML 生成ロジックの分析
+    └── release.md                    バージョンリリース手順</code></pre>
+    </section>
+
+    <section id="agents">
+      <h2>エージェント（agents）</h2>
+      <p>各エージェントは <code>.md</code> の YAML フロントマター（<code>name</code> / <code>description</code> / <code>tools</code> / <code>model</code>）で定義され、本文に解析方針・入力シグナル・出力形式を記述します。AOSP / AAOS 系は <b>実行せず読み取り（Read / Grep / Glob）に徹し</b>、Juml の実行は親に委ねる「戦略設計役」です。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>エージェント</th><th>領域</th><th>ツール</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>aosp-juml-explorer</code></td>
+            <td>AOSP 汎用</td>
+            <td><span class="pill">Read</span><span class="pill">Grep</span><span class="pill">Glob</span></td>
+            <td>「○○ を理解したい」という抽象ゴールを受け、<b>どこを・どの順で・どんな仮説で</b>見るか、Juml のどのオプションをなぜ使うかを日本語で提案。Soong (.bp) / AIDL / HAL (.hal) / sepolicy (.te) / partition の解析戦略を設計。</td>
+          </tr>
+          <tr>
+            <td><code>aaos-juml-explorer</code></td>
+            <td>AAOS（自動車）</td>
+            <td><span class="pill">Read</span><span class="pill">Grep</span><span class="pill">Glob</span></td>
+            <td>CarService / VHAL / CarSystemUI / マルチユーザセキュリティなど自動車向けアーキテクチャに特化。<code>CarManager</code> 各種・VHAL・SELinux のブロック図取得戦略を立案。</td>
+          </tr>
+          <tr>
+            <td><code>java-analyst</code></td>
+            <td>Juml 内部</td>
+            <td><span class="pill">all tools</span></td>
+            <td>Juml の Java 解析パイプライン（<code>JavaLexer → JavaStructureExtractor → JavaClassInfo → PlantUML</code>）を熟知した設計相談役。新機能実装・ロジック改善・バグ調査の設計提案を行う。</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="tip"><b>出力規約:</b> いずれのエージェントも <code>CLAUDE.md</code> に従い「<code>English: 日本語</code>」+「<code>目的:</code>」形式で日本語出力します。AOSP / AAOS 系は提案にとどめ、コマンド実行は親（またはユーザー）に明示的に委ねます。</div>
+    </section>
+
+    <section id="skills">
+      <h2>スキル（skills）</h2>
+      <p>スキルは <code>SKILL.md</code>（前提環境・図化手順・実行例）と複数の <code>cheatsheet-*.md</code>（領域別の深掘り資料）で構成されます。<code>description</code> に書かれたキーワードが会話に現れると自動ロードされ、エージェントや本体スレッドの判断材料になります。</p>
+
+      <h3>aosp-juml-analyzer</h3>
+      <p>AOSP ソースツリーを Juml で UML 図化する手順集。<b>Soong/Android.bp、AIDL/HAL、partition（system/vendor/product/odm/boot/vbmeta）、SELinux sepolicy (.te)</b> の解析・可視化依頼や、Treble/GKI/VINTF 関連の質問で自動ロードされます。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>チートシート</th><th>カバー範囲</th></tr></thead>
+        <tbody>
+          <tr><td><code>cheatsheet-build.md</code></td><td>Soong / Android.bp / Gradle のビルド構成と依存の読み方</td></tr>
+          <tr><td><code>cheatsheet-partition.md</code></td><td>system / vendor / product / odm などパーティション分離（Treble）</td></tr>
+          <tr><td><code>cheatsheet-hal.md</code></td><td>AIDL / HAL / HIDL インタフェースと VINTF 整合</td></tr>
+          <tr><td><code>cheatsheet-sepolicy.md</code></td><td>SELinux ポリシー（.te）・allow/neverallow・avc denied の切り分け</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>aaos-juml-analyzer</h3>
+      <p>Android Automotive OS（AAOS）ソースツリーを Juml で UML 図化する手順集。<b>CarService/CarManager、Vehicle HAL (VHAL)、CarSystemUI/RRO、MultiUser/権限分離</b>の解析・可視化依頼で自動ロードされます。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>チートシート</th><th>カバー範囲</th></tr></thead>
+        <tbody>
+          <tr><td><code>cheatsheet-carservice.md</code></td><td>CarService / CarManager / ICar AIDL の起動・構造</td></tr>
+          <tr><td><code>cheatsheet-vhal.md</code></td><td>Vehicle HAL / IVehicle / get・set・subscribe フロー</td></tr>
+          <tr><td><code>cheatsheet-ui-rro.md</code></td><td>CarSystemUI / CarLauncher / RRO によるテーマ・レイアウト上書き</td></tr>
+          <tr><td><code>cheatsheet-security.md</code></td><td>MultiUser / 権限 / sepolicy によるロール分離（driver / passenger）</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="warn"><b>前提:</b> スキルは Juml の jar（既定 <code>~/juml/build/libs/Juml.jar</code>、未ビルドなら <code>./gradlew jar</code>）と Java 17+ を前提とします。大規模ツリーは <code>-Xmx8g</code> 以上を推奨します。</div>
+    </section>
+
+    <section id="commands">
+      <h2>スラッシュコマンド（commands）</h2>
+      <p>ユーザーが <code>/コマンド名 引数</code> の形で起動します。<code>$ARGUMENTS</code> を解釈してエージェントに委譲したり、Juml の実行コマンドを生成したりします。<code>.claude/commands/README.md</code> に全体像があります。</p>
+
+      <h3 id="commands-aosp">AOSP / AAOS 系</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>コマンド</th><th>用途</th><th>例</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>/juml-explore</code></td>
+            <td><b>統合解析。</b><code>&lt;layer&gt; &lt;topic&gt;</code> を受け、<code>aosp/aaos</code> 用エージェントとスキルを自動ロードして解析戦略（どこを見るか・どのオプションか・期待される出力）を設計。</td>
+            <td><code>/juml-explore aaos --carservice</code><br><code>/juml-explore aosp --build</code><br><code>/juml-explore aosp --method CarService.onCreate</code></td>
+          </tr>
+          <tr>
+            <td><code>/juml-quick</code></td>
+            <td><b>直接実行。</b>エージェント・スキル不要。図種・パス（・メモリ）を受け、Juml の実行コマンドを素早く生成。class / seq / manifest / deps / summary / all / impact / ref-find / vhal-flow / aidl-binding / er-diagram / data-flow / screen-flow / android-bp / selinux / rro-overlays に対応。</td>
+            <td><code>/juml-quick class frameworks/base/services/core</code><br><code>/juml-quick impact android.car.hardware.CarPropertyManager ~/AOSP/...</code><br><code>/juml-quick all ~/AOSP/... 16g</code></td>
+          </tr>
+          <tr>
+            <td><code>/aosp-help</code></td>
+            <td>AOSP トピック別クイックリファレンス（<code>build</code> / <code>partition</code> / <code>hal</code> / <code>sepolicy</code> / <code>all</code>）。関連チートシートと解析フローを提示。</td>
+            <td><code>/aosp-help sepolicy "avc denied ログの読み方"</code></td>
+          </tr>
+          <tr>
+            <td><code>/aaos-help</code></td>
+            <td>AAOS トピック別クイックリファレンス（<code>carservice</code> / <code>vhal</code> / <code>ui</code> / <code>security</code> / <code>all</code>）。</td>
+            <td><code>/aaos-help vhal "VHAL の get/set フロー"</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3 id="commands-java">Java 解析系（Juml 本体の開発用）</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>コマンド</th><th>用途</th><th>既定の対象</th></tr></thead>
+        <tbody>
+          <tr><td><code>/java-analyze</code></td><td><code>java-analyst</code> エージェントに解析パイプラインの設計相談・コード分析を依頼。<code>.java</code> パス・機能キーワード・空欄で挙動が変化。</td><td>パイプライン全体のレビュー</td></tr>
+          <tr><td><code>/java-lex</code></td><td>指定 Java ファイルを <code>JavaLexer</code> の観点でトークン解析し、字句レベルの問題・エッジケースを調査。</td><td><code>JavaLexer.java</code></td></tr>
+          <tr><td><code>/java-struct</code></td><td><code>JavaStructureExtractor</code> の抽出結果（クラス/メソッド/フィールド/呼び出し）が正しいか検証。</td><td><code>JavaStructureExtractor.java</code></td></tr>
+          <tr><td><code>/java-diagram</code></td><td>PlantUML 図（class / sequence / package）の生成ロジックを分析し、出力品質の改善案を提案。</td><td><code>PlantUmlClassDiagram</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3 id="commands-ops">運用系</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>コマンド</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>/release &lt;version&gt;</code></td><td>新バージョンのリリース手順を一括実行。バージョン確認 → 事前チェック → <code>build.gradle</code> 更新 → <code>CHANGE.md</code> のセクション確定 → fat jar ビルド → コミット → タグ push → GitHub リリース → PR 作成、をステップ順に進める（エラー時はユーザーに報告して停止）。</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="tip"><b>スコープの違い:</b> AOSP/AAOS 系（<code>juml-explore</code>・<code>juml-quick</code>・<code>*-help</code>）は <b>Juml の利用者</b>向け、Java 解析系（<code>java-*</code>）と <code>release</code> は <b>Juml の開発者</b>向けです。</div>
+    </section>
+
+    <section id="setup">
+      <h2>セットアップ</h2>
+      <p>スラッシュコマンドはリポジトリ固有のため、<b>Juml ディレクトリで Claude Code を起動</b>すればそのまま使えます。エージェント・スキルを他プロジェクトでも使いたい場合は、ユーザーホームの <code>~/.claude/</code> へコピーします。</p>
+      <pre><code># エージェント・スキルをユーザーホームへ配置（任意）
+mkdir -p ~/.claude/agents ~/.claude/skills
+
+cp .claude/agents/*.md ~/.claude/agents/
+cp -r .claude/skills/aosp-juml-analyzer ~/.claude/skills/
+cp -r .claude/skills/aaos-juml-analyzer ~/.claude/skills/
+
+# 確認
+ls ~/.claude/agents/ ~/.claude/skills/</code></pre>
+      <p>AOSP のパスが既定（<code>~/AOSP/</code>）でない場合は環境変数で指定できます。</p>
+      <pre><code>export AOSP_PATH="/mnt/custom/aosp"</code></pre>
+      <p class="src">詳細・トラブルシューティングは <code>.claude/SETUP_CLAUDE_AGENTS_SKILLS.md</code> を参照してください。</p>
+    </section>
+
+    <section id="workflow">
+      <h2>典型的なワークフロー</h2>
+      <ol>
+        <li><b>戦略を立てる</b> — <code>/juml-explore aaos --carservice</code> でエージェントに「どこを・どの順で見るか」を設計させる。スキルが自動ロードされ、CarService の構造知識が反映される。</li>
+        <li><b>図を出す</b> — 提案に沿って <code>/juml-quick class &lt;path&gt;</code> や <code>/juml-quick vhal-flow &lt;path&gt;</code> で Juml の実行コマンドを生成・実行し、SVG / Markdown を得る。</li>
+        <li><b>知識を引く</b> — 途中で用語に詰まったら <code>/aosp-help hal</code> / <code>/aaos-help security</code> でチートシートを参照。</li>
+        <li><b>（開発者）Juml を改善する</b> — 解析結果が期待と違えば <code>/java-lex</code> / <code>/java-struct</code> / <code>/java-diagram</code> / <code>/java-analyze</code> で原因をパイプライン視点で切り分ける。</li>
+      </ol>
+    </section>
+
+    <section id="authoring">
+      <h2>独自定義の追加</h2>
+      <p>新しいエージェント・スキル・コマンドを足すときは、既存ファイルの形式に揃えます。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>追加先</th><th>必須フロントマター / 構成</th><th>方針</th></tr></thead>
+        <tbody>
+          <tr><td><code>agents/*.md</code></td><td><code>name</code> / <code>description</code> / <code>tools</code> / <code>model</code> + 本文（方針・入力シグナル・出力形式）</td><td><code>description</code> はいつ委譲すべきかが分かるよう具体的に。読み取り専用なら <code>tools</code> を絞る。</td></tr>
+          <tr><td><code>skills/&lt;name&gt;/SKILL.md</code></td><td><code>name</code> / <code>description</code> + 前提環境・手順・例。深掘りは <code>cheatsheet-*.md</code> に分割</td><td><code>description</code> のキーワードが自動ロードのトリガー。網羅的に列挙する。</td></tr>
+          <tr><td><code>commands/*.md</code></td><td>（任意）<code>description</code> / <code>allowed-tools</code> + 本文。<code>$ARGUMENTS</code> の解釈を明記</td><td>ファイル名がコマンド名（<code>foo.md</code> → <code>/foo</code>）。エージェント委譲かコマンド生成かを明確に。</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="note">出力は <code>CLAUDE.md</code> のサマリールール（「英語: 日本語」形式と「目的:」の付与）に従ってください。専門用語・固有名詞（Soong, VHAL, PlantUML 等）は原語のまま使います。</div>
+    </section>
+
+    <footer>
+      <p>Juml — Claude Code 連携ガイド。<code>.claude/</code> 配下のエージェント・スキル・コマンド定義から棚卸し。</p>
+      <p>MIT License — Copyright (c) 2015–2026 naou and contributors。</p>
+    </footer>
+
+  </div>
+  </main>
+</div>
+
+<script src="./assets/app.js"></script>
+</body>
+</html>

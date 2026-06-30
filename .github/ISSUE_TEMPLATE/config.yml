@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: セキュリティ脆弱性の報告 (Security)
+    url: https://github.com/nigoh/juml/security/advisories/new
+    about: セキュリティ上の問題は公開 Issue ではなく Security Advisories から非公開で報告してください。
+  - name: 質問・使い方の相談 (Questions / Discussions)
+    url: https://github.com/nigoh/juml/discussions
+    about: バグ・要望ではない使い方の質問や相談は Discussions へどうぞ（Discussions が無効な場合は Issue で構いません）。
+  - name: コントリビューションガイド (Contributing)
+    url: https://github.com/nigoh/juml/blob/main/CONTRIBUTING.md
+    about: Pull Request の出し方・開発環境・コーディング規約はこちらを参照してください。

@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.core.formats.uml;
+
+import java.io.File;
+
+/**
+ * Graphviz dot バイナリを検出し {@link PlantUmlRenderer} に通知するユーティリティ。
+ *
+ * <p>検索順序:
+ * <ol>
+ *   <li>{@code net.sourceforge.plantuml.GRAPHVIZ_DOT} システムプロパティが既に設定済み</li>
+ *   <li>{@code GRAPHVIZ_DOT} 環境変数が設定済み</li>
+ *   <li>jar 隣接の {@code graphviz/<platform>/dot[.exe]} (同梱バイナリ)</li>
+ *   <li>システム PATH 上の {@code dot[.exe]}</li>
+ * </ol>
+ * いずれも見つからなければ何もしない (Smetana フォールバックを維持)。</p>
+ */
+public final class GraphvizLocator {
+
+    static final String PLANTUML_DOT_PROP = "net.sourceforge.plantuml.GRAPHVIZ_DOT";
+
+    /** {@link #init(File)} に渡された jar ディレクトリ。{@link #redetect()} の同梱検索で再利用する。 */
+    private static volatile File cachedJarDir;
+
+    private GraphvizLocator() {
+    }
+
+    /**
+     * dot バイナリを検索し、見つかれば PlantUML のシステムプロパティを設定して
+     * {@link PlantUmlRenderer#setGraphvizAvailable(boolean)} を true にする。
+     *
+     * @param jarDir jar ファイルが置かれているディレクトリ。null の場合は同梱バイナリ検索をスキップ。
+     */
+    public static void init(File jarDir) {
+        cachedJarDir = jarDir;
+        if (System.getProperty(PLANTUML_DOT_PROP) != null) {
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return;
+        }
+        if (System.getenv("GRAPHVIZ_DOT") != null) {
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return;
+        }
+        if (jarDir != null) {
+            File bundled = findBundledDot(jarDir);
+            if (bundled != null) {
+                System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
+                PlantUmlRenderer.setGraphvizAvailable(true);
+                return;
+            }
+        }
+        String systemDot = findSystemDot();
+        if (systemDot != null) {
+            System.setProperty(PLANTUML_DOT_PROP, systemDot);
+            PlantUmlRenderer.setGraphvizAvailable(true);
+        }
+    }
+
+    /**
+     * 起動後にユーザー操作で dot を再検出する。既に有効なパスが設定済みならそれを尊重し、
+     * そうでなければ環境変数 → 同梱バイナリ → PATH の順で再スキャンする。見つかれば
+     * プロパティを設定して {@link PlantUmlRenderer#setGraphvizAvailable(boolean)} を true にし
+     * true を返す。見つからなければ false。
+     *
+     * <p>{@link #init(File)} と異なり、設定済みプロパティが実行不能になっている場合は無視して
+     * 再探索する（インストール後の有効化を確実にするため）。</p>
+     */
+    public static boolean redetect() {
+        String prop = System.getProperty(PLANTUML_DOT_PROP);
+        if (prop != null && new File(prop).canExecute()) {
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return true;
+        }
+        String env = System.getenv("GRAPHVIZ_DOT");
+        if (env != null && new File(env).canExecute()) {
+            System.setProperty(PLANTUML_DOT_PROP, env);
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return true;
+        }
+        if (cachedJarDir != null) {
+            File bundled = findBundledDot(cachedJarDir);
+            if (bundled != null) {
+                System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
+                PlantUmlRenderer.setGraphvizAvailable(true);
+                return true;
+            }
+        }
+        String systemDot = findSystemDot();
+        if (systemDot != null) {
+            System.setProperty(PLANTUML_DOT_PROP, systemDot);
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * ユーザーが明示的に選択した dot 実行ファイルを使うよう設定する。実行可能なファイルなら
+     * プロパティを設定して {@link PlantUmlRenderer#setGraphvizAvailable(boolean)} を true にし
+     * true を返す。null・非ファイル・実行不能なら何もせず false。
+     */
+    public static boolean useDotBinary(File dot) {
+        if (dot == null || !dot.isFile() || !dot.canExecute()) {
+            return false;
+        }
+        System.setProperty(PLANTUML_DOT_PROP, dot.getAbsolutePath());
+        PlantUmlRenderer.setGraphvizAvailable(true);
+        return true;
+    }
+
+    /** {@code bundle/graphviz/<platform>/dot[.exe]} を探す。見つからなければ null。 */
+    static File findBundledDot(File jarDir) {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String arch = normalizeArch(System.getProperty("os.arch", ""));
+        String exe;
+        String platform;
+        if (os.contains("win")) {
+            platform = "windows-" + arch;
+            exe = "dot.exe";
+        } else if (os.contains("mac")) {
+            platform = "mac-" + arch;
+            exe = "dot";
+        } else {
+            platform = "linux-" + arch;
+            exe = "dot";
+        }
+        File candidate = new File(jarDir, "graphviz" + File.separator + platform + File.separator + exe);
+        if (candidate.isFile() && candidate.canExecute()) {
+            return candidate;
+        }
+        // プラットフォーム非区別のフォールバック
+        candidate = new File(jarDir, "graphviz" + File.separator + exe);
+        return (candidate.isFile() && candidate.canExecute()) ? candidate : null;
+    }
+
+    /** PATH を検索して dot バイナリのフルパスを返す。見つからなければ null。 */
+    static String findSystemDot() {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) {
+            return null;
+        }
+        boolean isWin = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String exe = isWin ? "dot.exe" : "dot";
+        for (String dir : pathEnv.split(File.pathSeparator)) {
+            File candidate = new File(dir, exe);
+            if (candidate.isFile() && candidate.canExecute()) {
+                return candidate.getAbsolutePath();
+            }
+        }
+        return null;
+    }
+
+    /** "aarch64" / "arm64" → "aarch64"、"amd64" / "x86_64" → "amd64" に正規化。 */
+    private static String normalizeArch(String raw) {
+        String lower = raw.toLowerCase();
+        if (lower.contains("aarch") || lower.contains("arm64")) {
+            return "aarch64";
+        }
+        return "amd64";
+    }
+}
