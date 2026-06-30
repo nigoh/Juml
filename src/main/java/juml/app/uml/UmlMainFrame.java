@@ -258,6 +258,8 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomReset = () -> tabPane.zoomResetActive();
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
+        mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
+        mcb.closeAllTabs = () -> tabPane.closeAllTabs();
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
         mcb.toggleSidebar = () -> {

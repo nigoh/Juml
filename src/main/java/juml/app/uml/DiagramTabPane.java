@@ -393,7 +393,7 @@ public final class DiagramTabPane {
     }
 
     /** {@code keepKey} 以外のすべてのダイアグラムタブを閉じる。 */
-    private void closeOtherTabs(String keepKey) {
+    void closeOtherTabs(String keepKey) {
         for (Map.Entry<String, DiagramTab> en : new ArrayList<>(openTabs.entrySet())) {
             if (!en.getKey().equals(keepKey)) {
                 closeTab(en.getValue(), en.getKey());
@@ -401,9 +401,22 @@ public final class DiagramTabPane {
         }
     }
 
+    /** アクティブタブ以外のすべてのダイアグラムタブを閉じる。 */
+    void closeOtherTabsExceptActive() {
+        java.awt.Component sel = tabs.getSelectedComponent();
+        String activeKey = null;
+        for (Map.Entry<String, DiagramTab> en : openTabs.entrySet()) {
+            if (en.getValue() == sel) {
+                activeKey = en.getKey();
+                break;
+            }
+        }
+        closeOtherTabs(activeKey);
+    }
+
     /** すべてのダイアグラムタブを閉じる (ユーティリティタブは残す)。 */
-    private void closeAllTabs() {
-        closeOtherTabs(null); // keepKey=null はどのキーにも一致しないため全タブを閉じる
+    void closeAllTabs() {
+        closeOtherTabs(null);
     }
 
     /** アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用 (汎用タブには無作用)。 */
@@ -576,6 +589,7 @@ public final class DiagramTabPane {
         /** プレビュー領域と付箋一覧の左右分割。 */
         private JSplitPane hsplit;
         private final JLabel messageLabel = new JLabel("", javax.swing.SwingConstants.CENTER);
+        private final javax.swing.JProgressBar renderSpinner = new javax.swing.JProgressBar();
         private String renderedPuml;
         private String renderedSvgXml;
         private String lastStatus;
@@ -599,12 +613,18 @@ public final class DiagramTabPane {
             viewPanel.add(findBar, java.awt.BorderLayout.SOUTH);
             viewCards.add(viewPanel, "view");
             JPanel msgPanel = new JPanel(new java.awt.GridBagLayout());
-            // L&F 追従: ダークテーマでも白く浮かないようパネル背景/前景はテーマ色を使う。
             java.awt.Color msgBg = javax.swing.UIManager.getColor("Panel.background");
             msgPanel.setBackground(msgBg != null ? msgBg : java.awt.Color.WHITE);
             java.awt.Color msgFg = javax.swing.UIManager.getColor("Label.foreground");
             messageLabel.setForeground(msgFg != null ? msgFg : new Color(0x555555));
-            msgPanel.add(messageLabel);
+            renderSpinner.setIndeterminate(true);
+            renderSpinner.setPreferredSize(new java.awt.Dimension(200, 6));
+            renderSpinner.setVisible(false);
+            JPanel msgInner = new JPanel(new java.awt.BorderLayout(0, 12));
+            msgInner.setOpaque(false);
+            msgInner.add(messageLabel, java.awt.BorderLayout.CENTER);
+            msgInner.add(renderSpinner, java.awt.BorderLayout.SOUTH);
+            msgPanel.add(msgInner);
             viewCards.add(msgPanel, "msg");
 
             // 下部は「PlantUML テキスト」と「実ソース (Java/Kotlin)」を切り替えられるタブ。
@@ -682,10 +702,14 @@ public final class DiagramTabPane {
             findBar.activate();
         }
 
-        /** メッセージカード(描画中 / 失敗 / 空)を中央寄せ HTML で表示する。 */
         private void showMessageCard(String html) {
+            showMessageCard(html, false);
+        }
+
+        private void showMessageCard(String html, boolean showSpinner) {
             messageLabel.setText("<html><div style='text-align:center;width:460px'>"
                     + html + "</div></html>");
+            renderSpinner.setVisible(showSpinner);
             cards.show(viewCards, "msg");
         }
 
@@ -761,7 +785,7 @@ public final class DiagramTabPane {
             // 旧図のヒットを引きずらないよう、再描画のたびに検索状態をリセットする。
             findBar.reset();
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
-            showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>");
+            showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
             final DiagramRequest dreq = spec;
             if (activeWorker != null) {
                 activeWorker.cancel(true); // 旧描画を破棄して競合・無駄な処理を防ぐ
