@@ -41,6 +41,9 @@ public final class ProjectLoader {
     private final Consumer<File> projectRootSetter;
     private final Consumer<File> onLoadSuccess;
 
+    private SwingWorker<?, ?> activeWorker;
+    private CancelToken activeCancelToken;
+
     public ProjectLoader(ProjectLoaderDeps deps) {
         this.cache = deps.cache;
         this.refIndexCache = deps.refIndexCache;
@@ -59,6 +62,7 @@ public final class ProjectLoader {
 
     /** プロジェクト解析を開始する。EDT から呼ぶこと。 */
     public void start(File root) {
+        cancelActiveWorker();
         // AOSP 級ツリーを検出したら、巨大な非ソースディレクトリ (out/, prebuilts/,
         // .repo/ など) を走査対象から除外して解析時間・メモリを抑える。
         final boolean aosp = isAospTree(root);
@@ -80,7 +84,11 @@ public final class ProjectLoader {
         }
         cancelLoadingItem.setEnabled(true);
         final CancelToken cancel = new CancelToken();
+        activeCancelToken = cancel;
         cancelTokenSetter.accept(cancel);
+        if (loadingOverlay != null) {
+            loadingOverlay.setCancelAction(cancel::cancel);
+        }
         final ProgressListener prog = ProgressListener.throttled(
                 (done, total, message) -> SwingUtilities.invokeLater(
                         () -> updateLoadProgress(done, total, message)),
@@ -93,7 +101,7 @@ public final class ProjectLoader {
         // 2 回目以降の起動はさらに高速化する (通常プロジェクトは従来どおり FULL)。
         options.lazyDetails = aosp;
         options.useDiskCache = true;
-        new SwingWorker<Void, Void>() {
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             private Throwable error;
             private boolean cancelled;
             private java.util.List<juml.core.aosp.AndroidBpModule> bpModules =
@@ -126,6 +134,8 @@ public final class ProjectLoader {
 
             @Override
             protected void done() {
+                activeWorker = null;
+                activeCancelToken = null;
                 cancelTokenSetter.accept(null);
                 cancelLoadingItem.setEnabled(false);
                 if (loadingOverlay != null) {
@@ -170,7 +180,9 @@ public final class ProjectLoader {
                 statusLabel.setText(st.toString());
                 onLoadSuccess.accept(root);
             }
-        }.execute();
+        };
+        activeWorker = worker;
+        worker.execute();
     }
 
     /**
@@ -179,6 +191,7 @@ public final class ProjectLoader {
      * (ツリー再構築・既定タブ表示) を行う。
      */
     public void startArchive(File archive) {
+        cancelActiveWorker();
         statusLabel.setText("Reading " + archive.getName() + " ...");
         treePanel.clear();
         manifestSummaryPanel.setText("");
@@ -189,9 +202,16 @@ public final class ProjectLoader {
             loadingOverlay.setStatus("解析中...");
             loadingOverlay.showOverlay();
         }
-        cancelLoadingItem.setEnabled(false);
-        new SwingWorker<Void, Void>() {
+        cancelLoadingItem.setEnabled(true);
+        final CancelToken cancel = new CancelToken();
+        activeCancelToken = cancel;
+        cancelTokenSetter.accept(cancel);
+        if (loadingOverlay != null) {
+            loadingOverlay.setCancelAction(cancel::cancel);
+        }
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             private Throwable error;
+            private boolean cancelled;
 
             @Override
             protected Void doInBackground() {
@@ -199,6 +219,7 @@ public final class ProjectLoader {
                     cache.clear();
                     refIndexCache.invalidate();
                     cache.loadFromArchive(archive, ErrorListener.silent());
+                    cancelled = cancel.isCancelled();
                 } catch (Exception ex) {
                     error = ex;
                 }
@@ -207,6 +228,10 @@ public final class ProjectLoader {
 
             @Override
             protected void done() {
+                activeWorker = null;
+                activeCancelToken = null;
+                cancelTokenSetter.accept(null);
+                cancelLoadingItem.setEnabled(false);
                 if (loadingOverlay != null) {
                     loadingOverlay.hideOverlay();
                 }
@@ -222,6 +247,10 @@ public final class ProjectLoader {
                     statusLabel.setText(" ");
                     return;
                 }
+                if (cancelled) {
+                    statusLabel.setText(Messages.get("status.cancelled"));
+                    return;
+                }
                 projectRootSetter.accept(archive);
                 treePanel.populate(cache.getAnalysis(), cache.getClasses(),
                         archive.getName(), cache.getClassToModule(), cache.getIndex());
@@ -234,7 +263,21 @@ public final class ProjectLoader {
                         + " class(es) from " + archive.getAbsolutePath());
                 onLoadSuccess.accept(archive);
             }
-        }.execute();
+        };
+        activeWorker = worker;
+        worker.execute();
+    }
+
+    private void cancelActiveWorker() {
+        if (activeCancelToken != null) {
+            activeCancelToken.cancel();
+        }
+        if (activeWorker != null && !activeWorker.isDone()) {
+            activeWorker.cancel(true);
+        }
+        activeWorker = null;
+        activeCancelToken = null;
+        cancelTokenSetter.accept(null);
     }
 
     /**
