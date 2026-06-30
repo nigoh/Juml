@@ -59,6 +59,8 @@ public final class DiagramTabPane {
     private static final int MAX_CLOSED_HISTORY = 10;
     /** 図タブのメモリ抑制 (LRU クローズ / 描画解放) を担う協調オブジェクト。 */
     private final TabMemoryManager tabMemory = new TabMemoryManager();
+    /** Alt+Left/Right による前後ナビゲーション (VS Code 風 Go Back / Go Forward)。 */
+    private final NavigationHistory navHistory = new NavigationHistory();
     /** UML に重ねる付箋メモのロード/保存配線を担うヘルパ。 */
     private final DiagramNotesBinder notesBinder = new DiagramNotesBinder(this::reportStatus);
     /** {@link #tabMemory} 適用中フラグ。クローズ起因の選択変更による再入を防ぐ。 */
@@ -171,6 +173,7 @@ public final class DiagramTabPane {
         }
         applyTabBudget(tab.key);
         mru.onActivated(tab, tab.label);
+        navHistory.push(tab.key);
         lastDiagramRequest = tab.treeSync;
         tab.reportFocusStatus();
         tab.mirrorToState();
@@ -433,6 +436,7 @@ public final class DiagramTabPane {
         }
         openTabs.remove(key);
         mru.onClosed(tab);
+        navHistory.remove(key);
         refreshTabLabels();
         tabMemory.onClose(key);
     }
@@ -460,6 +464,35 @@ public final class DiagramTabPane {
             reopen.run();
         } else {
             reportStatus(Messages.get("status.noClosedTab"));
+        }
+    }
+
+    /** Alt+Left: 直前にフォーカスしていたタブに戻る。 */
+    public void navigateBack() {
+        String key = navHistory.back();
+        if (key != null) {
+            focusTabByKey(key);
+        }
+    }
+
+    /** Alt+Right: navigateBack で戻った先からひとつ進む。 */
+    public void navigateForward() {
+        String key = navHistory.forward();
+        if (key != null) {
+            focusTabByKey(key);
+        }
+    }
+
+    private void focusTabByKey(String key) {
+        DiagramTab t = openTabs.get(key);
+        if (t == null) {
+            return;
+        }
+        navHistory.setNavigating(true);
+        try {
+            tabs.setSelectedComponent(t);
+        } finally {
+            navHistory.setNavigating(false);
         }
     }
 
@@ -890,6 +923,14 @@ public final class DiagramTabPane {
             if (fqn != null) {
                 popup.add(menuItem(Messages.get("note.menu.addToElement"),
                         () -> previewPanel.addElementNote(fqn)));
+            }
+            if (!previewPanel.getTextItems().isEmpty()) {
+                popup.addSeparator();
+                popup.add(menuItem(Messages.get("context.copyAllText"),
+                        previewPanel::copyAllText));
+                JMenuItem hint = new JMenuItem(Messages.get("context.selectTextHint"));
+                hint.setEnabled(false);
+                popup.add(hint);
             }
             popup.show(event.getComponent(), event.getX(), event.getY());
         }

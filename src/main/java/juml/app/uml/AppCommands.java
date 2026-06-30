@@ -44,6 +44,8 @@ final class AppCommands {
         add(list, "cmd.view.addNote", cb.addNoteToActiveTab, MOD + SHIFT + "N");
         add(list, "cmd.view.notesPanel", cb.toggleNotesPanel, MOD + SHIFT + "J");
         add(list, "cmd.view.focusExplorer", cb.focusExplorer, MOD + SHIFT + "E");
+        add(list, "cmd.view.navigateBack", cb.navigateBack, "Alt+Left");
+        add(list, "cmd.view.navigateForward", cb.navigateForward, "Alt+Right");
         add(list, "cmd.diagram.findInDiagram", cb.findInDiagram, MOD + "F");
         add(list, "cmd.diagram.search", cb.openEntitySearch, MOD + SHIFT + "F");
         add(list, "cmd.diagram.seqEntry", cb.pickSequenceEntry);

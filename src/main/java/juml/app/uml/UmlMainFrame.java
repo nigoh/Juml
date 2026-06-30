@@ -126,6 +126,14 @@ public class UmlMainFrame extends JFrame {
         controller = createDiagramController();
         controller.updateAvailableDiagrams(java.util.EnumSet.noneOf(DiagramKind.class));
         statusBar = new StatusBarView(status, loadProgress, zoomLabel);
+        zoomLabel.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        zoomLabel.setToolTipText(Messages.get("statusbar.zoom.tip"));
+        zoomLabel.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                tabPane.zoomResetActive();
+            }
+        });
         tabPane.setOnTabFocused(info -> {
             controller.onTabFocused(info);
             statusBar.setFocusedTab(info);
@@ -261,6 +269,8 @@ public class UmlMainFrame extends JFrame {
             }
             treePanel.requestFocusInWindow();
         };
+        mcb.navigateBack = () -> tabPane.navigateBack();
+        mcb.navigateForward = () -> tabPane.navigateForward();
         mcb.openLogViewer = () -> LogViewerDialog.showFor(this);
         paletteCommands = AppCommands.from(mcb);
         MenuBarBuilder.Result menuResult =

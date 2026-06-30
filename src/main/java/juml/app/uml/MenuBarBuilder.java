@@ -92,6 +92,10 @@ public final class MenuBarBuilder {
         public Runnable toggleNotesPanel;
         /** Ctrl+Shift+E / View &gt; Focus Explorer: ツリーペインへフォーカスを移す。 */
         public Runnable focusExplorer;
+        /** Alt+Left / View &gt; Navigate Back: 直前のタブに戻る。 */
+        public Runnable navigateBack;
+        /** Alt+Right / View &gt; Navigate Forward: 戻った先からひとつ進む。 */
+        public Runnable navigateForward;
         /** Help &gt; Error Log: アプリのエラーログビューアを開く。 */
         public Runnable openLogViewer;
     }
@@ -461,6 +465,25 @@ public final class MenuBarBuilder {
                     menuMask | InputEvent.SHIFT_DOWN_MASK));
             explorer.addActionListener(e -> cb.focusExplorer.run());
             m.add(explorer);
+        }
+        if (cb.navigateBack != null || cb.navigateForward != null) {
+            m.addSeparator();
+            if (cb.navigateBack != null) {
+                JMenuItem back = new JMenuItem(Messages.get("menubar.view.navigateBack"));
+                back.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.ARROW_BACK));
+                back.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT,
+                        InputEvent.ALT_DOWN_MASK));
+                back.addActionListener(e -> cb.navigateBack.run());
+                m.add(back);
+            }
+            if (cb.navigateForward != null) {
+                JMenuItem fwd = new JMenuItem(Messages.get("menubar.view.navigateForward"));
+                fwd.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.ARROW_FORWARD));
+                fwd.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT,
+                        InputEvent.ALT_DOWN_MASK));
+                fwd.addActionListener(e -> cb.navigateForward.run());
+                m.add(fwd);
+            }
         }
         return m;
     }

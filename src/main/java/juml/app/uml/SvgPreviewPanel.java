@@ -840,7 +840,7 @@ public class SvgPreviewPanel extends JPanel {
     }
 
     /** 全 SVG テキストをクリップボードへコピーする (Ctrl+A 相当)。 */
-    private void copyAllText() {
+    void copyAllText() {
         if (svgTexts.isEmpty()) {
             return;
         }
