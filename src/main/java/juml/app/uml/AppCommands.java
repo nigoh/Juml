@@ -37,6 +37,7 @@ final class AppCommands {
         add(list, "cmd.file.refresh", cb.refreshDiagram, "F5");
         add(list, "cmd.file.closeTab", cb.closeActiveTab, MOD + "W");
         add(list, "cmd.file.closeOthers", cb.closeOtherTabs);
+        add(list, "cmd.file.closeRight", cb.closeTabsToRight);
         add(list, "cmd.file.closeAllTabs", cb.closeAllTabs);
         add(list, "cmd.file.reopenTab", cb.reopenClosedTab, MOD + SHIFT + "T");
         add(list, "cmd.file.cancelLoading", cb.cancelLoading);

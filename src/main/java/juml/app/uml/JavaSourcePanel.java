@@ -85,6 +85,8 @@ public final class JavaSourcePanel extends JPanel {
     private final JButton openButton;
     private final JToggleButton wrapToggle;
     private final SourceFindBar findBar;
+    /** Ctrl+G: インラインの行移動バー (VS Code 風)。 */
+    private final GotoLineBar gotoBar;
 
     /** 現在行ハイライトのタグ (キャレット移動で貼り替える)。 */
     private Object currentLineTag;
@@ -144,10 +146,16 @@ public final class JavaSourcePanel extends JPanel {
         bar.add(right, BorderLayout.EAST);
 
         findBar = new SourceFindBar(textPane, this::revalidate);
+        gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate);
 
         JPanel north = new JPanel(new BorderLayout());
         north.add(bar, BorderLayout.NORTH);
-        north.add(findBar, BorderLayout.SOUTH);
+        JPanel barsPanel = new JPanel(new javax.swing.BoxLayout(
+                new JPanel(), javax.swing.BoxLayout.Y_AXIS));
+        barsPanel.setLayout(new javax.swing.BoxLayout(barsPanel, javax.swing.BoxLayout.Y_AXIS));
+        barsPanel.add(findBar);
+        barsPanel.add(gotoBar);
+        north.add(barsPanel, BorderLayout.SOUTH);
 
         add(north, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
@@ -545,7 +553,7 @@ public final class JavaSourcePanel extends JPanel {
         registerPanelKey(KeyStroke.getKeyStroke(KeyEvent.VK_F,
                 Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "find", this::showSearchBar);
         registerPanelKey(KeyStroke.getKeyStroke(KeyEvent.VK_G,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "goto", this::gotoLineDialog);
+                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "goto", this::showGotoBar);
     }
 
     private void registerPanelKey(KeyStroke ks, String name, Runnable action) {
@@ -564,21 +572,22 @@ public final class JavaSourcePanel extends JPanel {
         }
     }
 
-    private void gotoLineDialog() {
+    private void showGotoBar() {
         if (currentFile == null) {
             return;
         }
         Element root = textPane.getDocument().getDefaultRootElement();
         int max = root.getElementCount();
-        String input = javax.swing.JOptionPane.showInputDialog(this,
-                Messages.get("source.goto.prompt") + " (1-" + max + ")",
-                Messages.get("source.goto.title"), javax.swing.JOptionPane.QUESTION_MESSAGE);
-        if (input == null) {
-            return;
-        }
+        int current = root.getElementIndex(textPane.getCaretPosition()) + 1;
+        gotoBar.activate(current, max);
+    }
+
+    private void jumpToLine(int line) {
+        Element root = textPane.getDocument().getDefaultRootElement();
+        int max = root.getElementCount();
+        int clamped = Math.max(1, Math.min(max, line));
         try {
-            int line = Math.max(1, Math.min(max, Integer.parseInt(input.trim())));
-            int offset = root.getElement(line - 1).getStartOffset();
+            int offset = root.getElement(clamped - 1).getStartOffset();
             Rectangle2D r = textPane.modelToView2D(offset);
             if (r != null) {
                 textPane.scrollRectToVisible(new Rectangle(0, Math.max(0, (int) r.getY() - 80),
@@ -586,8 +595,8 @@ public final class JavaSourcePanel extends JPanel {
             }
             textPane.setCaretPosition(offset);
             textPane.requestFocusInWindow();
-        } catch (NumberFormatException | BadLocationException ignored) {
-            // 数値以外 / 範囲外は無視。
+        } catch (BadLocationException ignored) {
+            // 範囲外は無視。
         }
     }
 

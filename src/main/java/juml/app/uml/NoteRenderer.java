@@ -340,7 +340,7 @@ final class NoteRenderer {
     private String html(String md) {
         // プレースホルダ (空本文) は locale 依存で安価なためキャッシュしない。
         if (md == null || md.trim().isEmpty()) {
-            String phColor = EditorColors.isDark() ? "#AAA" : "#777";
+            String phColor = EditorColors.isDark() ? "#AAA" : "#666";
             return MarkdownRenderer.wrapDocument(
                     "<span style=\"color:" + phColor + ";\">"
                             + Messages.get("note.placeholder") + "</span>", 0, 11);

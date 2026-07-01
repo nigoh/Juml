@@ -71,6 +71,8 @@ public final class DiagramTabPane {
     private final DoubleConsumer zoomReporter;
     /** 動的タブにフォーカスが移ったとき、その情報 (由来ノード + 図種) を通知する。 */
     private Consumer<FocusedTab> onTabFocused;
+    /** タブ右クリック「Reveal in Explorer」でツリーの該当ノードを選択するコールバック。 */
+    private Consumer<TreeNodeOpenRequest> revealInTree;
     /**
      * 直近でフォーカスした動的ダイアグラムタブの由来ノード。
      * ユーティリティタブ (Functions / Members 等) を選択中でも「いま見ていた図の題材」を
@@ -123,6 +125,11 @@ public final class DiagramTabPane {
      */
     public void setOnTabFocused(Consumer<FocusedTab> listener) {
         this.onTabFocused = listener;
+    }
+
+    /** タブ右クリック「Reveal in Explorer」でツリーへ遷移するコールバックを設定する。 */
+    public void setRevealInTree(Consumer<TreeNodeOpenRequest> listener) {
+        this.revealInTree = listener;
     }
 
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
@@ -385,10 +392,21 @@ public final class DiagramTabPane {
         others.addActionListener(a -> closeOtherTabs(key));
         others.setEnabled(openTabs.size() > 1);
         menu.add(others);
+        JMenuItem right = new JMenuItem(Messages.get("tab.menu.closeRight"));
+        right.addActionListener(a -> closeTabsToRight(key));
+        right.setEnabled(hasTabsToRight(key));
+        menu.add(right);
         JMenuItem all = new JMenuItem(Messages.get("tab.menu.closeAll"));
         all.addActionListener(a -> closeAllTabs());
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
+        if (tab.treeSync != null && revealInTree != null) {
+            menu.addSeparator();
+            JMenuItem reveal = new JMenuItem(Messages.get("tab.menu.revealInExplorer"));
+            reveal.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SIDEBAR));
+            reveal.addActionListener(a -> revealInTree.accept(tab.treeSync));
+            menu.add(reveal);
+        }
         menu.show(e.getComponent(), e.getX(), e.getY());
     }
 
@@ -414,9 +432,47 @@ public final class DiagramTabPane {
         closeOtherTabs(activeKey);
     }
 
+    /** アクティブタブの右にある図タブをすべて閉じる (メニュー用)。 */
+    void closeTabsToRightOfActive() {
+        java.awt.Component sel = tabs.getSelectedComponent();
+        String activeKey = null;
+        for (Map.Entry<String, DiagramTab> en : openTabs.entrySet()) {
+            if (en.getValue() == sel) {
+                activeKey = en.getKey();
+                break;
+            }
+        }
+        if (activeKey != null) {
+            closeTabsToRight(activeKey);
+        }
+    }
+
     /** すべてのダイアグラムタブを閉じる (ユーティリティタブは残す)。 */
     void closeAllTabs() {
         closeOtherTabs(null);
+    }
+
+    /** 指定タブより右にある図タブをすべて閉じる。 */
+    void closeTabsToRight(String pivotKey) {
+        java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
+        int idx = keys.indexOf(pivotKey);
+        if (idx < 0) {
+            return;
+        }
+        for (int i = keys.size() - 1; i > idx; i--) {
+            String k = keys.get(i);
+            DiagramTab t = openTabs.get(k);
+            if (t != null) {
+                closeTab(t, k);
+            }
+        }
+    }
+
+    /** 指定タブの右側に図タブがあるか。 */
+    private boolean hasTabsToRight(String key) {
+        java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
+        int idx = keys.indexOf(key);
+        return idx >= 0 && idx < keys.size() - 1;
     }
 
     /** アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用 (汎用タブには無作用)。 */

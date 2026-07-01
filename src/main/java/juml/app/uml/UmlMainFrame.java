@@ -142,6 +142,7 @@ public class UmlMainFrame extends JFrame {
                 addNoteButton.setEnabled(tabPane.hasActiveTab());
             }
         });
+        tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -259,6 +260,7 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
+        mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();
         mcb.closeAllTabs = () -> tabPane.closeAllTabs();
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
