@@ -222,9 +222,20 @@ public class DiagramControllerTest {
         return classes;
     }
 
+    /**
+     * treePanel にデモクラスを populate して内部 JTree を返す。
+     *
+     * <p>populate() は Swing コンポーネントを変更するため EDT 上で実行する。
+     * tree フィールドの読み取りは populate() 完了後に行えば EDT 外でも安全
+     * (参照の読み取りのみ)。</p>
+     */
     private JTree populatedTree() throws Exception {
         List<JavaClassInfo> classes = demoClasses();
-        treePanel.populate(new AndroidProjectAnalysis(), classes, "Demo", null);
+        // populate() は EDT 上で実行しなければならない (Swing のツリーモデル更新)
+        GuiActionRunner.execute(() -> {
+            treePanel.populate(new AndroidProjectAnalysis(), classes, "Demo", null);
+            return null;
+        });
         Field f = ProjectTreePanel.class.getDeclaredField("tree");
         f.setAccessible(true);
         return (JTree) f.get(treePanel);
@@ -243,8 +254,10 @@ public class DiagramControllerTest {
     public void syncToFocusedTab_class_highlightsClassNode() throws Exception {
         JTree tree = populatedTree();
         JavaClassInfo foo = find(demoClasses(), "Foo");
-        controller.syncToFocusedTab(TreeNodeOpenRequest.classNode(foo));
-        TreePath sel = tree.getSelectionPath();
+        // syncToFocusedTab() は内部でツリー選択状態を変更するため EDT 上で実行する
+        GuiActionRunner.execute(() -> controller.syncToFocusedTab(TreeNodeOpenRequest.classNode(foo)));
+        // getSelectionPath() は Swing コンポーネントの読み取りのため EDT 上で実行する
+        TreePath sel = GuiActionRunner.execute(() -> tree.getSelectionPath());
         assertNotNull("class tab should highlight a tree node", sel);
         assertTrue("expected Foo class node, got " + sel.getLastPathComponent(),
                 String.valueOf(sel.getLastPathComponent()).contains("Foo"));
@@ -256,9 +269,9 @@ public class DiagramControllerTest {
         List<JavaClassInfo> cs = demoClasses();
         JavaClassInfo foo = find(cs, "Foo");
         JavaMethodInfo bar = foo.getMethods().get(0);
-        controller.syncToFocusedTab(
-                TreeNodeOpenRequest.method(foo, bar, DiagramKind.SEQUENCE));
-        TreePath sel = tree.getSelectionPath();
+        GuiActionRunner.execute(() -> controller.syncToFocusedTab(
+                TreeNodeOpenRequest.method(foo, bar, DiagramKind.SEQUENCE)));
+        TreePath sel = GuiActionRunner.execute(() -> tree.getSelectionPath());
         assertNotNull("method tab should highlight a tree node", sel);
         assertTrue("expected bar method node, got " + sel.getLastPathComponent(),
                 String.valueOf(sel.getLastPathComponent()).contains("bar"));
@@ -267,8 +280,9 @@ public class DiagramControllerTest {
     @Test
     public void syncToFocusedTab_package_highlightsPackageNode() throws Exception {
         JTree tree = populatedTree();
-        controller.syncToFocusedTab(TreeNodeOpenRequest.pkg("com.demo"));
-        TreePath sel = tree.getSelectionPath();
+        GuiActionRunner.execute(() -> controller.syncToFocusedTab(
+                TreeNodeOpenRequest.pkg("com.demo")));
+        TreePath sel = GuiActionRunner.execute(() -> tree.getSelectionPath());
         assertNotNull("package tab should highlight a tree node", sel);
         assertTrue("expected com.demo package node, got " + sel.getLastPathComponent(),
                 String.valueOf(sel.getLastPathComponent()).contains("com.demo"));
@@ -277,8 +291,9 @@ public class DiagramControllerTest {
     @Test
     public void syncToFocusedTab_null_isNoOp() throws Exception {
         JTree tree = populatedTree();
-        controller.syncToFocusedTab(null);
-        assertNull(tree.getSelectionPath());
+        GuiActionRunner.execute(() -> controller.syncToFocusedTab(null));
+        TreePath sel = GuiActionRunner.execute(() -> tree.getSelectionPath());
+        assertNull(sel);
     }
 
     @Test
@@ -286,7 +301,8 @@ public class DiagramControllerTest {
         populatedTree();
         int before = refreshCount.get();
         JavaClassInfo foo = find(demoClasses(), "Foo");
-        controller.syncToFocusedTab(TreeNodeOpenRequest.classNode(foo));
+        GuiActionRunner.execute(() -> controller.syncToFocusedTab(
+                TreeNodeOpenRequest.classNode(foo)));
         // ツリーハイライトは suppressNotify なので Home の再描画を誘発しない
         assertEquals(before, refreshCount.get());
     }

@@ -316,6 +316,102 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (f) Round 1 新挙動: dynamicTabCount / closedTabHistorySize / hasTabsToRightOfActive
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void dynamicTabCount_initiallyZero() {
+        int count = GuiActionRunner.execute(() -> pane.dynamicTabCount());
+        assertEquals("初期状態では動的タブは 0 枚のはず", 0, count);
+    }
+
+    @Test
+    public void dynamicTabCount_afterOpeningTabs_returnsCorrectCount() {
+        juml.core.formats.uml.JavaClassInfo c1 = classInfo("com.example.A");
+        juml.core.formats.uml.JavaClassInfo c2 = classInfo("com.example.B");
+
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(TreeNodeOpenRequest.classNode(c1));
+            pane.addOrFocusTab(TreeNodeOpenRequest.classNode(c2));
+        });
+
+        int count = GuiActionRunner.execute(() -> pane.dynamicTabCount());
+        assertEquals("2 枚タブを開いたあとは dynamicTabCount() = 2 のはず", 2, count);
+    }
+
+    @Test
+    public void closedTabHistorySize_initiallyZero() {
+        int size = GuiActionRunner.execute(() -> pane.closedTabHistorySize());
+        assertEquals("初期状態では閉じタブ履歴は 0 件のはず", 0, size);
+    }
+
+    @Test
+    public void closedTabHistorySize_afterClosingTab_incrementsByOne() {
+        juml.core.formats.uml.JavaClassInfo ci = classInfo("com.example.Hist");
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(TreeNodeOpenRequest.classNode(ci)));
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+
+        int size = GuiActionRunner.execute(() -> pane.closedTabHistorySize());
+        assertEquals("タブを 1 枚閉じたあとは closedTabHistorySize() = 1 のはず", 1, size);
+    }
+
+    @Test
+    public void hasTabsToRightOfActive_falseWhenNoTabFocused() {
+        // 動的タブ未選択 (ユーティリティタブが選択中) → false
+        boolean result = GuiActionRunner.execute(() -> pane.hasTabsToRightOfActive());
+        assertFalse("動的タブ未選択のとき hasTabsToRightOfActive() は false のはず", result);
+    }
+
+    @Test
+    public void hasTabsToRightOfActive_falseWhenSingleDynamicTab() {
+        juml.core.formats.uml.JavaClassInfo ci = classInfo("com.example.Solo");
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(TreeNodeOpenRequest.classNode(ci)));
+
+        // 1 枚しかないので右隣は存在しない
+        boolean result = GuiActionRunner.execute(() -> pane.hasTabsToRightOfActive());
+        assertFalse("動的タブが 1 枚 (右端) のとき hasTabsToRightOfActive() は false のはず",
+                result);
+    }
+
+    @Test
+    public void hasTabsToRightOfActive_trueWhenFirstOfTwoDynamicTabsActive() {
+        juml.core.formats.uml.JavaClassInfo c1 = classInfo("com.example.Left");
+        juml.core.formats.uml.JavaClassInfo c2 = classInfo("com.example.Right");
+
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(TreeNodeOpenRequest.classNode(c1)); // 左 (最初)
+            pane.addOrFocusTab(TreeNodeOpenRequest.classNode(c2)); // 右 (後から)
+            // 左 (インデックス 0) をアクティブに戻す
+            tabs.setSelectedIndex(0);
+        });
+
+        boolean result = GuiActionRunner.execute(() -> pane.hasTabsToRightOfActive());
+        assertTrue("左端タブが選択中のとき hasTabsToRightOfActive() は true のはず", result);
+    }
+
+    // -------------------------------------------------------------------------
+    // (g) closeActiveTab(): ユーティリティタブ選択中はタブを閉じない
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void closeActiveTab_utilityTabSelected_doesNotReduceTabCount() {
+        // 動的タブを 1 枚追加してからユーティリティタブへ移動
+        juml.core.formats.uml.JavaClassInfo ci = classInfo("com.example.Util");
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(TreeNodeOpenRequest.classNode(ci));
+            // ユーティリティタブ (末尾) を選択する
+            tabs.setSelectedIndex(tabs.getTabCount() - 1);
+        });
+
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+        int after = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        assertEquals("ユーティリティタブ選択中の closeActiveTab はタブ数を変えてはならない",
+                before, after);
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
 
