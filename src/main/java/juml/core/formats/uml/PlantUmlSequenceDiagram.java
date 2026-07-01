@@ -196,8 +196,12 @@ public final class PlantUmlSequenceDiagram {
         if (o.title != null && !o.title.isEmpty()) {
             out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         } else {
-            out.append("title ").append(cls.getSimpleName()).append('.')
-                    .append(method.getName()).append('\n');
+            // クラス名・メソッド名に < > & が含まれる場合（<init> 等）を HTML エンティティ化する
+            out.append("title ")
+               .append(PlantUmlCommentFormatter.escapeHtml(cls.getSimpleName()))
+               .append('.')
+               .append(PlantUmlCommentFormatter.escapeHtml(method.getName()))
+               .append('\n');
         }
         // NOTE モードでコメント色が指定されていれば、note の枠線・文字色を skinparam で設定
         if (o.showComments
@@ -356,7 +360,9 @@ public final class PlantUmlSequenceDiagram {
                 // タイトル等のオプション付き @startuml (例: @startuml MyDiagram) にも対応するため
                 // 行末まで含む正規表現で除去する
                 single = single.replaceFirst("(?m)^@startuml.*\n", "");
-                single = single.replaceFirst("(?m)@enduml\\s*$", "");
+                // (?m) を使わずデフォルトモードで $ を文字列末尾扱いにすることで
+                // @enduml 直後の \n も \\s* に含めて除去できる（末尾改行が残らない）
+                single = single.replaceFirst("@enduml\\s*$", "");
                 if (out.length() == 0) {
                     out.append("@startuml\n");
                 }

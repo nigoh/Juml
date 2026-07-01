@@ -175,11 +175,7 @@ public final class ClassIndex {
             l.onError(source.getName(), -1, "detail parse failed: " + ex.getMessage());
             return header;
         }
-        JavaClassInfo found = null;
         for (JavaClassInfo c : full) {
-            if (qn.equals(c.getQualifiedName())) {
-                found = c;
-            }
             // 同じファイル内の全クラスをキャッシュ。
             // headers は LinkedHashMap (非スレッドセーフ) で put() は synchronized のため、
             // 並行する Stage B 昇格と put() の競合を避けるべく get() も同じロックで保護する。
@@ -193,8 +189,13 @@ public final class ClassIndex {
                 }
             }
             c.setDetailed(true);
-            detailedCache.put(c.getQualifiedName(), c);
+            // TOCTOU 二重パース対策: 別スレッドが先に登録済みの場合は上書きしない。
+            // ConcurrentHashMap の putIfAbsent は computeIfAbsent と異なり
+            // 同一マップへの再入がないため安全に使用できる。
+            detailedCache.putIfAbsent(c.getQualifiedName(), c);
         }
+        // 先に登録した勝者エントリ（自スレッドまたは先行スレッド）を返す
+        JavaClassInfo found = detailedCache.get(qn);
         return found != null ? found : header;
     }
 
