@@ -12,6 +12,7 @@ import org.junit.Test;
 import javax.swing.JFrame;
 import javax.swing.JSplitPane;
 import java.awt.GraphicsEnvironment;
+import java.awt.Toolkit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -196,6 +197,11 @@ public class WindowStateManagerTest {
 
     @Test
     public void save_doesNotSaveSizeWhenMaximized() {
+        // ウィンドウマネージャが無い環境 (Xvfb 単体等) では MAXIMIZED_BOTH が
+        // 一切反映されないため、この環境依存挙動を検証できない。
+        Assume.assumeTrue(
+                "ウィンドウマネージャが MAXIMIZED_BOTH をサポートしない環境ではスキップ",
+                Toolkit.getDefaultToolkit().isFrameStateSupported(JFrame.MAXIMIZED_BOTH));
         // 最大化時は getWidth/Height が画面全体になるため、通常時の値を上書きしない。
         Setting setting = new Setting();
         setting.setWindowWidth(800);
@@ -231,6 +237,9 @@ public class WindowStateManagerTest {
 
     @Test
     public void restore_setsMaximizedStateWhenFlagIsTrue() {
+        Assume.assumeTrue(
+                "ウィンドウマネージャが MAXIMIZED_BOTH をサポートしない環境ではスキップ",
+                Toolkit.getDefaultToolkit().isFrameStateSupported(JFrame.MAXIMIZED_BOTH));
         Setting setting = new Setting();
         setting.setWindowX(0);
         setting.setWindowY(0);
