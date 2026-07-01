@@ -189,11 +189,14 @@ public class UmlMainFrameTabLinkageIT {
 
         Object cache = field(frame, "cache");
         Method isLoaded = cache.getClass().getMethod("isLoaded");
-        long deadline = System.currentTimeMillis() + 60_000;
-        while (System.currentTimeMillis() < deadline
-                && !(Boolean) isLoaded.invoke(cache)) {
-            Thread.sleep(150);
-        }
+        // 条件付きポーリングで待つ: 固定 Thread.sleep(150) 生ループから await ヘルパーへ統一。
+        await(60_000, () -> {
+            try {
+                return (Boolean) isLoaded.invoke(cache);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
         assertTrue("project should load", (Boolean) isLoaded.invoke(cache));
 
         Object controller = field(frame, "controller");
@@ -256,10 +259,14 @@ public class UmlMainFrameTabLinkageIT {
 
         Object cache = field(frame, "cache");
         Method isLoaded = cache.getClass().getMethod("isLoaded");
-        long deadline = System.currentTimeMillis() + 60_000;
-        while (System.currentTimeMillis() < deadline && !(Boolean) isLoaded.invoke(cache)) {
-            Thread.sleep(150);
-        }
+        // 条件付きポーリングで待つ: 固定 Thread.sleep(150) 生ループから await ヘルパーへ統一。
+        await(60_000, () -> {
+            try {
+                return (Boolean) isLoaded.invoke(cache);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
         assertTrue((Boolean) isLoaded.invoke(cache));
 
         Object controller = field(frame, "controller");

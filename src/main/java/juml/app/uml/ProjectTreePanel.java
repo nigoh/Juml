@@ -122,6 +122,14 @@ public class ProjectTreePanel extends JPanel {
                 }
             }
         });
+        tree.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER) {
+                    maybeOpenSelectedInNewTab();
+                }
+            }
+        });
         tree.setCellRenderer(new ProjectTreeCellRenderer());
         // セルレンダラが返す FQN tooltip を表示できるようツリーを登録する。
         javax.swing.ToolTipManager.sharedInstance().registerComponent(tree);
@@ -623,11 +631,17 @@ public class ProjectTreePanel extends JPanel {
      * 中クリックはツリーの選択を変えない (Web ブラウザの挙動に合わせる)。
      */
     private void maybeOpenInNewTab(MouseEvent e) {
-        if (onOpenInNewTab == null) {
-            return;
-        }
         TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-        if (path == null) {
+        openInNewTabForPath(path);
+    }
+
+    /** キーボードのみの操作 (Enter キー) で選択中ノードを新しいタブで開く。 */
+    private void maybeOpenSelectedInNewTab() {
+        openInNewTabForPath(tree.getSelectionPath());
+    }
+
+    private void openInNewTabForPath(TreePath path) {
+        if (onOpenInNewTab == null || path == null) {
             return;
         }
         Object last = path.getLastPathComponent();

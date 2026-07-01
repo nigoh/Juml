@@ -49,7 +49,8 @@ public final class PlantUmlPackageDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            // title 行に <> & が含まれると PlantUML が HTML タグとして誤認するためエスケープする。
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
 
         // パッケージノード (rectangle) を出力
@@ -90,6 +91,20 @@ public final class PlantUmlPackageDiagram {
                 String target = PlantUmlClassRelations.pickUsageTarget(
                         f.getType(), knownIdx);
                 addRef(edges, srcPkg, target, ctx);
+            }
+            // メソッドの戻り値型・引数型も依存エッジの対象にする。
+            // フィールドを持たずメソッドシグネチャだけで型を使うクラスの参照を取りこぼさないようにする。
+            for (JavaMethodInfo m : c.getMethods()) {
+                if (!m.isConstructor()) {
+                    String retTarget = PlantUmlClassRelations.pickUsageTarget(
+                            m.getReturnType(), knownIdx);
+                    addRef(edges, srcPkg, retTarget, ctx);
+                }
+                for (String paramType : m.getParameterTypes()) {
+                    String paramTarget = PlantUmlClassRelations.pickUsageTarget(
+                            paramType, knownIdx);
+                    addRef(edges, srcPkg, paramTarget, ctx);
+                }
             }
         }
         emitDependencyEdges(out, edges);

@@ -11,7 +11,9 @@ import com.microsoft.playwright.options.ScreenshotType;
 import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.JavaStructureExtractor;
 import juml.core.formats.uml.PlantUmlRenderer;
@@ -28,6 +30,9 @@ import java.util.List;
 import static org.junit.Assert.assertTrue;
 
 public class CompoundButtonSequenceScreenshotIT {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
 
     private static Playwright playwright;
     private static Browser browser;
@@ -72,7 +77,7 @@ public class CompoundButtonSequenceScreenshotIT {
         String svg = bos.toString(StandardCharsets.UTF_8.name());
 
         // HTML ラップ
-        File html = File.createTempFile("compound_seq_", ".html");
+        File html = tmp.newFile("compound_seq_.html");
         try (Writer w = new OutputStreamWriter(new FileOutputStream(html), StandardCharsets.UTF_8)) {
             w.write("<!DOCTYPE html><html><head><meta charset='utf-8'>"
                     + "<title>CompoundButton Sequence</title>"

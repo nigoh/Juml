@@ -103,6 +103,31 @@ public final class MenuBarBuilder {
         public Runnable openLogViewer;
     }
 
+    /**
+     * 図種に依存する Diagram メニュー項目 (図種が合っていないと空振りするため、
+     * アクティブな図種に応じて有効/無効を切り替える対象)。
+     */
+    public static final class ContextualMenuItems {
+        /** SEQUENCE 図のときだけ意味を持つメニュー項目 (起点選択・参加者フィルタ)。 */
+        public final java.util.List<JMenuItem> sequenceOnlyItems;
+        /** ACTIVITY 図のときだけ意味を持つメニュー項目 (起点選択)。 */
+        public final java.util.List<JMenuItem> activityOnlyItems;
+        /** LAYOUT 系図のときだけ意味を持つメニュー項目 (レイアウトファイル選択)。 */
+        public final java.util.List<JMenuItem> layoutOnlyItems;
+        /** NAVIGATION 図のときだけ意味を持つメニュー項目 (ナビゲーショングラフ選択)。 */
+        public final java.util.List<JMenuItem> navigationOnlyItems;
+
+        ContextualMenuItems(java.util.List<JMenuItem> sequenceOnlyItems,
+                             java.util.List<JMenuItem> activityOnlyItems,
+                             java.util.List<JMenuItem> layoutOnlyItems,
+                             java.util.List<JMenuItem> navigationOnlyItems) {
+            this.sequenceOnlyItems = sequenceOnlyItems;
+            this.activityOnlyItems = activityOnlyItems;
+            this.layoutOnlyItems = layoutOnlyItems;
+            this.navigationOnlyItems = navigationOnlyItems;
+        }
+    }
+
     /** {@link #build()} の戻り値。 */
     public static final class Result {
         public final JMenuBar menuBar;
@@ -113,6 +138,7 @@ public final class MenuBarBuilder {
         public final ButtonGroup themeGroup;
         /** プロジェクト未ロード時に無効化するエクスポート系メニュー項目。 */
         public final java.util.List<JMenuItem> exportItems;
+        public final ContextualMenuItems contextualItems;
 
         Result(JMenuBar menuBar,
                JMenuItem cancelLoadingItem,
@@ -120,7 +146,8 @@ public final class MenuBarBuilder {
                Map<String, JRadioButtonMenuItem> themeItems,
                ButtonGroup diagramGroup,
                ButtonGroup themeGroup,
-               java.util.List<JMenuItem> exportItems) {
+               java.util.List<JMenuItem> exportItems,
+               ContextualMenuItems contextualItems) {
             this.menuBar = menuBar;
             this.cancelLoadingItem = cancelLoadingItem;
             this.diagramItems = diagramItems;
@@ -128,6 +155,7 @@ public final class MenuBarBuilder {
             this.diagramGroup = diagramGroup;
             this.themeGroup = themeGroup;
             this.exportItems = exportItems;
+            this.contextualItems = contextualItems;
         }
     }
 
@@ -138,6 +166,10 @@ public final class MenuBarBuilder {
     private final JOptionPane parentForDialogs;
     private final java.awt.Frame parentFrame;
     private final java.util.List<JMenuItem> exportItems = new java.util.ArrayList<>();
+    private final java.util.List<JMenuItem> sequenceOnlyItems = new java.util.ArrayList<>();
+    private final java.util.List<JMenuItem> activityOnlyItems = new java.util.ArrayList<>();
+    private final java.util.List<JMenuItem> layoutOnlyItems = new java.util.ArrayList<>();
+    private final java.util.List<JMenuItem> navigationOnlyItems = new java.util.ArrayList<>();
 
     public MenuBarBuilder(DiagramKind initialKind, int menuMask, Callbacks cb,
                           java.awt.Frame parentFrame) {
@@ -178,9 +210,15 @@ public final class MenuBarBuilder {
         bar.add(buildSettingsMenu());
         bar.add(buildHelpMenu());
 
+        ContextualMenuItems contextualItems = new ContextualMenuItems(
+                java.util.Collections.unmodifiableList(sequenceOnlyItems),
+                java.util.Collections.unmodifiableList(activityOnlyItems),
+                java.util.Collections.unmodifiableList(layoutOnlyItems),
+                java.util.Collections.unmodifiableList(navigationOnlyItems));
         return new Result(bar, cancelLoadingItem, diagramItems, themeItems,
                 diagramGroup, themeGroup,
-                java.util.Collections.unmodifiableList(exportItems));
+                java.util.Collections.unmodifiableList(exportItems),
+                contextualItems);
     }
 
     private JMenu buildFileMenu(JMenuItem cancelLoadingItem) {
@@ -302,10 +340,16 @@ public final class MenuBarBuilder {
                                    ButtonGroup diagramGroup) {
         JMenu m = new JMenu(Messages.get("menubar.diagram"));
         m.setMnemonic(KeyEvent.VK_D);
+        java.util.Set<Integer> usedMnemonics = new java.util.HashSet<>();
         for (DiagramKind k : DiagramKind.values()) {
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(k.getDisplayName());
             if (k == initialKind) {
                 item.setSelected(true);
+            }
+            int mnemonic = firstFreeMnemonic(k.getDisplayName(), usedMnemonics);
+            if (mnemonic != KeyEvent.VK_UNDEFINED) {
+                item.setMnemonic(mnemonic);
+                usedMnemonics.add(mnemonic);
             }
             // 最頻使の図種にクイック切替アクセラレータを付与 (Preset の Ctrl+1..3 と衝突しない
             // Ctrl+Shift+1..4 を使う)。Sequence/Activity は従来どおり起点メソッド選択へ誘導する。
@@ -345,24 +389,35 @@ public final class MenuBarBuilder {
         m.add(search);
         JMenuItem pickEntry = new JMenuItem(Messages.get("menubar.diagram.chooseSequenceEntry"));
         pickEntry.addActionListener(e -> cb.pickSequenceEntry.run());
+        pickEntry.setEnabled(false);
         m.add(pickEntry);
         JMenuItem filterParticipants =
                 new JMenuItem(Messages.get("menubar.diagram.filterParticipants"));
         filterParticipants.addActionListener(e -> cb.openParticipantFilterDialog.run());
+        filterParticipants.setEnabled(false);
         m.add(filterParticipants);
         JMenuItem clearParticipantFilter =
                 new JMenuItem(Messages.get("menubar.diagram.clearParticipantFilter"));
         clearParticipantFilter.addActionListener(e -> cb.clearSequenceParticipants.run());
+        clearParticipantFilter.setEnabled(false);
         m.add(clearParticipantFilter);
+        sequenceOnlyItems.addAll(java.util.List.of(pickEntry, filterParticipants,
+                clearParticipantFilter));
         JMenuItem pickActivity = new JMenuItem(Messages.get("menubar.diagram.chooseActivity"));
         pickActivity.addActionListener(e -> cb.pickActivityEntry.run());
+        pickActivity.setEnabled(false);
         m.add(pickActivity);
+        activityOnlyItems.add(pickActivity);
         JMenuItem pickLayout = new JMenuItem(Messages.get("menubar.diagram.chooseLayout"));
         pickLayout.addActionListener(e -> cb.pickLayoutFile.run());
+        pickLayout.setEnabled(false);
         m.add(pickLayout);
+        layoutOnlyItems.add(pickLayout);
         JMenuItem pickNavigation = new JMenuItem(Messages.get("menubar.diagram.chooseNavigation"));
         pickNavigation.addActionListener(e -> cb.pickNavigationGraph.run());
+        pickNavigation.setEnabled(false);
         m.add(pickNavigation);
+        navigationOnlyItems.add(pickNavigation);
         m.addSeparator();
         m.add(buildPresetSubMenu());
         JMenuItem scope = new JMenuItem(Messages.get("menubar.diagram.scope"));
@@ -372,6 +427,25 @@ public final class MenuBarBuilder {
         clearScope.addActionListener(e -> cb.clearScope.run());
         m.add(clearScope);
         return m;
+    }
+
+    /**
+     * {@code label} 内の文字から、まだ {@code used} に含まれない先頭の英字を
+     * ニーモニックキーコードとして返す (Diagram メニュー内でのみ一意であればよい)。
+     * 割り当て可能な文字が無ければ {@code KeyEvent.VK_UNDEFINED}。
+     */
+    private static int firstFreeMnemonic(String label, java.util.Set<Integer> used) {
+        for (int i = 0; i < label.length(); i++) {
+            char c = Character.toUpperCase(label.charAt(i));
+            if (c < 'A' || c > 'Z') {
+                continue;
+            }
+            int keyCode = KeyEvent.VK_A + (c - 'A');
+            if (!used.contains(keyCode)) {
+                return keyCode;
+            }
+        }
+        return KeyEvent.VK_UNDEFINED;
     }
 
     /** 図種クイック切替アクセラレータのキーコード (未割当ては VK_UNDEFINED)。 */
@@ -511,11 +585,17 @@ public final class MenuBarBuilder {
         JMenu m = new JMenu(Messages.get("menubar.style"));
         m.setMnemonic(KeyEvent.VK_T);
         DiagramStyle current = PlantUmlRenderer.getStyle();
+        java.util.Set<Integer> usedMnemonics = new java.util.HashSet<>();
         for (String theme : StyleSettingsDialog.THEMES) {
             String label = theme.isEmpty() ? Messages.get("menubar.style.none") : theme;
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(label);
             if (theme.equals(current.getTheme() == null ? "" : current.getTheme())) {
                 item.setSelected(true);
+            }
+            int mnemonic = firstFreeMnemonic(label, usedMnemonics);
+            if (mnemonic != KeyEvent.VK_UNDEFINED) {
+                item.setMnemonic(mnemonic);
+                usedMnemonics.add(mnemonic);
             }
             item.addActionListener(e -> cb.applyTheme.accept(theme));
             themeGroup.add(item);

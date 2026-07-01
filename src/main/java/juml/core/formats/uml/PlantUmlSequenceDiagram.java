@@ -138,6 +138,27 @@ public final class PlantUmlSequenceDiagram {
         public Set<String> hiddenParticipants;
     }
 
+    /**
+     * クラス・メソッドオブジェクトを直接指定して 1 本のシーケンス図を生成する。
+     *
+     * <p>オーバーロードが複数ある場合など、{@link JavaMethodInfo} オブジェクト自体を
+     * 起点として渡したいときに使う。{@link #generate(List, String, String, Options)} の
+     * 呼び出し側が既に目的のメソッドを特定している場合に名前のみ検索を回避できる。</p>
+     */
+    public static String generate(List<JavaClassInfo> classes,
+                                  JavaClassInfo cls,
+                                  JavaMethodInfo method,
+                                  Options opts) {
+        if (classes == null) {
+            throw new IllegalArgumentException("classes is null");
+        }
+        if (cls == null || method == null) {
+            throw new IllegalArgumentException("cls/method is null");
+        }
+        Options o = opts != null ? opts : new Options();
+        return generateBody(classes, cls, method, o);
+    }
+
     /** クラス・メソッドを指定して 1 本のシーケンス図を生成する。 */
     public static String generate(List<JavaClassInfo> classes,
                                   String entryClass,
@@ -158,7 +179,18 @@ public final class PlantUmlSequenceDiagram {
         if (method == null) {
             return emptyDiagram(o, "Method not found: " + entryClass + "." + entryMethod);
         }
+        return generateBody(classes, cls, method, o);
+    }
 
+    /**
+     * {@link JavaClassInfo} と {@link JavaMethodInfo} を直接受け取り、シーケンス図本体を生成する。
+     * {@link #generate(List, String, String, Options)} と
+     * {@link #generate(List, JavaClassInfo, JavaMethodInfo, Options)} の共通実装。
+     */
+    private static String generateBody(List<JavaClassInfo> classes,
+                                       JavaClassInfo cls,
+                                       JavaMethodInfo method,
+                                       Options o) {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
@@ -318,10 +350,13 @@ public final class PlantUmlSequenceDiagram {
                     out.append("newpage\n");
                 }
                 first = false;
-                String single = generate(classes, c.getSimpleName(), m.getName(), opts);
+                // JavaMethodInfo オブジェクトを直接渡してオーバーロード解決漏れを防ぐ
+                String single = generate(classes, c, m, opts);
                 // @startuml/@enduml を 1 ファイルに統合する
-                single = single.replaceFirst("^@startuml\\s*", "");
-                single = single.replaceFirst("@enduml\\s*$", "");
+                // タイトル等のオプション付き @startuml (例: @startuml MyDiagram) にも対応するため
+                // 行末まで含む正規表現で除去する
+                single = single.replaceFirst("(?m)^@startuml.*\n", "");
+                single = single.replaceFirst("(?m)@enduml\\s*$", "");
                 if (out.length() == 0) {
                     out.append("@startuml\n");
                 }
@@ -412,8 +447,30 @@ public final class PlantUmlSequenceDiagram {
                 for (JavaMethodInfo inline : ((JavaMethodInfo.LocalVar) s).getInlineMethods()) {
                     walkStatements(inline.getStatements(), currentClass, depth, indent, r);
                 }
+            } else if (s instanceof JavaMethodInfo.InlineComment) {
+                // インラインコメント (メソッド本体内の // / /* */ コメント) を note として出力する。
+                // AT_CALL_SITE モードで呼び出し順序内にコメントの位置を保持できるようにする。
+                emitInlineComment((JavaMethodInfo.InlineComment) s, currentClass.getSimpleName(), body, indent, r.opts);
             }
         }
+    }
+
+    /** インラインコメントを note over として emit する。 */
+    private static void emitInlineComment(JavaMethodInfo.InlineComment comment,
+                                           String participant,
+                                           StringBuilder body,
+                                           String indent,
+                                           Options opts) {
+        String text = comment.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        String oneLine = PlantUmlCommentFormatter.escapeLabel(text, opts.commentMaxLength);
+        if (oneLine.isEmpty()) {
+            return;
+        }
+        body.append(indent).append("note over ").append(quote(participant))
+                .append(" : ").append(oneLine).append('\n');
     }
 
     private static void emitReturnStatement(JavaMethodInfo.Return r,

@@ -232,6 +232,15 @@ public final class JavaLexer {
         while (pos < len) {
             char c = src.charAt(pos);
             if (Character.isLetterOrDigit(c) || c == '.' || c == '_') {
+                // 指数表記の e/E の直後に符号 (+/-) が続く場合は数値トークンに取り込む
+                // 例: 1.5e-10 → [NUMBER:1.5e-10]、3.0E+2 → [NUMBER:3.0E+2]
+                if ((c == 'e' || c == 'E') && pos + 1 < len) {
+                    char next = src.charAt(pos + 1);
+                    if (next == '+' || next == '-') {
+                        pos += 2; // e/E と符号の両方を取り込む
+                        continue;
+                    }
+                }
                 pos++;
             } else {
                 break;
