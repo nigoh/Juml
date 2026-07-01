@@ -585,11 +585,17 @@ public final class MenuBarBuilder {
         JMenu m = new JMenu(Messages.get("menubar.style"));
         m.setMnemonic(KeyEvent.VK_T);
         DiagramStyle current = PlantUmlRenderer.getStyle();
+        java.util.Set<Integer> usedMnemonics = new java.util.HashSet<>();
         for (String theme : StyleSettingsDialog.THEMES) {
             String label = theme.isEmpty() ? Messages.get("menubar.style.none") : theme;
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(label);
             if (theme.equals(current.getTheme() == null ? "" : current.getTheme())) {
                 item.setSelected(true);
+            }
+            int mnemonic = firstFreeMnemonic(label, usedMnemonics);
+            if (mnemonic != KeyEvent.VK_UNDEFINED) {
+                item.setMnemonic(mnemonic);
+                usedMnemonics.add(mnemonic);
             }
             item.addActionListener(e -> cb.applyTheme.accept(theme));
             themeGroup.add(item);

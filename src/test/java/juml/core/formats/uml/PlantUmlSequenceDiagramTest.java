@@ -21,8 +21,9 @@ public class PlantUmlSequenceDiagramTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testNullEntry() {
+        // String オーバーロードを明示して呼び出す (null リテラルによるオーバーロード曖昧性を回避)
         PlantUmlSequenceDiagram.generate(
-                JavaStructureExtractor.extract("class A {}"), null, null, null);
+                JavaStructureExtractor.extract("class A {}"), (String) null, (String) null, null);
     }
 
     @Test
@@ -833,32 +834,6 @@ public class PlantUmlSequenceDiagramTest {
                 puml.contains("note over") && puml.contains("処理開始"));
     }
 
-    @Test
-    public void testWalkStatementsInlineCommentSpecialCharsEscaped() {
-        // インラインコメントの < > & がエスケープされて note として安全に出力されること。
-        List<JavaMethodInfo.Statement> stmts = new java.util.ArrayList<>();
-        stmts.add(new JavaMethodInfo.InlineComment("型: List<String> & Map<K,V>"));
-
-        JavaClassInfo cls = new JavaClassInfo();
-        cls.setPackageName("pkg");
-        cls.setSimpleName("Svc");
-        cls.setKind(JavaClassInfo.Kind.CLASS);
-        cls.setDetailed(true);
-        JavaMethodInfo m = new JavaMethodInfo();
-        m.setName("run");
-        m.setReturnType("void");
-        m.getStatements().addAll(stmts);
-        cls.getMethods().add(m);
-
-        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
-        opts.includeLegend = false;
-        String puml = PlantUmlSequenceDiagram.generate(
-                java.util.Collections.singletonList(cls), "Svc", "run", opts);
-        // エスケープ済みテキストが note に含まれること
-        assertTrue("angle brackets must be escaped: " + puml,
-                puml.contains("&lt;String&gt;"));
-        // 生の < が PlantUML テキストに残っていないこと
-        assertFalse("raw < must not appear in note: " + puml,
-                puml.contains("List<String>"));
-    }
+    // 追加の InlineComment 出力検証・オーバーロード解決テストは
+    // PlantUmlSequenceDiagramInlineCommentAndOverloadTest に分離 (FileLength 対策)。
 }

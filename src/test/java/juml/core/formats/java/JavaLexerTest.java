@@ -54,6 +54,32 @@ public class JavaLexerTest {
     }
 
     @Test
+    public void testScientificNotationWithNegativeExponent() {
+        // 1.5e-10 は 1 トークンとして読み取られるべき ([NUMBER:1.5e][OP:-][NUMBER:10] に
+        // 分割されないことを確認する)
+        List<JavaToken> toks = tokenize("1.5e-10");
+        assertEquals("1.5e-10 は NUMBER トークン 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "1.5e-10");
+    }
+
+    @Test
+    public void testScientificNotationWithPositiveExponent() {
+        // 3.0E+2 は 1 トークンとして読み取られるべき
+        List<JavaToken> toks = tokenize("3.0E+2");
+        assertEquals("3.0E+2 は NUMBER トークン 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "3.0E+2");
+    }
+
+    @Test
+    public void testScientificNotationInExpression() {
+        // 式中での科学表記: a * 1.5e-10 で演算子 * と数値が正しく分離できるか
+        List<JavaToken> toks = tokenize("a * 1.5e-10");
+        assertEquals("a, *, 1.5e-10, EOF の 4 トークンのはず", 4, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.IDENT, "a");
+        assertToken(toks.get(2), JavaToken.Type.NUMBER, "1.5e-10");
+    }
+
+    @Test
     public void testStringLiteral() {
         List<JavaToken> toks = tokenize("\"hello\\nworld\"");
         assertToken(toks.get(0), JavaToken.Type.STRING, "\"hello\\nworld\"");

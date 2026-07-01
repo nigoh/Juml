@@ -596,6 +596,10 @@ public class UmlMainFrame extends JFrame {
                 w.repaint();
             }
         }
+        // タブ上限/描画保持数も再起動不要で即時反映する。
+        if (tabLimitsChanged && tabPane != null) {
+            tabPane.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+        }
         // 外観 (L&F) は FlatLaf 等なら再起動なしで即時反映する。失敗した L&F や
         // 言語変更は生成済み UI へ遡及できないため、その時だけ再起動を促す。
         boolean lafAppliedLive = !lafChanged
@@ -606,7 +610,7 @@ public class UmlMainFrame extends JFrame {
             revalidate();
             repaint();
         }
-        if ((lafChanged && !lafAppliedLive) || langChanged || tabLimitsChanged) {
+        if ((lafChanged && !lafAppliedLive) || langChanged) {
             JOptionPane.showMessageDialog(this,
                     juml.util.Messages.get("pref.restartNotice"),
                     juml.util.Messages.get("menubar.settings.preferences"),

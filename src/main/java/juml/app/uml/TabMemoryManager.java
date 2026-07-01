@@ -34,8 +34,8 @@ final class TabMemoryManager {
 
     /** 図タブのキーを使用順で保持 (先頭が最も古い)。 */
     private final LinkedHashSet<String> mru = new LinkedHashSet<>();
-    private final int maxTabs;
-    private final int keepRendered;
+    private int maxTabs;
+    private int keepRendered;
 
     TabMemoryManager() {
         this(resolveInt("juml.maxDiagramTabs", 20), resolveInt("juml.renderedTabs", 4));
@@ -43,6 +43,15 @@ final class TabMemoryManager {
 
     /** テスト用: 上限・描画保持数を指定 (いずれも 0 以下で無効)。 */
     TabMemoryManager(int maxTabs, int keepRendered) {
+        this.maxTabs = maxTabs;
+        this.keepRendered = keepRendered;
+    }
+
+    /**
+     * Preferences 変更をアプリ再起動なしで反映するための、上限・描画保持数の再設定。
+     * 既存の MRU 状態はそのまま保持する (次回の {@link #onActivate} から新しい上限が働く)。
+     */
+    void configure(int maxTabs, int keepRendered) {
         this.maxTabs = maxTabs;
         this.keepRendered = keepRendered;
     }

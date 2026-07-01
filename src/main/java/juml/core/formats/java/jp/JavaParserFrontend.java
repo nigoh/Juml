@@ -94,16 +94,22 @@ public final class JavaParserFrontend {
         return out;
     }
 
+    // \b は @ の直前では単語境界として機能しないため、@interface を別の選択肢として分離する。
+    // (?:\b(?:class|interface|enum|record)|@interface) で両方を正しくマッチさせる。
     private static final java.util.regex.Pattern TYPE_DECL = java.util.regex.Pattern.compile(
-            "\\b(class|interface|enum|record|@interface)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
+            "(?:\\b(?:class|interface|enum|record)|@interface)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
 
     private static void recoverSkeletons(String src, String pkg, List<JavaClassInfo> out) {
         java.util.regex.Matcher m = TYPE_DECL.matcher(src);
         while (m.find()) {
             JavaClassInfo c = new JavaClassInfo();
             c.setPackageName(pkg);
-            c.setSimpleName(m.group(2));
-            c.setKind(skeletonKind(m.group(1)));
+            // グループ1 = 型名（パターン変更後はキーワードを非キャプチャグループにしたため）
+            c.setSimpleName(m.group(1));
+            // マッチ全体から先頭キーワードを取り出して kind を判定する
+            String matchedText = m.group(0);
+            c.setKind(skeletonKind(matchedText.startsWith("@interface") ? "@interface"
+                    : matchedText.trim().split("\\s+")[0]));
             out.add(c);
         }
     }

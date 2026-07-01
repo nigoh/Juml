@@ -153,6 +153,15 @@ public final class DiagramTabPane {
         return tabSplitRatio;
     }
 
+    /**
+     * Preferences のタブ上限/描画保持数の変更を再起動なしで反映する。
+     * 既に開いているタブ数が新しい上限を超えていても、ここでは閉じない
+     * (次にタブをアクティブ化したタイミングで {@link TabMemoryManager} が調整する)。
+     */
+    public void setTabBudget(int maxTabs, int keepRendered) {
+        tabMemory.configure(maxTabs, keepRendered);
+    }
+
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
     public boolean dynamicTabFocused() {
         return tabs.getSelectedComponent() instanceof DiagramTab;

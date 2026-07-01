@@ -27,6 +27,8 @@ final class DiagramTabHeader {
 
     /** タイトル {@link JLabel} を後から差し替えるための識別名。 */
     private static final String TITLE_NAME = "juml.tabTitle";
+    /** プレビュー表示前の元ツールチップを退避しておくクライアントプロパティキー。 */
+    private static final String BASE_TOOLTIP = "juml.tabBaseTooltip";
 
     private DiagramTabHeader() {
     }
@@ -51,6 +53,27 @@ final class DiagramTabHeader {
             label.setFont(label.getFont().deriveFont(style, 11f));
             label.getParent().repaint();
         }
+        // プレビュータブは「ダブルクリックで固定」という操作を発見しにくいため、
+        // ツールチップに案内を追記する (VS Code の Preview Tab 相当)。
+        if (header instanceof javax.swing.JComponent) {
+            applyPreviewTooltip((javax.swing.JComponent) header, preview);
+        }
+        if (label != null) {
+            applyPreviewTooltip(label, preview);
+        }
+    }
+
+    private static void applyPreviewTooltip(javax.swing.JComponent c, boolean preview) {
+        String base = (String) c.getClientProperty(BASE_TOOLTIP);
+        if (base == null) {
+            base = c.getToolTipText();
+            c.putClientProperty(BASE_TOOLTIP, base);
+        }
+        if (!preview || base == null) {
+            c.setToolTipText(base);
+            return;
+        }
+        c.setToolTipText(base + " — " + juml.util.Messages.get("tab.preview.pinHint"));
     }
 
     private static JLabel findTitle(java.awt.Component header) {

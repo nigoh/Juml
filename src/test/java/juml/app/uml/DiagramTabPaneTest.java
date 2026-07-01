@@ -226,6 +226,96 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (e) LRU 自動閉鎖: 上限タブ数を超えたとき最古の非アクティブタブが閉じられる
+    // -------------------------------------------------------------------------
+
+    /**
+     * {@code DiagramTabPane} を LRU 上限付きで再構築し、上限+1 本のタブを追加したあと
+     * 動的タブ数が上限以下に収まることを確認する。
+     *
+     * <p>{@link TabMemoryManager} はコンストラクタ時点の {@code juml.maxDiagramTabs}
+     * を読むため、プロパティのセットは {@code DiagramTabPane} 生成より前に行う。
+     * テスト用の {@link JTabbedPane} と {@link DiagramTabPane} をこのテスト専用に
+     * 構築し、既存の {@link #pane} / {@link #tabs} を汚染しない。</p>
+     */
+    @Test
+    public void lruAutoClose_reducesTabCountToWithinLimit() throws Exception {
+        final int limit = 3;
+        System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
+        // プロパティ設定後に DiagramTabPane を生成する。
+        final JTabbedPane lruTabs = GuiActionRunner.execute(() -> {
+            JTabbedPane t = new JTabbedPane();
+            t.addTab("Utility1", new javax.swing.JPanel());
+            t.addTab("Utility2", new javax.swing.JPanel());
+            return t;
+        });
+        final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
+                new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
+                        msg -> { }, zoom -> { }));
+        try {
+            // 上限+1 本追加する。最後の 1 本を追加した瞬間に最古タブが LRU で閉じられる。
+            for (int i = 0; i < limit + 1; i++) {
+                final int idx = i;
+                GuiActionRunner.execute(() ->
+                        lruPane.addOrFocusTab(
+                                TreeNodeOpenRequest.classNode(classInfo("com.lru.C" + idx))));
+            }
+
+            int dynamicCount = GuiActionRunner.execute(() ->
+                    lruTabs.getTabCount() - FIXED);
+
+            assertTrue(
+                    "LRU 自動閉鎖後の動的タブ数 (" + dynamicCount + ") は上限 ("
+                            + limit + ") 以下であるはず",
+                    dynamicCount <= limit);
+        } finally {
+            System.clearProperty("juml.maxDiagramTabs");
+            GuiActionRunner.execute(() -> lruTabs.removeAll());
+        }
+    }
+
+    @Test
+    public void lruAutoClose_doesNotCloseActiveTab() throws Exception {
+        final int limit = 2;
+        System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
+        // プロパティ設定後に DiagramTabPane を生成する。
+        final JTabbedPane lruTabs = GuiActionRunner.execute(() -> {
+            JTabbedPane t = new JTabbedPane();
+            t.addTab("Utility1", new javax.swing.JPanel());
+            t.addTab("Utility2", new javax.swing.JPanel());
+            return t;
+        });
+        final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
+                new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
+                        msg -> { }, zoom -> { }));
+        try {
+            juml.core.formats.uml.JavaClassInfo c0 = classInfo("com.lru.Active0");
+            juml.core.formats.uml.JavaClassInfo c1 = classInfo("com.lru.Active1");
+            juml.core.formats.uml.JavaClassInfo c2 = classInfo("com.lru.Active2");
+
+            GuiActionRunner.execute(() -> {
+                lruPane.addOrFocusTab(TreeNodeOpenRequest.classNode(c0));
+                lruPane.addOrFocusTab(TreeNodeOpenRequest.classNode(c1));
+                lruPane.addOrFocusTab(TreeNodeOpenRequest.classNode(c2)); // アクティブ
+            });
+
+            // アクティブタブが残っていること (hasActiveTab = true)。
+            boolean active = GuiActionRunner.execute(() -> lruPane.hasActiveTab());
+            assertTrue("LRU 後もアクティブタブが残っているはず", active);
+
+            // 動的タブ数が上限以下であること。
+            int dynamicCount = GuiActionRunner.execute(() ->
+                    lruTabs.getTabCount() - FIXED);
+            assertTrue(
+                    "LRU 後の動的タブ数 (" + dynamicCount + ") は上限 (" + limit + ") 以下であるはず",
+                    dynamicCount <= limit);
+        } finally {
+            System.clearProperty("juml.maxDiagramTabs");
+            GuiActionRunner.execute(() -> lruTabs.removeAll());
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
 

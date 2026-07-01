@@ -200,7 +200,7 @@ public class EntitySearchDialog extends JDialog {
      */
     private JPanel buildKindFilterBar() {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        bar.add(new JLabel("Kind:"));
+        bar.add(new JLabel(Messages.get("dlg.search.kind")));
         // ButtonGroup は使わない (排他にしない) — マルチ選択
         java.awt.event.ActionListener handler = e -> rebuildTree(filter.getText());
         for (Kind k : Kind.values()) {
