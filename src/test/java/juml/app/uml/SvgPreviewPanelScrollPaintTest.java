@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import org.assertj.swing.edt.GuiActionRunner;
 import org.junit.Test;
 
 import java.awt.Color;
@@ -75,8 +76,9 @@ public class SvgPreviewPanelScrollPaintTest {
 
     @Test
     public void noteFollowsScrollOffsetInsteadOfStickingToScreen() {
-        SvgPreviewPanel panel = panelWithRedNote();
-        BufferedImage view = paintScrolled(panel);
+        // パネル生成・setImage・paintComponent は EDT 上で実行する (EDT 規律)
+        SvgPreviewPanel panel = GuiActionRunner.execute(() -> panelWithRedNote());
+        BufferedImage view = GuiActionRunner.execute(() -> paintScrolled(panel));
 
         // 付箋中心 (図座標 350,350) は、スクロール後はビューポート内 (100,100) に来るはず。
         int cx = NOTE_X + NOTE_W / 2 - SCROLL;

@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import org.assertj.swing.edt.GuiActionRunner;
 import org.junit.Before;
 import org.junit.Test;
 import juml.core.formats.android.AndroidProjectAnalysis;
@@ -38,30 +39,35 @@ public class DiagramControllerTest {
 
     @Before
     public void setUp() {
+        // 非 Swing オブジェクトはテストスレッドで生成して OK
         state = new DiagramState();
         cache = new ProjectAnalysisCache();
         diagramItems = new EnumMap<>(DiagramKind.class);
         diagramToggles = new EnumMap<>(DiagramKind.class);
-        for (DiagramKind k : DiagramKind.values()) {
-            diagramItems.put(k, new JRadioButtonMenuItem(k.name()));
-            diagramToggles.put(k, new JToggleButton(k.name()));
-        }
         refreshCount = new AtomicInteger(0);
         lastKind = new AtomicReference<>(DiagramKind.CLASS);
-        treePanel = new ProjectTreePanel();
-        DiagramControllerDeps deps = new DiagramControllerDeps();
-        deps.state = state;
-        deps.cacheSupplier = () -> cache;
-        deps.diagramItems = diagramItems;
-        deps.diagramToggles = diagramToggles;
-        deps.treePanel = treePanel;
-        deps.mainTabs = new JTabbedPane();
-        deps.tabPane = null;
-        deps.statusLabel = new JLabel();
-        deps.parentFrame = null;
-        deps.refreshDiagram = () -> refreshCount.incrementAndGet();
-        deps.onKindChanged = kind -> lastKind.set(kind);
-        controller = new DiagramController(deps);
+        // Swing コンポーネントの生成・配線は EDT 上で行う (EDT 規律)
+        GuiActionRunner.execute(() -> {
+            for (DiagramKind k : DiagramKind.values()) {
+                diagramItems.put(k, new JRadioButtonMenuItem(k.name()));
+                diagramToggles.put(k, new JToggleButton(k.name()));
+            }
+            treePanel = new ProjectTreePanel();
+            DiagramControllerDeps deps = new DiagramControllerDeps();
+            deps.state = state;
+            deps.cacheSupplier = () -> cache;
+            deps.diagramItems = diagramItems;
+            deps.diagramToggles = diagramToggles;
+            deps.treePanel = treePanel;
+            deps.mainTabs = new JTabbedPane();
+            deps.tabPane = null;
+            deps.statusLabel = new JLabel();
+            deps.parentFrame = null;
+            deps.refreshDiagram = () -> refreshCount.incrementAndGet();
+            deps.onKindChanged = kind -> lastKind.set(kind);
+            controller = new DiagramController(deps);
+            return null;
+        });
     }
 
     @Test
