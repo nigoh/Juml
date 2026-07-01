@@ -82,6 +82,12 @@ public class Main {
         juml.app.uml.DiagramRenderQuality.setCurrent(
                 juml.app.uml.DiagramRenderQuality.fromKey(
                         SettingManager.getInstance().getSetting().getDiagramRenderQuality()));
+        // タブ上限設定をシステムプロパティに反映 (TabMemoryManager が参照)。
+        Setting tabSetting = SettingManager.getInstance().getSetting();
+        System.setProperty("juml.maxDiagramTabs",
+                Integer.toString(tabSetting.getMaxDiagramTabs()));
+        System.setProperty("juml.renderedTabs",
+                Integer.toString(tabSetting.getRenderedTabs()));
         File jarDir = detectJarDir();
         GraphvizLocator.init(jarDir);
         DoxygenLocator.init(jarDir);

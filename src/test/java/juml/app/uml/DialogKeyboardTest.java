@@ -256,11 +256,12 @@ public class DialogKeyboardTest {
     /** PreferencesDialog のプライベートコンストラクタをリフレクションで呼ぶ。 */
     private PreferencesDialog createPreferences() throws Exception {
         Constructor<PreferencesDialog> ctor = PreferencesDialog.class.getDeclaredConstructor(
-                java.awt.Frame.class, String.class, boolean.class, String.class, String.class);
+                java.awt.Frame.class, String.class, boolean.class, String.class,
+                String.class, int.class, int.class);
         ctor.setAccessible(true);
         PreferencesDialog dlg = GuiActionRunner.execute(() -> {
             try {
-                return ctor.newInstance(null, "SYSTEM", true, "ja", "AUTO");
+                return ctor.newInstance(null, "SYSTEM", true, "ja", "AUTO", 20, 4);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

@@ -634,7 +634,6 @@ public final class StyleSettingsDialog extends JDialog {
     }
 
     private JPanel buildButtons() {
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton reset = new JButton(Messages.get("style.btn.reset"));
         reset.setToolTipText(Messages.get("style.tip.reset"));
         reset.addActionListener(e -> resetToDefaults());
@@ -651,13 +650,8 @@ public final class StyleSettingsDialog extends JDialog {
             result = null;
             setVisible(false);
         });
-        buttons.add(readable);
-        buttons.add(reset);
-        buttons.add(Box.createHorizontalStrut(20));
-        buttons.add(ok);
-        buttons.add(cancel);
         DialogUtils.installEscapeAndDefault(this, ok);
-        return buttons;
+        return DialogUtils.buildButtonPanel(ok, cancel, readable, reset);
     }
 
     private void resetToDefaults() {

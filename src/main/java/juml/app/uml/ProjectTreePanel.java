@@ -73,6 +73,7 @@ public class ProjectTreePanel extends JPanel {
     private java.util.function.Consumer<AndroidComponentInfo> onComponentSelected;
     private java.util.function.Consumer<TreeNodeOpenRequest> onOpenInNewTab;
     private java.util.function.Consumer<TreeNodeOpenRequest> onOpenSource;
+    private java.util.function.Consumer<TreeNodeOpenRequest> onPreviewInTab;
     private Runnable onSoongSelected;
 
     public ProjectTreePanel() {
@@ -184,6 +185,14 @@ public class ProjectTreePanel extends JPanel {
      */
     public void setOnOpenSource(java.util.function.Consumer<TreeNodeOpenRequest> listener) {
         this.onOpenSource = listener;
+    }
+
+    /**
+     * ツリーの単一クリック (選択変更) でプレビュータブとして開くハンドラ。
+     * VS Code 風の斜体一時タブを実現する。
+     */
+    public void setOnPreviewInTab(java.util.function.Consumer<TreeNodeOpenRequest> listener) {
+        this.onPreviewInTab = listener;
     }
 
     /**
@@ -526,6 +535,7 @@ public class ProjectTreePanel extends JPanel {
         Object last = tree.getLastSelectedPathComponent();
         if (last instanceof DefaultMutableTreeNode) {
             Object u = ((DefaultMutableTreeNode) last).getUserObject();
+            firePreview(u);
             if (u instanceof MethodDiagramEntry) {
                 MethodDiagramEntry mde = (MethodDiagramEntry) u;
                 MethodSelection sel = new MethodSelection(mde.owner, mde.method);
@@ -541,7 +551,6 @@ public class ProjectTreePanel extends JPanel {
                 return;
             }
             if (u instanceof MethodEntry) {
-                // メソッド自体のクリックは従来通りシーケンス図に切り替え (後方互換)
                 MethodEntry me = (MethodEntry) u;
                 if (onMethodSelected != null) {
                     onMethodSelected.accept(new MethodSelection(me.owner, me.method));
@@ -578,7 +587,6 @@ public class ProjectTreePanel extends JPanel {
                 }
                 return;
             }
-            // ComponentGroupEntry / PermissionEntry / FeatureEntry も Manifest 図に切替
             if (u instanceof ComponentGroupEntry || u instanceof PermissionEntry
                     || u instanceof FeatureEntry) {
                 if (onManifestSelected != null) {
@@ -586,7 +594,6 @@ public class ProjectTreePanel extends JPanel {
                 }
                 return;
             }
-            // Soong グループ / bp ファイル / bp モジュール → Soong 依存図へ切替
             if (u instanceof SoongGroupEntry || u instanceof BpFileEntry
                     || u instanceof BpModuleEntry) {
                 if (onSoongSelected != null) {
@@ -597,6 +604,16 @@ public class ProjectTreePanel extends JPanel {
         }
         if (onClassSelected != null) {
             onClassSelected.accept(null);
+        }
+    }
+
+    private void firePreview(Object userObject) {
+        if (onPreviewInTab == null) {
+            return;
+        }
+        TreeNodeOpenRequest req = buildOpenRequest(userObject);
+        if (req != null) {
+            onPreviewInTab.accept(req);
         }
     }
 

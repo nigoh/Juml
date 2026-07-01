@@ -36,17 +36,33 @@ final class DiagramTabHeader {
      * ヘッダ構造を知らなくても名前 {@link #TITLE_NAME} で対象ラベルを探す。
      */
     static void updateTitle(java.awt.Component header, String text) {
+        JLabel label = findTitle(header);
+        if (label != null) {
+            label.setText(text);
+            label.getParent().revalidate();
+            label.getParent().repaint();
+        }
+    }
+
+    static void setPreview(java.awt.Component header, boolean preview) {
+        JLabel label = findTitle(header);
+        if (label != null) {
+            int style = preview ? Font.ITALIC : Font.PLAIN;
+            label.setFont(label.getFont().deriveFont(style, 11f));
+            label.getParent().repaint();
+        }
+    }
+
+    private static JLabel findTitle(java.awt.Component header) {
         if (!(header instanceof java.awt.Container)) {
-            return;
+            return null;
         }
         for (java.awt.Component c : ((java.awt.Container) header).getComponents()) {
             if (c instanceof JLabel && TITLE_NAME.equals(c.getName())) {
-                ((JLabel) c).setText(text);
-                c.getParent().revalidate();
-                c.getParent().repaint();
-                return;
+                return (JLabel) c;
             }
         }
+        return null;
     }
 
     /** タブの×アイコンのアイドル色 (テーマ追従)。 */
@@ -65,7 +81,8 @@ final class DiagramTabHeader {
     }
 
     static JPanel build(String label, TreeNodeIcon icon, String tooltip,
-                        Runnable onClose, Consumer<MouseEvent> onPopup, Runnable onSelect) {
+                        Runnable onClose, Consumer<MouseEvent> onPopup, Runnable onSelect,
+                        Runnable onDoubleClick) {
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         header.setOpaque(false);
         header.setToolTipText(tooltip);
@@ -73,13 +90,12 @@ final class DiagramTabHeader {
             header.add(new JLabel(icon));
         }
         JLabel title = new JLabel(label);
-        title.setName(TITLE_NAME); // 同名タブの曖昧さ解消で後からテキスト更新できるよう名前を付ける
+        title.setName(TITLE_NAME);
         title.setFont(title.getFont().deriveFont(Font.PLAIN, 11f));
         title.setToolTipText(tooltip);
         header.add(title);
         header.add(buildCloseButton(onClose));
 
-        // 中クリックで閉じる / 右クリックでメニュー / 左クリックで選択。
         MouseAdapter ma = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -96,6 +112,14 @@ final class DiagramTabHeader {
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     onPopup.accept(e);
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2
+                        && onDoubleClick != null) {
+                    onDoubleClick.run();
                 }
             }
         };

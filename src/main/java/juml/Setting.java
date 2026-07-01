@@ -85,6 +85,12 @@ public class Setting {
     private String language = "ja";
     /** 図プレビューの描画品質 (ラスタライズ解像度)。"AUTO" / "LOW" / "HIGH" / "ULTRA"。 */
     private String diagramRenderQuality = "AUTO";
+    /** 開けるタブの最大数 (LRU で自動クローズ)。0 以下で無制限。 */
+    private int maxDiagramTabs = 20;
+    /** 描画済み SVG を保持するタブの最大数。超過分は解放して再フォーカス時に再描画。 */
+    private int renderedTabs = 4;
+    /** タブ内の上下分割 (プレビュー / ソース) の既定比率 (0.0〜1.0)。 */
+    private double tabSplitRatio = 0.7;
 
     public int getWindowX() { return windowX; }
     public void setWindowX(int windowX) { this.windowX = windowX; }
@@ -183,6 +189,19 @@ public class Setting {
         this.diagramRenderQuality = (v == null || v.isEmpty()) ? "AUTO" : v;
     }
 
+    public int getMaxDiagramTabs() { return maxDiagramTabs; }
+    public void setMaxDiagramTabs(int v) {
+        this.maxDiagramTabs = Math.max(0, Math.min(100, v));
+    }
+    public int getRenderedTabs() { return renderedTabs; }
+    public void setRenderedTabs(int v) {
+        this.renderedTabs = Math.max(1, Math.min(50, v));
+    }
+    public double getTabSplitRatio() { return tabSplitRatio; }
+    public void setTabSplitRatio(double v) {
+        this.tabSplitRatio = Math.max(0.1, Math.min(0.9, v));
+    }
+
     /** 永続化済みの値から {@link DiagramStyle} を組み立てて返す。 */
     public DiagramStyle getStyle() {
         DiagramStyle s = new DiagramStyle();
@@ -270,6 +289,9 @@ public class Setting {
                 Boolean.toString(restoreLastProjectOnStartup));
         props.setProperty("app.language", language);
         props.setProperty("app.diagramRenderQuality", diagramRenderQuality);
+        props.setProperty("app.maxDiagramTabs", Integer.toString(maxDiagramTabs));
+        props.setProperty("app.renderedTabs", Integer.toString(renderedTabs));
+        props.setProperty("app.tabSplitRatio", Double.toString(tabSplitRatio));
 
         try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f))) {
             props.storeToXML(bos, "Juml Settings");
@@ -346,6 +368,9 @@ public class Setting {
         s.setLanguage(stringOrDefault(props.getProperty("app.language"), "ja"));
         s.diagramRenderQuality = stringOrDefault(
                 props.getProperty("app.diagramRenderQuality"), "AUTO");
+        s.maxDiagramTabs = parseIntSafe(props.getProperty("app.maxDiagramTabs"), 20);
+        s.renderedTabs = parseIntSafe(props.getProperty("app.renderedTabs"), 4);
+        s.tabSplitRatio = parseDoubleSafe(props.getProperty("app.tabSplitRatio"), 0.7);
 
         return s;
     }
@@ -366,6 +391,17 @@ public class Setting {
         }
         try {
             return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static double parseDoubleSafe(String value, double defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value);
         } catch (NumberFormatException e) {
             return defaultValue;
         }

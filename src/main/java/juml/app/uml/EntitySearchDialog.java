@@ -84,6 +84,8 @@ public class EntitySearchDialog extends JDialog {
     private final JTree tree = new JTree(treeModel);
     private final JTextField filter = new JTextField();
     private final JLabel countLabel = new JLabel(" ");
+    private final JLabel errorLabel = new JLabel(" ");
+    private final Timer errorClearTimer = new Timer(3000, e -> errorLabel.setText(" "));
     private final EnumMap<Kind, JCheckBox> kindFilters = new EnumMap<>(Kind.class);
 
     private final List<Entry> allEntries = new ArrayList<>();
@@ -114,8 +116,15 @@ public class EntitySearchDialog extends JDialog {
         rebuildTree("");
         add(new JScrollPane(tree), BorderLayout.CENTER);
 
+        errorClearTimer.setRepeats(false);
+        errorLabel.setForeground(java.awt.Color.RED);
+        errorLabel.setVisible(false);
+
         JPanel south = new JPanel(new BorderLayout());
-        south.add(countLabel, BorderLayout.WEST);
+        JPanel infoPanel = new JPanel(new java.awt.GridLayout(2, 1));
+        infoPanel.add(countLabel);
+        infoPanel.add(errorLabel);
+        south.add(infoPanel, BorderLayout.WEST);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         JButton drill = new JButton(juml.util.Messages.get("dlg.search.drilldown"));
         drill.setToolTipText(juml.util.Messages.get("dlg.search.drilldown.tip"));
@@ -325,7 +334,7 @@ public class EntitySearchDialog extends JDialog {
         }
         treeModel.reload();
 
-        countLabel.setForeground(null);
+        errorLabel.setVisible(false);
         countLabel.setText(matched + " / " + allEntries.size()
                 + " " + Messages.get("dlg.search.entries"));
 
@@ -418,8 +427,9 @@ public class EntitySearchDialog extends JDialog {
                 return;
             }
         }
-        countLabel.setForeground(java.awt.Color.RED);
-        countLabel.setText(Messages.get("dlg.search.selectEntry"));
+        errorLabel.setText(Messages.get("dlg.search.selectEntry"));
+        errorLabel.setVisible(true);
+        errorClearTimer.restart();
         java.awt.Toolkit.getDefaultToolkit().beep();
     }
 

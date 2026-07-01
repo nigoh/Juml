@@ -145,6 +145,13 @@ public final class DiagramController {
         tabPane.addOrFocusTab(req);
     }
 
+    public void onTreePreviewInTab(TreeNodeOpenRequest req) {
+        if (req == null || tabPane == null) {
+            return;
+        }
+        tabPane.addOrFocusPreviewTab(req);
+    }
+
     /**
      * 左ペインで「Open source」されたノードのタブを開き、実ソース表示を前面に出すハンドラ。
      */

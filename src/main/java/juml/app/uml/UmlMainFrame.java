@@ -142,6 +142,12 @@ public class UmlMainFrame extends JFrame {
                 addNoteButton.setEnabled(tabPane.hasActiveTab());
             }
         });
+        tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
+        tabPane.setToastNotifier(msg -> ToastNotification.show(mainTabs, msg));
+        Setting splitSetting = Main.getSetting();
+        if (splitSetting != null) {
+            tabPane.setTabSplitRatio(splitSetting.getTabSplitRatio());
+        }
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -163,6 +169,7 @@ public class UmlMainFrame extends JFrame {
         treePanel.setOnManifestSelected(m -> controller.onTreeManifestSelected(m));
         treePanel.setOnComponentSelected(c -> controller.onTreeComponentSelected(c));
         treePanel.setOnOpenInNewTab(req -> controller.onTreeOpenInNewTab(req));
+        treePanel.setOnPreviewInTab(req -> controller.onTreePreviewInTab(req));
         treePanel.setOnOpenSource(req -> controller.onTreeOpenSource(req));
         treePanel.setOnSoongSelected(() -> controller.openSoongDiagram());
 
@@ -259,6 +266,7 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
+        mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();
         mcb.closeAllTabs = () -> tabPane.closeAllTabs();
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
@@ -541,20 +549,27 @@ public class UmlMainFrame extends JFrame {
         boolean curRestore = setting != null && setting.isRestoreLastProjectOnStartup();
         String curLang = setting != null ? setting.getLanguage() : "ja";
         String curQuality = setting != null ? setting.getDiagramRenderQuality() : "AUTO";
+        int curMaxTabs = setting != null ? setting.getMaxDiagramTabs() : 20;
+        int curRenderedTabs = setting != null ? setting.getRenderedTabs() : 4;
         PreferencesDialog.Result r =
-                PreferencesDialog.showDialog(this, curLaf, curRestore, curLang, curQuality);
+                PreferencesDialog.showDialog(this, curLaf, curRestore, curLang, curQuality,
+                        curMaxTabs, curRenderedTabs);
         if (r == null) {
             return;
         }
         boolean lafChanged = !r.lookAndFeel.equalsIgnoreCase(curLaf);
         boolean langChanged = !r.language.equalsIgnoreCase(curLang);
         boolean qualityChanged = !r.diagramRenderQuality.equalsIgnoreCase(curQuality);
+        boolean tabLimitsChanged = r.maxDiagramTabs != curMaxTabs
+                || r.renderedTabs != curRenderedTabs;
         try {
             if (setting != null) {
                 setting.setLookAndFeel(r.lookAndFeel);
                 setting.setRestoreLastProjectOnStartup(r.restoreLastProjectOnStartup);
                 setting.setLanguage(r.language);
                 setting.setDiagramRenderQuality(r.diagramRenderQuality);
+                setting.setMaxDiagramTabs(r.maxDiagramTabs);
+                setting.setRenderedTabs(r.renderedTabs);
                 Main.saveSetting();
             }
         } catch (RuntimeException ignored) {
@@ -578,7 +593,7 @@ public class UmlMainFrame extends JFrame {
             revalidate();
             repaint();
         }
-        if ((lafChanged && !lafAppliedLive) || langChanged) {
+        if ((lafChanged && !lafAppliedLive) || langChanged || tabLimitsChanged) {
             JOptionPane.showMessageDialog(this,
                     juml.util.Messages.get("pref.restartNotice"),
                     juml.util.Messages.get("menubar.settings.preferences"),
@@ -897,7 +912,11 @@ public class UmlMainFrame extends JFrame {
     }
 
     private void saveWindowState() {
-        WindowStateManager.save(this, centerSplit, Main.getSetting(), Main::saveSetting);
+        Setting s = Main.getSetting();
+        if (s != null && tabPane != null) {
+            s.setTabSplitRatio(tabPane.getTabSplitRatio());
+        }
+        WindowStateManager.save(this, centerSplit, s, Main::saveSetting);
     }
 
     /**

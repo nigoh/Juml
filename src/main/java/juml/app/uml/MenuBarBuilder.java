@@ -81,6 +81,7 @@ public final class MenuBarBuilder {
         /** Ctrl+Shift+T / File &gt; Reopen Closed Tab: 直近に閉じたタブを再オープン。 */
         public Runnable reopenClosedTab;
         public Runnable closeOtherTabs;
+        public Runnable closeTabsToRight;
         public Runnable closeAllTabs;
         /** Ctrl+Shift+P / View &gt; Command Palette: コマンドパレットを開く。 */
         public Runnable openCommandPalette;
@@ -257,6 +258,11 @@ public final class MenuBarBuilder {
             JMenuItem closeOthers = new JMenuItem(Messages.get("menubar.file.closeOthers"));
             closeOthers.addActionListener(e -> cb.closeOtherTabs.run());
             m.add(closeOthers);
+        }
+        if (cb.closeTabsToRight != null) {
+            JMenuItem closeRight = new JMenuItem(Messages.get("menubar.file.closeRight"));
+            closeRight.addActionListener(e -> cb.closeTabsToRight.run());
+            m.add(closeRight);
         }
         if (cb.closeAllTabs != null) {
             JMenuItem closeAll = new JMenuItem(Messages.get("menubar.file.closeAllTabs"));
