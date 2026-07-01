@@ -27,13 +27,23 @@ final class GotoLineBar extends JPanel {
 
     private final IntConsumer onJump;
     private final Runnable onLayoutChange;
+    private final JComponent target;
     private final JTextField field;
     private final JLabel info;
 
     GotoLineBar(IntConsumer onJump, Runnable onLayoutChange) {
+        this(onJump, onLayoutChange, null);
+    }
+
+    /**
+     * @param target Esc/Enter でバーを閉じた後にフォーカスを戻す対象 (通常はソースの
+     *               テキストコンポーネント)。{@code null} ならフォーカス返却をしない。
+     */
+    GotoLineBar(IntConsumer onJump, Runnable onLayoutChange, JComponent target) {
         super(new FlowLayout(FlowLayout.LEFT, 4, 2));
         this.onJump = onJump;
         this.onLayoutChange = onLayoutChange;
+        this.target = target;
         Color sep = javax.swing.UIManager.getColor("Separator.foreground");
         setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0,
                 sep != null ? sep : new Color(0xCCCCCC)));
@@ -83,6 +93,9 @@ final class GotoLineBar extends JPanel {
         setVisible(false);
         if (onLayoutChange != null) {
             onLayoutChange.run();
+        }
+        if (target != null) {
+            target.requestFocusInWindow();
         }
     }
 }

@@ -159,9 +159,9 @@ final class OpenProjectDialog extends JDialog {
                 }
             });
 
-            buttons.add(remove);
             buttons.add(openSelected);
             buttons.add(browse);
+            buttons.add(remove);
             buttons.add(cancel);
             // 先頭を初期選択して Enter で開けるようにし、Esc/Enter を統一設定する。
             if (list.getModel().getSize() > 0) {

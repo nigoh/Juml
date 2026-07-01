@@ -146,7 +146,7 @@ public final class JavaSourcePanel extends JPanel {
         bar.add(right, BorderLayout.EAST);
 
         findBar = new SourceFindBar(textPane, this::revalidate);
-        gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate);
+        gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate, textPane);
 
         JPanel north = new JPanel(new BorderLayout());
         north.add(bar, BorderLayout.NORTH);

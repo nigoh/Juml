@@ -33,6 +33,7 @@ import java.awt.Component;
 import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.event.KeyEvent;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -635,9 +636,11 @@ public final class StyleSettingsDialog extends JDialog {
 
     private JPanel buildButtons() {
         JButton reset = new JButton(Messages.get("style.btn.reset"));
+        reset.setMnemonic(KeyEvent.VK_R);
         reset.setToolTipText(Messages.get("style.tip.reset"));
         reset.addActionListener(e -> resetToDefaults());
         JButton readable = new JButton(Messages.get("style.btn.optimize"));
+        readable.setMnemonic(KeyEvent.VK_O);
         readable.setToolTipText(Messages.get("style.tip.optimize"));
         readable.addActionListener(e -> applyReadabilityPreset());
         JButton ok = new JButton(Messages.get("style.btn.ok"));

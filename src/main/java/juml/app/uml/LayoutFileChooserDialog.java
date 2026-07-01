@@ -182,13 +182,13 @@ public class LayoutFileChooserDialog extends JDialog {
         List<AndroidLayoutInfo> layouts = analysis != null
                 ? analysis.allLayouts()
                 : Collections.emptyList();
-        LayoutFileChooserDialog dlg = new LayoutFileChooserDialog(parent, layouts);
-        if (dlg.getCandidateCount() == 0) {
+        if (layouts.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("dlg.noLayout.message"),
                     Messages.get("dlg.noLayout.title"), JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
+        LayoutFileChooserDialog dlg = new LayoutFileChooserDialog(parent, layouts);
         dlg.setVisible(true);
         return dlg.getSelectedKey();
     }
