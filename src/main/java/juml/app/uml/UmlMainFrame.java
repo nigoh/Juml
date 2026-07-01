@@ -148,6 +148,8 @@ public class UmlMainFrame extends JFrame {
         });
         tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
         tabPane.setToastNotifier(msg -> ToastNotification.show(mainTabs, msg));
+        // タブヘッダ右クリックの「Close All」もメニュー経路と同じ確認ロジックへ委譲する
+        tabPane.setCloseAllRequestHandler(this::confirmAndCloseAllTabs);
         Setting splitSetting = Main.getSetting();
         if (splitSetting != null) {
             tabPane.setTabSplitRatio(splitSetting.getTabSplitRatio());
@@ -969,18 +971,35 @@ public class UmlMainFrame extends JFrame {
      * {@link DiagramTabPane} はロジックのみを担う。
      */
     private void confirmAndCloseAllTabs() {
-        int count = tabPane.dynamicTabCount();
-        if (count >= 2) {
-            int choice = JOptionPane.showConfirmDialog(this,
-                    java.text.MessageFormat.format(
-                            Messages.get("tab.closeAllConfirm"), count),
-                    Messages.get("menubar.file.closeAllTabs"),
-                    JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-            if (choice != JOptionPane.YES_OPTION) {
-                return;
-            }
+        runCloseAllWithConfirm(tabPane.dynamicTabCount(),
+                this::showCloseAllTabsConfirm, tabPane::closeAllTabs);
+    }
+
+    /**
+     * Close All Tabs の確認分岐 (テスト可能なシーム)。動的タブが 2 枚以上のときだけ
+     * {@code confirm} を評価し、承認された場合のみ {@code closeAll} を実行する。
+     * 1 枚以下なら確認なしで {@code closeAll} を実行する。
+     *
+     * @param dynamicTabCount 開いている動的タブ数
+     * @param confirm         枚数を受け取り、閉じてよければ true を返す確認関数
+     * @param closeAll        実際の全タブクローズ操作
+     */
+    static void runCloseAllWithConfirm(int dynamicTabCount,
+            java.util.function.IntPredicate confirm, Runnable closeAll) {
+        if (dynamicTabCount >= 2 && !confirm.test(dynamicTabCount)) {
+            return;
         }
-        tabPane.closeAllTabs();
+        closeAll.run();
+    }
+
+    /** Close All Tabs の確認ダイアログを表示し、YES が選ばれたら true。 */
+    private boolean showCloseAllTabsConfirm(int count) {
+        return JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(
+                        Messages.get("tab.closeAllConfirm"), count),
+                Messages.get("menubar.file.closeAllTabs"),
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)
+                == JOptionPane.YES_OPTION;
     }
 
     /**

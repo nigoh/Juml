@@ -75,6 +75,8 @@ public final class DiagramTabPane {
     private Consumer<TreeNodeOpenRequest> revealInTree;
     /** トースト通知 (LRU 自動クローズなど) のコールバック。 */
     private Consumer<String> toastNotifier;
+    /** タブ右クリック「Close All」の委譲先 (確認付き)。未設定なら確認なしで閉じる。 */
+    private Runnable closeAllRequestHandler;
     /** タブ内上下分割の既定比率 (Setting から取得)。 */
     private double tabSplitRatio = 0.7;
     /** VS Code 風プレビュータブのキー (null = プレビューなし)。 */
@@ -141,6 +143,16 @@ public final class DiagramTabPane {
     /** トースト通知コールバックを設定する (LRU 自動クローズなど)。 */
     public void setToastNotifier(Consumer<String> notifier) {
         this.toastNotifier = notifier;
+    }
+
+    /**
+     * タブヘッダ右クリックの「Close All」を処理するハンドラを設定する。
+     * 確認ダイアログの表示はフレーム側の責務のため、メニュー経路
+     * (File &gt; Close All Tabs) と同じ確認ロジックへ委譲するのに使う。
+     * 未設定の場合は従来どおり確認なしで {@link #closeAllTabs()} を呼ぶ。
+     */
+    public void setCloseAllRequestHandler(Runnable handler) {
+        this.closeAllRequestHandler = handler;
     }
 
     /** タブ内上下分割の既定比率を設定する (新規タブに適用)。 */
@@ -487,7 +499,7 @@ public final class DiagramTabPane {
         right.setEnabled(hasTabsToRight(key));
         menu.add(right);
         JMenuItem all = new JMenuItem(Messages.get("tab.menu.closeAll"));
-        all.addActionListener(a -> closeAllTabs());
+        all.addActionListener(a -> requestCloseAll());
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
         if (tab.treeSync != null && revealInTree != null) {
@@ -540,6 +552,19 @@ public final class DiagramTabPane {
     /** すべてのダイアグラムタブを閉じる (ユーティリティタブは残す)。 */
     void closeAllTabs() {
         closeOtherTabs(null);
+    }
+
+    /**
+     * タブ右クリック「Close All」の要求。ハンドラが設定されていればそちらへ委譲し
+     * (フレーム側で確認ダイアログを挟む)、未設定なら従来どおり確認なしで閉じる。
+     * {@link #closeAllTabs()} 自体は生のクローズ操作のまま維持する。
+     */
+    void requestCloseAll() {
+        if (closeAllRequestHandler != null) {
+            closeAllRequestHandler.run();
+        } else {
+            closeAllTabs();
+        }
     }
 
     /** 指定タブより右にある図タブをすべて閉じる。 */
