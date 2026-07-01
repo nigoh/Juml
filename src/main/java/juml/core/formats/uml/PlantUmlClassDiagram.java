@@ -223,7 +223,8 @@ public final class PlantUmlClassDiagram {
             out.append("top to bottom direction\n");
         }
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            // title 行に <> & が含まれると PlantUML が HTML タグとして誤認するためエスケープする。
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         VisibilityIconStyle.appendSkinparams(out, o.showVisibility && o.visibilityIcons);
         // NOTE 表示時のコメント色を skinparam で指定 (INLINE 時は <color:..> タグで個別色付けするため出力しない)。
@@ -513,8 +514,9 @@ public final class PlantUmlClassDiagram {
                 if (f.getName() == null || f.getName().isEmpty()) {
                     continue;
                 }
+                // フィールド名に <clinit>/<init> 等の < > が含まれる場合 HTML タグと誤認されるためエスケープする。
                 out.append(indent).append("note right of ").append(alias).append("::")
-                        .append(f.getName()).append('\n');
+                        .append(PlantUmlCommentFormatter.escapeHtml(f.getName())).append('\n');
                 PlantUmlCommentFormatter.appendNoteBody(out, f.getComment(), indent, o.commentMaxLength);
                 out.append(indent).append("end note\n");
             }
@@ -536,8 +538,9 @@ public final class PlantUmlClassDiagram {
                         .add(m.getComment());
             }
             for (Map.Entry<String, List<String>> e : commentsByName.entrySet()) {
+                // メソッド名に <init>/<clinit> 等の < > が含まれる場合 HTML タグと誤認されるためエスケープする。
                 out.append(indent).append("note right of ").append(alias).append("::")
-                        .append(e.getKey()).append('\n');
+                        .append(PlantUmlCommentFormatter.escapeHtml(e.getKey())).append('\n');
                 for (String cm : e.getValue()) {
                     PlantUmlCommentFormatter.appendNoteBody(out, cm, indent, o.commentMaxLength);
                 }

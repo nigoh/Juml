@@ -21,8 +21,10 @@ import javax.swing.SpinnerNumberModel;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.HeadlessException;
 import java.awt.Insets;
 import java.awt.Window;
 import java.util.EnumSet;
@@ -121,13 +123,30 @@ public final class DiagramScopeDialog extends JDialog {
 
         add(buildForm(), BorderLayout.CENTER);
         add(buildButtons(), BorderLayout.SOUTH);
-        setPreferredSize(new Dimension(640, 620));
+        setPreferredSize(clampToScreen(new Dimension(640, 620)));
         pack();
         setLocationRelativeTo(owner);
     }
 
     public DiagramScope getResult() {
         return result;
+    }
+
+    /**
+     * 希望サイズが画面 (タスクバー等を除いた利用可能領域) の 90% を超える場合に縮める。
+     * 低解像度環境で OK/Cancel ボタンが画面外に出て操作不能になるのを防ぐ。
+     */
+    private static Dimension clampToScreen(Dimension preferred) {
+        try {
+            java.awt.Rectangle bounds = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getMaximumWindowBounds();
+            int maxW = (int) (bounds.width * 0.9);
+            int maxH = (int) (bounds.height * 0.9);
+            return new Dimension(Math.min(preferred.width, maxW),
+                    Math.min(preferred.height, maxH));
+        } catch (HeadlessException ex) {
+            return preferred;
+        }
     }
 
     private JPanel buildForm() {

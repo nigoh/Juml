@@ -412,8 +412,30 @@ public final class PlantUmlSequenceDiagram {
                 for (JavaMethodInfo inline : ((JavaMethodInfo.LocalVar) s).getInlineMethods()) {
                     walkStatements(inline.getStatements(), currentClass, depth, indent, r);
                 }
+            } else if (s instanceof JavaMethodInfo.InlineComment) {
+                // インラインコメント (メソッド本体内の // / /* */ コメント) を note として出力する。
+                // AT_CALL_SITE モードで呼び出し順序内にコメントの位置を保持できるようにする。
+                emitInlineComment((JavaMethodInfo.InlineComment) s, currentClass.getSimpleName(), body, indent, r.opts);
             }
         }
+    }
+
+    /** インラインコメントを note over として emit する。 */
+    private static void emitInlineComment(JavaMethodInfo.InlineComment comment,
+                                           String participant,
+                                           StringBuilder body,
+                                           String indent,
+                                           Options opts) {
+        String text = comment.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        String oneLine = PlantUmlCommentFormatter.escapeLabel(text, opts.commentMaxLength);
+        if (oneLine.isEmpty()) {
+            return;
+        }
+        body.append(indent).append("note over ").append(quote(participant))
+                .append(" : ").append(oneLine).append('\n');
     }
 
     private static void emitReturnStatement(JavaMethodInfo.Return r,

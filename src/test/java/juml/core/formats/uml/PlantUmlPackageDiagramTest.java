@@ -137,4 +137,51 @@ public class PlantUmlPackageDiagramTest {
         String puml = PlantUmlPackageDiagram.generate(infos);
         assertTrue(puml, puml.contains("(default)"));
     }
+
+    // ---- [High] title エスケープ修正 テスト ----
+
+    @Test
+    public void testTitleWithSpecialCharsEscaped() {
+        // title に < > & が含まれる場合、PlantUML が HTML タグと誤認しないよう
+        // &lt; &gt; &amp; に変換されること。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; class Foo {}");
+        PlantUmlPackageDiagram.Options opts = new PlantUmlPackageDiagram.Options();
+        opts.title = "A<B>&C";
+        opts.includeLegend = false;
+        String puml = PlantUmlPackageDiagram.generate(infos, opts);
+        assertTrue("escaped title expected: " + puml,
+                puml.contains("title A&lt;B&gt;&amp;C"));
+        assertFalse("raw < must not appear in title: " + puml,
+                puml.contains("title A<B>"));
+    }
+
+    // ---- [Medium] 依存エッジ: メソッドの戻り値型・引数型 テスト ----
+
+    @Test
+    public void testDependencyArrowFromMethodReturnType() {
+        // メソッドの戻り値型が別パッケージのクラスを参照する場合にも依存矢印が出ること。
+        // フィールドを持たずメソッドシグネチャだけで型を使うクラスのケース。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.a; class Foo { com.b.Bar getBar() { return null; } }"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.b; class Bar {}"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+        assertTrue("return type ref should produce arrow:\n" + puml,
+                puml.contains(" --> "));
+    }
+
+    @Test
+    public void testDependencyArrowFromMethodParamType() {
+        // メソッドの引数型が別パッケージのクラスを参照する場合にも依存矢印が出ること。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.a; class Foo { void setBar(com.b.Bar b) {} }"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.b; class Bar {}"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+        assertTrue("param type ref should produce arrow:\n" + puml,
+                puml.contains(" --> "));
+    }
 }

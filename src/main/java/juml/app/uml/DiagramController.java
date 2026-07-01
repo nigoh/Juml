@@ -41,6 +41,10 @@ public final class DiagramController {
     final Runnable refreshDiagram;
     private final Consumer<DiagramKind> onKindChanged;
     private final DiagramEntryDialogs entryDialogs;
+    private final List<javax.swing.JMenuItem> sequenceOnlyMenuItems;
+    private final List<javax.swing.JMenuItem> activityOnlyMenuItems;
+    private final List<javax.swing.JMenuItem> layoutOnlyMenuItems;
+    private final List<javax.swing.JMenuItem> navigationOnlyMenuItems;
 
     /** package-private — UmlMainFrame がミラー同期するために読む (アクティブタブの図種)。 */
     DiagramKind currentKind = DiagramKind.CLASS;
@@ -58,6 +62,10 @@ public final class DiagramController {
         this.refreshDiagram = deps.refreshDiagram;
         this.onKindChanged = deps.onKindChanged;
         this.entryDialogs = new DiagramEntryDialogs(this);
+        this.sequenceOnlyMenuItems = deps.sequenceOnlyMenuItems;
+        this.activityOnlyMenuItems = deps.activityOnlyMenuItems;
+        this.layoutOnlyMenuItems = deps.layoutOnlyMenuItems;
+        this.navigationOnlyMenuItems = deps.navigationOnlyMenuItems;
     }
 
     ProjectAnalysisCache cache() {
@@ -533,6 +541,29 @@ public final class DiagramController {
             item.setSelected(true);
         }
         syncDiagramToggle(kind);
+        updateContextualMenuItems(kind);
+    }
+
+    /**
+     * 図種に依存する Diagram メニュー項目 (起点選択・参加者フィルタ・レイアウト/
+     * ナビゲーショングラフ選択) の有効/無効を、アクティブな図種に合わせて切り替える。
+     * これらは図種が合っていないと空振りするため、無効化して押せないことを示す。
+     */
+    private void updateContextualMenuItems(DiagramKind kind) {
+        setEnabledAll(sequenceOnlyMenuItems, kind == DiagramKind.SEQUENCE);
+        setEnabledAll(activityOnlyMenuItems, kind == DiagramKind.ACTIVITY);
+        setEnabledAll(layoutOnlyMenuItems, kind == DiagramKind.LAYOUT
+                || kind == DiagramKind.LAYOUT_SCREEN || kind == DiagramKind.LAYOUT_RENDER);
+        setEnabledAll(navigationOnlyMenuItems, kind == DiagramKind.NAVIGATION);
+    }
+
+    private static void setEnabledAll(List<javax.swing.JMenuItem> items, boolean enabled) {
+        if (items == null) {
+            return;
+        }
+        for (javax.swing.JMenuItem item : items) {
+            item.setEnabled(enabled);
+        }
     }
 
     /**

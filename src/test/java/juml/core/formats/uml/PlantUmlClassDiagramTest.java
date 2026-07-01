@@ -1224,4 +1224,82 @@ public class PlantUmlClassDiagramTest {
         assertFalse("no method links when showMethods=false: " + puml,
                 puml.contains("juml://method/"));
     }
+
+    // ---- [High] title エスケープ修正 テスト ----
+
+    @Test
+    public void testTitleWithSpecialCharsEscaped() {
+        // title に < > & が含まれる場合、PlantUML が HTML タグと誤認しないよう
+        // &lt; &gt; &amp; に変換されること。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.title = "A<B>&C";
+        o.includeLegend = false;
+        String puml = PlantUmlClassDiagram.generate(
+                JavaStructureExtractor.extract("class C {}"), o);
+        assertTrue("escaped title expected: " + puml,
+                puml.contains("title A&lt;B&gt;&amp;C"));
+        assertFalse("raw < must not appear in title: " + puml,
+                puml.contains("title A<B>"));
+    }
+
+    // ---- [Medium] NOTE モード での <init> 等の擬似名エスケープ テスト ----
+
+    @Test
+    public void testNoteStyleFieldNameWithAngleBracketEscaped() {
+        // NOTE モードで、フィールド名に < > が含まれる場合に HTML エスケープされること。
+        // 実際の Java ソースにこのような名前は存在しないが、解析器が
+        // <clinit>/<init> 等を擬似フィールドとして登録するケースへの防衛。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.commentStyle = PlantUmlClassDiagram.CommentStyle.NOTE;
+        o.showFields = true;
+        o.showComments = true;
+        o.includeLegend = false;
+
+        // JavaClassInfo を手動構築してフィールド名に < > を注入
+        JavaClassInfo c = new JavaClassInfo();
+        c.setPackageName("pkg");
+        c.setSimpleName("Cls");
+        c.setKind(JavaClassInfo.Kind.CLASS);
+        c.setDetailed(true);
+        JavaFieldInfo f = new JavaFieldInfo();
+        f.setName("<clinit>");
+        f.setType("void");
+        f.setComment("クラス初期化子");
+        c.getFields().add(f);
+
+        String puml = PlantUmlClassDiagram.generate(java.util.Collections.singletonList(c), o);
+        // 生の < は PlantUML HTML タグとして扱われるため出力されていてはならない
+        assertFalse("raw < in field note must not appear: " + puml,
+                puml.contains("::<clinit>"));
+        // HTML エスケープ済み形式で出力されること
+        assertTrue("escaped field name must appear: " + puml,
+                puml.contains("::" + PlantUmlCommentFormatter.escapeHtml("<clinit>")));
+    }
+
+    @Test
+    public void testNoteStyleMethodNameWithAngleBracketEscaped() {
+        // NOTE モードで、メソッド名に < > が含まれる場合に HTML エスケープされること。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.commentStyle = PlantUmlClassDiagram.CommentStyle.NOTE;
+        o.showMethods = true;
+        o.showComments = true;
+        o.includeLegend = false;
+
+        JavaClassInfo c = new JavaClassInfo();
+        c.setPackageName("pkg");
+        c.setSimpleName("Cls");
+        c.setKind(JavaClassInfo.Kind.CLASS);
+        c.setDetailed(true);
+        JavaMethodInfo m = new JavaMethodInfo();
+        m.setName("<init>");
+        m.setReturnType("void");
+        m.setComment("コンストラクタ");
+        c.getMethods().add(m);
+
+        String puml = PlantUmlClassDiagram.generate(java.util.Collections.singletonList(c), o);
+        assertFalse("raw < in method note must not appear: " + puml,
+                puml.contains("::<init>"));
+        assertTrue("escaped method name must appear: " + puml,
+                puml.contains("::" + PlantUmlCommentFormatter.escapeHtml("<init>")));
+    }
 }

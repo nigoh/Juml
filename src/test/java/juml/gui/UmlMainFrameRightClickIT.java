@@ -40,6 +40,7 @@ import java.io.Writer;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -187,6 +188,28 @@ public class UmlMainFrameRightClickIT {
         Object tabPane = getField(frame, "tabPane");
         return (SvgPreviewPanel) tabPane.getClass()
                 .getMethod("activePreviewPanel").invoke(tabPane);
+    }
+
+    /**
+     * 条件が成立するまで最大 {@code timeoutMs} だけ期限付きでポーリングする。
+     *
+     * <p>固定 {@code Thread.sleep} を一発で待つと遅い環境で flaky になる。
+     * 条件が満たされ次第すぐ返すことで速い環境では高速・遅い環境では十分待つ両立を実現する。
+     * {@link UmlMainFrameTabLinkageIT#await} と同じ方針。</p>
+     *
+     * @param timeoutMs タイムアウトまでのミリ秒
+     * @param cond      成立を待つ条件 (EDT 外から呼ばれる)
+     * @throws InterruptedException スレッドが割り込まれた場合
+     */
+    private static void awaitCondition(long timeoutMs,
+            BooleanSupplier cond) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (cond.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(80);
+        }
     }
 
     /**
@@ -379,12 +402,16 @@ public class UmlMainFrameRightClickIT {
         Object cache = getField(frame, "cache");
         Object controller = getField(frame, "controller");
         Object tabPane = getField(frame, "tabPane");
-        long loadDeadline = System.currentTimeMillis() + 60_000;
-        while (!(boolean) cache.getClass().getMethod("isLoaded").invoke(cache)) {
-            if (System.currentTimeMillis() > loadDeadline) {
-                throw new IllegalStateException("timeout: project did not load");
+        // 固定 Thread.sleep(200) 生ループ → 条件付きポーリングに置き換え。
+        awaitCondition(60_000, () -> {
+            try {
+                return (boolean) cache.getClass().getMethod("isLoaded").invoke(cache);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-            Thread.sleep(200);
+        });
+        if (!(boolean) cache.getClass().getMethod("isLoaded").invoke(cache)) {
+            throw new IllegalStateException("timeout: project did not load");
         }
         Object classKind = Enum.valueOf(
                 (Class) Class.forName("juml.app.uml.DiagramKind"), "CLASS");
@@ -430,15 +457,12 @@ public class UmlMainFrameRightClickIT {
         });
 
         // ---------- (5) Sequence/Activity 選択ポップアップ表示を確認しスクショ ----------
-        JPopupMenu popup = null;
-        long popupDeadline = System.currentTimeMillis() + 5_000;
-        while (System.currentTimeMillis() < popupDeadline) {
-            popup = findVisiblePopup();
-            if (popup != null && popup.isShowing()) {
-                break;
-            }
-            Thread.sleep(100);
-        }
+        // 固定 Thread.sleep(100) 生ループ → 条件付きポーリングに置き換え。
+        awaitCondition(5_000, () -> {
+            JPopupMenu p = findVisiblePopup();
+            return p != null && p.isShowing();
+        });
+        JPopupMenu popup = findVisiblePopup();
         assertNotNull("method diagram popup did not appear", popup);
         assertTrue("popup should be visible", popup.isShowing());
         capture("02-method-popup.png");
@@ -467,17 +491,18 @@ public class UmlMainFrameRightClickIT {
         });
 
         // ---------- (7) シーケンス図タブが開いてフォーカスされるのを待つ ----------
-        long seqDeadline = System.currentTimeMillis() + 60_000;
-        boolean ready = false;
-        while (System.currentTimeMillis() < seqDeadline) {
-            Object kind = activeTabKind(tabPane);
-            if (kind != null && "SEQUENCE".equals(kind.toString())) {
-                ready = true;
-                break;
+        // 固定 Thread.sleep(200) 生ループ → 条件付きポーリングに置き換え。
+        awaitCondition(60_000, () -> {
+            try {
+                Object kind = activeTabKind(tabPane);
+                return kind != null && "SEQUENCE".equals(kind.toString());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-            Thread.sleep(200);
-        }
-        assertTrue("clicking a method link should open a focused SEQUENCE tab", ready);
+        });
+        Object kindAfterAwait = activeTabKind(tabPane);
+        assertTrue("clicking a method link should open a focused SEQUENCE tab",
+                kindAfterAwait != null && "SEQUENCE".equals(kindAfterAwait.toString()));
         Object currentKindAfter = getField(frame, "currentKind");
         assertEquals("currentKind mirror should be SEQUENCE",
                 "SEQUENCE", currentKindAfter.toString());

@@ -249,4 +249,51 @@ public class JavaLexerTest {
         lex.tokenize();
         assertEquals("abc", lex.getSource());
     }
+
+    // ---- テキストブロック境界条件テスト ----
+
+    /**
+     * 空テキストブロック {@code """""" } が 1 つの STRING トークンとして
+     * 正しくトークン化されることを確認する。
+     * (開始 """ の直後にすぐ終端 """ が続く)
+     */
+    @Test
+    public void testTextBlockEmpty() {
+        String src = "\"\"\"\"\"\"";
+        List<JavaToken> toks = tokenize(src);
+        // 空テキストブロック: STRING + EOF の 2 トークン
+        assertEquals("empty text block should yield exactly 2 tokens", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.STRING, src);
+        assertEquals(JavaToken.Type.EOF, toks.get(1).type);
+    }
+
+    /**
+     * ソースがちょうど閉じ {@code """} で終わるケース。
+     * {@code readTextBlock} の境界判定 ({@code pos + 2 < len}) が終端 {@code """}
+     * を取りこぼさないことを確認する。
+     */
+    @Test
+    public void testTextBlockEndsAtExactEof() {
+        // ソースの最後の 3 文字がちょうど """ となるケース
+        String src = "\"\"\"hello\"\"\"";
+        List<JavaToken> toks = tokenize(src);
+        assertEquals("text block at EOF should yield exactly 2 tokens", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.STRING, src);
+        assertEquals(JavaToken.Type.EOF, toks.get(1).type);
+    }
+
+    /**
+     * 終端 {@code """} が存在しない (ソースが途中で終わる) ケース。
+     * EOF でフォールバックし、クラッシュなく残りを 1 STRING トークンとして返すことを確認する。
+     */
+    @Test
+    public void testTextBlockUnterminatedRecovery() {
+        String src = "\"\"\"unterminated";
+        List<JavaToken> toks = tokenize(src);
+        // 回復パスを通って STRING + EOF の 2 トークン以上が返ること (クラッシュしないこと)
+        assertTrue("unterminated text block should produce at least 2 tokens", toks.size() >= 2);
+        assertEquals(JavaToken.Type.STRING, toks.get(0).type);
+        // 回復後のトークンがソース末尾まで span していること
+        assertEquals(src, toks.get(0).text);
+    }
 }

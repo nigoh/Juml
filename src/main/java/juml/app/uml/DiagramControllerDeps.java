@@ -27,4 +27,9 @@ public final class DiagramControllerDeps {
     public java.awt.Frame parentFrame;
     public Runnable refreshDiagram;
     public Consumer<DiagramKind> onKindChanged;
+    /** アクティブタブの図種に応じて有効/無効を切り替える文脈依存メニュー項目。 */
+    public java.util.List<javax.swing.JMenuItem> sequenceOnlyMenuItems;
+    public java.util.List<javax.swing.JMenuItem> activityOnlyMenuItems;
+    public java.util.List<javax.swing.JMenuItem> layoutOnlyMenuItems;
+    public java.util.List<javax.swing.JMenuItem> navigationOnlyMenuItems;
 }

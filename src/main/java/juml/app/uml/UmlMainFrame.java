@@ -82,6 +82,11 @@ public class UmlMainFrame extends JFrame {
     /** プロジェクト未ロード時に無効化するエクスポート系 UI 要素。 */
     private java.util.List<JMenuItem> exportMenuItems;
     private javax.swing.JButton exportToolbarButton;
+    /** アクティブタブの図種に応じて有効/無効を切り替える文脈依存メニュー項目。 */
+    private java.util.List<JMenuItem> sequenceOnlyMenuItems;
+    private java.util.List<JMenuItem> activityOnlyMenuItems;
+    private java.util.List<JMenuItem> layoutOnlyMenuItems;
+    private java.util.List<JMenuItem> navigationOnlyMenuItems;
     private ButtonGroup themeGroup;
     private java.util.Map<String, JRadioButtonMenuItem> themeItems;
 
@@ -296,6 +301,10 @@ public class UmlMainFrame extends JFrame {
         themeItems = menuResult.themeItems;
         themeGroup = menuResult.themeGroup;
         exportMenuItems = menuResult.exportItems;
+        sequenceOnlyMenuItems = menuResult.contextualItems.sequenceOnlyItems;
+        activityOnlyMenuItems = menuResult.contextualItems.activityOnlyItems;
+        layoutOnlyMenuItems = menuResult.contextualItems.layoutOnlyItems;
+        navigationOnlyMenuItems = menuResult.contextualItems.navigationOnlyItems;
         setJMenuBar(menuResult.menuBar);
     }
 
@@ -451,6 +460,10 @@ public class UmlMainFrame extends JFrame {
         deps.parentFrame = this;
         deps.refreshDiagram = this::refreshDiagram;
         deps.onKindChanged = kind -> this.currentKind = kind;
+        deps.sequenceOnlyMenuItems = sequenceOnlyMenuItems;
+        deps.activityOnlyMenuItems = activityOnlyMenuItems;
+        deps.layoutOnlyMenuItems = layoutOnlyMenuItems;
+        deps.navigationOnlyMenuItems = navigationOnlyMenuItems;
         return new DiagramController(deps);
     }
 

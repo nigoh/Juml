@@ -799,4 +799,66 @@ public class PlantUmlSequenceDiagramTest {
         assertTrue("throw should appear as note over: " + puml,
                 puml.contains("note over") && puml.contains("throw"));
     }
+
+    // ---- [High] walkStatements が InlineComment を note として出力するテスト ----
+
+    @Test
+    public void testWalkStatementsEmitsInlineCommentAsNote() {
+        // メソッド本体内のインラインコメントが walkStatements 経由で
+        // note over として出力されることを確認する。
+        // JavaStructureExtractor がメソッド本体のインラインコメントを
+        // InlineComment Statement として格納するかを検証する。
+        List<JavaMethodInfo.Statement> stmts = new java.util.ArrayList<>();
+        stmts.add(new JavaMethodInfo.InlineComment("処理開始"));
+        stmts.add(new JavaMethodInfo.Call(null, "helper"));
+
+        // JavaClassInfo を手動構築
+        JavaClassInfo cls = new JavaClassInfo();
+        cls.setPackageName("pkg");
+        cls.setSimpleName("Svc");
+        cls.setKind(JavaClassInfo.Kind.CLASS);
+        cls.setDetailed(true);
+        JavaMethodInfo m = new JavaMethodInfo();
+        m.setName("run");
+        m.setReturnType("void");
+        m.getStatements().addAll(stmts);
+        cls.getMethods().add(m);
+
+        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlSequenceDiagram.generate(
+                java.util.Collections.singletonList(cls), "Svc", "run", opts);
+        // InlineComment が note over として出力されること
+        assertTrue("InlineComment should appear as note over: " + puml,
+                puml.contains("note over") && puml.contains("処理開始"));
+    }
+
+    @Test
+    public void testWalkStatementsInlineCommentSpecialCharsEscaped() {
+        // インラインコメントの < > & がエスケープされて note として安全に出力されること。
+        List<JavaMethodInfo.Statement> stmts = new java.util.ArrayList<>();
+        stmts.add(new JavaMethodInfo.InlineComment("型: List<String> & Map<K,V>"));
+
+        JavaClassInfo cls = new JavaClassInfo();
+        cls.setPackageName("pkg");
+        cls.setSimpleName("Svc");
+        cls.setKind(JavaClassInfo.Kind.CLASS);
+        cls.setDetailed(true);
+        JavaMethodInfo m = new JavaMethodInfo();
+        m.setName("run");
+        m.setReturnType("void");
+        m.getStatements().addAll(stmts);
+        cls.getMethods().add(m);
+
+        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlSequenceDiagram.generate(
+                java.util.Collections.singletonList(cls), "Svc", "run", opts);
+        // エスケープ済みテキストが note に含まれること
+        assertTrue("angle brackets must be escaped: " + puml,
+                puml.contains("&lt;String&gt;"));
+        // 生の < が PlantUML テキストに残っていないこと
+        assertFalse("raw < must not appear in note: " + puml,
+                puml.contains("List<String>"));
+    }
 }
