@@ -347,8 +347,11 @@ final class PlantUmlClassRelations {
             return null;
         }
         String t = type.replaceAll("\\[\\]", "").trim();
-        // ワイルドカード境界を除去: "? extends Foo" → "Foo"、"? super Foo" → "Foo"
-        t = t.replaceAll("^\\?\\s+(?:extends|super)\\s+", "").trim();
+        // ワイルドカード境界を除去: "? extends Foo" / "? super Foo" → "Foo"
+        // 型アノテーション付き境界にも対応: "? extends @NonNull Foo" → "Foo"
+        t = t.replaceAll(
+                "^\\?\\s+(?:extends|super)\\s+(?:@[A-Za-z_$][A-Za-z0-9_$]*(?:\\([^)]*\\))?\\s+)*",
+                "").trim();
         // 一番外側のジェネリックがあれば、その引数を再帰的に検索
         int lt = t.indexOf('<');
         if (lt >= 0) {

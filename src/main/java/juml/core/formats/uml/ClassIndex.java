@@ -190,7 +190,7 @@ public final class ClassIndex {
             }
             c.setDetailed(true);
             // TOCTOU 二重パース対策: 別スレッドが先に登録済みの場合は上書きしない。
-            // ConcurrentHashMap の putIfAbsent は computeIfAbsent と異なり
+            // synchronizedMap の putIfAbsent は computeIfAbsent と異なり
             // 同一マップへの再入がないため安全に使用できる。
             detailedCache.putIfAbsent(c.getQualifiedName(), c);
         }

@@ -51,6 +51,11 @@ public class DiagramTabPaneTest {
 
     @Before
     public void setUp() throws Exception {
+        // @Before メソッドの実行順は JUnit 4 では未定義のため、requireDisplay に頼らず
+        // setUp() 自体もヘッドレスガードを入れて順序依存を除去する。
+        Assume.assumeFalse(
+                "ヘッドレス環境では DiagramTab の Swing コンポーネント生成が失敗するためスキップ",
+                GraphicsEnvironment.isHeadless());
         // ProjectAnalysisCache の isLoaded() が true を返すよう projectRoot をセット。
         // load() を呼ぶと実プロジェクト解析が走るため、最小侵襲のリフレクションで注入する。
         cache = new ProjectAnalysisCache();
@@ -241,18 +246,20 @@ public class DiagramTabPaneTest {
     @Test
     public void lruAutoClose_reducesTabCountToWithinLimit() throws Exception {
         final int limit = 3;
-        System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
-        // プロパティ設定後に DiagramTabPane を生成する。
+        // lruTabs の生成は juml.maxDiagramTabs に依存しない (try 外で構築)。
         final JTabbedPane lruTabs = GuiActionRunner.execute(() -> {
             JTabbedPane t = new JTabbedPane();
             t.addTab("Utility1", new javax.swing.JPanel());
             t.addTab("Utility2", new javax.swing.JPanel());
             return t;
         });
-        final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
-                new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
-                        msg -> { }, zoom -> { }));
         try {
+            // setProperty を try 内に移動し、finally で必ず clearProperty される保証を得る。
+            System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
+            // プロパティ設定後に DiagramTabPane を生成する。
+            final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
+                    new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
+                            msg -> { }, zoom -> { }));
             // 上限+1 本追加する。最後の 1 本を追加した瞬間に最古タブが LRU で閉じられる。
             for (int i = 0; i < limit + 1; i++) {
                 final int idx = i;
@@ -277,18 +284,20 @@ public class DiagramTabPaneTest {
     @Test
     public void lruAutoClose_doesNotCloseActiveTab() throws Exception {
         final int limit = 2;
-        System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
-        // プロパティ設定後に DiagramTabPane を生成する。
+        // lruTabs の生成は juml.maxDiagramTabs に依存しない (try 外で構築)。
         final JTabbedPane lruTabs = GuiActionRunner.execute(() -> {
             JTabbedPane t = new JTabbedPane();
             t.addTab("Utility1", new javax.swing.JPanel());
             t.addTab("Utility2", new javax.swing.JPanel());
             return t;
         });
-        final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
-                new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
-                        msg -> { }, zoom -> { }));
         try {
+            // setProperty を try 内に移動し、finally で必ず clearProperty される保証を得る。
+            System.setProperty("juml.maxDiagramTabs", String.valueOf(limit));
+            // プロパティ設定後に DiagramTabPane を生成する。
+            final DiagramTabPane lruPane = GuiActionRunner.execute(() ->
+                    new DiagramTabPane(lruTabs, FIXED, cache, new DiagramState(),
+                            msg -> { }, zoom -> { }));
             juml.core.formats.uml.JavaClassInfo c0 = classInfo("com.lru.Active0");
             juml.core.formats.uml.JavaClassInfo c1 = classInfo("com.lru.Active1");
             juml.core.formats.uml.JavaClassInfo c2 = classInfo("com.lru.Active2");
