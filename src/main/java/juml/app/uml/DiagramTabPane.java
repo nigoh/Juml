@@ -167,6 +167,24 @@ public final class DiagramTabPane {
         return tabs.getSelectedComponent() instanceof DiagramTab;
     }
 
+    /** 開いている動的ダイアグラムタブの枚数 (ユーティリティタブは含まない)。 */
+    public int dynamicTabCount() {
+        return openTabs.size();
+    }
+
+    /** 再オープン (Ctrl+Shift+T) できる閉じタブ履歴の件数。 */
+    public int closedTabHistorySize() {
+        return closedTabs.size();
+    }
+
+    /**
+     * アプリ終了前に呼ぶ後始末。付箋メモの保存 IO スレッドを停止し、
+     * キュー内の保存タスクが完了するまで短時間待つ (データロス防止)。
+     */
+    public void shutdown() {
+        notesBinder.shutdown();
+    }
+
     /** ダイアグラムタブが 1 つ以上開かれていて、かつ選択中か。 */
     public boolean hasActiveTab() {
         return tabs.getSelectedComponent() instanceof DiagramTab;
@@ -547,11 +565,24 @@ public final class DiagramTabPane {
         return idx >= 0 && idx < keys.size() - 1;
     }
 
-    /** アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用 (汎用タブには無作用)。 */
+    /** アクティブタブの右側に図タブがあるか (メニュー活性制御用)。動的タブ未選択なら false。 */
+    public boolean hasTabsToRightOfActive() {
+        DiagramTab t = activeTab();
+        return t != null && hasTabsToRight(t.key);
+    }
+
+    /**
+     * アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用。
+     * ユーティリティタブ選択中は閉じられないため、silent no-op にせず
+     * ビープ + ステータス通知でフィードバックする。
+     */
     public void closeActiveTab() {
         DiagramTab t = activeTab();
         if (t != null) {
             closeTab(t, t.key);
+        } else {
+            java.awt.Toolkit.getDefaultToolkit().beep();
+            reportStatus(Messages.get("tab.closeUtilityDenied"));
         }
     }
 
