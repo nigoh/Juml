@@ -169,6 +169,7 @@ public class UmlMainFrame extends JFrame {
         treePanel.setOnManifestSelected(m -> controller.onTreeManifestSelected(m));
         treePanel.setOnComponentSelected(c -> controller.onTreeComponentSelected(c));
         treePanel.setOnOpenInNewTab(req -> controller.onTreeOpenInNewTab(req));
+        treePanel.setOnPreviewInTab(req -> controller.onTreePreviewInTab(req));
         treePanel.setOnOpenSource(req -> controller.onTreeOpenSource(req));
         treePanel.setOnSoongSelected(() -> controller.openSoongDiagram());
 

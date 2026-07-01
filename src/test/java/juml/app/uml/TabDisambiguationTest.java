@@ -46,7 +46,7 @@ public class TabDisambiguationTest {
     @Test
     public void updateTitleReplacesHeaderLabel() {
         Component header = DiagramTabHeader.build("Bar", TreeNodeIcon.CLASS, "tip",
-                () -> { }, e -> { }, () -> { });
+                () -> { }, e -> { }, () -> { }, null);
         DiagramTabHeader.updateTitle(header, "Bar  ·  com.example.foo");
         // ヘッダ内のタイトル JLabel が差し替わっている
         String found = null;

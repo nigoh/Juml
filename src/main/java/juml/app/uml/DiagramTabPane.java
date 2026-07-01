@@ -77,6 +77,8 @@ public final class DiagramTabPane {
     private Consumer<String> toastNotifier;
     /** タブ内上下分割の既定比率 (Setting から取得)。 */
     private double tabSplitRatio = 0.7;
+    /** VS Code 風プレビュータブのキー (null = プレビューなし)。 */
+    private String previewTabKey;
     /**
      * 直近でフォーカスした動的ダイアグラムタブの由来ノード。
      * ユーティリティタブ (Functions / Members 等) を選択中でも「いま見ていた図の題材」を
@@ -220,8 +222,49 @@ public final class DiagramTabPane {
         if (req == null) {
             return;
         }
+        pinPreviewTab();
         openDiagram(req.tabKey(), req.displayLabel(), DiagramTabSupport.iconFor(req),
-                DiagramTabSupport.toDiagramRequest(req), req);
+                DiagramTabSupport.toDiagramRequest(req), req, false);
+    }
+
+    /**
+     * VS Code 風プレビュータブとして開く。既存タブがあればフォーカスのみ移す。
+     * 既にプレビュー中の別タブがあれば置き換える。
+     */
+    public void addOrFocusPreviewTab(TreeNodeOpenRequest req) {
+        if (req == null) {
+            return;
+        }
+        String key = req.tabKey();
+        DiagramTab existing = openTabs.get(key);
+        if (existing != null) {
+            tabs.setSelectedComponent(existing);
+            return;
+        }
+        if (previewTabKey != null && !previewTabKey.equals(key)) {
+            DiagramTab old = openTabs.get(previewTabKey);
+            if (old != null) {
+                closeTab(old, previewTabKey);
+            }
+            previewTabKey = null;
+        }
+        openDiagram(key, req.displayLabel(), DiagramTabSupport.iconFor(req),
+                DiagramTabSupport.toDiagramRequest(req), req, true);
+    }
+
+    /** プレビュータブを確定 (ピン留め) して通常タブにする。 */
+    public void pinPreviewTab() {
+        if (previewTabKey == null) {
+            return;
+        }
+        DiagramTab tab = openTabs.get(previewTabKey);
+        if (tab != null) {
+            int idx = tabs.indexOfComponent(tab);
+            if (idx >= 0) {
+                DiagramTabHeader.setPreview(tabs.getTabComponentAt(idx), false);
+            }
+        }
+        previewTabKey = null;
     }
 
     /**
@@ -240,18 +283,14 @@ public final class DiagramTabPane {
         }
     }
 
-    /**
-     * 任意の図種・スコープのダイアグラムをタブとして開く。
-     * 既存タブ ({@code key} 一致) があればフォーカスのみ移す。
-     *
-     * @param key      タブ識別キー (同一なら既存タブにフォーカス)
-     * @param label    タブヘッダのラベル
-     * @param icon     タブヘッダのアイコン
-     * @param spec     描画リクエスト
-     * @param treeSync ツリーハイライト用の由来ノード (無ければ null)
-     */
     public void openDiagram(String key, String label, TreeNodeIcon icon,
                             DiagramRequest spec, TreeNodeOpenRequest treeSync) {
+        openDiagram(key, label, icon, spec, treeSync, false);
+    }
+
+    private void openDiagram(String key, String label, TreeNodeIcon icon,
+                             DiagramRequest spec, TreeNodeOpenRequest treeSync,
+                             boolean preview) {
         if (spec == null || !cache.isLoaded()) {
             return;
         }
@@ -270,8 +309,13 @@ public final class DiagramTabPane {
         tabs.insertTab(label, null, tab, tip, insertAt);
         java.awt.Component header = DiagramTabHeader.build(label, icon, tip,
                 () -> closeTab(tab, key), e -> showTabMenu(tab, key, e),
-                () -> tabs.setSelectedComponent(tab));
+                () -> tabs.setSelectedComponent(tab),
+                this::pinPreviewTab);
         tabs.setTabComponentAt(insertAt, header);
+        if (preview) {
+            previewTabKey = key;
+            DiagramTabHeader.setPreview(header, true);
+        }
         // VS Code 風: タブをドラッグして並び替え可能にする (固定タブ境界は越えない)。
         TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
         tabs.setSelectedIndex(insertAt);
@@ -523,6 +567,9 @@ public final class DiagramTabPane {
             tabs.remove(index);
         }
         openTabs.remove(key);
+        if (key.equals(previewTabKey)) {
+            previewTabKey = null;
+        }
         mru.onClosed(tab);
         navHistory.remove(key);
         refreshTabLabels();
