@@ -73,6 +73,8 @@ public final class DiagramTabPane {
     private Consumer<FocusedTab> onTabFocused;
     /** タブ右クリック「Reveal in Explorer」でツリーの該当ノードを選択するコールバック。 */
     private Consumer<TreeNodeOpenRequest> revealInTree;
+    /** トースト通知 (LRU 自動クローズなど) のコールバック。 */
+    private Consumer<String> toastNotifier;
     /**
      * 直近でフォーカスした動的ダイアグラムタブの由来ノード。
      * ユーティリティタブ (Functions / Members 等) を選択中でも「いま見ていた図の題材」を
@@ -130,6 +132,11 @@ public final class DiagramTabPane {
     /** タブ右クリック「Reveal in Explorer」でツリーへ遷移するコールバックを設定する。 */
     public void setRevealInTree(Consumer<TreeNodeOpenRequest> listener) {
         this.revealInTree = listener;
+    }
+
+    /** トースト通知コールバックを設定する (LRU 自動クローズなど)。 */
+    public void setToastNotifier(Consumer<String> notifier) {
+        this.toastNotifier = notifier;
     }
 
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
@@ -587,8 +594,11 @@ public final class DiagramTabPane {
         public void closeTab(String key) {
             DiagramTab t = openTabs.get(key);
             if (t != null) {
-                // 上限超過でタブが自動クローズされたことを通知し、無通知で消える驚きを防ぐ。
-                reportStatus(Messages.get("status.tabAutoClosed") + t.label);
+                String msg = Messages.get("status.tabAutoClosed") + t.label;
+                reportStatus(msg);
+                if (toastNotifier != null) {
+                    toastNotifier.accept(msg);
+                }
                 DiagramTabPane.this.closeTab(t, key, false);
             }
         }

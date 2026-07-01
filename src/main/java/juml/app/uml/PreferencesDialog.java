@@ -13,6 +13,8 @@ import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import java.awt.BorderLayout;
@@ -136,15 +138,22 @@ public final class PreferencesDialog extends JDialog {
         public final String language;
         /** 選択された図プレビューの描画品質キー ("AUTO" / "LOW" / "HIGH" / "ULTRA")。 */
         public final String diagramRenderQuality;
+        /** タブの最大数 (LRU 自動クローズ)。 */
+        public final int maxDiagramTabs;
+        /** 描画保持タブ数。 */
+        public final int renderedTabs;
 
         public Result(String lookAndFeel, boolean restoreLastProjectOnStartup,
-                      String language, String diagramRenderQuality) {
+                      String language, String diagramRenderQuality,
+                      int maxDiagramTabs, int renderedTabs) {
             this.lookAndFeel = (lookAndFeel == null || lookAndFeel.isEmpty())
                     ? "SYSTEM" : lookAndFeel;
             this.restoreLastProjectOnStartup = restoreLastProjectOnStartup;
             this.language = LanguageOption.fromKey(language).key();
             this.diagramRenderQuality =
                     DiagramRenderQuality.fromKey(diagramRenderQuality).name();
+            this.maxDiagramTabs = maxDiagramTabs;
+            this.renderedTabs = renderedTabs;
         }
     }
 
@@ -156,19 +165,26 @@ public final class PreferencesDialog extends JDialog {
             new JComboBox<>(DiagramRenderQuality.values());
     private final JCheckBox restoreLastProjectCheck =
             new JCheckBox(Messages.get("pref.restoreLastProject"));
+    private final JSpinner maxTabsSpinner =
+            new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
+    private final JSpinner renderedTabsSpinner =
+            new JSpinner(new SpinnerNumberModel(4, 1, 50, 1));
 
     private Result result;
 
     private PreferencesDialog(Frame owner, String currentLaf,
                               boolean currentRestoreLastProject,
                               String currentLanguage,
-                              String currentRenderQuality) {
+                              String currentRenderQuality,
+                              int currentMaxTabs, int currentRenderedTabs) {
         super(owner, Messages.get("dlg.preferences.title"), true);
         lafCombo.setSelectedItem(LookAndFeelOption.fromKey(currentLaf));
         languageCombo.setSelectedItem(LanguageOption.fromKey(currentLanguage));
         renderQualityCombo.setSelectedItem(
                 DiagramRenderQuality.fromKey(currentRenderQuality));
         restoreLastProjectCheck.setSelected(currentRestoreLastProject);
+        maxTabsSpinner.setValue(currentMaxTabs);
+        renderedTabsSpinner.setValue(currentRenderedTabs);
         setContentPane(buildContent());
         pack();
         setMinimumSize(new Dimension(420, getPreferredSize().height));
@@ -295,6 +311,38 @@ public final class PreferencesDialog extends JDialog {
         c.weightx = 0;
         form.add(hint(Messages.get("pref.renderQuality.hint")), c);
 
+        // --- タブ管理 (Tabs) ---
+        c.gridwidth = 1;
+        c.gridy = 11;
+        c.gridx = 0;
+        c.insets = new Insets(14, 4, 4, 4);
+        form.add(sectionLabel(Messages.get("pref.section.tabs")), c);
+        c.insets = new Insets(4, 4, 4, 4);
+
+        c.gridy = 12;
+        c.gridx = 0;
+        form.add(new JLabel(Messages.get("pref.maxTabs")), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        form.add(maxTabsSpinner, c);
+
+        c.gridy = 13;
+        c.gridx = 0;
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        form.add(new JLabel(Messages.get("pref.renderedTabs")), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        form.add(renderedTabsSpinner, c);
+
+        c.gridy = 14;
+        c.gridx = 1;
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        form.add(hint(Messages.get("pref.tabs.hint")), c);
+
         return form;
     }
 
@@ -310,7 +358,9 @@ public final class PreferencesDialog extends JDialog {
             result = new Result(sel != null ? sel.name() : "SYSTEM",
                     restoreLastProjectCheck.isSelected(),
                     lang != null ? lang.key() : "ja",
-                    rq != null ? rq.name() : "AUTO");
+                    rq != null ? rq.name() : "AUTO",
+                    (Integer) maxTabsSpinner.getValue(),
+                    (Integer) renderedTabsSpinner.getValue());
             dispose();
         });
         cancel.addActionListener(e -> {
@@ -344,9 +394,11 @@ public final class PreferencesDialog extends JDialog {
     public static Result showDialog(Frame owner, String currentLaf,
                                     boolean currentRestoreLastProject,
                                     String currentLanguage,
-                                    String currentRenderQuality) {
+                                    String currentRenderQuality,
+                                    int currentMaxTabs, int currentRenderedTabs) {
         PreferencesDialog dlg = new PreferencesDialog(owner, currentLaf,
-                currentRestoreLastProject, currentLanguage, currentRenderQuality);
+                currentRestoreLastProject, currentLanguage, currentRenderQuality,
+                currentMaxTabs, currentRenderedTabs);
         dlg.setVisible(true);
         return dlg.result;
     }

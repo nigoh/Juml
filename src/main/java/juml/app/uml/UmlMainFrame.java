@@ -143,6 +143,7 @@ public class UmlMainFrame extends JFrame {
             }
         });
         tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
+        tabPane.setToastNotifier(msg -> ToastNotification.show(mainTabs, msg));
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -543,20 +544,27 @@ public class UmlMainFrame extends JFrame {
         boolean curRestore = setting != null && setting.isRestoreLastProjectOnStartup();
         String curLang = setting != null ? setting.getLanguage() : "ja";
         String curQuality = setting != null ? setting.getDiagramRenderQuality() : "AUTO";
+        int curMaxTabs = setting != null ? setting.getMaxDiagramTabs() : 20;
+        int curRenderedTabs = setting != null ? setting.getRenderedTabs() : 4;
         PreferencesDialog.Result r =
-                PreferencesDialog.showDialog(this, curLaf, curRestore, curLang, curQuality);
+                PreferencesDialog.showDialog(this, curLaf, curRestore, curLang, curQuality,
+                        curMaxTabs, curRenderedTabs);
         if (r == null) {
             return;
         }
         boolean lafChanged = !r.lookAndFeel.equalsIgnoreCase(curLaf);
         boolean langChanged = !r.language.equalsIgnoreCase(curLang);
         boolean qualityChanged = !r.diagramRenderQuality.equalsIgnoreCase(curQuality);
+        boolean tabLimitsChanged = r.maxDiagramTabs != curMaxTabs
+                || r.renderedTabs != curRenderedTabs;
         try {
             if (setting != null) {
                 setting.setLookAndFeel(r.lookAndFeel);
                 setting.setRestoreLastProjectOnStartup(r.restoreLastProjectOnStartup);
                 setting.setLanguage(r.language);
                 setting.setDiagramRenderQuality(r.diagramRenderQuality);
+                setting.setMaxDiagramTabs(r.maxDiagramTabs);
+                setting.setRenderedTabs(r.renderedTabs);
                 Main.saveSetting();
             }
         } catch (RuntimeException ignored) {
@@ -580,7 +588,7 @@ public class UmlMainFrame extends JFrame {
             revalidate();
             repaint();
         }
-        if ((lafChanged && !lafAppliedLive) || langChanged) {
+        if ((lafChanged && !lafAppliedLive) || langChanged || tabLimitsChanged) {
             JOptionPane.showMessageDialog(this,
                     juml.util.Messages.get("pref.restartNotice"),
                     juml.util.Messages.get("menubar.settings.preferences"),

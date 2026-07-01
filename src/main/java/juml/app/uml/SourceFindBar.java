@@ -60,6 +60,7 @@ final class SourceFindBar extends JPanel {
         field = new JTextField(20);
         field.putClientProperty("JTextField.placeholderText",
                 Messages.get("source.find.placeholder"));
+        field.putClientProperty("JTextField.showClearButton", true);
         info = new JLabel(" ");
         Color infoFg = javax.swing.UIManager.getColor("Label.disabledForeground");
         info.setForeground(infoFg != null ? infoFg : new Color(0x777777));
