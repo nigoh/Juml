@@ -181,6 +181,7 @@ public final class ToolBarBuilder {
                 javax.swing.Icon icon = MaterialIcons.of(kindGlyph(k), 16, cat.color);
                 JToggleButton b = new JToggleButton(toolbarLabel(k), icon);
                 b.setToolTipText(k.getDisplayName() + tooltipExtra(k));
+                b.getAccessibleContext().setAccessibleName(k.getDisplayName());
                 b.setIconTextGap(4);
                 if (k == initialKind) {
                     b.setSelected(true);

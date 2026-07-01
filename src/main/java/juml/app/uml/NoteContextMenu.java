@@ -45,6 +45,15 @@ final class NoteContextMenu {
      * 選択は呼び出し側 ({@link DiagramNotesLayer#popup}) が確定済みとする。
      */
     static void show(DiagramNotesLayer layer, DiagramNote n, MouseEvent e, double zoom) {
+        JPopupMenu menu = buildMenu(layer, n, e, zoom);
+        menu.show(e.getComponent(), e.getX(), e.getY());
+    }
+
+    /**
+     * 文脈メニューを組み立てて返す (テスタビリティのため表示から分離)。
+     */
+    static JPopupMenu buildMenu(DiagramNotesLayer layer, DiagramNote n,
+                                MouseEvent e, double zoom) {
         int count = layer.selectedNotes().size();
         JPopupMenu menu = new JPopupMenu();
 
@@ -114,6 +123,6 @@ final class NoteContextMenu {
         del.addActionListener(a -> layer.deleteSelected());
         menu.add(del);
 
-        menu.show(e.getComponent(), e.getX(), e.getY());
+        return menu;
     }
 }

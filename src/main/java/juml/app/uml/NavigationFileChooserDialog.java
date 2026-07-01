@@ -179,13 +179,13 @@ public class NavigationFileChooserDialog extends JDialog {
         List<AndroidNavigationGraphInfo> graphs = analysis != null
                 ? analysis.allNavigationGraphs()
                 : Collections.emptyList();
-        NavigationFileChooserDialog dlg = new NavigationFileChooserDialog(parent, graphs);
-        if (dlg.getCandidateCount() == 0) {
+        if (graphs.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("dlg.noNavigation.message"),
                     Messages.get("dlg.noNavigation.title"), JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
+        NavigationFileChooserDialog dlg = new NavigationFileChooserDialog(parent, graphs);
         dlg.setVisible(true);
         return dlg.getSelectedKey();
     }
