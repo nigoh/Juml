@@ -3,9 +3,13 @@
 
 package juml.app.uml;
 
+import javax.swing.BorderFactory;
 import javax.swing.Icon;
+import javax.swing.JComponent;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
+import javax.swing.border.Border;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Point;
@@ -27,6 +31,11 @@ final class TabReorderHandler {
 
     /** これ未満の水平移動はクリックとみなし並び替えを始めない。 */
     private static final int DRAG_THRESHOLD = 5;
+    private static final Color INDICATOR_COLOR = new Color(0x00, 0x7A, 0xCC);
+    private static final Border LEFT_INDICATOR =
+            BorderFactory.createMatteBorder(0, 2, 0, 0, INDICATOR_COLOR);
+    private static final Border RIGHT_INDICATOR =
+            BorderFactory.createMatteBorder(0, 0, 0, 2, INDICATOR_COLOR);
 
     private TabReorderHandler() {
     }
@@ -42,6 +51,7 @@ final class TabReorderHandler {
         MouseAdapter ma = new MouseAdapter() {
             private boolean armed;
             private Point pressPoint;
+            private int lastIndicatorIdx = -1;
 
             @Override
             public void mousePressed(MouseEvent e) {
@@ -55,6 +65,8 @@ final class TabReorderHandler {
             public void mouseReleased(MouseEvent e) {
                 armed = false;
                 pressPoint = null;
+                clearIndicator(tabs);
+                lastIndicatorIdx = -1;
             }
 
             @Override
@@ -64,7 +76,7 @@ final class TabReorderHandler {
                 }
                 Point inHeader = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), header);
                 if (Math.abs(inHeader.x - pressPoint.x) < DRAG_THRESHOLD) {
-                    return; // クリックの揺れは無視
+                    return;
                 }
                 int from = indexOf(tabs, header);
                 if (from < 0) {
@@ -74,7 +86,12 @@ final class TabReorderHandler {
                 int target = tabs.indexAtLocation(inTabs.x, inTabs.y);
                 int dyn = Math.max(0, dynamicCount.getAsInt());
                 if (target >= 0 && target < dyn && from < dyn && target != from) {
+                    showIndicator(tabs, target, from < target);
+                    lastIndicatorIdx = target;
                     moveTab(tabs, from, target);
+                } else if (target < 0 || target == from) {
+                    clearIndicator(tabs);
+                    lastIndicatorIdx = -1;
                 }
             }
         };
@@ -100,6 +117,23 @@ final class TabReorderHandler {
             }
         }
         return -1;
+    }
+
+    private static void showIndicator(JTabbedPane tabs, int idx, boolean rightSide) {
+        clearIndicator(tabs);
+        Component hdr = tabs.getTabComponentAt(idx);
+        if (hdr instanceof JComponent) {
+            ((JComponent) hdr).setBorder(rightSide ? RIGHT_INDICATOR : LEFT_INDICATOR);
+        }
+    }
+
+    private static void clearIndicator(JTabbedPane tabs) {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            Component hdr = tabs.getTabComponentAt(i);
+            if (hdr instanceof JComponent) {
+                ((JComponent) hdr).setBorder(null);
+            }
+        }
     }
 
     /** タブを {@code from} から {@code to} へ移動する (内容・ヘッダ・選択状態を保持)。 */

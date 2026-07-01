@@ -89,6 +89,8 @@ public class Setting {
     private int maxDiagramTabs = 20;
     /** 描画済み SVG を保持するタブの最大数。超過分は解放して再フォーカス時に再描画。 */
     private int renderedTabs = 4;
+    /** タブ内の上下分割 (プレビュー / ソース) の既定比率 (0.0〜1.0)。 */
+    private double tabSplitRatio = 0.7;
 
     public int getWindowX() { return windowX; }
     public void setWindowX(int windowX) { this.windowX = windowX; }
@@ -195,6 +197,10 @@ public class Setting {
     public void setRenderedTabs(int v) {
         this.renderedTabs = Math.max(1, Math.min(50, v));
     }
+    public double getTabSplitRatio() { return tabSplitRatio; }
+    public void setTabSplitRatio(double v) {
+        this.tabSplitRatio = Math.max(0.1, Math.min(0.9, v));
+    }
 
     /** 永続化済みの値から {@link DiagramStyle} を組み立てて返す。 */
     public DiagramStyle getStyle() {
@@ -285,6 +291,7 @@ public class Setting {
         props.setProperty("app.diagramRenderQuality", diagramRenderQuality);
         props.setProperty("app.maxDiagramTabs", Integer.toString(maxDiagramTabs));
         props.setProperty("app.renderedTabs", Integer.toString(renderedTabs));
+        props.setProperty("app.tabSplitRatio", Double.toString(tabSplitRatio));
 
         try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f))) {
             props.storeToXML(bos, "Juml Settings");
@@ -363,6 +370,7 @@ public class Setting {
                 props.getProperty("app.diagramRenderQuality"), "AUTO");
         s.maxDiagramTabs = parseIntSafe(props.getProperty("app.maxDiagramTabs"), 20);
         s.renderedTabs = parseIntSafe(props.getProperty("app.renderedTabs"), 4);
+        s.tabSplitRatio = parseDoubleSafe(props.getProperty("app.tabSplitRatio"), 0.7);
 
         return s;
     }
@@ -383,6 +391,17 @@ public class Setting {
         }
         try {
             return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static double parseDoubleSafe(String value, double defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value);
         } catch (NumberFormatException e) {
             return defaultValue;
         }

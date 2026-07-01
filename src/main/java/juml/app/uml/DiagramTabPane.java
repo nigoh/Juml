@@ -75,6 +75,8 @@ public final class DiagramTabPane {
     private Consumer<TreeNodeOpenRequest> revealInTree;
     /** トースト通知 (LRU 自動クローズなど) のコールバック。 */
     private Consumer<String> toastNotifier;
+    /** タブ内上下分割の既定比率 (Setting から取得)。 */
+    private double tabSplitRatio = 0.7;
     /**
      * 直近でフォーカスした動的ダイアグラムタブの由来ノード。
      * ユーティリティタブ (Functions / Members 等) を選択中でも「いま見ていた図の題材」を
@@ -137,6 +139,16 @@ public final class DiagramTabPane {
     /** トースト通知コールバックを設定する (LRU 自動クローズなど)。 */
     public void setToastNotifier(Consumer<String> notifier) {
         this.toastNotifier = notifier;
+    }
+
+    /** タブ内上下分割の既定比率を設定する (新規タブに適用)。 */
+    public void setTabSplitRatio(double ratio) {
+        this.tabSplitRatio = Math.max(0.1, Math.min(0.9, ratio));
+    }
+
+    /** 直近のタブ内上下分割比率を返す (永続化用)。 */
+    public double getTabSplitRatio() {
+        return tabSplitRatio;
     }
 
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
@@ -704,8 +716,14 @@ public final class DiagramTabPane {
             });
 
             JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, viewCards, bottomTabs);
-            split.setResizeWeight(0.7);
-            split.setDividerLocation(0.7);
+            split.setResizeWeight(tabSplitRatio);
+            split.setDividerLocation(tabSplitRatio);
+            split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, evt -> {
+                int h = split.getHeight();
+                if (h > 0) {
+                    tabSplitRatio = (double) split.getDividerLocation() / h;
+                }
+            });
             // プレビュー(+ソース) の右に付箋一覧パネルを置く左右分割 (既定は畳む)。
             notesPanel = new NotesSidePanel(previewPanel);
             notesPanel.setVisible(false);

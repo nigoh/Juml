@@ -144,6 +144,10 @@ public class UmlMainFrame extends JFrame {
         });
         tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
         tabPane.setToastNotifier(msg -> ToastNotification.show(mainTabs, msg));
+        Setting splitSetting = Main.getSetting();
+        if (splitSetting != null) {
+            tabPane.setTabSplitRatio(splitSetting.getTabSplitRatio());
+        }
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -907,7 +911,11 @@ public class UmlMainFrame extends JFrame {
     }
 
     private void saveWindowState() {
-        WindowStateManager.save(this, centerSplit, Main.getSetting(), Main::saveSetting);
+        Setting s = Main.getSetting();
+        if (s != null && tabPane != null) {
+            s.setTabSplitRatio(tabPane.getTabSplitRatio());
+        }
+        WindowStateManager.save(this, centerSplit, s, Main::saveSetting);
     }
 
     /**
