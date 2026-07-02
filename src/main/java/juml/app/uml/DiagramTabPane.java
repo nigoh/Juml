@@ -986,6 +986,17 @@ public final class DiagramTabPane {
                 markEditorDirty();
                 renderDebounce.restart();
             });
+            // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
+            // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
+            // 同時に見えるのは片方だけ (JTabbedPane) なので同期ループは起きない。
+            juml.app.uml.sketch.SketchPane sketchPane = new juml.app.uml.sketch.SketchPane();
+            sketchPane.setOnPumlChange(sourcePanel::setText);
+            bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
+            bottomTabs.addChangeListener(e -> {
+                if (bottomTabs.getSelectedComponent() == sketchPane) {
+                    sketchPane.loadFrom(sourcePanel.getText());
+                }
+            });
         }
 
         /** 編集発生を記録し、タブヘッダに未保存マーク (●) を付ける。 */
