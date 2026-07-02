@@ -700,6 +700,19 @@ public final class DiagramTabPane {
         }
     }
 
+    private static int countNewlines(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        return n;
+    }
+
     /** アクティブタブを現在のリクエストで再描画する (F5 / Refresh)。 */
     public void rerenderActiveTab() {
         DiagramTab t = activeTab();
@@ -1410,6 +1423,11 @@ public final class DiagramTabPane {
             renderReleased = false;
             // 旧図のヒットを引きずらないよう、再描画のたびに検索状態をリセットする。
             findBar.reset();
+            // エディタタブは描画のたびにエラー行の強調を一旦消す (成功なら消えたまま、
+            // 失敗なら done() で該当行を再強調する)。
+            if (isEditor()) {
+                sourcePanel.clearErrorHighlight();
+            }
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
             showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
             final DiagramRequest dreq = spec;
@@ -1446,6 +1464,20 @@ public final class DiagramTabPane {
                         // エディタタブでは編集中テキストを描画結果で上書きしない。
                         if (pumlOnError != null && !isEditor()) {
                             sourcePanel.setText(pumlOnError);
+                        }
+                        // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を
+                        // 補正して) エディタ上で赤く強調し、原因箇所へ誘導する。
+                        if (isEditor() && editorPuml != null
+                                && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
+                            int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                                    .getErrorLine();
+                            if (genLine > 0) {
+                                int injected = countNewlines(
+                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml))
+                                        - countNewlines(editorPuml);
+                                sourcePanel.highlightErrorLine(
+                                        PumlSourcePanel.editorLineForError(genLine, injected));
+                            }
                         }
                         previewPanel.setSvgGraphicsNode(null, 0, 0);
                         renderedPuml = pumlOnError;

@@ -68,6 +68,54 @@ public class PumlSourcePanel extends JPanel {
         return textArea.getText();
     }
 
+    private Object errorHighlightTag;
+    private final javax.swing.text.Highlighter.HighlightPainter errorPainter =
+            new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
+                    new java.awt.Color(0xFF, 0xCD, 0xD2));
+
+    /**
+     * 描画失敗行 (1 始まり、エディタ行) を赤く強調してキャレットを移動する。
+     * {@code line} が 0 以下・範囲外なら既存の強調を消すだけ。
+     */
+    public void highlightErrorLine(int line) {
+        clearErrorHighlight();
+        if (line <= 0) {
+            return;
+        }
+        try {
+            int li = line - 1;
+            if (li >= textArea.getLineCount()) {
+                return;
+            }
+            int start = textArea.getLineStartOffset(li);
+            int end = textArea.getLineEndOffset(li);
+            errorHighlightTag = textArea.getHighlighter().addHighlight(start, end, errorPainter);
+            textArea.setCaretPosition(start);
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // 行範囲がずれた場合は強調しない (致命的でない)。
+        }
+    }
+
+    /** 描画失敗行の強調を消す。 */
+    public void clearErrorHighlight() {
+        if (errorHighlightTag != null) {
+            textArea.getHighlighter().removeHighlight(errorHighlightTag);
+            errorHighlightTag = null;
+        }
+    }
+
+    /**
+     * PlantUML が報告した「生成ソースの行番号」を、スタイル prelude 挿入分
+     * ({@code injectedLines}) を差し引いてエディタ上の行番号へ写像する (純関数)。
+     * 挿入は {@code @startuml} 直後に入るため、行 1 (= @startuml) はそのまま。
+     */
+    public static int editorLineForError(int errorLine, int injectedLines) {
+        if (errorLine <= 1 || injectedLines <= 0) {
+            return errorLine;
+        }
+        return Math.max(1, errorLine - injectedLines);
+    }
+
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
         textArea.setEditable(editable);
