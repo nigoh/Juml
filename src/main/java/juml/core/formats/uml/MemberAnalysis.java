@@ -330,7 +330,9 @@ public final class MemberAnalysis {
     }
 
     private static void walkBlock(JavaMethodInfo.Block b, int depth, ControlFlow cf) {
-        int d = depth + 1;
+        // 凡例は「本体直下=0」と規定するため、トップレベル (depth=0) の制御ブロックは
+        // ネスト 0。子ブロックへは depth+1 で降りる。
+        int d = depth;
         if (d > cf.maxNesting) {
             cf.maxNesting = d;
         }
@@ -356,7 +358,7 @@ public final class MemberAnalysis {
             } else if ("catch".equals(t)) {
                 cf.catches++;
             }
-            walk(br.getBody(), d, cf);
+            walk(br.getBody(), d + 1, cf);
         }
     }
 

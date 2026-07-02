@@ -190,8 +190,10 @@ public final class VersionCatalogParser {
             return null;
         }
         String t = s.trim();
-        if ((t.startsWith("\"") && t.endsWith("\""))
-                || (t.startsWith("'") && t.endsWith("'"))) {
+        // 長さ 2 未満 (単一クォート) では substring(1, 0) が例外になるためガードする。
+        if (t.length() >= 2
+                && ((t.startsWith("\"") && t.endsWith("\""))
+                    || (t.startsWith("'") && t.endsWith("'")))) {
             return t.substring(1, t.length() - 1);
         }
         return null;

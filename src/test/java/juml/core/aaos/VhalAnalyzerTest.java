@@ -145,4 +145,18 @@ public class VhalAnalyzerTest {
         assertTrue(puml.contains("P1"));
         assertTrue(puml.contains("com.x.Ctl"));
     }
+
+    @Test
+    public void staticCallIsNotDoubleCounted() {
+        // CarPropertyManager.getProperty(...) は CALL_PATTERN (receiver 判定を通過) と
+        // STATIC_CALL_PATTERN の両方にマッチするため、以前は 1 呼び出しが 2 件計上されていた。
+        String src = "package com.x;\n"
+                + "public class Ctl {\n"
+                + "  int read() { return CarPropertyManager.getProperty(PROP_FOO, 0); }\n"
+                + "}\n";
+        List<VhalAccess> hits = new VhalAnalyzer().analyzeSource(src, "Ctl.java");
+        assertEquals(1, hits.size());
+        assertEquals(VhalAccess.Kind.GET, hits.get(0).getKind());
+        assertEquals("PROP_FOO", hits.get(0).getPropertyShortName());
+    }
 }

@@ -84,6 +84,17 @@ public class RroOverlayDetectorTest {
     }
 
     @Test
+    public void commentedOutOverlayIsNotDetected() {
+        // コメントアウトされた <overlay> を実在の RRO と誤検出しないこと。
+        String src = "<?xml version=\"1.0\"?>\n"
+                + "<manifest package=\"com.example.overlay\">\n"
+                + "  <!-- <overlay targetPackage=\"com.android.systemui\" priority=\"5\"/> -->\n"
+                + "</manifest>\n";
+        RroOverlay o = new RroOverlayDetector().parseManifest(src, "AndroidManifest.xml");
+        assertNull(o);
+    }
+
+    @Test
     public void overlayWithoutAndroidPrefixAlsoWorks() {
         // 古い形式: android: 名前空間プレフィックスなし
         String src = "<?xml version=\"1.0\"?>\n"

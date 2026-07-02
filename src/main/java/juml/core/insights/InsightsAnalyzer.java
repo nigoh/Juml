@@ -232,7 +232,7 @@ public final class InsightsAnalyzer {
         final Map<String, Map<String, Integer>> referrerCount = new HashMap<>();
         /** 自分以外から 1 回でも参照されたクラス集合 (デッドクラス判定用)。 */
         final Set<String> referencedClasses = new HashSet<>();
-        /** プロジェクト内パッケージ依存エッジ (重複なし、登録順)。 */
+        /** プロジェクト内パッケージ依存エッジ (重複なし、(from, to) で決定的にソート済み)。 */
         final List<InsightsModel.PackageEdge> packageEdges = new ArrayList<>();
     }
 
@@ -268,6 +268,11 @@ public final class InsightsAnalyzer {
                 }
             }
         }
+        // refs.keys() は ConcurrentHashMap.keySet() で順序非決定のため、
+        // 収集後に (from, to) で安定ソートして循環図・レポート出力を決定的にする。
+        agg.packageEdges.sort(
+                Comparator.comparing(InsightsModel.PackageEdge::getFrom)
+                        .thenComparing(InsightsModel.PackageEdge::getTo));
         return agg;
     }
 

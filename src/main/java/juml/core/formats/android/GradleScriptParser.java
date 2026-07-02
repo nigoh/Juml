@@ -330,8 +330,13 @@ public final class GradleScriptParser {
             Matcher i = KW_VALUE_INT.matcher(body);
             while (i.find()) {
                 String key = i.group(1);
-                int val = Integer.parseInt(i.group(2));
-                applySdkValue(key, val);
+                // タイムスタンプ由来の versionCode 等で int を超える値があり得るため、
+                // 例外で解析全体を落とさず、オーバーフロー時はその項目だけスキップする
+                // (Version Catalog 経由の parseIntOrNull と挙動を揃える)。
+                Integer val = parseIntOrNull(i.group(2));
+                if (val != null) {
+                    applySdkValue(key, val);
+                }
             }
             // Version Catalog 経由の SDK バージョン: libs.versions.X.get().toInt()
             if (catalog != null) {
