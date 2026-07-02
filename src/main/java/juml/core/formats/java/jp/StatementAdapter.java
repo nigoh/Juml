@@ -218,13 +218,54 @@ final class StatementAdapter {
         return null;
     }
 
+    /**
+     * 式 {@code ex} の直接子孫 SwitchExpr を返す。
+     *
+     * <p>{@link com.github.javaparser.ast.Node#findAll} はネストを含む全子孫を返すため、
+     * 別の SwitchExpr の内側に入れ子になっているものを除外する。
+     * 内側の switch は {@link #emitSwitch} の case アーム処理で再帰的に扱われる。</p>
+     */
+    private static List<SwitchExpr> topLevelSwitchExprs(Expression ex) {
+        List<SwitchExpr> result = new ArrayList<>();
+        for (SwitchExpr se : ex.findAll(SwitchExpr.class)) {
+            // ex 自身が SwitchExpr のとき: findAll はノード自身を含むため se == ex が起きる。
+            // 祖先 walk を始める前に自分自身は必ずトップレベルとして追加する。
+            if (se == ex) {
+                result.add(se);
+                continue;
+            }
+            // se から ex に向かって祖先をたどり、途中に別の SwitchExpr があれば内側とみなす
+            com.github.javaparser.ast.Node n = se.getParentNode().orElse(null);
+            boolean nested = false;
+            while (n != null && n != ex) {
+                if (n instanceof SwitchExpr) {
+                    nested = true;
+                    break;
+                }
+                n = n.getParentNode().orElse(null);
+            }
+            // ex 自身が SwitchExpr のとき、祖先 walk が se → ... → ex で終了した場合、
+            // ex という SwitchExpr の中に se が直接ネストされていることを意味する。
+            // ex を「別の SwitchExpr」として扱い内側とみなす。
+            if (!nested && n == ex && ex instanceof SwitchExpr) {
+                nested = true;
+            }
+            if (!nested) {
+                result.add(se);
+            }
+        }
+        return result;
+    }
+
     /** switch 式を Block 化しつつ、式中の呼び出しを兄弟 Call として持ち上げる。 */
     private static void emitExprValue(Expression ex, List<JavaMethodInfo.Statement> out,
                                       JpContext ctx, JavaClassInfo owner) {
         if (ex == null) {
             return;
         }
-        for (SwitchExpr se : ex.findAll(SwitchExpr.class)) {
+        // ネスト switch の二重 emit を防ぐため、直接子の SwitchExpr のみ処理する。
+        // 内側の switch は emitSwitch 内の case アーム処理で再帰的に扱われる。
+        for (SwitchExpr se : topLevelSwitchExprs(ex)) {
             emitSwitch(se, se.getSelector(), se.getEntries(), out, ctx, owner);
         }
         ExpressionAdapter.emitCalls(ex, out, ctx);
@@ -243,8 +284,9 @@ final class StatementAdapter {
             return;
         }
         // switch 式初期化子の有無は AST 全走査になるため 1 度だけ実行して使い回す。
+        // ネスト switch の二重 emit を防ぐため topLevelSwitchExprs で直接子のみ取得。
         List<SwitchExpr> switchInits = init == null
-                ? java.util.Collections.emptyList() : init.findAll(SwitchExpr.class);
+                ? java.util.Collections.emptyList() : topLevelSwitchExprs(init);
         if (!switchInits.isEmpty()) {
             // switch 式初期化子: Block を out に出し、LocalVar も残す
             for (SwitchExpr se : switchInits) {

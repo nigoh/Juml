@@ -167,7 +167,11 @@ public class PerFolderExporterTest {
             return null;
         });
 
-        // 完了ダイアログ (成功) またはプログレスバーの非表示を待つ
+        // 完了ダイアログが表示されるまで待つ。
+        // PerFolderExporter.done() は: resetBar → (error なし) → result 取得 →
+        // result が non-null なら JOptionPane.showMessageDialog を呼ぶ。
+        // 空クラスリスト + 有効 outDir の場合、PerFolderClassDiagrams.generate() は
+        // Result(0,0,[]) を返す (null ではない) ので、成功ダイアログが必ず表示される。
         Window dlg = waitForAndDisposeDialog(10_000);
 
         // プログレスバーが not visible になること (done() でリセットされる)
@@ -175,10 +179,8 @@ public class PerFolderExporterTest {
         assertFalse("done() 後に JProgressBar がリセットされること",
                 GuiActionRunner.execute(() -> progress.isVisible()));
 
-        if (dlg != null) {
-            // 正常完了ダイアログまたはエラーダイアログのいずれかが出た
-            assertNotNull("ダイアログが表示されること", dlg);
-        }
+        // 成功ダイアログが表示されること (tautology 除去: if (dlg != null) assertNotNull は無条件に)
+        assertNotNull("空クラスリストでも成功ダイアログが表示されること", dlg);
     }
 
     // -------------------------------------------------------------------------

@@ -120,8 +120,7 @@ public class UmlMainFrame extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                saveWindowState();
-                dispose();
+                exitApplication();
             }
         });
 
@@ -149,6 +148,8 @@ public class UmlMainFrame extends JFrame {
         });
         tabPane.setRevealInTree(req -> controller.syncToFocusedTab(req));
         tabPane.setToastNotifier(msg -> ToastNotification.show(mainTabs, msg));
+        // タブヘッダ右クリックの「Close All」もメニュー経路と同じ確認ロジックへ委譲する
+        tabPane.setCloseAllRequestHandler(this::confirmAndCloseAllTabs);
         Setting splitSetting = Main.getSetting();
         if (splitSetting != null) {
             tabPane.setTabSplitRatio(splitSetting.getTabSplitRatio());
@@ -239,7 +240,7 @@ public class UmlMainFrame extends JFrame {
                 status.setText(Messages.get("status.cancelling"));
             }
         };
-        mcb.exitApp = () -> { saveWindowState(); dispose(); };
+        mcb.exitApp = this::exitApplication;
         mcb.loadProject = this::loadProject;
         mcb.openEntitySearch = () -> controller.openEntitySearch();
         mcb.findInDiagram = () -> tabPane.activateFindInActiveTab();
@@ -272,8 +273,14 @@ public class UmlMainFrame extends JFrame {
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
         mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();
-        mcb.closeAllTabs = () -> tabPane.closeAllTabs();
+        mcb.closeAllTabs = this::confirmAndCloseAllTabs;
         mcb.reopenClosedTab = () -> tabPane.reopenLastClosedTab();
+        // メニューが開く直前のタブ系項目の活性制御用 (buildCenterTabs より先に呼ばれるため
+        // 遅延評価 + null ガードにする)。
+        mcb.dynamicTabCount = () -> tabPane != null ? tabPane.dynamicTabCount() : 0;
+        mcb.closedTabHistorySize = () -> tabPane != null ? tabPane.closedTabHistorySize() : 0;
+        mcb.dynamicTabFocused = () -> tabPane != null && tabPane.dynamicTabFocused();
+        mcb.hasTabsToRightOfActive = () -> tabPane != null && tabPane.hasTabsToRightOfActive();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
         mcb.toggleSidebar = () -> {
             AppShortcuts.toggleSidebar(centerSplit);
@@ -611,10 +618,18 @@ public class UmlMainFrame extends JFrame {
             repaint();
         }
         if ((lafChanged && !lafAppliedLive) || langChanged) {
-            JOptionPane.showMessageDialog(this,
+            // 再起動が必要な変更: 「今すぐ終了」(保存を通る既存の終了経路) か「後で」を選べる。
+            String exitNow = juml.util.Messages.get("pref.exitNow");
+            String later = juml.util.Messages.get("pref.restartLater");
+            Object[] options = {exitNow, later};
+            int sel = JOptionPane.showOptionDialog(this,
                     juml.util.Messages.get("pref.restartNotice"),
                     juml.util.Messages.get("menubar.settings.preferences"),
-                    JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE,
+                    null, options, later);
+            if (sel == 0) {
+                exitApplication();
+            }
         }
     }
 
@@ -934,6 +949,57 @@ public class UmlMainFrame extends JFrame {
             s.setTabSplitRatio(tabPane.getTabSplitRatio());
         }
         WindowStateManager.save(this, centerSplit, s, Main::saveSetting);
+    }
+
+    /**
+     * アプリの終了経路を一本化する (ウィンドウの閉じるボタン / File &gt; Exit /
+     * Preferences の「今すぐ終了」)。ウィンドウ状態を保存し、付箋メモの保存 IO を
+     * flush してから dispose する (デーモンスレッドの保存タスクドロップ防止)。
+     */
+    private void exitApplication() {
+        saveWindowState();
+        if (tabPane != null) {
+            tabPane.shutdown();
+        }
+        dispose();
+    }
+
+    /**
+     * File &gt; Close All Tabs: 動的タブが 2 枚以上のときだけ確認ダイアログを挟む
+     * (再オープン履歴は上限があり、まとめて閉じると復元できない場合があるため)。
+     * 確認ダイアログの表示は呼び出し元 (フレーム) 側の責務とし、
+     * {@link DiagramTabPane} はロジックのみを担う。
+     */
+    private void confirmAndCloseAllTabs() {
+        runCloseAllWithConfirm(tabPane.dynamicTabCount(),
+                this::showCloseAllTabsConfirm, tabPane::closeAllTabs);
+    }
+
+    /**
+     * Close All Tabs の確認分岐 (テスト可能なシーム)。動的タブが 2 枚以上のときだけ
+     * {@code confirm} を評価し、承認された場合のみ {@code closeAll} を実行する。
+     * 1 枚以下なら確認なしで {@code closeAll} を実行する。
+     *
+     * @param dynamicTabCount 開いている動的タブ数
+     * @param confirm         枚数を受け取り、閉じてよければ true を返す確認関数
+     * @param closeAll        実際の全タブクローズ操作
+     */
+    static void runCloseAllWithConfirm(int dynamicTabCount,
+            java.util.function.IntPredicate confirm, Runnable closeAll) {
+        if (dynamicTabCount >= 2 && !confirm.test(dynamicTabCount)) {
+            return;
+        }
+        closeAll.run();
+    }
+
+    /** Close All Tabs の確認ダイアログを表示し、YES が選ばれたら true。 */
+    private boolean showCloseAllTabsConfirm(int count) {
+        return JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(
+                        Messages.get("tab.closeAllConfirm"), count),
+                Messages.get("menubar.file.closeAllTabs"),
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)
+                == JOptionPane.YES_OPTION;
     }
 
     /**

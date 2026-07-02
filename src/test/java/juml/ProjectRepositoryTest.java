@@ -71,10 +71,13 @@ public class ProjectRepositoryTest {
         File root = tempDir.newFolder("App");
         repo.touch(root);
         long first = repo.listRecent(1).get(0).getLastOpenedAt();
-        Thread.sleep(5);
+        // touch() は System.currentTimeMillis() をミリ秒精度で記録する。
+        // クロック分解能が粗い環境でも 2 回目が必ず新しくなるよう 50ms 待つ。
+        Thread.sleep(50);
         repo.touch(root);
         long second = repo.listRecent(1).get(0).getLastOpenedAt();
-        assertTrue(second >= first);
+        assertTrue("2 回目の touch は 1 回目より新しいタイムスタンプになるはず",
+                second > first);
         assertEquals("UPSERT なので件数は増えない", 1, repo.listRecent(10).size());
     }
 
@@ -103,7 +106,8 @@ public class ProjectRepositoryTest {
         File a = tempDir.newFolder("Alpha");
         File b = tempDir.newFolder("Beta");
         repo.touch(a);
-        Thread.sleep(5);
+        // クロック分解能対策: 50ms 待って b の last_opened_at が a より大きくなることを保証する
+        Thread.sleep(50);
         repo.touch(b);
         List<ProjectRecord> recent = repo.listRecent(10);
         assertEquals("Beta", recent.get(0).getName());

@@ -21,11 +21,13 @@ import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Frame;
@@ -78,6 +80,7 @@ public class SequenceEntryDialog extends JDialog {
 
         tree.setRootVisible(false);
         tree.setShowsRootHandles(true);
+        tree.setCellRenderer(new EntryTreeCellRenderer());
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         rebuildTree("");
         add(new JScrollPane(tree), BorderLayout.CENTER);
@@ -316,6 +319,15 @@ public class SequenceEntryDialog extends JDialog {
         }
     }
 
+    /**
+     * 配下メソッド数の表記 (例: {@code "(3 methods)"} / {@code "(メソッド 3 件)"})。
+     * 種別は文字プレフィックスではなく {@link EntryTreeCellRenderer} のアイコンで示す。
+     */
+    private static String countSuffix(int count) {
+        return " (" + java.text.MessageFormat.format(
+                Messages.get("dlg.seqEntry.nodeMethodCount"), count) + ")";
+    }
+
     private static final class PackageNode {
         final String name;
         final int count;
@@ -327,7 +339,7 @@ public class SequenceEntryDialog extends JDialog {
 
         @Override
         public String toString() {
-            return "[pkg] " + name + " (" + count + ")";
+            return name + countSuffix(count);
         }
     }
 
@@ -342,7 +354,32 @@ public class SequenceEntryDialog extends JDialog {
 
         @Override
         public String toString() {
-            return "[C] " + name + " (" + count + ")";
+            return name + countSuffix(count);
+        }
+    }
+
+    /**
+     * ノード型に応じたアイコンを表示するレンダラ。以前は "[pkg]" / "[C]" という
+     * 内部識別子まがいのプレフィックスをラベルに露出していたため、
+     * プロジェクトツリーと同じ {@link TreeNodeIcon} で種別を示すよう置き換えた。
+     */
+    private static final class EntryTreeCellRenderer extends DefaultTreeCellRenderer {
+        @Override
+        public Component getTreeCellRendererComponent(JTree t, Object value,
+                boolean sel, boolean expanded, boolean leaf, int row,
+                boolean focused) {
+            super.getTreeCellRendererComponent(t, value, sel, expanded,
+                    leaf, row, focused);
+            Object u = value instanceof DefaultMutableTreeNode
+                    ? ((DefaultMutableTreeNode) value).getUserObject() : null;
+            if (u instanceof PackageNode) {
+                setIcon(TreeNodeIcon.PACKAGE);
+            } else if (u instanceof ClassNode) {
+                setIcon(TreeNodeIcon.CLASS);
+            } else if (u instanceof MethodNode) {
+                setIcon(TreeNodeIcon.METHOD);
+            }
+            return this;
         }
     }
 

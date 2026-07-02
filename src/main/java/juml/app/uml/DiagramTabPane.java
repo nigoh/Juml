@@ -75,6 +75,8 @@ public final class DiagramTabPane {
     private Consumer<TreeNodeOpenRequest> revealInTree;
     /** トースト通知 (LRU 自動クローズなど) のコールバック。 */
     private Consumer<String> toastNotifier;
+    /** タブ右クリック「Close All」の委譲先 (確認付き)。未設定なら確認なしで閉じる。 */
+    private Runnable closeAllRequestHandler;
     /** タブ内上下分割の既定比率 (Setting から取得)。 */
     private double tabSplitRatio = 0.7;
     /** VS Code 風プレビュータブのキー (null = プレビューなし)。 */
@@ -143,6 +145,16 @@ public final class DiagramTabPane {
         this.toastNotifier = notifier;
     }
 
+    /**
+     * タブヘッダ右クリックの「Close All」を処理するハンドラを設定する。
+     * 確認ダイアログの表示はフレーム側の責務のため、メニュー経路
+     * (File &gt; Close All Tabs) と同じ確認ロジックへ委譲するのに使う。
+     * 未設定の場合は従来どおり確認なしで {@link #closeAllTabs()} を呼ぶ。
+     */
+    public void setCloseAllRequestHandler(Runnable handler) {
+        this.closeAllRequestHandler = handler;
+    }
+
     /** タブ内上下分割の既定比率を設定する (新規タブに適用)。 */
     public void setTabSplitRatio(double ratio) {
         this.tabSplitRatio = Math.max(0.1, Math.min(0.9, ratio));
@@ -165,6 +177,24 @@ public final class DiagramTabPane {
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
     public boolean dynamicTabFocused() {
         return tabs.getSelectedComponent() instanceof DiagramTab;
+    }
+
+    /** 開いている動的ダイアグラムタブの枚数 (ユーティリティタブは含まない)。 */
+    public int dynamicTabCount() {
+        return openTabs.size();
+    }
+
+    /** 再オープン (Ctrl+Shift+T) できる閉じタブ履歴の件数。 */
+    public int closedTabHistorySize() {
+        return closedTabs.size();
+    }
+
+    /**
+     * アプリ終了前に呼ぶ後始末。付箋メモの保存 IO スレッドを停止し、
+     * キュー内の保存タスクが完了するまで短時間待つ (データロス防止)。
+     */
+    public void shutdown() {
+        notesBinder.shutdown();
     }
 
     /** ダイアグラムタブが 1 つ以上開かれていて、かつ選択中か。 */
@@ -316,10 +346,7 @@ public final class DiagramTabPane {
         }
         String tip = DiagramTabSupport.tooltipFor(spec, treeSync);
         tabs.insertTab(label, null, tab, tip, insertAt);
-        java.awt.Component header = DiagramTabHeader.build(label, icon, tip,
-                () -> closeTab(tab, key), e -> showTabMenu(tab, key, e),
-                () -> tabs.setSelectedComponent(tab),
-                this::pinPreviewTab);
+        java.awt.Component header = buildTabHeader(tab);
         tabs.setTabComponentAt(insertAt, header);
         if (preview) {
             previewTabKey = key;
@@ -332,6 +359,93 @@ public final class DiagramTabPane {
         tab.startRender();
         // 開きすぎ防止: 上限超過タブを閉じ、古いタブの描画を解放してメモリを抑える
         applyTabBudget(key);
+    }
+
+    /**
+     * タブヘッダ (アイコン + ラベル + × ボタン) を組み立てる。閉じる/メニューの
+     * クローズャは {@code tab.key} を実行時に読むため、図種切替でキーが変わっても
+     * 常に最新のキーで動作する。
+     */
+    private java.awt.Component buildTabHeader(DiagramTab tab) {
+        String tip = DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync);
+        return DiagramTabHeader.build(tab.label, tab.icon, tip,
+                () -> closeTab(tab, tab.key), e -> showTabMenu(tab, tab.key, e),
+                () -> tabs.setSelectedComponent(tab),
+                this::pinPreviewTab);
+    }
+
+    /**
+     * メソッド図タブ (SEQUENCE ⇄ ACTIVITY) を、同じ {@code Class.method} のまま
+     * 別図種へ「その場で」切り替える。タブを複製せず同じ位置のタブを描き替えるため、
+     * 関数を選択したまま図種を行き来してもタブが増えない。
+     *
+     * <p>既に対象図種のタブが別に開いている場合は、重複を避けてそのタブへフォーカスする。
+     * METHOD 以外のタブ、SEQUENCE/ACTIVITY 以外の図種、同一図種への切替は無視する。</p>
+     */
+    /**
+     * アクティブなメソッド図タブを、同じ関数のまま {@code next} (SEQUENCE/ACTIVITY) へ
+     * その場で切り替える。アクティブタブがメソッド図でなければ何もしない。タブは複製されない。
+     */
+    public void switchActiveMethodKind(DiagramKind next) {
+        switchMethodTabKind(activeTab(), next);
+    }
+
+    void switchMethodTabKind(DiagramTab tab, DiagramKind next) {
+        if (tab == null || tab.treeSync == null
+                || tab.treeSync.target != TreeNodeOpenRequest.Target.METHOD
+                || next == null || next == tab.spec.getKind()
+                || !(next == DiagramKind.SEQUENCE || next == DiagramKind.ACTIVITY)) {
+            return;
+        }
+        TreeNodeOpenRequest req = TreeNodeOpenRequest.method(
+                tab.treeSync.classInfo, tab.treeSync.methodInfo, next);
+        String newKey = req.tabKey();
+        DiagramTab existing = openTabs.get(newKey);
+        if (existing != null && existing != tab) {
+            // 既に対象図種のタブがある → 複製せずそこへフォーカスするだけ。
+            tabs.setSelectedComponent(existing);
+            return;
+        }
+        int index = tabs.indexOfComponent(tab);
+        if (index < 0) {
+            return;
+        }
+        String oldKey = tab.key;
+        openTabs.remove(oldKey);
+        if (oldKey.equals(previewTabKey)) {
+            previewTabKey = newKey;
+        }
+        // タブの題材 (由来ノード) を新図種へ差し替え、描画リクエスト/ラベル/アイコンを再計算。
+        tab.key = newKey;
+        tab.treeSync = req;
+        tab.spec = DiagramTabSupport.toDiagramRequest(req);
+        tab.icon = DiagramTabSupport.iconFor(req);
+        tab.label = req.displayLabel();
+        openTabs.put(newKey, tab);
+        // 付箋メモは図ごとに別管理。別図種の付箋が残らないよう一旦クリアして新キーへ再バインド。
+        tab.previewPanel.notes().setData(
+                java.util.Collections.emptyList(), java.util.Collections.emptyList());
+        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        // ヘッダ (アイコン/ラベル/ツールチップ/クローズ時のキー参照) を作り直して差し替える。
+        java.awt.Component header = buildTabHeader(tab);
+        tabs.setTabComponentAt(index, header);
+        if (newKey.equals(previewTabKey)) {
+            DiagramTabHeader.setPreview(header, true);
+        }
+        TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
+        tabs.setToolTipTextAt(index,
+                DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync));
+        tab.updateKindToggle();
+        refreshTabLabels();
+        tab.startRender();
+        // アクティブタブならツールバー/ツリー/ステータスの図種連動を更新する。
+        if (activeTab() == tab) {
+            lastDiagramRequest = tab.treeSync;
+            if (onTabFocused != null) {
+                onTabFocused.accept(new FocusedTab(tab.treeSync, tab.spec.getKind()));
+            }
+        }
+        applyTabBudget(newKey);
     }
 
     /**
@@ -469,7 +583,7 @@ public final class DiagramTabPane {
         right.setEnabled(hasTabsToRight(key));
         menu.add(right);
         JMenuItem all = new JMenuItem(Messages.get("tab.menu.closeAll"));
-        all.addActionListener(a -> closeAllTabs());
+        all.addActionListener(a -> requestCloseAll());
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
         if (tab.treeSync != null && revealInTree != null) {
@@ -524,6 +638,19 @@ public final class DiagramTabPane {
         closeOtherTabs(null);
     }
 
+    /**
+     * タブ右クリック「Close All」の要求。ハンドラが設定されていればそちらへ委譲し
+     * (フレーム側で確認ダイアログを挟む)、未設定なら従来どおり確認なしで閉じる。
+     * {@link #closeAllTabs()} 自体は生のクローズ操作のまま維持する。
+     */
+    void requestCloseAll() {
+        if (closeAllRequestHandler != null) {
+            closeAllRequestHandler.run();
+        } else {
+            closeAllTabs();
+        }
+    }
+
     /** 指定タブより右にある図タブをすべて閉じる。 */
     void closeTabsToRight(String pivotKey) {
         java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
@@ -547,11 +674,24 @@ public final class DiagramTabPane {
         return idx >= 0 && idx < keys.size() - 1;
     }
 
-    /** アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用 (汎用タブには無作用)。 */
+    /** アクティブタブの右側に図タブがあるか (メニュー活性制御用)。動的タブ未選択なら false。 */
+    public boolean hasTabsToRightOfActive() {
+        DiagramTab t = activeTab();
+        return t != null && hasTabsToRight(t.key);
+    }
+
+    /**
+     * アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用。
+     * ユーティリティタブ選択中は閉じられないため、silent no-op にせず
+     * ビープ + ステータス通知でフィードバックする。
+     */
     public void closeActiveTab() {
         DiagramTab t = activeTab();
         if (t != null) {
             closeTab(t, t.key);
+        } else {
+            java.awt.Toolkit.getDefaultToolkit().beep();
+            reportStatus(Messages.get("tab.closeUtilityDenied"));
         }
     }
 
@@ -699,14 +839,22 @@ public final class DiagramTabPane {
      * 自身の {@link DiagramRequest} を保持し、差し替え再描画にも対応する。
      */
     private final class DiagramTab extends JPanel {
-        private final String key;
-        private final String label;
+        /** タブ識別キー。図種切替でメソッド図の図種が変わると更新される。 */
+        private String key;
+        /** タブヘッダのラベル。図種切替で更新される。 */
+        private String label;
         /** タブヘッダのアイコン (再オープン時に同じ見た目で復元するため保持)。 */
-        private final TreeNodeIcon icon;
-        /** ツリーハイライト用の由来ノード (汎用タブでは null)。 */
-        private final TreeNodeOpenRequest treeSync;
+        private TreeNodeIcon icon;
+        /** ツリーハイライト用の由来ノード (汎用タブでは null)。図種切替で更新される。 */
+        private TreeNodeOpenRequest treeSync;
         /** このタブが描画するリクエスト (差し替え可能)。 */
         private DiagramRequest spec;
+        /** メソッド図の SEQUENCE ⇄ ACTIVITY 切替バー (メソッド図以外では非表示)。 */
+        private final JPanel kindBar;
+        private final javax.swing.JToggleButton seqToggle;
+        private final javax.swing.JToggleButton activityToggle;
+        /** トグルのプログラム的な選択更新中にアクションが発火しても切替しないためのガード。 */
+        private boolean syncingKindToggle;
         private final SvgPreviewPanel previewPanel = new SvgPreviewPanel();
         /** 表示中の図に対するインクリメンタル検索バー (Ctrl+F)。 */
         private final DiagramFindBar findBar = new DiagramFindBar(previewPanel, this::revalidate);
@@ -797,10 +945,57 @@ public final class DiagramTabPane {
             });
             // 付箋メモを .juml/notes.json からロードし、変更時に保存するよう配線
             notesBinder.bind(previewPanel, cache.getProjectRoot(), key);
+
+            // メソッド図の上部に「シーケンス ⇄ アクティビティ」切替バーを置く。
+            // 関数を選択したまま図種を行き来できるので、図種ごとにタブを開かずに済む。
+            seqToggle = new javax.swing.JToggleButton(Messages.get("diagram.kind.SEQUENCE.short"));
+            activityToggle = new javax.swing.JToggleButton(Messages.get("diagram.kind.ACTIVITY.short"));
+            seqToggle.setFocusable(false);
+            activityToggle.setFocusable(false);
+            seqToggle.setToolTipText(Messages.get("diagram.toggle.tip"));
+            activityToggle.setToolTipText(Messages.get("diagram.toggle.tip"));
+            javax.swing.ButtonGroup kindGroup = new javax.swing.ButtonGroup();
+            kindGroup.add(seqToggle);
+            kindGroup.add(activityToggle);
+            seqToggle.addActionListener(e -> {
+                if (!syncingKindToggle) {
+                    switchMethodTabKind(this, DiagramKind.SEQUENCE);
+                }
+            });
+            activityToggle.addActionListener(e -> {
+                if (!syncingKindToggle) {
+                    switchMethodTabKind(this, DiagramKind.ACTIVITY);
+                }
+            });
+            kindBar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 2));
+            kindBar.add(new JLabel(Messages.get("diagram.toggle.label")));
+            kindBar.add(seqToggle);
+            kindBar.add(activityToggle);
+            add(kindBar, java.awt.BorderLayout.NORTH);
+            updateKindToggle();
         }
 
         private boolean isActive() {
             return tabs.getSelectedComponent() == this;
+        }
+
+        /**
+         * 図種切替バーの表示/選択状態を現在の図種に合わせる。メソッド図
+         * (SEQUENCE/ACTIVITY) のときだけ表示し、それ以外の図種では隠す。
+         */
+        void updateKindToggle() {
+            DiagramKind k = spec.getKind();
+            boolean method = k == DiagramKind.SEQUENCE || k == DiagramKind.ACTIVITY;
+            kindBar.setVisible(method);
+            syncingKindToggle = true;
+            try {
+                seqToggle.setSelected(k == DiagramKind.SEQUENCE);
+                activityToggle.setSelected(k == DiagramKind.ACTIVITY);
+            } finally {
+                syncingKindToggle = false;
+            }
+            kindBar.revalidate();
+            kindBar.repaint();
         }
 
         /** 付箋一覧サイドパネルの表示/非表示を切り替える。 */

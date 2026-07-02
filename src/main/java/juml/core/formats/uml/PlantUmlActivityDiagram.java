@@ -91,6 +91,8 @@ public final class PlantUmlActivityDiagram {
         if (o.title != null && !o.title.isEmpty()) {
             out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         } else {
+            // クラス名・メソッド名に < 等が含まれる場合 (合成メソッド等) をエスケープする
+            // (シーケンス図の同箇所と対称。escapeLabel = 空白畳み + チルダエスケープ)
             out.append("title ")
                     .append(PlantUmlCommentFormatter.escapeLabel(
                             cls.getSimpleName() + "." + method.getName()))
