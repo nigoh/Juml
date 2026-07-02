@@ -130,6 +130,37 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void rerenderActiveEditor_keepsTextAndTabIntact() {
+        // エディタタブの F5 相当 (rerenderActiveTab) がテキストやタブ状態を壊さないこと。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        GuiActionRunner.execute(() -> pane.rerenderActiveTab());
+        assertTrue("再描画後もエディタタブのまま",
+                GuiActionRunner.execute(() -> pane.activeTabIsPumlEditor()));
+        assertEquals("再描画でテキストは変わらない",
+                PUML, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertEquals("タブ数は増えない", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
+    public void editThenSave_thenReopenAfterClose_isNotDirty() {
+        // 保存済みタブを閉じて再オープンすると未保存(●)は付かない (dirty 保持は未保存時のみ)。
+        File f;
+        try {
+            f = tmp.newFile("clean.puml");
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        boolean saved = GuiActionRunner.execute(() -> pane.saveActivePumlEditor(false));
+        assertTrue(saved);
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+        GuiActionRunner.execute(() -> pane.reopenLastClosedTab());
+        assertFalse("保存済みで閉じたタブの再オープンは未保存マークが付かない",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
     public void openPumlEditor_markDirty_showsUnsavedMark() {
         // 閉じたタブの再オープンで未保存(●)状態を復元する機構を検証する。
         GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
