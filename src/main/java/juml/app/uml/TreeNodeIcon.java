@@ -55,6 +55,9 @@ public final class TreeNodeIcon implements Icon {
     /** AIDL インターフェース: ティールバッジ "A" */
     public static final TreeNodeIcon AIDL =
             badge(new Color(0x00695C), "A", 14);
+    /** 自由編集 PlantUML エディタタブ: シアンバッジ "U" (UML) */
+    public static final TreeNodeIcon PUML =
+            badge(new Color(0x00838F), "U", 14);
 
     // ── メソッド / 図種ノード (Material グリフ) ─────────────────
     /** メソッド: 青灰色の関数グリフ */

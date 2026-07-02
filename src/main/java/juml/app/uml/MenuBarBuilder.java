@@ -38,6 +38,14 @@ public final class MenuBarBuilder {
         public Runnable chooseProject;
         /** .jar/.aar/.class (コンパイル済みバイトコード) を解析対象として開く。 */
         public Runnable openArchive;
+        /** File &gt; New UML Diagram: テンプレートから自由編集エディタタブを開く。 */
+        public Consumer<PumlTemplate> newUmlDiagram;
+        /** File &gt; Open .puml File...: 既存の PlantUML テキストをエディタタブで開く。 */
+        public Runnable openPumlFile;
+        /** Ctrl+S / File &gt; Save .puml: アクティブなエディタタブを保存する。 */
+        public Runnable savePumlTab;
+        /** File &gt; Save .puml As...: アクティブなエディタタブを別名保存する。 */
+        public Runnable savePumlTabAs;
         public Runnable chooseAndExport;
         public Runnable exportClassDiagramsPerFolder;
         public Runnable exportFunctionList;
@@ -241,6 +249,40 @@ public final class MenuBarBuilder {
             @Override public void menuDeselected(javax.swing.event.MenuEvent e) {}
             @Override public void menuCanceled(javax.swing.event.MenuEvent e) {}
         });
+        // 自由編集 PlantUML エディタ (新規/開く/保存)。プロジェクト未ロードでも使える。
+        JMenu newUml = null;
+        if (cb.newUmlDiagram != null) {
+            newUml = new JMenu(Messages.get("menubar.file.newUml"));
+            newUml.setMnemonic(KeyEvent.VK_N);
+            newUml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.NOTE_ADD));
+            for (PumlTemplate t : PumlTemplate.values()) {
+                JMenuItem item = new JMenuItem(t.displayName());
+                if (t == PumlTemplate.CLASS) {
+                    item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
+                }
+                final PumlTemplate template = t;
+                item.addActionListener(e -> cb.newUmlDiagram.accept(template));
+                newUml.add(item);
+            }
+        }
+        JMenuItem openPuml = null;
+        if (cb.openPumlFile != null) {
+            openPuml = new JMenuItem(Messages.get("menubar.file.openPuml"));
+            openPuml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.CODE));
+            openPuml.addActionListener(e -> cb.openPumlFile.run());
+        }
+        JMenuItem savePuml = null;
+        if (cb.savePumlTab != null) {
+            savePuml = new JMenuItem(Messages.get("menubar.file.savePuml"));
+            savePuml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SAVE));
+            savePuml.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
+            savePuml.addActionListener(e -> cb.savePumlTab.run());
+        }
+        JMenuItem savePumlAs = null;
+        if (cb.savePumlTabAs != null) {
+            savePumlAs = new JMenuItem(Messages.get("menubar.file.savePumlAs"));
+            savePumlAs.addActionListener(e -> cb.savePumlTabAs.run());
+        }
         JMenuItem save = new JMenuItem(Messages.get("menubar.file.saveAs"));
         save.setMnemonic(KeyEvent.VK_S);
         save.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.SAVE));
@@ -279,10 +321,22 @@ public final class MenuBarBuilder {
         JMenuItem exit = new JMenuItem(Messages.get("menubar.file.exit"));
         exit.setMnemonic(KeyEvent.VK_X);
         exit.addActionListener(e -> cb.exitApp.run());
+        if (newUml != null) {
+            m.add(newUml);
+        }
         m.add(open);
         m.add(openArchive);
+        if (openPuml != null) {
+            m.add(openPuml);
+        }
         m.add(recent);
         m.addSeparator();
+        if (savePuml != null) {
+            m.add(savePuml);
+        }
+        if (savePumlAs != null) {
+            m.add(savePumlAs);
+        }
         m.add(save);
         m.add(perFolder);
         m.add(functionList);

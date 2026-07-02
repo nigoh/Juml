@@ -16,10 +16,13 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 
 /**
- * 生成された PlantUML テキストをリードオンリーで表示するパネル。
+ * PlantUML テキストを表示するパネル。既定はリードオンリー (生成された図のソース参照用)。
  *
  * <p>デバッグ目的、もしくはユーザーが PlantUML テキストを別ツールに
  * コピーしたい場合の参照用。等幅フォントで表示し、上部に「Copy」ボタンを置く。</p>
+ *
+ * <p>自由編集 PlantUML エディタタブでは {@link #setEditable(boolean)} で編集可能にし、
+ * {@link #setOnTextChange(Runnable)} でユーザー編集をライブプレビューへ配線する。</p>
  */
 public class PumlSourcePanel extends JPanel {
 
@@ -63,5 +66,32 @@ public class PumlSourcePanel extends JPanel {
 
     public String getText() {
         return textArea.getText();
+    }
+
+    /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
+    public void setEditable(boolean editable) {
+        textArea.setEditable(editable);
+        // 編集モードでは空テキストからでもコピーできるよう常時有効にする。
+        if (editable) {
+            copyButton.setEnabled(true);
+        }
+    }
+
+    /**
+     * ユーザー編集 (挿入/削除) のたびに呼ぶリスナーを登録する。
+     * デバウンスは呼び出し側の責務 (連続キー入力のたびの再描画を避けるため)。
+     */
+    public void setOnTextChange(Runnable onChange) {
+        textArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+        });
     }
 }

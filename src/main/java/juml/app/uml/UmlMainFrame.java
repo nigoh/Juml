@@ -206,6 +206,8 @@ public class UmlMainFrame extends JFrame {
                     File f = files.get(0);
                     if (f.isDirectory()) {
                         loadProject(f);
+                    } else if (PumlEditorSupport.isPumlFile(f)) {
+                        openPumlFileDirect(f); // .puml はエディタタブで開く
                     } else {
                         String name = f.getName().toLowerCase(java.util.Locale.ROOT);
                         if (name.endsWith(".jar") || name.endsWith(".aar")
@@ -228,6 +230,10 @@ public class UmlMainFrame extends JFrame {
         MenuBarBuilder.Callbacks mcb = new MenuBarBuilder.Callbacks();
         mcb.chooseProject = this::chooseProject;
         mcb.openArchive = this::openArchive;
+        mcb.newUmlDiagram = t -> openPumlEditorTab(t.body(), null);
+        mcb.openPumlFile = this::openPumlFile;
+        mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
+        mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
         mcb.chooseAndExport = this::chooseAndExport;
         mcb.exportClassDiagramsPerFolder = this::exportClassDiagramsPerFolder;
         mcb.exportFunctionList = this::exportFunctionList;
@@ -360,7 +366,8 @@ public class UmlMainFrame extends JFrame {
         centerSplit.setResizeWeight(0.22);
         centerSplit.setDividerLocation(280);
         centerCards = new CenterCardView(centerSplit,
-                new WelcomePanel(this::chooseProject, this::openArchive, this::loadProject));
+                new WelcomePanel(this::chooseProject, this::openArchive, this::loadProject,
+                        () -> openPumlEditorTab(PumlTemplate.CLASS.body(), null)));
         add(centerCards, BorderLayout.CENTER);
 
         // VS Code 風の左端アクティビティバー (主要導線をアイコン縦列に集約)。
@@ -918,6 +925,39 @@ public class UmlMainFrame extends JFrame {
 
     private void chooseAndExport() {
         exportController.chooseAndExport();
+    }
+
+    // --- 自由編集 PlantUML エディタ --------------------------------------------
+
+    /**
+     * 自由編集 PlantUML エディタタブを開く。プロジェクト未ロード時は Welcome 表示の
+     * ままだとタブが見えないため、先にワークスペース表示へ切り替える。
+     */
+    private void openPumlEditorTab(String text, File file) {
+        centerCards.showWorkspace();
+        tabPane.openPumlEditor(text, file);
+    }
+
+    /** 既存の .puml ファイルを選択して自由編集エディタタブで開く (File メニュー / Welcome)。 */
+    private void openPumlFile() {
+        File chosen = PumlEditorSupport.choosePumlToOpen(this);
+        if (chosen == null) {
+            return;
+        }
+        openPumlFileDirect(chosen);
+    }
+
+    /** 指定の .puml ファイルをエディタタブで開く (ダイアログなし。ドロップ用)。 */
+    private void openPumlFileDirect(File file) {
+        try {
+            openPumlEditorTab(PumlEditorSupport.read(file), file);
+        } catch (java.io.IOException ex) {
+            juml.util.AppLog.error("UmlMainFrame",
+                    "puml open failed: " + file.getAbsolutePath(), ex);
+            JOptionPane.showMessageDialog(this,
+                    Messages.get("puml.editor.openFailed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     // --- 状態管理 -------------------------------------------------------------

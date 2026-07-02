@@ -42,6 +42,11 @@ final class WelcomePanel extends JPanel {
     private final JPanel recentList = new JPanel();
 
     WelcomePanel(Runnable onOpenProject, Runnable onOpenArchive, Consumer<File> onOpenRecent) {
+        this(onOpenProject, onOpenArchive, onOpenRecent, null);
+    }
+
+    WelcomePanel(Runnable onOpenProject, Runnable onOpenArchive, Consumer<File> onOpenRecent,
+                 Runnable onNewUml) {
         super(new GridBagLayout());
         this.onOpenRecent = onOpenRecent;
 
@@ -73,6 +78,17 @@ final class WelcomePanel extends JPanel {
         openArchive.addActionListener(e -> onOpenArchive.run());
         openArchive.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(openArchive);
+
+        // プロジェクトを開かなくても使える「新規 UML 図」の導線 (自由編集エディタタブ)。
+        if (onNewUml != null) {
+            card.add(Box.createVerticalStrut(8));
+            JButton newUml = new JButton(Messages.get("welcome.newUml"),
+                    MaterialIcons.toolbar(MaterialIcons.Glyph.NOTE_ADD));
+            newUml.setIconTextGap(8);
+            newUml.addActionListener(e -> onNewUml.run());
+            newUml.setAlignmentX(Component.LEFT_ALIGNMENT);
+            card.add(newUml);
+        }
 
         JLabel recentHeading = new JLabel(Messages.get("welcome.recent"));
         recentHeading.setFont(recentHeading.getFont().deriveFont(Font.BOLD));
