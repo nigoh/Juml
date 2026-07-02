@@ -50,6 +50,9 @@ final class SketchCanvas extends JPanel {
 
         /** Esc 等で関係追加モードが取り消された (ツールバーのモード表示を戻すため)。 */
         default void relationModeCancelled() { }
+
+        /** 関係線のダブルクリック編集 (ラベル/種別) が要求された。 */
+        default void editRelationRequested(SketchRelation relation) { }
     }
 
     private static final int PAD_X = 10;
@@ -67,6 +70,9 @@ final class SketchCanvas extends JPanel {
     private SketchRelation.Kind relationMode;
     /** 関係追加モードで最初にクリックした始点クラス。 */
     private SketchClass relationSource;
+    /** グリッド吸着 (移動確定時に座標を格子へ丸める)。既定で有効。 */
+    private boolean snapToGrid = true;
+    private static final int GRID = 8;
     /** ドラッグ中の掴み位置オフセット。 */
     private Point dragOffset;
     private boolean draggedSinceMousePress;
@@ -90,8 +96,17 @@ final class SketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && editable && selected != null) {
+                if (e.getClickCount() != 2 || !editable) {
+                    return;
+                }
+                if (selected != null) {
                     listener.editRequested(selected);
+                    return;
+                }
+                // クラス外のダブルクリック: 近くの関係線があればその場で編集する。
+                SketchRelation rel = relationAt(e.getPoint());
+                if (rel != null) {
+                    listener.editRelationRequested(rel);
                 }
             }
         };
@@ -131,6 +146,20 @@ final class SketchCanvas extends JPanel {
 
     boolean isModelEditable() {
         return editable;
+    }
+
+    /** グリッド吸着の有効/無効を切り替える。 */
+    void setSnapToGrid(boolean on) {
+        this.snapToGrid = on;
+    }
+
+    private static int snap(int v) {
+        return Math.round(v / (float) GRID) * GRID;
+    }
+
+    /** テスト用: グリッド吸着の丸め結果 (純関数)。 */
+    static int snapForTest(int v) {
+        return snap(v);
     }
 
     /** 関係追加モードを切り替える (null で選択/移動モードへ戻す)。 */
@@ -209,6 +238,12 @@ final class SketchCanvas extends JPanel {
         }
         if (draggedSinceMousePress) {
             draggedSinceMousePress = false;
+            if (snapToGrid && selected != null) {
+                // 移動確定時に座標を格子へ吸着させ、ボックスの整列を容易にする。
+                selected.moveTo(snap(selected.getX()), snap(selected.getY()));
+                revalidate();
+                repaint();
+            }
             listener.modelEdited(); // 移動確定 → '@pos を再生成
         }
         dragOffset = null;
@@ -432,6 +467,39 @@ final class SketchCanvas extends JPanel {
         return new Point(r.x + r.width / 2, r.y + r.height / 2);
     }
 
+    /** クリック点に近い関係線を返す (しきい値内で最も近いもの)。無ければ null。 */
+    private SketchRelation relationAt(Point p) {
+        SketchRelation best = null;
+        double bestD = 7.0; // ヒットしきい値 (px)
+        for (SketchRelation rel : model.getRelations()) {
+            SketchClass left = model.findClass(rel.getLeft());
+            SketchClass right = model.findClass(rel.getRight());
+            if (left == null || right == null) {
+                continue;
+            }
+            Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
+            Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
+            double d = pointToSegment(p.x, p.y, pl.x, pl.y, pr.x, pr.y);
+            if (d < bestD) {
+                bestD = d;
+                best = rel;
+            }
+        }
+        return best;
+    }
+
+    private static double pointToSegment(double px, double py,
+                                         double x1, double y1, double x2, double y2) {
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double len2 = dx * dx + dy * dy;
+        double t = len2 == 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        double cx = x1 + t * dx;
+        double cy = y1 + t * dy;
+        return Math.hypot(px - cx, py - cy);
+    }
+
     /** 矩形の中心から {@code toward} へ向かう線と矩形境界の交点。 */
     private static Point edgePoint(Rectangle r, Point toward) {
         Point c = center(r);
@@ -511,13 +579,42 @@ final class SketchCanvas extends JPanel {
         return dy / d;
     }
 
-    /** 未対応構文で GUI 編集を無効化しているときの警告バナー。 */
+    /** バナーに列挙する未対応行の最大数 (残りは「... 他 N 行」でまとめる)。 */
+    private static final int MAX_BANNER_LINES = 6;
+
+    /**
+     * 未対応構文で GUI 編集を無効化しているときの警告バナー。
+     * 単なる件数だけでなく、実際に未対応だった行 (先頭数件) を列挙して、
+     * ユーザーがテキストのどこを直せば編集可能になるか分かるようにする。
+     */
     private void paintDisabledBanner(Graphics2D g2) {
-        String msg = java.text.MessageFormat.format(
-                Messages.get("sketch.disabled"), unsupported.size());
+        String header = java.text.MessageFormat.format(
+                Messages.get("sketch.disabled.header"), unsupported.size());
+        int shown = Math.min(unsupported.size(), MAX_BANNER_LINES);
+        int lineH = 15;
+        int pad = 5;
+        int rows = 1 + shown + (unsupported.size() > shown ? 1 : 0);
+        int bannerH = pad * 2 + rows * lineH;
         g2.setColor(new Color(0xB71C1C));
-        g2.fillRect(0, 0, getWidth(), 22);
+        g2.fillRect(0, 0, getWidth(), bannerH);
         g2.setColor(Color.WHITE);
-        g2.drawString(msg, 8, 15);
+        int y = pad + lineH - 3;
+        g2.setFont(getFont().deriveFont(java.awt.Font.BOLD));
+        g2.drawString(header, 8, y);
+        g2.setFont(getFont().deriveFont(java.awt.Font.PLAIN));
+        for (int i = 0; i < shown; i++) {
+            y += lineH;
+            g2.drawString("• " + truncate(unsupported.get(i), 90), 16, y);
+        }
+        if (unsupported.size() > shown) {
+            y += lineH;
+            g2.drawString(java.text.MessageFormat.format(
+                    Messages.get("sketch.disabled.more"), unsupported.size() - shown), 16, y);
+        }
+    }
+
+    private static String truncate(String s, int max) {
+        String t = s == null ? "" : s;
+        return t.length() <= max ? t : t.substring(0, max - 1) + "…";
     }
 }

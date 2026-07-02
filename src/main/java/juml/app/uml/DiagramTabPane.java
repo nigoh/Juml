@@ -408,6 +408,14 @@ public final class DiagramTabPane {
      *                    同じファイルのタブが既に開いていればフォーカスのみ移す。
      */
     public void openPumlEditor(String initialText, java.io.File file) {
+        openPumlEditor(initialText, file, false);
+    }
+
+    /**
+     * {@code markDirty} 版。閉じたタブの再オープン時に、未保存 (●) 状態も復元して
+     * 2 回目のクローズで無警告消失しないようにするために使う。
+     */
+    void openPumlEditor(String initialText, java.io.File file, boolean markDirty) {
         String key;
         String label;
         if (file != null) {
@@ -438,6 +446,9 @@ public final class DiagramTabPane {
         tabs.setTabComponentAt(insertAt, header);
         TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
         tabs.setSelectedIndex(insertAt);
+        if (markDirty) {
+            tab.dirty = true; // 復元した未保存内容は dirty のまま扱う
+        }
         refreshTabLabels();
         tab.startRender();
         applyTabBudget(key);
@@ -458,6 +469,66 @@ public final class DiagramTabPane {
         return savePumlEditor(t, saveAs);
     }
 
+    /**
+     * アクティブなエディタタブの「編集中テキスト」と「保存済みファイル」の行差分を表示する。
+     * ファイル未保存 (Untitled) や差分なしのときは案内だけ出す。
+     */
+    public void showDiffVsSavedForActiveEditor() {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor()) {
+            reportStatus(Messages.get("puml.editor.noEditorTab"));
+            return;
+        }
+        if (t.editorFile == null || !t.editorFile.isFile()) {
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.noSaved"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String saved;
+        try {
+            saved = PumlEditorSupport.read(t.editorFile);
+        } catch (java.io.IOException ex) {
+            reportStatus(Messages.get("puml.editor.openFailed") + ex.getMessage());
+            return;
+        }
+        String current = t.sourcePanel.getText();
+        if (!PumlDiff.hasChanges(saved, current)) {
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.none"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        if (PumlDiff.tooLargeToDiff(saved, current)) {
+            // 巨大 .puml で EDT が固まらないよう、行差分は諦めて案内だけ出す。
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.tooLarge"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        javax.swing.JTextArea area = new javax.swing.JTextArea(
+                PumlDiff.unified(saved, current), 24, 72);
+        area.setEditable(false);
+        area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+        area.setCaretPosition(0);
+        javax.swing.JOptionPane.showMessageDialog(tabs,
+                new javax.swing.JScrollPane(area),
+                Messages.get("puml.diff.title") + " — " + t.label,
+                javax.swing.JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /**
+     * テスト用: 保存先を明示指定して Save As 相当を実行する ({@code JFileChooser} を回避)。
+     * Save As のキー移行・dedup 一貫性を統合検証するためのシーム。
+     */
+    boolean saveActiveEditorToForTest(java.io.File target) {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor() || target == null) {
+            return false;
+        }
+        return writeEditorTo(t, target);
+    }
+
     private boolean savePumlEditor(DiagramTab tab, boolean saveAs) {
         java.io.File target = tab.editorFile;
         if (saveAs || target == null) {
@@ -466,6 +537,10 @@ public final class DiagramTabPane {
                 return false;
             }
         }
+        return writeEditorTo(tab, target);
+    }
+
+    private boolean writeEditorTo(DiagramTab tab, java.io.File target) {
         try {
             PumlEditorSupport.write(target, tab.sourcePanel.getText());
         } catch (java.io.IOException ex) {
@@ -479,11 +554,40 @@ public final class DiagramTabPane {
         }
         tab.editorFile = target;
         tab.dirty = false;
-        // Save As で名前が付いたらタブラベルもファイル名に合わせる (キーは安定のため不変)。
+        // Save As で保存先が変わったらタブキーもファイルパス基準へ移行する。
+        // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
+        // タブが重複生成される (dedup の一貫性が崩れる)。
+        migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
+        // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
+        int idx = tabs.indexOfComponent(tab);
+        if (idx >= 0) {
+            tabs.setToolTipTextAt(idx, target.getAbsolutePath());
+        }
         refreshTabLabels();
         reportStatus(Messages.get("status.saved") + target.getAbsolutePath());
         return true;
+    }
+
+    /**
+     * エディタタブのキーを新パス基準へ移行する (Save As 後の dedup 一貫性のため)。
+     * openTabs / previewTabKey / 付箋保存キー / ナビ履歴の旧キーを更新する。
+     * 移行先キーが既に別タブで使われている稀なケースでは触らない (クロブ回避)。
+     */
+    private void migrateEditorTabKey(DiagramTab tab, String newKey) {
+        String oldKey = tab.key;
+        if (newKey.equals(oldKey) || openTabs.containsKey(newKey)) {
+            return;
+        }
+        openTabs.remove(oldKey);
+        tab.key = newKey;
+        openTabs.put(newKey, tab);
+        if (oldKey.equals(previewTabKey)) {
+            previewTabKey = newKey;
+        }
+        // 付箋の保存先を新キーへ (在メモリの付箋は保持され、以降 newKey へ保存される)。
+        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        navHistory.replaceKey(oldKey, newKey);
     }
 
     /** アクティブなエディタタブの PlantUML テキスト (非エディタタブなら null)。 */
@@ -548,6 +652,8 @@ public final class DiagramTabPane {
         tab.icon = DiagramTabSupport.iconFor(req);
         tab.label = req.displayLabel();
         openTabs.put(newKey, tab);
+        // ナビ履歴の旧キーを新キーへ置換 (Alt+Left/Right が消えた旧キーで no-op にならないよう)。
+        navHistory.replaceKey(oldKey, newKey);
         // 付箋メモは図ごとに別管理。別図種の付箋が残らないよう一旦クリアして新キーへ再バインド。
         tab.previewPanel.notes().setData(
                 java.util.Collections.emptyList(), java.util.Collections.emptyList());
@@ -563,6 +669,9 @@ public final class DiagramTabPane {
                 DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync));
         tab.updateKindToggle();
         refreshTabLabels();
+        // 図種切替では選択変更が起きず handleTabSelectionChanged を通らないため、
+        // MRU オーバーレイのラベルが旧図種のまま残らないよう明示的に更新する。
+        mru.onActivated(tab, tab.label);
         tab.startRender();
         // アクティブタブならツールバー/ツリー/ステータスの図種連動を更新する。
         if (activeTab() == tab) {
@@ -653,6 +762,19 @@ public final class DiagramTabPane {
             t.spec = spec;
             t.startRender();
         }
+    }
+
+    private static int countNewlines(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        return n;
     }
 
     /** アクティブタブを現在のリクエストで再描画する (F5 / Refresh)。 */
@@ -868,16 +990,50 @@ public final class DiagramTabPane {
      *
      * @return タブを閉じてよければ true
      */
-    private boolean confirmDiscardEdits(DiagramTab tab) {
-        if (!tab.isEditor() || !tab.dirty) {
-            return true;
+    /**
+     * 終了前に、未保存のエディタタブそれぞれについて保存/破棄/中止を確認する。
+     * いずれかで Cancel されたら false を返し、呼び出し側は終了を中止する。
+     * (ウィンドウの×/File &gt; Exit からの無警告データ消失を防ぐ。)
+     */
+    public boolean confirmDiscardAllEdits() {
+        return confirmDiscardAllEdits(this::askDiscardChoice);
+    }
+
+    /**
+     * 確認の「聞き方」を注入できる版 (テスト用)。{@code ask} はタブラベルを受け取り
+     * {@link javax.swing.JOptionPane} の YES/NO/CANCEL 相当の値を返す。
+     */
+    boolean confirmDiscardAllEdits(java.util.function.ToIntFunction<String> ask) {
+        for (DiagramTab t : new ArrayList<>(openTabs.values())) {
+            if (t.isEditor() && t.dirty) {
+                tabs.setSelectedComponent(t); // どのタブの確認かユーザーに見せる
+                if (!confirmDiscardEdits(t, ask)) {
+                    return false;
+                }
+            }
         }
-        int choice = javax.swing.JOptionPane.showConfirmDialog(tabs,
+        return true;
+    }
+
+    private int askDiscardChoice(String label) {
+        return javax.swing.JOptionPane.showConfirmDialog(tabs,
                 java.text.MessageFormat.format(
-                        Messages.get("puml.editor.confirmClose"), tab.label),
+                        Messages.get("puml.editor.confirmClose"), label),
                 Messages.get("puml.editor.confirmClose.title"),
                 javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
                 javax.swing.JOptionPane.WARNING_MESSAGE);
+    }
+
+    private boolean confirmDiscardEdits(DiagramTab tab) {
+        return confirmDiscardEdits(tab, this::askDiscardChoice);
+    }
+
+    private boolean confirmDiscardEdits(DiagramTab tab,
+                                        java.util.function.ToIntFunction<String> ask) {
+        if (!tab.isEditor() || !tab.dirty) {
+            return true;
+        }
+        int choice = ask.applyAsInt(tab.label);
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
         }
@@ -889,7 +1045,8 @@ public final class DiagramTabPane {
         if (tab.isEditor()) {
             final String text = tab.sourcePanel.getText();
             final java.io.File file = tab.editorFile;
-            closedTabs.push(() -> openPumlEditor(text, file));
+            final boolean wasDirty = tab.dirty;
+            closedTabs.push(() -> openPumlEditor(text, file, wasDirty));
         } else {
             final String key = tab.key;
             final String label = tab.label;
@@ -1295,9 +1452,14 @@ public final class DiagramTabPane {
             }
             state.currentPuml = renderedPuml;
             state.currentSvgXml = renderedSvgXml;
+            // 図種依存の起点/対象キーは毎回リセットし、アクティブタブの分だけを下で設定する。
+            // (リセットしないと前タブの layout/navigation キーが残り、別図種へ切替後に
+            //  古いキーで図が再構築される。seq/activity/callGraph は元からリセット済み。)
             state.sequenceEntry = null;
             state.activityEntry = null;
             state.callGraphEntry = null;
+            state.currentLayoutKey = null;
+            state.currentNavigationKey = null;
             if (spec == null) {
                 // 自由編集エディタタブ: 図種依存のパラメータは持たない。
                 state.currentScope = null;
@@ -1355,6 +1517,11 @@ public final class DiagramTabPane {
             renderReleased = false;
             // 旧図のヒットを引きずらないよう、再描画のたびに検索状態をリセットする。
             findBar.reset();
+            // エディタタブは描画のたびにエラー行の強調を一旦消す (成功なら消えたまま、
+            // 失敗なら done() で該当行を再強調する)。
+            if (isEditor()) {
+                sourcePanel.clearErrorHighlight();
+            }
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
             showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
             final DiagramRequest dreq = spec;
@@ -1391,6 +1558,20 @@ public final class DiagramTabPane {
                         // エディタタブでは編集中テキストを描画結果で上書きしない。
                         if (pumlOnError != null && !isEditor()) {
                             sourcePanel.setText(pumlOnError);
+                        }
+                        // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を
+                        // 補正して) エディタ上で赤く強調し、原因箇所へ誘導する。
+                        if (isEditor() && editorPuml != null
+                                && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
+                            int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                                    .getErrorLine();
+                            if (genLine > 0) {
+                                int injected = countNewlines(
+                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml))
+                                        - countNewlines(editorPuml);
+                                sourcePanel.highlightErrorLine(
+                                        PumlSourcePanel.editorLineForError(genLine, injected));
+                            }
                         }
                         previewPanel.setSvgGraphicsNode(null, 0, 0);
                         renderedPuml = pumlOnError;

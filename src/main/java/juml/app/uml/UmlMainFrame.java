@@ -239,6 +239,7 @@ public class UmlMainFrame extends JFrame {
         mcb.openPumlFile = this::openPumlFile;
         mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
         mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
+        mcb.diffPumlVsSaved = () -> tabPane.showDiffVsSavedForActiveEditor();
         mcb.chooseAndExport = this::chooseAndExport;
         mcb.exportClassDiagramsPerFolder = this::exportClassDiagramsPerFolder;
         mcb.exportFunctionList = this::exportFunctionList;
@@ -323,6 +324,26 @@ public class UmlMainFrame extends JFrame {
         layoutOnlyMenuItems = menuResult.contextualItems.layoutOnlyItems;
         navigationOnlyMenuItems = menuResult.contextualItems.navigationOnlyItems;
         setJMenuBar(menuResult.menuBar);
+        installQuickOpenShortcut();
+    }
+
+    /**
+     * VS Code 流の Quick Open (Ctrl+P) を追加する。既存のエンティティ横断検索
+     * ({@link DiagramController#openEntitySearch()}, Ctrl+Shift+F) を、より馴染みのある
+     * ワンキーからも開けるようにするエイリアス。メニュー項目のアクセラレータ (Ctrl+Shift+F)
+     * とは別に、ルートペインへ WHEN_IN_FOCUSED_WINDOW でバインドする。
+     */
+    private void installQuickOpenShortcut() {
+        int menuMask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.KeyStroke ks = javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_P, menuMask);
+        javax.swing.JRootPane rp = getRootPane();
+        rp.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(ks, "quickOpen");
+        rp.getActionMap().put("quickOpen", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                controller.openEntitySearch();
+            }
+        });
     }
 
     /** 中央のツリー + タブ (動的ダイアグラムタブ + 末尾の固定ユーティリティタブ) を構築する。 */
@@ -903,6 +924,12 @@ public class UmlMainFrame extends JFrame {
 
     /** F5 / Refresh / フィルタ変更後にアクティブタブを再描画する。 */
     private void refreshDiagram() {
+        // エディタタブは spec を持たず applyStateToActiveTab では再描画されないため、
+        // テキストを真実源として直接再描画する (F5 が無反応にならないように)。
+        if (tabPane != null && tabPane.activeTabIsPumlEditor()) {
+            tabPane.rerenderActiveTab();
+            return;
+        }
         if (controller != null) {
             controller.applyStateToActiveTab();
         }
@@ -1006,6 +1033,11 @@ public class UmlMainFrame extends JFrame {
      * flush してから dispose する (デーモンスレッドの保存タスクドロップ防止)。
      */
     private void exitApplication() {
+        // 未保存のエディタタブがあれば保存/破棄/中止を確認する。中止なら終了しない
+        // (DO_NOTHING_ON_CLOSE のためウィンドウはそのまま残る)。
+        if (tabPane != null && !tabPane.confirmDiscardAllEdits()) {
+            return;
+        }
         saveWindowState();
         if (tabPane != null) {
             tabPane.shutdown();

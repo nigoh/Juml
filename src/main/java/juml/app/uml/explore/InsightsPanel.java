@@ -46,6 +46,7 @@ public final class InsightsPanel extends JPanel {
     private final ReferenceIndexCache refCache;
     private final JButton runButton = new JButton(Messages.get("insights.btn.analyze"));
     private final JButton saveButton = new JButton(Messages.get("insights.btn.save"));
+    private final AnalysisRunControls runControls = new AnalysisRunControls();
     private final JLabel statusLabel = new JLabel(" ");
     private final JTextArea resultArea = new JTextArea();
 
@@ -61,6 +62,8 @@ public final class InsightsPanel extends JPanel {
         JPanel input = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         input.add(runButton);
         input.add(saveButton);
+        input.add(runControls.cancelButton());
+        input.add(runControls.progressBar());
         input.add(new JLabel(Messages.get("insights.hint")));
         add(input, BorderLayout.NORTH);
 
@@ -87,7 +90,7 @@ public final class InsightsPanel extends JPanel {
         saveButton.setEnabled(false);
         statusLabel.setText(Messages.get("impact.status.building"));
 
-        new SwingWorker<String, Void>() {
+        SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
                 ReferenceIndex idx = refCache.get();
@@ -102,6 +105,7 @@ public final class InsightsPanel extends JPanel {
             @Override
             protected void done() {
                 runButton.setEnabled(true);
+                runControls.finished();
                 try {
                     String report = get();
                     if (report == null) {
@@ -112,6 +116,8 @@ public final class InsightsPanel extends JPanel {
                     resultArea.setCaretPosition(0);
                     saveButton.setEnabled(true);
                     statusLabel.setText(Messages.get("insights.status.done"));
+                } catch (java.util.concurrent.CancellationException ce) {
+                    statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error("InsightsPanel", "Insights analysis failed", cause);
@@ -122,7 +128,9 @@ public final class InsightsPanel extends JPanel {
                     statusLabel.setText(Messages.get("insights.status.interrupted"));
                 }
             }
-        }.execute();
+        };
+        runControls.started(worker);
+        worker.execute();
     }
 
     private void onSave(ActionEvent e) {

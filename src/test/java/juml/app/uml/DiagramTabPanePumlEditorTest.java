@@ -11,6 +11,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import javax.swing.JOptionPane;
 import javax.swing.JTabbedPane;
 import java.awt.GraphicsEnvironment;
 import java.io.File;
@@ -130,9 +131,160 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void rerenderActiveEditor_keepsTextAndTabIntact() {
+        // エディタタブの F5 相当 (rerenderActiveTab) がテキストやタブ状態を壊さないこと。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        GuiActionRunner.execute(() -> pane.rerenderActiveTab());
+        assertTrue("再描画後もエディタタブのまま",
+                GuiActionRunner.execute(() -> pane.activeTabIsPumlEditor()));
+        assertEquals("再描画でテキストは変わらない",
+                PUML, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertEquals("タブ数は増えない", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
+    public void editThenSave_thenReopenAfterClose_isNotDirty() {
+        // 保存済みタブを閉じて再オープンすると未保存(●)は付かない (dirty 保持は未保存時のみ)。
+        File f;
+        try {
+            f = tmp.newFile("clean.puml");
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        boolean saved = GuiActionRunner.execute(() -> pane.saveActivePumlEditor(false));
+        assertTrue(saved);
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+        GuiActionRunner.execute(() -> pane.reopenLastClosedTab());
+        assertFalse("保存済みで閉じたタブの再オープンは未保存マークが付かない",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    private static final String EDITED = "@startuml\nclass Edited\n@enduml\n";
+
+    @Test
+    public void confirmDiscardAllEdits_cancel_abortsAndKeepsDirty() throws Exception {
+        File f = tmp.newFile("cancel.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(EDITED));
+        boolean ok = GuiActionRunner.execute(
+                () -> pane.confirmDiscardAllEdits(label -> JOptionPane.CANCEL_OPTION));
+        assertFalse("Cancel は終了を中止 (false を返す)", ok);
+        assertTrue("タブは開いたまま (dirty ●)",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+        assertFalse("編集内容はファイルへ保存されていない",
+                EDITED.equals(PumlEditorSupport.read(f)));
+    }
+
+    @Test
+    public void confirmDiscardAllEdits_no_discardsAndAllowsExit() throws Exception {
+        File f = tmp.newFile("discard.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(EDITED));
+        boolean ok = GuiActionRunner.execute(
+                () -> pane.confirmDiscardAllEdits(label -> JOptionPane.NO_OPTION));
+        assertTrue("No (破棄) は終了を許可 (true)", ok);
+        assertFalse("破棄なので編集内容はファイルへ書かれない",
+                EDITED.equals(PumlEditorSupport.read(f)));
+    }
+
+    @Test
+    public void confirmDiscardAllEdits_yes_savesAndAllowsExit() throws Exception {
+        File f = tmp.newFile("save.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(EDITED));
+        boolean ok = GuiActionRunner.execute(
+                () -> pane.confirmDiscardAllEdits(label -> JOptionPane.YES_OPTION));
+        assertTrue("Yes (保存) は終了を許可 (true)", ok);
+        assertEquals("Yes なので編集内容がファイルへ保存される", EDITED, PumlEditorSupport.read(f));
+        assertFalse("保存後は未保存マークが消える",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void saveAs_migratesKey_soReopeningSameFileDoesNotDuplicateTab() throws Exception {
+        File f = tmp.newFile("target.puml");
+        // Untitled で開く (key = PUML:untitled-N)
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        int afterOpen = GuiActionRunner.execute(() -> tabs.getTabCount());
+        // Save As 相当でファイルへ保存 → キーが PUML:<abspath> へ移行する
+        boolean saved = GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(f));
+        assertTrue(saved);
+        assertEquals("Save As でラベルがファイル名に変わる", f.getName(),
+                stripDirty(GuiActionRunner.execute(() -> tabs.getTitleAt(0))));
+        // 同じファイルを開く → キー一致で既存タブへフォーカス、タブは増えない
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        assertEquals("Save As 後に同ファイルを開いても重複タブは生じない",
+                afterOpen, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertTrue(GuiActionRunner.execute(() -> pane.activeTabIsPumlEditor()));
+    }
+
+    private static String stripDirty(String title) {
+        return title.startsWith("●") ? title.substring(1).trim() : title;
+    }
+
+    @Test
+    public void openPumlEditor_markDirty_showsUnsavedMark() {
+        // 閉じたタブの再オープンで未保存(●)状態を復元する機構を検証する。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertTrue("markDirty=true で開いたタブは未保存マーク(●)が付くはず",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void confirmDiscardAllEdits_noDirtyTabs_returnsTrueWithoutDialog() {
+        // 未保存タブが無ければ確認ダイアログを出さず true (終了を許可) を返す。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        assertTrue("未保存タブが無ければ終了確認は true",
+                GuiActionRunner.execute(() -> pane.confirmDiscardAllEdits()));
+    }
+
+    @Test
     public void saveActivePumlEditor_returnsFalseWhenNoEditorTab() {
         boolean saved = GuiActionRunner.execute(() -> pane.saveActivePumlEditor(false));
         assertFalse("エディタタブが無いときの保存は false を返すはず", saved);
+    }
+
+    @Test
+    public void fullLifecycle_editSaveAsEditDiffDiscard_staysConsistent() throws Exception {
+        // 機能の相互作用を 1 本の現実的なフローで通す:
+        //   Untitled で開く → 編集(●) → Save As(キー移行) → 再編集(●) →
+        //   保存内容と現在テキストが食い違う(=差分検出可) → 破棄で終了許可。
+        File f = tmp.newFile("lifecycle.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+
+        // 1) 編集 → dirty
+        String v1 = "@startuml\nclass One\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(v1));
+        assertTrue("編集で ●", GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+
+        // 2) Save As → キー移行 + ●解消 + ファイルへ書き込み
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(f)));
+        assertFalse("保存で ● 解消",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+        assertEquals(v1, PumlEditorSupport.read(f));
+
+        // 3) 再編集 → 再び dirty、保存内容と食い違う (差分検出のもと)
+        String v2 = "@startuml\nclass One\nclass Two\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(v2));
+        assertTrue("再編集で再び ●",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+        assertTrue("保存済みと現在テキストに差分がある",
+                PumlDiff.hasChanges(PumlEditorSupport.read(f),
+                        GuiActionRunner.execute(() -> pane.activeEditorText())));
+
+        // 4) 破棄(No)で終了許可 → ファイルは v1 のまま (v2 は書かれない)
+        boolean exitOk = GuiActionRunner.execute(
+                () -> pane.confirmDiscardAllEdits(label -> JOptionPane.NO_OPTION));
+        assertTrue("破棄で終了許可", exitOk);
+        assertEquals("破棄なのでファイルは保存前(v1)のまま", v1, PumlEditorSupport.read(f));
+
+        // 5) 同じファイルを開き直しても重複タブにならない (Save As のキー移行が効いている)
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        assertEquals("キー移行済みなので同ファイル再オープンで重複しない",
+                before, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
     }
 
     @Test

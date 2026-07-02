@@ -41,6 +41,7 @@ public final class ReverseReferencePanel extends JPanel {
     private final ReferenceIndexCache refCache;
     private final JTextField targetField;
     private final JButton findButton;
+    private final AnalysisRunControls runControls = new AnalysisRunControls();
     private final JTable resultTable;
     private final DefaultTableModel tableModel;
     private final JLabel statusLabel;
@@ -59,6 +60,8 @@ public final class ReverseReferencePanel extends JPanel {
         input.add(targetField);
         findButton = new JButton(Messages.get("explore.ref.btn.find"));
         input.add(findButton);
+        input.add(runControls.cancelButton());
+        input.add(runControls.progressBar());
         add(input, BorderLayout.NORTH);
 
         tableModel = new DefaultTableModel(COLUMNS, 0) {
@@ -106,6 +109,7 @@ public final class ReverseReferencePanel extends JPanel {
             @Override
             protected void done() {
                 findButton.setEnabled(true);
+                runControls.finished();
                 try {
                     List<ReferenceSite> sites = get();
                     if (sites == null) {
@@ -116,6 +120,8 @@ public final class ReverseReferencePanel extends JPanel {
                     populateTable(sites);
                     statusLabel.setText(java.text.MessageFormat.format(
                             Messages.get("explore.ref.countFormat"), sites.size()));
+                } catch (java.util.concurrent.CancellationException ce) {
+                    statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (Exception ex) {
                     juml.util.AppLog.error("ReverseReferencePanel",
                             "Reference search failed", ex);
@@ -124,6 +130,7 @@ public final class ReverseReferencePanel extends JPanel {
                 }
             }
         };
+        runControls.started(worker);
         worker.execute();
     }
 

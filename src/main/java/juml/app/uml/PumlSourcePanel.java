@@ -6,6 +6,8 @@ package juml.app.uml;
 import juml.util.Messages;
 
 import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
@@ -26,8 +28,24 @@ import java.awt.datatransfer.StringSelection;
  */
 public class PumlSourcePanel extends JPanel {
 
+    /** スニペット: {labelKey, 挿入テキスト}。編集モードでキャレット位置へ挿入する。 */
+    private static final String[][] SNIPPETS = {
+        {"puml.snippet.class", "class NewClass {\n  +field: Type\n  +method(): Type\n}\n"},
+        {"puml.snippet.interface", "interface NewInterface {\n  +method(): Type\n}\n"},
+        {"puml.snippet.abstract", "abstract class NewClass {\n  +method(): Type\n}\n"},
+        {"puml.snippet.enum", "enum NewEnum {\n  VALUE_A\n  VALUE_B\n}\n"},
+        {"puml.snippet.inheritance", "Parent <|-- Child\n"},
+        {"puml.snippet.association", "ClassA --> ClassB\n"},
+        {"puml.snippet.dependency", "ClassA ..> ClassB\n"},
+        {"puml.snippet.note", "note right of ClassName: text\n"},
+        {"puml.snippet.package", "package \"name\" {\n}\n"},
+        {"puml.snippet.title", "title My Diagram\n"},
+    };
+
     private final JTextArea textArea;
     private final JButton copyButton;
+    private final JLabel snippetLabel;
+    private final JComboBox<String> snippetCombo;
 
     public PumlSourcePanel() {
         super(new BorderLayout());
@@ -44,8 +62,39 @@ public class PumlSourcePanel extends JPanel {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         bar.add(copyButton);
 
+        snippetLabel = new JLabel(Messages.get("puml.snippet.label"));
+        snippetCombo = new JComboBox<>();
+        snippetCombo.setToolTipText(Messages.get("puml.snippet.tip"));
+        snippetCombo.addItem(Messages.get("puml.snippet.prompt"));
+        for (String[] s : SNIPPETS) {
+            snippetCombo.addItem(Messages.get(s[0]));
+        }
+        snippetCombo.addActionListener(e -> {
+            int i = snippetCombo.getSelectedIndex();
+            if (i >= 1 && i <= SNIPPETS.length) {
+                insertSnippet(SNIPPETS[i - 1][1]);
+                snippetCombo.setSelectedIndex(0); // プロンプトへ戻す
+            }
+        });
+        // スニペット挿入は編集モードのときだけ有効。
+        snippetLabel.setVisible(false);
+        snippetCombo.setVisible(false);
+        bar.add(snippetLabel);
+        bar.add(snippetCombo);
+
         add(bar, BorderLayout.NORTH);
         add(new JScrollPane(textArea), BorderLayout.CENTER);
+    }
+
+    /** スニペット文字列を現在のキャレット位置へ挿入する (編集不可なら無視)。 */
+    void insertSnippet(String text) {
+        if (!textArea.isEditable() || text == null || text.isEmpty()) {
+            return;
+        }
+        int pos = Math.max(0, Math.min(textArea.getCaretPosition(), textArea.getText().length()));
+        textArea.insert(text, pos);
+        textArea.setCaretPosition(pos + text.length());
+        textArea.requestFocusInWindow();
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
@@ -68,6 +117,59 @@ public class PumlSourcePanel extends JPanel {
         return textArea.getText();
     }
 
+    private Object errorHighlightTag;
+    private final javax.swing.text.Highlighter.HighlightPainter errorPainter =
+            new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
+                    new java.awt.Color(0xFF, 0xCD, 0xD2));
+
+    /**
+     * 描画失敗行 (1 始まり、エディタ行) を赤く強調してキャレットを移動する。
+     * {@code line} が 0 以下・範囲外なら既存の強調を消すだけ。
+     */
+    public void highlightErrorLine(int line) {
+        clearErrorHighlight();
+        if (line <= 0) {
+            return;
+        }
+        try {
+            int li = line - 1;
+            if (li >= textArea.getLineCount()) {
+                return;
+            }
+            int start = textArea.getLineStartOffset(li);
+            int end = textArea.getLineEndOffset(li);
+            errorHighlightTag = textArea.getHighlighter().addHighlight(start, end, errorPainter);
+            textArea.setCaretPosition(start);
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // 行範囲がずれた場合は強調しない (致命的でない)。
+        }
+    }
+
+    /** 描画失敗行の強調を消す。 */
+    public void clearErrorHighlight() {
+        if (errorHighlightTag != null) {
+            textArea.getHighlighter().removeHighlight(errorHighlightTag);
+            errorHighlightTag = null;
+        }
+    }
+
+    /** テスト用: 現在のハイライト件数。 */
+    int highlightCountForTest() {
+        return textArea.getHighlighter().getHighlights().length;
+    }
+
+    /**
+     * PlantUML が報告した「生成ソースの行番号」を、スタイル prelude 挿入分
+     * ({@code injectedLines}) を差し引いてエディタ上の行番号へ写像する (純関数)。
+     * 挿入は {@code @startuml} 直後に入るため、行 1 (= @startuml) はそのまま。
+     */
+    public static int editorLineForError(int errorLine, int injectedLines) {
+        if (errorLine <= 1 || injectedLines <= 0) {
+            return errorLine;
+        }
+        return Math.max(1, errorLine - injectedLines);
+    }
+
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
         textArea.setEditable(editable);
@@ -75,6 +177,9 @@ public class PumlSourcePanel extends JPanel {
         if (editable) {
             copyButton.setEnabled(true);
         }
+        // スニペット挿入 UI は編集モードのときだけ見せる。
+        snippetLabel.setVisible(editable);
+        snippetCombo.setVisible(editable);
     }
 
     /**

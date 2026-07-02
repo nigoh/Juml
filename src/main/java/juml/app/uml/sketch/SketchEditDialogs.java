@@ -79,6 +79,33 @@ final class SketchEditDialogs {
         return true;
     }
 
+    /**
+     * 関係編集ダイアログを表示し、OK なら {@code rel} の種別・ラベルへ反映する。
+     *
+     * @return 変更を適用したら true (キャンセルなら false)
+     */
+    static boolean editRelation(Component parent, SketchRelation rel) {
+        JComboBox<SketchRelation.Kind> kindCombo =
+                new JComboBox<>(SketchRelation.Kind.values());
+        kindCombo.setSelectedItem(rel.getKind());
+        JTextField labelField = new JTextField(
+                rel.getLabel() == null ? "" : rel.getLabel(), 20);
+        JPanel panel = new JPanel(new GridLayout(2, 2, 6, 4));
+        panel.add(new JLabel(Messages.get("sketch.rel.kind")));
+        panel.add(kindCombo);
+        panel.add(new JLabel(Messages.get("sketch.rel.label")));
+        panel.add(labelField);
+        int choice = JOptionPane.showConfirmDialog(parent, panel,
+                Messages.get("sketch.rel.title"),
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) {
+            return false;
+        }
+        rel.setKind((SketchRelation.Kind) kindCombo.getSelectedItem());
+        rel.setLabel(labelField.getText().trim());
+        return true;
+    }
+
     private static JScrollPane titled(JTextArea area, String title) {
         area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
         JScrollPane sp = new JScrollPane(area);
