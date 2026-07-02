@@ -63,6 +63,32 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void undoRedo_keepsTextSyncConsistent() {
+        // Undo/Redo がモデルだけでなく onPumlChange のテキスト同期まで一貫して巻き戻す
+        // ことを検証する (モデルとテキストが乖離して「ぐちゃぐちゃ」にならないこと)。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.CLASS.body());
+        });
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        assertTrue("追加直後のテキストに新クラスが載る: " + lastPuml.get(),
+                lastPuml.get().contains("NewClass"));
+
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新クラスが消える: " + lastPuml.get(),
+                lastPuml.get().contains("NewClass"));
+        // テキストとモデルが一致していること (乖離していないこと)。
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新クラスが戻る: " + lastPuml.get(),
+                lastPuml.get().contains("NewClass"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+    }
+
+    @Test
     public void undo_withoutHistory_isNoOp() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
