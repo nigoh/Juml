@@ -16,11 +16,13 @@ public class PlantUmlCommentFormatterTest {
 
     @Test
     public void sanitizeEscapesHtmlSpecials() {
-        // JavaDoc 由来の < > & を HTML エンティティ化して PlantUML のタグ誤認を防ぐ
-        assertEquals("Returns a List&lt;String&gt; of names.",
+        // JavaDoc 由来の <...> はチルダエスケープしてタグ誤認を防ぐ
+        // (PlantUML 1.2026.x は &lt; エンティティを解釈せずそのまま表示するため、
+        //  creole のエスケープ文字 ~ を使う)。> と & は生のままで安全。
+        assertEquals("Returns a List~<String> of names.",
                 PlantUmlCommentFormatter.sanitizeInlineComment(
                         "Returns a List<String> of names.", 0));
-        assertEquals("a &amp; b",
+        assertEquals("a & b",
                 PlantUmlCommentFormatter.sanitizeInlineComment("a & b", 0));
     }
 
@@ -55,9 +57,12 @@ public class PlantUmlCommentFormatterTest {
     }
 
     @Test
-    public void escapeHtmlConvertsAmpersandFirst() {
-        assertEquals("&amp;lt;", PlantUmlCommentFormatter.escapeHtml("&lt;"));
-        assertEquals("", PlantUmlCommentFormatter.escapeHtml(""));
+    public void escapeTextTildeEscapesTagStart() {
+        // < のみチルダエスケープする。& と > は PlantUML 1.2026.x で生のまま安全。
+        assertEquals("~<b>", PlantUmlCommentFormatter.escapeText("<b>"));
+        assertEquals("a & b", PlantUmlCommentFormatter.escapeText("a & b"));
+        assertEquals("x > 0", PlantUmlCommentFormatter.escapeText("x > 0"));
+        assertEquals("", PlantUmlCommentFormatter.escapeText(""));
     }
 
     @Test

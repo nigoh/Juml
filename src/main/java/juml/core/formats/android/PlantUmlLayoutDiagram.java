@@ -24,7 +24,7 @@ public final class PlantUmlLayoutDiagram {
         public boolean showDimensions = true;
         public int maxNodes = 300;
         public int maxDepth = 20;
-        public int textMaxLen = 40;
+        public int textMaxLen = 0;
         public String title;
     }
 

@@ -59,11 +59,11 @@ public final class PlantUmlCallGraphDiagram {
 
         JavaClassInfo entryCls = bySimpleName.get(entryClass);
         if (entryCls == null) {
-            return "@startwbs\n* [Class not found] " + entryClass + "\n@endwbs\n";
+            return "@startwbs\n* [Class not found] " + esc(entryClass) + "\n@endwbs\n";
         }
         JavaMethodInfo entryMeth = findMethod(entryCls, entryMethod);
         if (entryMeth == null) {
-            return "@startwbs\n* [Method not found] " + entryClass + "." + entryMethod
+            return "@startwbs\n* [Method not found] " + esc(entryClass) + "." + esc(entryMethod)
                     + "()\n@endwbs\n";
         }
 
@@ -74,7 +74,8 @@ public final class PlantUmlCallGraphDiagram {
 
         // 起点ルートノード (WBS depth 1)
         sb.append("*[").append(opts.entryColor).append("] ")
-          .append(kindTag(entryCls.getKind())).append(entryClass).append(".").append(entryMethod).append("()\n");
+          .append(kindTag(entryCls.getKind())).append(esc(entryClass)).append(".")
+          .append(esc(entryMethod)).append("()\n");
 
         // DFS パス (循環検出のための祖先集合)
         Set<String> path = new LinkedHashSet<>();
@@ -138,9 +139,9 @@ public final class PlantUmlCallGraphDiagram {
                 JavaClassInfo calleeCls = bySimpleName.get(calleeClass);
                 String tag = calleeCls != null ? kindTag(calleeCls.getKind()) : "";
                 sb.append(classIndent).append("[").append(opts.projectColor).append("] ")
-                  .append(tag).append(calleeClass).append("\n");
+                  .append(tag).append(esc(calleeClass)).append("\n");
             } else {
-                sb.append(classIndent).append(" ").append(calleeClass).append("\n");
+                sb.append(classIndent).append(" ").append(esc(calleeClass)).append("\n");
             }
 
             // メソッドノード (クラス配下)
@@ -148,7 +149,7 @@ public final class PlantUmlCallGraphDiagram {
                 String key = nodeKey(calleeClass, meth);
                 boolean isCycle = path.contains(key);
 
-                sb.append(methodIndent).append(" ").append(meth).append("()");
+                sb.append(methodIndent).append(" ").append(esc(meth)).append("()");
                 if (isCycle) {
                     sb.append(" [↩]");
                 }
@@ -224,6 +225,15 @@ public final class PlantUmlCallGraphDiagram {
 
     private static String nodeKey(String cls, String method) {
         return cls + "." + method;
+    }
+
+    /**
+     * WBS ノードテキストへ書けるようクラス名/メソッド名を無害化する。
+     * {@code <init>} や総称型 {@code Map<K,V>} の {@code < > &} は creole/HTML タグと
+     * 誤認され描画が壊れるため、HTML エンティティへ変換する。
+     */
+    private static String esc(String s) {
+        return PlantUmlCommentFormatter.escapeText(s);
     }
 
     private static String kindTag(JavaClassInfo.Kind kind) {

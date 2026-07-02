@@ -72,9 +72,9 @@ public class PlantUmlSequenceDiagramInlineCommentAndOverloadTest {
                 java.util.Collections.singletonList(cls), "Svc", "run", opts);
         // エスケープ済みテキストが note に含まれること
         assertTrue("angle brackets must be escaped: " + puml,
-                puml.contains("&lt;String&gt;"));
-        // 生の < が PlantUML テキストに残っていないこと
-        assertFalse("raw < must not appear in note: " + puml,
+                puml.contains("~<String>"));
+        // エスケープされていない < が PlantUML テキストに残っていないこと
+        assertFalse("unescaped < must not appear in note: " + puml,
                 puml.contains("List<String>"));
     }
 

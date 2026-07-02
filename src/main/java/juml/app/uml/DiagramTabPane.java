@@ -1157,7 +1157,10 @@ public final class DiagramTabPane {
                         if (isActive()) {
                             mirrorToState();
                         }
-                        showMessageCard(failureMessage(error));
+                        // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
+                        // (ユーザがそのまま報告できるようにする)。
+                        java.io.File dumped = RenderFailureLog.dump(label, pumlOnError, error);
+                        showMessageCard(DiagramFailureMessage.forError(error, dumped));
                         setStatus(label + ": " + Messages.get("status.renderFailed") + " " + failureReason(error));
                         return;
                     }
@@ -1188,6 +1191,8 @@ public final class DiagramTabPane {
                         setStatus(label + " " + Messages.get("status.rendered") + " ("
                                 + (int) Math.round(r.svg.getWidth()) + "x" + (int) Math.round(r.svg.getHeight()) + ", SVG)");
                     } catch (Exception ex) {
+                        juml.util.AppLog.error("DiagramTab",
+                                "render result handling failed: " + label, ex);
                         showMessageCard(failureMessage(ex));
                         setStatus(label + ": " + ex.getMessage());
                     }

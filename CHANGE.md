@@ -4,6 +4,37 @@ Change log
 2.1
 --------
 
+* **PlantUML 1.2026.x のエスケープ回帰を修正 (HTML エンティティ → チルダエスケープ) + 未エスケープ箇所の一掃 + alias 衝突解消** (`PlantUmlCommentFormatter` / `PlantUmlCallGraphDiagram` / `PlantUmlActivityDiagram` / `PlantUmlModuleDiagram` / `PlantUmlSequenceDiagram` / `PlantUmlClassDiagram` / aosp・aaos の `PlantUml*Diagram` 4 種)
+    * **背景**: 「UML が描画されない / おかしい」報告の調査で、同梱 PlantUML 1.2026.x が `&lt;` 等の **HTML エンティティを解釈せずそのまま表示する** ことを実測で確認 (`&lt;init&gt;` が文字どおり画面に出る回帰)。一方、生の `<b>` のような既知タグは書式として解釈されテキストが欠落する。
+    * **修正 (中核)**: `escapeHtml` (`& < >` → エンティティ) を `escapeText` (`<` → `~<` の creole チルダエスケープ) に置き換え。全コンテキスト (メンバ行 / note / ラベル / title / WBS / legend) で元の文字どおり表示されることをレンダリング実測で確認。`>` と `&` は生のままで安全のため変換しない。
+    * **未エスケープ箇所の修正**: コールグラフ (WBS) のクラス名/メソッド名 (完全に未エスケープだった)、アクティビティ図の action/条件/partition ラベルと title、モジュール図の title、シーケンス図の loop/recursive call ラベル。クラス図の `package "..."` も `quoteId` に統一。
+    * **alias 衝突解消**: aosp/aaos 図の `alias()` が `foo-bar` と `foo.bar` を同じ `m_foo_bar` に潰して別ノードを合成していた問題を、置換発生時のみ元名ハッシュを付与して一意化。
+    * テスト: 既存テストを新仕様へ更新 + `PlantUmlCallGraphDiagramEscapeTest` / `PlantUmlSoongDependencyDiagramAliasTest` 新設。`checkstyle` (maxWarnings=0) 通過。
+    * 目的: エスケープ起因の表示崩れ・テキスト欠落・ノード合成をなくし、「図が描画されない/おかしい」原因を根本から潰すため。
+
+* **図テキストの "..." 省略を全廃し、既定で全文表示に変更** (`PlantUmlClassDiagram` / `PlantUmlSequenceDiagram` / `PlantUmlActivityDiagram` / `PlantUmlLayoutDiagram` / `PlantUmlLayoutScreenDiagram` / `PlantUmlResourceLinkDiagram` / `Setting` / `DiagramPreset`)
+    * `commentMaxLength` の既定を 60/80 → **0 (無制限)** に変更 (クラス図/シーケンス図/アクティビティ図、BALANCED プリセット、`Setting` 既定)。Android 系図のハードコード上限 (30/40/28) も 0 = 無制限に。アクティビティ図の条件ラベル固定 80 文字も撤廃。
+    * **設定移行**: 旧バージョンが既定値のまま永続化した `classDiagram.commentMaxLength=60` は、未移行の設定ファイルに限り 0 へ自動移行 (`.migrated` マーカーで冪等化。60 以外のユーザ指定値と移行後の明示的な 60 は尊重)。
+    * 上限を指定したい場合は従来どおりスタイル設定のスピナー / `--comment-max-length` / DETAILED プリセット (NOTE 折り返し 200) で調整可能。
+    * テスト: 既定値変更へのテスト追従 + アクティビティ図の全文表示/明示指定時の切り詰めテストを追加。
+    * 目的: 長いコメント・定数値・ラベルが `...`/`…` で切れて情報が失われるのをやめ、図で全文を確認できるようにするため。
+
+* **クラス図の定数 (static final) 表示を改善: グルーピング + 値の全文併記** (`PlantUmlClassDiagram`)
+    * `static final` 定数を通常フィールドの前にまとめ、間に `..` 区切り線を挿入 (enum 定数の区切りと同じ流儀)。`Options.groupConstants` (既定 true) で無効化可能。
+    * 定数の初期化値は 40 文字打ち切りを廃止して全文併記 (改行を含む値は 1 行に畳む)。
+    * テスト: グルーピング有効/無効・境界 (定数のみ)・長文値・空白正規化の 5 ケースを追加。
+    * 目的: クラス図で定数定義とその値をひと目で確認できるようにするため。
+
+* **UML 描画失敗の診断ログを拡充 (原因の可視化 + 失敗 PlantUML の自動保存)** (`PlantUmlRenderer` / `PlantUmlRenderFailedException` / `GraphvizLocator` / `PlantUmlImageRenderer` / `RenderFailureLog` 新設、`DiagramTabPane` / `DiagramFailureMessage` / `DiagramService` / `messages*.properties`)
+    * **背景**: 描画失敗時に「なぜ失敗したか」が分からず報告もしづらかった。render パスは `AppLog` に一切記録しておらず、PlantUML 自身のエラー行情報も捨てていた。
+    * **エラー診断の構造化**: エラー SVG から `[From string (line N)]` の行番号と失敗行テキストを抽出し、`PlantUmlRenderFailedException` に `getErrorLine()` / `getErrorDetail()` / `getStderrTail()` として保持。メッセージにも「何行目で・PlantUML が何と言ったか・レイアウトエンジンはどちらか」を含め、ログには失敗行前後の生成 PlantUML 抜粋を添える。
+    * **stderr の保全**: 非 verbose で完全に捨てていた Smetana の stderr 出力を末尾 64KB の有界リングバッファで捕捉し、失敗時に例外とログへ添付。
+    * **AppLog への配線**: 描画失敗 (`PlantUmlRenderer` + `DiagramTabPane` の握りつぶし 2 箇所)、Graphviz dot の解決結果 (どの経路で見つけたか / Smetana フォールバック)、`DiagramService` の設定取得失敗 3 箇所を `AppLog` へ記録。
+    * **失敗 PlantUML の自動保存**: GUI で描画に失敗すると生成 PlantUML を `logs/render-failed-<timestamp>.puml` へ保存 (最大 20 件でローテーション)。失敗カードに保存先とログ (Help → エラーログ / logs/juml.log) への案内を表示。
+    * **PNG 経路のエラー検出**: PNG エクスポートが PlantUML のエラー画像 (description が `(Error)`) を正常出力として保存していた穴を塞ぎ、例外化してダイアログ + ログで通知。
+    * テスト: 診断抽出 (`extractErrorDetail` / `extractErrorLine`)・例外への行番号伝播・`RenderFailureLog` の null 安全のテストを追加。
+    * 目的: 描画失敗の原因をログと保存された .puml からそのまま報告できるようにするため。
+
 * **アプリのエラーログ機能を追加 (ログビューア + ファイル出力 + 例外捕捉)** (`AppLog` / `LogViewerDialog` 新設、`Main` / `MenuBarBuilder` / `AppCommands` / `UmlMainFrame` / `ProjectLoader` / `ExportController` / `messages*.properties` / `AppLogTest` / `LogViewerDialogSwingTest`)
     * **背景**: アプリが大規模化したのに対し、エラーや警告を後から確認する手段が `System.err` への出力しか無く、GUI 利用者は問題発生時に原因を追えなかった。
     * **中核 (`juml.util.AppLog`)**: 外部ライブラリに依存しない軽量ロギング基盤。(1) メモリ上のリングバッファ (最新 5000 件) をビューアへ供給、(2) `<basePath>/logs/juml.log` へ追記 (2MB で 1 世代ローテーション)、(3) リスナーでビューアへライブ配信。`init()` で **未捕捉例外ハンドラ** と **`System.err` のティー** を設置するため、既存の `System.err.println` 出力・スタックトレース・別スレッドの未捕捉例外も追加実装なしで取り込む。本クラスは `System.err`/`System.out` へは書かず、ティーとの無限再帰を避ける。コンソール出力の退行を防ぐため、ティー前の元 `System.err` を保持して未捕捉例外はコンソールにも 1 度だけ出す。

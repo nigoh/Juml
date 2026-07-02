@@ -73,12 +73,12 @@ public class PlantUmlClassDiagramTest {
 
     @Test
     public void testInitializerPseudoMethodNameHtmlEscaped() {
-        // <clinit> 擬似メソッド名は class body で < > を HTML エンティティ化して描画する
+        // <clinit> 擬似メソッド名は class body でタグ開始をチルダエスケープして描画する
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "package x; class Dao { static { connect(); } static void connect() {} }");
         String puml = PlantUmlClassDiagram.generate(infos);
-        assertTrue(puml, puml.contains("&lt;clinit&gt;("));
-        assertFalse("raw <clinit> must not leak:\n" + puml, puml.contains("<clinit>"));
+        assertTrue(puml, puml.contains("~<clinit>("));
+        assertFalse("unescaped <clinit> must not leak:\n" + puml, puml.contains(" <clinit>("));
     }
 
     @Test
@@ -107,10 +107,10 @@ public class PlantUmlClassDiagramTest {
                         + " Map<String, List<Integer>> data;"
                         + " List<String> names(Set<Long> ids) { return null; } }");
         String puml = PlantUmlClassDiagram.generate(infos);
-        assertTrue(puml, puml.contains("data: Map&lt;String, List&lt;Integer&gt;&gt;"));
-        assertTrue(puml, puml.contains("ids: Set&lt;Long&gt;"));
-        assertTrue(puml, puml.contains("): List&lt;String&gt;"));
-        // 生の < が member 行に残らないこと
+        assertTrue(puml, puml.contains("data: Map~<String, List~<Integer>>"));
+        assertTrue(puml, puml.contains("ids: Set~<Long>"));
+        assertTrue(puml, puml.contains("): List~<String>"));
+        // エスケープされていない < が member 行に残らないこと
         assertFalse(puml, puml.contains("Map<String"));
     }
 
@@ -796,16 +796,16 @@ public class PlantUmlClassDiagramTest {
     public void testMethodTypeParametersInSignature() {
         String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(
                 "class U { <T> T id(T x) { return x; } }"));
-        // メソッドの <T> 宣言が名前の前に HTML エスケープされて併記される
-        assertTrue(puml, puml.contains("&lt;T&gt; id(x: T): T"));
+        // メソッドの <T> 宣言が名前の前にチルダエスケープされて併記される
+        assertTrue(puml, puml.contains("~<T> id(x: T): T"));
     }
 
     @Test
     public void testGenericTypeParametersInHeader() {
         String puml = PlantUmlClassDiagram.generate(
                 JavaStructureExtractor.extract("package p; class Box<T extends Number> {}"));
-        // 型パラメータが HTML エスケープされてクラス名に併記される
-        assertTrue(puml, puml.contains("p.Box&lt;T extends Number&gt;"));
+        // 型パラメータがチルダエスケープされてクラス名に併記される
+        assertTrue(puml, puml.contains("p.Box~<T extends Number>"));
     }
 
     @Test
@@ -1229,16 +1229,16 @@ public class PlantUmlClassDiagramTest {
 
     @Test
     public void testTitleWithSpecialCharsEscaped() {
-        // title に < > & が含まれる場合、PlantUML が HTML タグと誤認しないよう
-        // &lt; &gt; &amp; に変換されること。
+        // title に < が含まれる場合、PlantUML がタグと誤認しないよう
+        // ~< にチルダエスケープされること (> & は生のままで安全)。
         PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
         o.title = "A<B>&C";
         o.includeLegend = false;
         String puml = PlantUmlClassDiagram.generate(
                 JavaStructureExtractor.extract("class C {}"), o);
         assertTrue("escaped title expected: " + puml,
-                puml.contains("title A&lt;B&gt;&amp;C"));
-        assertFalse("raw < must not appear in title: " + puml,
+                puml.contains("title A~<B>&C"));
+        assertFalse("unescaped < must not appear in title: " + puml,
                 puml.contains("title A<B>"));
     }
 
@@ -1273,7 +1273,7 @@ public class PlantUmlClassDiagramTest {
                 puml.contains("::<clinit>"));
         // HTML エスケープ済み形式で出力されること
         assertTrue("escaped field name must appear: " + puml,
-                puml.contains("::" + PlantUmlCommentFormatter.escapeHtml("<clinit>")));
+                puml.contains("::" + PlantUmlCommentFormatter.escapeText("<clinit>")));
     }
 
     @Test
@@ -1300,6 +1300,89 @@ public class PlantUmlClassDiagramTest {
         assertFalse("raw < in method note must not appear: " + puml,
                 puml.contains("::<init>"));
         assertTrue("escaped method name must appear: " + puml,
-                puml.contains("::" + PlantUmlCommentFormatter.escapeHtml("<init>")));
+                puml.contains("::" + PlantUmlCommentFormatter.escapeText("<init>")));
+    }
+
+    // ---- 定数グルーピング (groupConstants) ----
+
+    @Test
+    public void testGroupConstantsEnabledSeparatesWithDotDot() {
+        // groupConstants=true (既定) のとき static final 定数が先に出て、
+        // 通常フィールドとの間に ".." セパレータが入ることを確認する。
+        String src = "class C { "
+                + "public static final int MAX = 100; "
+                + "private int x; "
+                + "}";
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src));
+        // 両グループが揃っていれば ".." セパレータが出る
+        assertTrue("separator (..) should appear between constant and plain field: " + puml,
+                puml.contains(".."));
+        // MAX が x より先に現れること
+        int maxIdx = puml.indexOf("MAX");
+        int xIdx = puml.indexOf("x:");
+        assertTrue("MAX constant should appear before separator: " + puml, maxIdx >= 0);
+        assertTrue("x field should appear after separator: " + puml, xIdx >= 0);
+        assertTrue("MAX should precede x in output: " + puml, maxIdx < xIdx);
+    }
+
+    @Test
+    public void testGroupConstantsDisabledPreservesDeclarationOrder() {
+        // groupConstants=false のとき、フィールドが宣言順で出て ".." セパレータが出ないことを確認する。
+        // x を先に宣言し MAX を後に宣言して、フィールド順が保たれることを検証する。
+        String src = "class C { private int x; public static final int MAX = 100; }";
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.groupConstants = false;
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src), o);
+        // groupConstants=false ではセパレータが出ない
+        // ("  .." パターンはクラス本体の区切り線のみ; 両グループ揃っていれば出るはずが出ない)
+        assertFalse("separator should NOT appear when groupConstants=false: " + puml,
+                puml.contains("  .."));
+        // 宣言順: x が MAX より先に出ること
+        int xIdx = puml.indexOf("x:");
+        int maxIdx = puml.indexOf("MAX:");
+        assertTrue("x should appear before MAX when groupConstants=false: " + puml,
+                xIdx >= 0 && maxIdx >= 0 && xIdx < maxIdx);
+    }
+
+    @Test
+    public void testGroupConstantsSeparatorAbsentWhenNoPlainFields() {
+        // static final 定数のみでプレーンフィールドが無い場合、セパレータを出さないことを確認する。
+        String src = "class C { public static final int A = 1; public static final int B = 2; }";
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src));
+        // "  .." はフィールドグループ間の区切り。両グループが揃っていないので出ない。
+        assertFalse("separator should NOT appear when there are only constants: " + puml,
+                puml.contains("  .."));
+    }
+
+    // ---- 定数値の長文切り詰め廃止・空白正規化 ----
+
+    @Test
+    public void testConstantValueLongStringNotTruncated() {
+        // 40 文字超の static final String 定数値が "..." なしで全文出力されることを確認する。
+        // 旧実装では 40 文字で切り詰めていたが、新実装では全文表示する。
+        String longValue = "A".repeat(60);
+        String src = "class C { public static final String MSG = \""
+                + longValue + "\"; }";
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src));
+        // 60 個の 'A' が全文含まれること
+        assertTrue("long constant value should appear in full: " + puml,
+                puml.contains(longValue));
+        // 旧実装の切り詰め記号 "..." が含まれないこと
+        assertFalse("long constant value should NOT be truncated with ...: " + puml,
+                puml.contains("..."));
+    }
+
+    @Test
+    public void testConstantValueMultiWhitespaceCollapsed() {
+        // 初期化値の連続空白が単一スペースに正規化されることを確認する。
+        // "hello   world" (3 スペース) → "hello world" (1 スペース)
+        String src = "class C { public static final String S = \"hello   world\"; }";
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src));
+        // 正規化後の 1 スペース版が含まれること
+        assertTrue("whitespace should be collapsed to single space: " + puml,
+                puml.contains("hello world"));
+        // 3 スペースのままでは含まれないこと
+        assertFalse("multi-space should NOT remain after normalization: " + puml,
+                puml.contains("hello   world"));
     }
 }

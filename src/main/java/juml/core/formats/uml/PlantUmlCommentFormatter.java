@@ -28,10 +28,9 @@ final class PlantUmlCommentFormatter {
         // JavaDoc が PlantUML 図 (@startuml/@enduml 等) を例示していると、別図の開始と
         // 誤認され構文エラーになる。@ の直後にゼロ幅スペースを挟んで無害化する。
         t = neutralizePlantUmlDirectives(t);
-        // JavaDoc 由来の < > & (例: {@code List<String>} や <br>) は PlantUML が
-        // creole/HTML タグとして解釈し、外側の <color:...> ラッパとも干渉する。
-        // 長さ確定後に HTML エンティティへ変換して無害化する。
-        return escapeHtml(t);
+        // JavaDoc 由来の <br> や <b> 等は PlantUML が creole/HTML タグとして解釈し
+        // テキストが欠落する。長さ確定後にタグ開始をエスケープして無害化する。
+        return escapeText(t);
     }
 
     /**
@@ -46,20 +45,30 @@ final class PlantUmlCommentFormatter {
         return s.replaceAll("(?i)@(start|end)", "@\u200B$1");
     }
 
-    /** コメント/ラベル中の {@code & < >} を HTML エンティティへ変換する。 */
-    static String escapeHtml(String s) {
+    /**
+     * コメント/ラベル中の creole/HTML タグ開始 ({@code <}) をチルダエスケープする。
+     *
+     * <p>同梱の PlantUML 1.2026.x は {@code &lt;} 等の HTML エンティティを解釈せず
+     * そのまま表示してしまう一方、{@code <b>} のような既知タグは書式として解釈され
+     * テキストが欠落する。creole のエスケープ文字 {@code ~} を {@code <} の直前に
+     * 挟むことで、全コンテキスト (メンバ行 / note / ラベル / title / WBS) で
+     * 元の文字どおり表示される (実測確認済み)。{@code >} と {@code &} は生のままで
+     * 安全に表示されるため変換しない。</p>
+     */
+    static String escapeText(String s) {
         if (s == null || s.isEmpty()) {
             return s == null ? "" : s;
         }
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return s.replace("<", "~<");
     }
 
     /**
      * PlantUML の制御行 (矢印ラベル・guard・title 等) に安全に書ける形へ整形する。
-     * 改行を畳み、80 文字超を省略し、{@code < > &} を HTML エンティティ化してタグ誤認を防ぐ。
+     * 改行を畳み、{@code <} をチルダエスケープしてタグ誤認を防ぐ。
+     * 既定では切り詰めない (全文表示)。
      */
     static String escapeLabel(String s) {
-        return escapeLabel(s, 80);
+        return escapeLabel(s, 0);
     }
 
     /**
@@ -71,12 +80,12 @@ final class PlantUmlCommentFormatter {
             return "";
         }
         String trimmed = s.replaceAll("\\s+", " ").trim();
-        // エスケープ前に長さを評価し、HTML エンティティの途中で切れないようにする
+        // エスケープ前に長さを評価し、エスケープ文字の途中で切れないようにする
         if (maxLen > 0 && trimmed.length() > maxLen) {
             int cut = Math.max(1, maxLen - 3);
             trimmed = trimmed.substring(0, cut) + "...";
         }
-        return escapeHtml(trimmed);
+        return escapeText(trimmed);
     }
 
     /**
@@ -122,8 +131,8 @@ final class PlantUmlCommentFormatter {
             String wrapped = wordWrap(t, maxLen);
             for (String wl : wrapped.split("\n", -1)) {
                 if (!wl.isEmpty()) {
-                    // note 本文も < > & をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)
-                    out.append(indent).append("  ").append(escapeHtml(wl)).append('\n');
+                    // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)
+                    out.append(indent).append("  ").append(escapeText(wl)).append('\n');
                 }
             }
         }

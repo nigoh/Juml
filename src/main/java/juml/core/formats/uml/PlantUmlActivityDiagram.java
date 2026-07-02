@@ -28,8 +28,8 @@ public final class PlantUmlActivityDiagram {
         public boolean includeLegend = true;
         /** メソッド JavaDoc / 直前コメントを冒頭に note として出力する。 */
         public boolean showComments = true;
-        /** コメント・アクションラベルの 1 行最大文字数。 */
-        public int commentMaxLength = 80;
+        /** コメント・アクションラベルの 1 行最大文字数。0 以下は無制限 (全文表示、既定)。 */
+        public int commentMaxLength = 0;
         /** コメント色 (PlantUML の {@code <color:#RRGGBB>} 値)。null/空で色付け無効。 */
         public String commentColor = "#008800";
         /** ラムダ/匿名クラスのコールバック本体を partition ブロックに展開する。 */
@@ -89,14 +89,13 @@ public final class PlantUmlActivityDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         } else {
-            // クラス名・メソッド名に < > & が含まれる場合 (合成メソッド等) をエスケープする
-            // (シーケンス図の同箇所と対称)
+            // クラス名・メソッド名に < 等が含まれる場合 (合成メソッド等) をエスケープする
+            // (シーケンス図の同箇所と対称。escapeLabel = 空白畳み + チルダエスケープ)
             out.append("title ")
-                    .append(PlantUmlCommentFormatter.escapeHtml(cls.getSimpleName()))
-                    .append('.')
-                    .append(PlantUmlCommentFormatter.escapeHtml(method.getName()))
+                    .append(PlantUmlCommentFormatter.escapeLabel(
+                            cls.getSimpleName() + "." + method.getName()))
                     .append('\n');
         }
         // メソッド JavaDoc を冒頭の note として出力
@@ -567,32 +566,38 @@ public final class PlantUmlActivityDiagram {
         return null;
     }
 
-    /** action 用ラベル: 改行を畳み、{@code ;} をエスケープし、長さを制限。 */
+    /**
+     * action 用ラベル: 改行を畳み、{@code ;} とタグ開始をエスケープする。
+     * {@code maxLen > 0} のときのみ長さを制限する (既定は無制限 = 全文表示)。
+     */
     private static String escapeAction(String s, int maxLen) {
         if (s == null) {
             return "";
         }
         String trimmed = s.replaceAll("\\s+", " ").trim();
+        trimmed = truncate(trimmed, maxLen);
         // PlantUML の :action; 構文では `;` が終端記号なのでエスケープ
         trimmed = trimmed.replace(";", "\\;");
-        return truncate(trimmed, maxLen > 0 ? maxLen : 100);
+        // <b> 等の creole/HTML タグと誤認されるとテキストが欠落するためエスケープ
+        return PlantUmlCommentFormatter.escapeText(trimmed);
     }
 
-    /** {@code if (cond)} のような条件部に使うラベル。改行を畳み、長さを制限。 */
+    /** {@code if (cond)} のような条件部に使うラベル。改行を畳み、タグ開始をエスケープ。 */
     private static String escapeCondition(String s) {
         if (s == null || s.isEmpty()) {
             return "";
         }
         String trimmed = s.replaceAll("\\s+", " ").trim();
-        return truncate(trimmed, 80);
+        return PlantUmlCommentFormatter.escapeText(trimmed);
     }
 
-    /** partition 等の {@code "..."} 内に置く文字列。引用符をエスケープ。 */
+    /** partition 等の {@code "..."} 内に置く文字列。引用符とタグ開始をエスケープ。 */
     private static String escapeQuoted(String s) {
         if (s == null) {
             return "";
         }
-        return s.replaceAll("\\s+", " ").replace("\"", "\\\"").trim();
+        String t = s.replaceAll("\\s+", " ").replace("\"", "\\\"").trim();
+        return PlantUmlCommentFormatter.escapeText(t);
     }
 
     private static String truncate(String s, int maxLen) {
@@ -606,10 +611,10 @@ public final class PlantUmlActivityDiagram {
         StringBuilder sb = new StringBuilder();
         sb.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            sb.append("title ").append(o.title).append('\n');
+            sb.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         sb.append("start\n");
-        sb.append(":").append(reason.replace(";", "\\;")).append(";\n");
+        sb.append(":").append(escapeAction(reason, 0)).append(";\n");
         sb.append("stop\n");
         sb.append("@enduml\n");
         return sb.toString();

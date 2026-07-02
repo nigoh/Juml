@@ -18,9 +18,18 @@ final class DiagramFailureMessage {
 
     /** 失敗原因と対処を含む HTML メッセージを返す。 */
     static String forError(Throwable error) {
+        return forError(error, null);
+    }
+
+    /**
+     * 失敗原因と対処を含む HTML メッセージを返す。
+     *
+     * @param dumped 保存済みの失敗 PlantUML ファイル (null なら保存案内を省略)
+     */
+    static String forError(Throwable error, java.io.File dumped) {
         StringBuilder sb = new StringBuilder();
         sb.append("<b>").append(Messages.get("diag.fail.title")).append("</b><br>")
-          .append(esc(reason(error)))
+          .append(esc(fullReason(error)))
           .append("<br><br>");
         if (!juml.core.formats.uml.PlantUmlRenderer.isGraphvizAvailable()) {
             // Graphviz 無効時は純 Java の Smetana レイアウトになり、大きな図で破綻しやすい。
@@ -33,7 +42,24 @@ final class DiagramFailureMessage {
           .append("• ").append(Messages.get("diag.fail.tipPreset")).append("<br>")
           .append("• ").append(Messages.get("diag.fail.tipScope")).append("<br><br>")
           .append(Messages.get("diag.fail.pumlShown"));
+        if (dumped != null) {
+            sb.append("<br>").append(Messages.get("diag.fail.savedTo"))
+              .append(' ').append(esc(dumped.getAbsolutePath()));
+        }
+        sb.append("<br>").append(Messages.get("diag.fail.seeLog"));
         return sb.toString();
+    }
+
+    /**
+     * 失敗原因の全文 (メッセージカード用、切り詰めなし)。ステータスバー用の
+     * {@link #reason(Throwable)} と違い、原因を "…" で省略しない。
+     */
+    static String fullReason(Throwable error) {
+        if (error == null) {
+            return "unknown";
+        }
+        String m = error.getMessage();
+        return (m == null || m.isEmpty()) ? error.getClass().getSimpleName() : m;
     }
 
     /** 失敗原因の 1 行要約 (ステータスバー用)。 */

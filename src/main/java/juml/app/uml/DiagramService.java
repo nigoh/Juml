@@ -465,7 +465,9 @@ public final class DiagramService {
             if (depth > 0) {
                 o.maxDepth = depth;
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
+            juml.util.AppLog.warn("DiagramService",
+                    "call graph settings unavailable — using defaults", ex);
         }
     }
 
@@ -494,8 +496,10 @@ public final class DiagramService {
                         PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE;
             }
             o.qualifyMethodNames = s.isSequenceQualifyMethodNames();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま (showComments=true, INLINE, AT_CALL_SITE)
+            juml.util.AppLog.warn("DiagramService",
+                    "sequence diagram settings unavailable — using defaults", ex);
         }
     }
 
@@ -525,8 +529,10 @@ public final class DiagramService {
                 }
                 o.hiddenAnnotations = new java.util.HashSet<>(set);
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま
+            juml.util.AppLog.warn("DiagramService",
+                    "class diagram settings unavailable — using defaults", ex);
         }
     }
 

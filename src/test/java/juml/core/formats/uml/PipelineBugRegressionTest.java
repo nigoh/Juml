@@ -130,9 +130,9 @@ public class PipelineBugRegressionTest {
                 .filter(l -> l.contains("[[juml://method/"))
                 .anyMatch(l -> l.contains("clinit"));
         assertFalse("<clinit> は URL パスに入ってはいけない:\n" + puml, clinitInLink);
-        // ただし本体の member 行では HTML エンティティとして描画される (既存テストの補完)
-        assertTrue("clinit は HTML エンティティとして member 行に現れるべき:\n" + puml,
-                puml.contains("&lt;clinit&gt;("));
+        // ただし本体の member 行ではチルダエスケープ済みテキストとして描画される (既存テストの補完)
+        assertTrue("clinit はチルダエスケープ済みで member 行に現れるべき:\n" + puml,
+                puml.contains("~<clinit>("));
     }
 
     /**
@@ -156,8 +156,8 @@ public class PipelineBugRegressionTest {
     // ============================================================
 
     /**
-     * footerWarning に {@code <} / {@code >} / {@code &} が含まれる場合、
-     * PlantUML の footer ディレクティブで HTML エンティティ化されることを確認する。
+     * footerWarning に {@code <} が含まれる場合、PlantUML の footer ディレクティブで
+     * チルダエスケープされることを確認する ({@code >} と {@code &} は生のままで安全)。
      */
     @Test
     public void footerWarningIsHtmlEscaped() {
@@ -166,14 +166,16 @@ public class PipelineBugRegressionTest {
         opts.footerWarning = "showing <500> of 1000 & more classes";
         String puml = PlantUmlClassDiagram.generate(infos, opts);
 
-        // 生の < > & が footer 行に出ないこと
-        assertFalse("生の < が footer に残ってはいけない:\n" + puml,
-                puml.lines().filter(l -> l.startsWith("footer")).anyMatch(l -> l.contains("<")));
-        // HTML エンティティ化されていること
-        assertTrue("< は &lt; に変換されるべき:\n" + puml,
-                puml.contains("&lt;500&gt;"));
-        assertTrue("& は &amp; に変換されるべき:\n" + puml,
-                puml.contains("&amp;"));
+        // < がチルダエスケープされ、タグとして誤認されないこと
+        assertTrue("< は ~< にエスケープされるべき:\n" + puml,
+                puml.contains("~<500>"));
+        // エスケープされていない < が footer 行に出ないこと
+        assertFalse("エスケープされていない < が footer に残ってはいけない:\n" + puml,
+                puml.lines().filter(l -> l.startsWith("footer"))
+                        .anyMatch(l -> l.contains("<") && !l.contains("~<")));
+        // & は PlantUML 1.2026.x では生のままで安全に表示される
+        assertTrue("& は生のまま保持されるべき:\n" + puml,
+                puml.contains("& more classes"));
     }
 
     // ============================================================
@@ -291,12 +293,12 @@ public class PipelineBugRegressionTest {
         opts.title = "A < B & C";
         String diagram = PlantUmlSequenceDiagram.generate(classes, "Foo", "bar", opts);
 
-        // 明示タイトルの < > & はエスケープされるべき
-        assertFalse("生の < が title 行に残ってはいけない:\n" + diagram,
+        // 明示タイトルの < はチルダエスケープされるべき (& は生のままで安全)
+        assertTrue("< は ~< にエスケープされるべき:\n" + diagram,
+                diagram.contains("title A ~< B & C"));
+        assertFalse("エスケープされていない < が title 行に残ってはいけない:\n" + diagram,
                 diagram.lines().filter(l -> l.startsWith("title"))
-                        .anyMatch(l -> l.contains("<")));
-        assertTrue("& は &amp; に変換されるべき:\n" + diagram,
-                diagram.contains("&amp;"));
+                        .anyMatch(l -> l.contains("<") && !l.contains("~<")));
     }
 
     // ============================================================
@@ -474,11 +476,11 @@ public class PipelineBugRegressionTest {
 
     /**
      * アクティビティ図のデフォルトタイトル (options.title が null のとき) で
-     * クラス名・メソッド名の特殊文字が HTML エスケープされることを確認する。
+     * クラス名・メソッド名の特殊文字がエスケープされることを確認する。
      *
      * <p>修正前: cls.getSimpleName() / method.getName() を直接 append していたため
      * {@code <init>} 等の合成メソッドが PlantUML に HTML タグとして誤解釈されていた。
-     * シーケンス図と対称になるよう PlantUmlCommentFormatter.escapeHtml を適用した。</p>
+     * シーケンス図と対称になるよう PlantUmlCommentFormatter.escapeLabel (チルダエスケープ) を適用した。</p>
      */
     @Test
     public void activityDiagramDefaultTitleEscapesSpecialChars() {

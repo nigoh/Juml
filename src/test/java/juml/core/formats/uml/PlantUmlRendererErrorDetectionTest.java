@@ -96,8 +96,10 @@ public class PlantUmlRendererErrorDetectionTest {
             fail("Expected PlantUmlRenderFailedException");
         } catch (PlantUmlRenderFailedException expected) {
             String msg = expected.getMessage();
-            assertTrue("message should mention PlantUML layout: " + msg,
-                    msg.contains("PlantUML layout error"));
+            assertTrue("message should mention render failure: " + msg,
+                    msg.contains("PlantUML render failed"));
+            assertTrue("message should mention layout engine: " + msg,
+                    msg.contains("layout="));
         } catch (IOException other) {
             fail("Unexpected IOException: " + other);
         }
@@ -219,5 +221,90 @@ public class PlantUmlRendererErrorDetectionTest {
         String captured = new String(observed.toByteArray(), StandardCharsets.UTF_8);
         assertTrue("UNSURE_ABOUT should pass through in verbose, observed: " + captured,
                 captured.contains("UNSURE_ABOUT"));
+    }
+
+    // ---- extractErrorDetail / extractErrorLine の単体テスト ----
+
+    @Test
+    public void testExtractErrorDetailIncludesLineMarkerAndContent() {
+        // エラー SVG の <text> ノードから診断情報を取り出せることを確認する。
+        // "[From string (line 7) ]" と "bad line content" が結果に含まれること。
+        String svg = "<svg>"
+                + "<text x=\"1\" y=\"2\">[From string (line 7) ]</text>"
+                + "<text>bad line content</text>"
+                + "<text>An error has occured...</text>"
+                + "</svg>";
+        byte[] bytes = svg.getBytes(StandardCharsets.UTF_8);
+        String detail = PlantUmlRenderer.extractErrorDetail(bytes);
+        assertTrue("detail should contain line marker: " + detail,
+                detail.contains("[From string (line 7)"));
+        assertTrue("detail should contain error line content: " + detail,
+                detail.contains("bad line content"));
+    }
+
+    @Test
+    public void testExtractErrorDetailExcludesErrorBanner() {
+        // "An error has occured" で始まるバナー文言はノイズとして除外されることを確認する。
+        String svg = "<svg>"
+                + "<text x=\"1\" y=\"2\">[From string (line 7) ]</text>"
+                + "<text>bad line content</text>"
+                + "<text>An error has occured...</text>"
+                + "</svg>";
+        byte[] bytes = svg.getBytes(StandardCharsets.UTF_8);
+        String detail = PlantUmlRenderer.extractErrorDetail(bytes);
+        assertFalse("error banner 'An error has occured' should be excluded: " + detail,
+                detail.contains("An error has occured"));
+    }
+
+    @Test
+    public void testExtractErrorLineReturnsLineNumber() {
+        // "[From string (line 7) ]" を含む detail 文字列から行番号 7 を返すことを確認する。
+        String detail = "[From string (line 7) ] | bad line content";
+        assertEquals("should extract line number 7",
+                7, PlantUmlRenderer.extractErrorLine(detail));
+    }
+
+    @Test
+    public void testExtractErrorLineReturnsMinusOneForNullOrEmpty() {
+        // null および空文字のとき -1 を返すことを確認する。
+        assertEquals("null detail should return -1",
+                -1, PlantUmlRenderer.extractErrorLine(null));
+        assertEquals("empty detail should return -1",
+                -1, PlantUmlRenderer.extractErrorLine(""));
+        assertEquals("detail without line marker should return -1",
+                -1, PlantUmlRenderer.extractErrorLine("some unrelated text"));
+    }
+
+    @Test
+    public void testRenderSvgThrowsWithCorrectErrorLineFromStub() {
+        // スタブが "[From string (line 3) ]" を含むエラー SVG を返したとき、
+        // 投げられた例外の getErrorLine() == 3 であることを確認する。
+        String errorSvg = "<svg>"
+                + "<text>[From string (line 3) ]</text>"
+                + "<text>unexpected token</text>"
+                + "</svg>";
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            try {
+                out.write(errorSvg.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException ioe) {
+                throw new RuntimeException(ioe);
+            }
+        });
+        try {
+            PlantUmlRenderer.renderSvg("@startuml\nclass X\n@enduml\n",
+                    new ByteArrayOutputStream());
+            fail("Expected PlantUmlRenderFailedException");
+        } catch (PlantUmlRenderFailedException expected) {
+            assertEquals("getErrorLine() should return 3",
+                    3, expected.getErrorLine());
+            assertTrue("getErrorDetail() should contain line marker: "
+                    + expected.getErrorDetail(),
+                    expected.getErrorDetail().contains("[From string (line 3)"));
+            // getStderrTail() は空文字列か非 null であること
+            assertFalse("getStderrTail() should not be null",
+                    expected.getStderrTail() == null);
+        } catch (IOException other) {
+            fail("Unexpected IOException: " + other);
+        }
     }
 }

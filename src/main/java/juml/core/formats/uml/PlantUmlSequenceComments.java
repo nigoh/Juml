@@ -158,11 +158,11 @@ final class PlantUmlSequenceComments {
             if (first) {
                 String[] wl = PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1);
                 out.append("  ").append(name).append("(): ")
-                        .append(PlantUmlCommentFormatter.escapeHtml(wl[0])).append('\n');
+                        .append(PlantUmlCommentFormatter.escapeText(wl[0])).append('\n');
                 for (int i = 1; i < wl.length; i++) {
                     if (!wl[i].isEmpty()) {
                         out.append("    ")
-                                .append(PlantUmlCommentFormatter.escapeHtml(wl[i])).append('\n');
+                                .append(PlantUmlCommentFormatter.escapeText(wl[i])).append('\n');
                     }
                 }
                 first = false;
@@ -170,7 +170,7 @@ final class PlantUmlSequenceComments {
                 for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                     if (!wl.isEmpty()) {
                         out.append("    ")
-                                .append(PlantUmlCommentFormatter.escapeHtml(wl)).append('\n');
+                                .append(PlantUmlCommentFormatter.escapeText(wl)).append('\n');
                     }
                 }
             }
@@ -193,7 +193,7 @@ final class PlantUmlSequenceComments {
                 for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                     if (!wl.isEmpty()) {
                         out.append("    // ")
-                                .append(PlantUmlCommentFormatter.escapeHtml(wl)).append('\n');
+                                .append(PlantUmlCommentFormatter.escapeText(wl)).append('\n');
                     }
                 }
             }
