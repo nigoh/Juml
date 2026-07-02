@@ -8,10 +8,14 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 /**
  * {@link DiagramNotesBinder} のストア生成 (プロジェクトルート単位のキャッシュ/再生成) を検証する。
@@ -62,5 +66,38 @@ public class DiagramNotesBinderTest {
         Object rootStore = storeFor(binder, tmp.newFolder("ProjA"));
         assertNotSame("null ルートから実ルートへ切り替えると作り直されること",
                 nullStore, rootStore);
+    }
+
+    /**
+     * {@link DiagramNotesBinder#shutdown()} の回帰テスト。
+     *
+     * <p>shutdown() は内部の IO スレッドを停止し、投入済みのタスクが完了するまで
+     * 最大 2 秒待機する。本テストでは反射で内部 {@code io} フィールドを取得し、
+     * 30ms のスリープを含む保存タスクを投入した上で shutdown() を呼び、
+     * タスクが完了していることを確認する（データロス防止の保証）。</p>
+     */
+    @Test
+    public void shutdown_drainsPendingIoTask() throws Exception {
+        DiagramNotesBinder binder = new DiagramNotesBinder();
+        // 内部デーモン IO スレッド (private) をリフレクションで取得する
+        Field ioField = DiagramNotesBinder.class.getDeclaredField("io");
+        ioField.setAccessible(true);
+        ExecutorService io = (ExecutorService) ioField.get(binder);
+
+        AtomicBoolean taskCompleted = new AtomicBoolean(false);
+        // 完了まで ~30ms かかるタスクを投入する (shutdown の 2s 待機内に収まる)
+        io.submit(() -> {
+            try {
+                Thread.sleep(30);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            taskCompleted.set(true);
+        });
+
+        binder.shutdown(); // awaitTermination(2s) を内包しているので完了を待てるはず
+
+        assertTrue("shutdown() は投入済みの IO タスクが完了するまで待機するはず",
+                taskCompleted.get());
     }
 }

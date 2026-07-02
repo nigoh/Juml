@@ -96,7 +96,7 @@ final class SequenceParticipantFilterDialog extends JDialog {
         JButton cancel = new JButton(Messages.get("dlg.cancel"));
         cancel.addActionListener(e -> {
             result = null;
-            setVisible(false);
+            dispose();
         });
         right.add(ok);
         right.add(cancel);
@@ -130,7 +130,7 @@ final class SequenceParticipantFilterDialog extends JDialog {
             }
         }
         result = hidden;
-        setVisible(false);
+        dispose();
     }
 
     /**

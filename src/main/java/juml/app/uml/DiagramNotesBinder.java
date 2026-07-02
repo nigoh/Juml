@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -61,6 +62,22 @@ final class DiagramNotesBinder {
             storeRoot = projectRoot;
         }
         return store;
+    }
+
+    /**
+     * IO スレッドを停止し、投入済みの保存タスクが完了するまで短時間待つ。
+     *
+     * <p>IO スレッドはデーモンのため、アプリ終了時にここを呼ばないと
+     * キュー内の保存タスクがドロップされ付箋メモが失われうる。
+     * ウィンドウを閉じる直前 (dispose 前) に呼ぶこと。</p>
+     */
+    void shutdown() {
+        io.shutdown();
+        try {
+            io.awaitTermination(2, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

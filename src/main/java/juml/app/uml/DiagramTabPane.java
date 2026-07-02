@@ -75,6 +75,8 @@ public final class DiagramTabPane {
     private Consumer<TreeNodeOpenRequest> revealInTree;
     /** トースト通知 (LRU 自動クローズなど) のコールバック。 */
     private Consumer<String> toastNotifier;
+    /** タブ右クリック「Close All」の委譲先 (確認付き)。未設定なら確認なしで閉じる。 */
+    private Runnable closeAllRequestHandler;
     /** タブ内上下分割の既定比率 (Setting から取得)。 */
     private double tabSplitRatio = 0.7;
     /** VS Code 風プレビュータブのキー (null = プレビューなし)。 */
@@ -143,6 +145,16 @@ public final class DiagramTabPane {
         this.toastNotifier = notifier;
     }
 
+    /**
+     * タブヘッダ右クリックの「Close All」を処理するハンドラを設定する。
+     * 確認ダイアログの表示はフレーム側の責務のため、メニュー経路
+     * (File &gt; Close All Tabs) と同じ確認ロジックへ委譲するのに使う。
+     * 未設定の場合は従来どおり確認なしで {@link #closeAllTabs()} を呼ぶ。
+     */
+    public void setCloseAllRequestHandler(Runnable handler) {
+        this.closeAllRequestHandler = handler;
+    }
+
     /** タブ内上下分割の既定比率を設定する (新規タブに適用)。 */
     public void setTabSplitRatio(double ratio) {
         this.tabSplitRatio = Math.max(0.1, Math.min(0.9, ratio));
@@ -165,6 +177,24 @@ public final class DiagramTabPane {
     /** いま選択中のタブが動的ダイアグラムタブか (ユーティリティタブなら false)。 */
     public boolean dynamicTabFocused() {
         return tabs.getSelectedComponent() instanceof DiagramTab;
+    }
+
+    /** 開いている動的ダイアグラムタブの枚数 (ユーティリティタブは含まない)。 */
+    public int dynamicTabCount() {
+        return openTabs.size();
+    }
+
+    /** 再オープン (Ctrl+Shift+T) できる閉じタブ履歴の件数。 */
+    public int closedTabHistorySize() {
+        return closedTabs.size();
+    }
+
+    /**
+     * アプリ終了前に呼ぶ後始末。付箋メモの保存 IO スレッドを停止し、
+     * キュー内の保存タスクが完了するまで短時間待つ (データロス防止)。
+     */
+    public void shutdown() {
+        notesBinder.shutdown();
     }
 
     /** ダイアグラムタブが 1 つ以上開かれていて、かつ選択中か。 */
@@ -469,7 +499,7 @@ public final class DiagramTabPane {
         right.setEnabled(hasTabsToRight(key));
         menu.add(right);
         JMenuItem all = new JMenuItem(Messages.get("tab.menu.closeAll"));
-        all.addActionListener(a -> closeAllTabs());
+        all.addActionListener(a -> requestCloseAll());
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
         if (tab.treeSync != null && revealInTree != null) {
@@ -524,6 +554,19 @@ public final class DiagramTabPane {
         closeOtherTabs(null);
     }
 
+    /**
+     * タブ右クリック「Close All」の要求。ハンドラが設定されていればそちらへ委譲し
+     * (フレーム側で確認ダイアログを挟む)、未設定なら従来どおり確認なしで閉じる。
+     * {@link #closeAllTabs()} 自体は生のクローズ操作のまま維持する。
+     */
+    void requestCloseAll() {
+        if (closeAllRequestHandler != null) {
+            closeAllRequestHandler.run();
+        } else {
+            closeAllTabs();
+        }
+    }
+
     /** 指定タブより右にある図タブをすべて閉じる。 */
     void closeTabsToRight(String pivotKey) {
         java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
@@ -547,11 +590,24 @@ public final class DiagramTabPane {
         return idx >= 0 && idx < keys.size() - 1;
     }
 
-    /** アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用 (汎用タブには無作用)。 */
+    /** アクティブタブの右側に図タブがあるか (メニュー活性制御用)。動的タブ未選択なら false。 */
+    public boolean hasTabsToRightOfActive() {
+        DiagramTab t = activeTab();
+        return t != null && hasTabsToRight(t.key);
+    }
+
+    /**
+     * アクティブな動的タブを閉じる。Ctrl+W / File &gt; Close Tab 用。
+     * ユーティリティタブ選択中は閉じられないため、silent no-op にせず
+     * ビープ + ステータス通知でフィードバックする。
+     */
     public void closeActiveTab() {
         DiagramTab t = activeTab();
         if (t != null) {
             closeTab(t, t.key);
+        } else {
+            java.awt.Toolkit.getDefaultToolkit().beep();
+            reportStatus(Messages.get("tab.closeUtilityDenied"));
         }
     }
 

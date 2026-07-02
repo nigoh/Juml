@@ -79,6 +79,9 @@ public final class JavaStructureExtractor {
             h.setEnclosingClass(c.getEnclosingClass());
             h.setAaosCategory(c.getAaosCategory());
             h.setAndroidComponentType(c.getAndroidComponentType());
+            // 型パラメータ宣言 ("T extends Entity" など) は header-only でも保持する
+            // (クラス図の型パラメータ表示に必要なため)。
+            h.setTypeParameters(c.getTypeParameters());
             // モジュール宣言の directive は header-only モードでも保持する
             // (モジュールグラフ系の集計に必要なため)。
             h.getModuleDirectives().addAll(c.getModuleDirectives());

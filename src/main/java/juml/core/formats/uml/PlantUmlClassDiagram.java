@@ -321,7 +321,8 @@ public final class PlantUmlClassDiagram {
             footer = "showing " + classes.size() + " of " + originalTotal + " classes";
         }
         if (footer != null && !footer.isEmpty()) {
-            out.append("footer ").append(footer).append('\n');
+            // footer テキストの < > & を HTML エンティティ化してタグ誤認を防ぐ
+            out.append("footer ").append(PlantUmlCommentFormatter.escapeHtml(footer)).append('\n');
         }
         out.append("@enduml\n");
         return out.toString();
@@ -795,10 +796,12 @@ public final class PlantUmlClassDiagram {
         }
         // interactiveLinks 有効かつ通常メソッド (非コンストラクタ) にメソッドリンクを埋め込む
         // ラベルに "▶" を使うことで URL 文字列がそのまま SVG に露出しないようにする
+        // <clinit>/<init> などの合成メソッド名は '<' を含むため URL に埋め込まず除外する
         if (o.interactiveLinks
                 && !m.isConstructor()
                 && classFqn != null && !classFqn.isEmpty()
-                && m.getName() != null && !m.getName().isEmpty()) {
+                && m.getName() != null && !m.getName().isEmpty()
+                && !m.getName().contains("<")) {
             out.append(" [[juml://method/")
                .append(classFqn).append('#').append(m.getName()).append(" ▶]]");
         }
