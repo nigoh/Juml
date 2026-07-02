@@ -117,36 +117,13 @@ Anthropic の記事
 
 ---
 
-## settings.json の permissions（任意・推奨）
+## settings.json の permissions（適用済み）
 
-反復する安全な操作の確認プロンプトを減らすため、以下を `settings.json` の
-`permissions.allow` に追加できます（自分の環境のポリシーに合わせて取捨選択してください）。
-権限を広げる変更のため、ここではドキュメントとして提示し、適用は各自の判断に委ねます。
+反復する安全な操作（`./gradlew` / `gradle` / 読み取り系 git / `java -jar Juml.jar` など）の
+確認プロンプトを減らす `permissions.allow` を `.claude/settings.json` に **適用済み**。
+force push は `permissions.deny` と PreToolUse hook（`guard-git-push.sh`）の二重で防ぐ。
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(./gradlew *)",
-      "Bash(java -jar *)",
-      "Bash(java -version)",
-      "Bash(git status)",
-      "Bash(git diff *)",
-      "Bash(git log *)",
-      "Bash(git branch *)",
-      "Bash(find *)",
-      "Bash(ls *)",
-      "Bash(wc *)"
-    ],
-    "deny": [
-      "Bash(git push --force *)",
-      "Bash(git push -f *)"
-    ]
-  }
-}
-```
-
-> 個人専用の差分は `.claude/settings.local.json`（git 管理外）に書けます。
+> 個人専用の差分（追加の allow など）は `.claude/settings.local.json`（git 管理外）に書けます。
 > チーム共有の設定は `.claude/settings.json` に置きます。
 
 ---
