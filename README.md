@@ -82,6 +82,9 @@ GUI（グラフィカル UI）
   同じ題材・図種のタブは重複生成せず既存タブにフォーカスします。
 * **解析タブ**: Manifest / Impact（影響波及）/ References（逆参照）/ Func Diff /
   Insights（アーキテクチャ俯瞰）/ Doxygen / TODO / Groups / Functions / Members を切り替えて参照可能。
+* **ソースへのジャンプ**: 図上のクラスを Ctrl(⌘)+クリック（または右クリック →「ソースを開く」）で
+  定義ソースの宣言行へジャンプ。メソッドリンクのポップアップや References（逆参照）の行
+  ダブルクリック / Enter からも該当 `file:line` へ飛べます。
 * **Doxygen 連携**: 外部の doxygen を回して生成 XML を取り込み、API リファレンス（説明文・
   `@param`/`@return`/`@throws`・継承/参照）を「Doxygen」タブで、`@todo`/`@bug`/`@deprecated` の
   横断一覧を「TODO」タブで、`@defgroup` グループ階層を「Groups」タブで表示します。doxygen が

@@ -4,6 +4,31 @@ Change log
 2.1
 --------
 
+* **リポジトリ同梱 JAR/AAR の読み込みに対応** (`GradleScriptParser` / `GradleDependency` / `DependencyJarIndex` / `UmlGenerator` / `SupertypeClassifier` / `PlantUmlClassDiagram` / `UmlCommands` / `DiagramService`)
+    * **背景**: 依存 JAR の解決先が `~/.gradle/caches` と `~/.m2` に限られており、プロジェクト内に同梱された `libs/*.jar` (`files('...')` / `fileTree(dir: '...')` 宣言) が一切読み込まれず、継承先クラスが裸ノードのまま図に出ていた。
+    * `files('libs/a.jar')` / `fileTree(dir: 'libs', include: [...])` (Groovy/kts の `mapOf("dir" to ...)` 方言含む) を依存として解析し、各モジュールの宣言パス + 慣習の `<module>/libs/` を `DependencyJarIndex` へ索引する。宣言された実体が無い場合は `<<missing>>` として記録。
+    * prefix 集合 (`android.*` 等) で判定できない社内ライブラリのパッケージでも、依存インデックスに実在する FQN は `<<external>>` として補完ノード表示するよう分類を拡張 (CLI `-c` / GUI クラス図の両方)。
+    * 目的: リポジトリに JAR を同梱するオフライン環境・社内ライブラリ構成でも、外部クラスの継承関係とメンバが図で確認できるようにするため。
+
+* **同梱バイナリ (dot / doxygen) と jar 位置の解決を強化** (`GraphvizLocator` / `DoxygenLocator` / `Main`)
+    * 同梱バイナリの探索基点を jar 隣接だけでなく `<jarDir>/bundle/` → カレントディレクトリ → `<cwd>/bundle/` へ拡張し、リポジトリから直接実行 (`build/libs/Juml.jar`) しても `bundle/graphviz` 等を検出できるようにした。jar 位置が取れない環境 (jpackage 等) でも cwd 基点の探索は継続する。
+    * `-Djuml.home=<dir>` / `JUML_HOME` 環境変数によるフォールバックを追加し、解決できない場合は黙って機能低下せず AppLog に記録する。
+    * 目的: 配布 zip 以外の起動形態でも同梱バイナリが「静かに見つからない」状態をなくすため。
+
+* **図・逆参照からのソースジャンプを一気通貫で整備** (`DiagramTabPane` / `DiagramTabSupport` / `JavaSourcePanel` / `ReverseReferencePanel` / `UmlMainFrame` / `JavaClassInfo` / `TypeDeclAdapter`)
+    * 図上のクラスリンクを **Ctrl(⌘)+クリック**、または右クリック →「ソースを開く」で定義ソースへ直接ジャンプできるようにした。メソッドリンクのポップアップにも「ソースを開く」を追加。
+    * References (逆参照) タブの行を **ダブルクリック / Enter** で、参照箇所の `file:line` へジャンプする導線を追加 (ソート後の行でも正しい参照先に飛ぶ)。
+    * 解析時にクラス宣言行 (`JavaClassInfo.startLine`) を記録し、ソースビューの着地行はインデックスの宣言行 (クラス/メソッド) を優先、無ければ従来のヒューリスティック探索へフォールバックする方式に変更 (オーバーロード誤爆の低減)。
+    * **バグ修正**: インデックスに無いクラスのメソッドリンクをクリックすると、スタブの `qualifiedName` が単純名だけになりタブキーが別クラスと衝突して空図が開くことがあった問題を修正 (パッケージ名を FQN から復元)。
+    * 目的: 「UML 図 → ソース定義 → 参照箇所」の往復を IDE のようにワンアクションで行えるようにするため。
+
+* **AOSP 解析の CLI 未結線を解消: `--vintf` / `--android-mk` / `--partitions` を新設 + 走査除外の強化** (`AospCommands` / `CliDispatcher` / `CliOptions` / `core/aosp` 新規 6 クラス)
+    * `--vintf`: VINTF manifest (`manifest*.xml` / `compatibility_matrix*.xml`) を走査し、HAL 宣言の Markdown レポートと、matrix の要求と device manifest の宣言を突き合わせる PlantUML 図 (必須 HAL の欠落は赤背景) を出力。
+    * `--android-mk`: 実装済みだった `AndroidMkParser` を結線し、legacy Make モジュールを `--android-bp` と同じ体裁 (モジュール一覧 + 依存グラフ) で図化。
+    * `--partitions`: `Android.bp` の partition 属性 (`vendor` / `product_specific` / `system_ext_specific` 等) を集計し、partition ごとの内訳と **partition 跨ぎ依存** を Markdown + PlantUML で可視化。
+    * `Android.bp` / `Android.mk` 走査の除外に `prebuilts` / `.repo` / `out-soong` 等を追加し、AOSP フルツリー指定時のノイズと性能劣化を防止 (`AospScanExcludes` で `AndroidProjectScanner` の既定除外と整合)。
+    * 目的: 実装済みのまま到達不能だった VINTF / Android.mk 解析を CLI から使えるようにし、Treble 境界 (partition) の把握まで Juml で完結させるため。
+
 * **PlantUML 1.2026.x のエスケープ回帰を修正 (HTML エンティティ → チルダエスケープ) + 未エスケープ箇所の一掃 + alias 衝突解消** (`PlantUmlCommentFormatter` / `PlantUmlCallGraphDiagram` / `PlantUmlActivityDiagram` / `PlantUmlModuleDiagram` / `PlantUmlSequenceDiagram` / `PlantUmlClassDiagram` / aosp・aaos の `PlantUml*Diagram` 4 種)
     * **背景**: 「UML が描画されない / おかしい」報告の調査で、同梱 PlantUML 1.2026.x が `&lt;` 等の **HTML エンティティを解釈せずそのまま表示する** ことを実測で確認 (`&lt;init&gt;` が文字どおり画面に出る回帰)。一方、生の `<b>` のような既知タグは書式として解釈されテキストが欠落する。
     * **修正 (中核)**: `escapeHtml` (`& < >` → エンティティ) を `escapeText` (`<` → `~<` の creole チルダエスケープ) に置き換え。全コンテキスト (メンバ行 / note / ラベル / title / WBS / legend) で元の文字どおり表示されることをレンダリング実測で確認。`>` と `&` は生のままで安全のため変換しない。
