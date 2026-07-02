@@ -15,7 +15,28 @@ import java.util.List;
  */
 final class PumlDiff {
 
+    /** これを超える行数では O(n·m) の LCS が重すぎるため差分表示を諦める閾値。 */
+    static final int MAX_DIFF_LINES = 4000;
+
     private PumlDiff() {
+    }
+
+    /** どちらかが行数上限を超えているか (超過時は差分計算せず案内に切り替える)。 */
+    static boolean tooLargeToDiff(String oldText, String newText) {
+        return countLines(oldText) > MAX_DIFF_LINES || countLines(newText) > MAX_DIFF_LINES;
+    }
+
+    private static int countLines(String s) {
+        if (s == null || s.isEmpty()) {
+            return 0;
+        }
+        int n = 1;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        return n;
     }
 
     /** 変化があれば true (差分行が 1 つ以上ある)。 */

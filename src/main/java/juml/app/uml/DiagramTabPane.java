@@ -499,6 +499,13 @@ public final class DiagramTabPane {
                     javax.swing.JOptionPane.INFORMATION_MESSAGE);
             return;
         }
+        if (PumlDiff.tooLargeToDiff(saved, current)) {
+            // 巨大 .puml で EDT が固まらないよう、行差分は諦めて案内だけ出す。
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.tooLarge"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
         javax.swing.JTextArea area = new javax.swing.JTextArea(
                 PumlDiff.unified(saved, current), 24, 72);
         area.setEditable(false);
@@ -510,6 +517,18 @@ public final class DiagramTabPane {
                 javax.swing.JOptionPane.PLAIN_MESSAGE);
     }
 
+    /**
+     * テスト用: 保存先を明示指定して Save As 相当を実行する ({@code JFileChooser} を回避)。
+     * Save As のキー移行・dedup 一貫性を統合検証するためのシーム。
+     */
+    boolean saveActiveEditorToForTest(java.io.File target) {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor() || target == null) {
+            return false;
+        }
+        return writeEditorTo(t, target);
+    }
+
     private boolean savePumlEditor(DiagramTab tab, boolean saveAs) {
         java.io.File target = tab.editorFile;
         if (saveAs || target == null) {
@@ -518,6 +537,10 @@ public final class DiagramTabPane {
                 return false;
             }
         }
+        return writeEditorTo(tab, target);
+    }
+
+    private boolean writeEditorTo(DiagramTab tab, java.io.File target) {
         try {
             PumlEditorSupport.write(target, tab.sourcePanel.getText());
         } catch (java.io.IOException ex) {
@@ -973,10 +996,18 @@ public final class DiagramTabPane {
      * (ウィンドウの×/File &gt; Exit からの無警告データ消失を防ぐ。)
      */
     public boolean confirmDiscardAllEdits() {
+        return confirmDiscardAllEdits(this::askDiscardChoice);
+    }
+
+    /**
+     * 確認の「聞き方」を注入できる版 (テスト用)。{@code ask} はタブラベルを受け取り
+     * {@link javax.swing.JOptionPane} の YES/NO/CANCEL 相当の値を返す。
+     */
+    boolean confirmDiscardAllEdits(java.util.function.ToIntFunction<String> ask) {
         for (DiagramTab t : new ArrayList<>(openTabs.values())) {
             if (t.isEditor() && t.dirty) {
                 tabs.setSelectedComponent(t); // どのタブの確認かユーザーに見せる
-                if (!confirmDiscardEdits(t)) {
+                if (!confirmDiscardEdits(t, ask)) {
                     return false;
                 }
             }
@@ -984,16 +1015,25 @@ public final class DiagramTabPane {
         return true;
     }
 
-    private boolean confirmDiscardEdits(DiagramTab tab) {
-        if (!tab.isEditor() || !tab.dirty) {
-            return true;
-        }
-        int choice = javax.swing.JOptionPane.showConfirmDialog(tabs,
+    private int askDiscardChoice(String label) {
+        return javax.swing.JOptionPane.showConfirmDialog(tabs,
                 java.text.MessageFormat.format(
-                        Messages.get("puml.editor.confirmClose"), tab.label),
+                        Messages.get("puml.editor.confirmClose"), label),
                 Messages.get("puml.editor.confirmClose.title"),
                 javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
                 javax.swing.JOptionPane.WARNING_MESSAGE);
+    }
+
+    private boolean confirmDiscardEdits(DiagramTab tab) {
+        return confirmDiscardEdits(tab, this::askDiscardChoice);
+    }
+
+    private boolean confirmDiscardEdits(DiagramTab tab,
+                                        java.util.function.ToIntFunction<String> ask) {
+        if (!tab.isEditor() || !tab.dirty) {
+            return true;
+        }
+        int choice = ask.applyAsInt(tab.label);
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
         }
