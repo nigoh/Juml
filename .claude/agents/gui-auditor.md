@@ -1,7 +1,7 @@
 ---
 name: gui-auditor
 description: Juml の Swing デスクトップ GUI（src/main/java/juml/app/uml/**）の使い勝手（ユーザビリティ／UX／アクセシビリティ）を監査する読み取り専用エージェント。「GUI が使いづらい」「操作が分かりにくい」「ここの導線を見直したい」といった相談を受け、コードを根拠に具体的な問題点と改善案を日本語で返す。Use when auditing the usability of Juml's Swing UML GUI.
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob
 ---
 

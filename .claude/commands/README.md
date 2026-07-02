@@ -221,7 +221,36 @@ Web は Playwright webm（方式 B・headless 可）** で録画します。
 - 📌 録画は人間レビュー用の補助。回帰保証は `/test-write` でテスト化
 - 📚 手順は `verify-recording` スキル、実作業は `verify-recorder` エージェント
 
-### 10. `/release` — リリース自動化 🚀
+### 10. `/juml-verify` — 実装変更の自己検証ループ ✅
+
+**用途**: コード変更後に「本当に良い状態か」を CI と同じ基準で確認したいとき
+
+compile → checkstyle → test → jar → E2E スモークを**速い順**に回し、
+失敗 → 修正 → 再検証を最大 3 ラウンドで収束させます。合格基準は
+CI（`build.yml` の `check jar`）と同一。headless で skip されたテストは
+「検証済み」と数えず、必ず件数を報告します。
+
+```
+# 変更内容から自動でゲート範囲を判定
+/juml-verify
+
+# 速攻フィードバック（compile + checkstyle のみ）
+/juml-verify quick
+
+# フル検証（全ゲート + 可能なら xvfb-run でテスト実行）
+/juml-verify full
+
+# 領域を指定
+/juml-verify src/main/java/juml/core/formats/uml
+```
+
+**特徴**:
+- ✅ 「全ゲート緑 or 3 ラウンド」の明確な停止条件（早期終了と過剰反復の両方を防ぐ）
+- ✅ ゲート 1–2（compile/checkstyle）は Stop hook（`quality-gate.sh`）が停止時に自動強制
+- ✅ E2E スモークは Juml 自身のソースを図化する自己ホスティング方式
+- 📚 手順は `juml-verify` スキル
+
+### 11. `/release` — リリース自動化 🚀
 
 バージョン更新・タグ付け・成果物生成などのリリース手順を実行します。
 
@@ -300,6 +329,7 @@ A: "[Soong は…] [Android.bp とは…] [Juml との連携は…]"
 | **Skill: GUI** | `.claude/skills/gui-audit/` | GUI ユーザビリティ監査の手順・チェックリスト |
 | **Skill: Test** | `.claude/skills/test-audit/` | テスト監査をラウンドで回して枯らす手順 |
 | **Skill: Recording** | `.claude/skills/verify-recording/` | 実装確認を GIF/webm で録画する手順 + ハーネス雛形 |
+| **Skill: Verify** | `.claude/skills/juml-verify/` | CI と同じ合格基準で回す自己検証ループの手順 |
 
 > パスはプロジェクトルートからの相対です。`.claude/` 配下は Claude Code が自動検出するため、
 > 手動コピーや登録は不要です（→ `.claude/STEERING.md`）。
@@ -352,4 +382,4 @@ cd /home/user/Juml && ./gradlew jar
 ---
 
 **Created**: 2026-05-18  
-**Last Updated**: 2026-06-26
+**Last Updated**: 2026-07-02
