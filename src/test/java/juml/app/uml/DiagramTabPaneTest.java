@@ -171,7 +171,8 @@ public class DiagramTabPaneTest {
         int afterReopen = GuiActionRunner.execute(() -> tabs.getTabCount());
 
         assertEquals("reopenLastClosedTab でタブ数が 1 増えるはず", afterClose + 1, afterReopen);
-        assertTrue("再オープン後は動的タブがアクティブになるはず", pane.hasActiveTab());
+        assertTrue("再オープン後は動的タブがアクティブになるはず",
+                GuiActionRunner.execute(() -> pane.hasActiveTab()));
     }
 
     @Test

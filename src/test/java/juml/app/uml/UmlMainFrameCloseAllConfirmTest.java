@@ -134,7 +134,7 @@ public class UmlMainFrameCloseAllConfirmTest {
         assertEquals("ハンドラ設定時は requestCloseAll がハンドラへ委譲するはず",
                 1, handlerCalls.get());
         assertEquals("ハンドラが閉じない限りタブは残るはず (確認で NO 相当)",
-                2, pane.dynamicTabCount());
+                2, (int) GuiActionRunner.execute(() -> pane.dynamicTabCount()));
 
         // YES 相当: ハンドラ側が確認の末に closeAllTabs() を呼ぶケース
         GuiActionRunner.execute(() ->
@@ -142,8 +142,9 @@ public class UmlMainFrameCloseAllConfirmTest {
         GuiActionRunner.execute(() -> pane.requestCloseAll());
 
         assertEquals("ハンドラが closeAllTabs を呼べば全タブが閉じるはず",
-                0, pane.dynamicTabCount());
-        assertFalse("動的タブは残っていないはず", pane.hasActiveTab());
+                0, (int) GuiActionRunner.execute(() -> pane.dynamicTabCount()));
+        assertFalse("動的タブは残っていないはず",
+                GuiActionRunner.execute(() -> pane.hasActiveTab()));
     }
 
     @Test
@@ -153,13 +154,14 @@ public class UmlMainFrameCloseAllConfirmTest {
                 GraphicsEnvironment.isHeadless());
 
         DiagramTabPane pane = newPaneWithTabs("com.example.Alpha", "com.example.Beta");
-        assertTrue("前提: 動的タブが 2 枚開いているはず", pane.dynamicTabCount() == 2);
+        assertTrue("前提: 動的タブが 2 枚開いているはず",
+                GuiActionRunner.execute(() -> pane.dynamicTabCount() == 2));
 
         // ハンドラ未設定 → 従来どおり確認なしで全タブを閉じる (後方互換)
         GuiActionRunner.execute(() -> pane.requestCloseAll());
 
         assertEquals("ハンドラ未設定なら requestCloseAll は直接全タブを閉じるはず",
-                0, pane.dynamicTabCount());
+                0, (int) GuiActionRunner.execute(() -> pane.dynamicTabCount()));
         int totalTabs = GuiActionRunner.execute(() -> tabs.getTabCount());
         assertEquals("固定ユーティリティタブは残るはず", FIXED, totalTabs);
     }
@@ -189,7 +191,8 @@ public class UmlMainFrameCloseAllConfirmTest {
                     pane.addOrFocusTab(TreeNodeOpenRequest.classNode(classInfo(fqn))));
         }
         assertEquals("前提: 指定した枚数の動的タブが開いているはず",
-                classFqns.length, pane.dynamicTabCount());
+                classFqns.length,
+                (int) GuiActionRunner.execute(() -> pane.dynamicTabCount()));
         return pane;
     }
 

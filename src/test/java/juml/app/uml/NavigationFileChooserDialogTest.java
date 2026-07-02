@@ -219,11 +219,13 @@ public class NavigationFileChooserDialogTest {
         // 一度フィルタをかける
         GuiActionRunner.execute(() -> filterField.setText("main_only"));
         // → 0 件
-        assertEquals("存在しないキーワードでは 0 件のはず", 0, getModelSize(dlg));
+        assertEquals("存在しないキーワードでは 0 件のはず",
+                0, (int) GuiActionRunner.execute(() -> getModelSize(dlg)));
 
         // フィルタをクリア → 全件復元
         GuiActionRunner.execute(() -> filterField.setText(""));
-        assertEquals("フィルタクリア後は全 2 件が復元されるはず", 2, getModelSize(dlg));
+        assertEquals("フィルタクリア後は全 2 件が復元されるはず",
+                2, (int) GuiActionRunner.execute(() -> getModelSize(dlg)));
     }
 
     @Test
@@ -236,7 +238,8 @@ public class NavigationFileChooserDialogTest {
 
         JTextField filterField = getFilterField(dlg);
         GuiActionRunner.execute(() -> filterField.setText("feature"));
-        assertEquals("モジュール名 'feature' でフィルタすると 1 件のはず", 1, getModelSize(dlg));
+        assertEquals("モジュール名 'feature' でフィルタすると 1 件のはず",
+                1, (int) GuiActionRunner.execute(() -> getModelSize(dlg)));
     }
 
     /**

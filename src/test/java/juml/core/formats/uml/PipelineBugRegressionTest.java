@@ -360,9 +360,59 @@ public class PipelineBugRegressionTest {
         opts.showUsageRelations = true;
         String puml = PlantUmlClassDiagram.generate(classes, opts);
 
-        // Holder --> Activity の使用関係が生成されるべき
-        assertTrue("? extends @NonNull Activity の使用関係が生成されるべき:\n" + puml,
-                puml.contains("Activity"));
+        // Holder --> Activity の使用関係 (矢印行) が生成されるべき。
+        // "Activity" の contains だけではクラス宣言行にも常にマッチしてしまうため、
+        // Holder と Activity を結ぶ矢印を含む行そのものを検証する。
+        assertTrue("? extends @NonNull Activity の使用関係矢印が生成されるべき:\n" + puml,
+                hasUsageArrow(puml, "Holder", "Activity"));
+    }
+
+    /**
+     * 完全修飾名の型アノテーション付きワイルドカード境界も型解決できることを確認する。
+     */
+    @Test
+    public void wildcardWithQualifiedTypeAnnotationIsResolved() {
+        String src = "class Holder {\n"
+                + "  java.util.List<? extends @javax.annotation.Nullable Activity> items;\n"
+                + "}\n"
+                + "class Activity {}";
+        List<JavaClassInfo> classes = JavaStructureExtractor.extract(src);
+        PlantUmlClassDiagram.Options opts = new PlantUmlClassDiagram.Options();
+        opts.showUsageRelations = true;
+        String puml = PlantUmlClassDiagram.generate(classes, opts);
+
+        assertTrue("? extends @javax.annotation.Nullable Activity の使用関係矢印が"
+                        + "生成されるべき:\n" + puml,
+                hasUsageArrow(puml, "Holder", "Activity"));
+    }
+
+    /**
+     * {@code from} と {@code to} を結ぶ矢印行が PlantUML テキストに含まれるか。
+     * クラスは {@code class "Holder" as C1} のようにエイリアス宣言されるため、
+     * まずエイリアスを解決してから矢印行を探す。
+     */
+    private static boolean hasUsageArrow(String puml, String from, String to) {
+        String fromAlias = aliasOf(puml, from);
+        String toAlias = aliasOf(puml, to);
+        if (fromAlias == null || toAlias == null) {
+            return false;
+        }
+        for (String line : puml.split("\n")) {
+            String t = line.trim();
+            if (t.startsWith(fromAlias + " ") && t.contains("->")
+                    && t.contains(" " + toAlias)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** {@code class "Name" as CN} 宣言から {@code Name} のエイリアス {@code CN} を得る。 */
+    private static String aliasOf(String puml, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("class \"" + java.util.regex.Pattern.quote(name) + "\" as (\\w+)")
+                .matcher(puml);
+        return m.find() ? m.group(1) : null;
     }
 
     // ============================================================
