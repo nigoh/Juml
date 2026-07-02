@@ -29,13 +29,32 @@ public class ToolBarBuilderTest {
         return new ToolBarBuilder(DiagramKind.CLASS, cb).build();
     }
 
+    /**
+     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) を除く全図種にトグルが作られること。
+     * メソッド系はメソッド図タブ上部の切替バーへ一本化したため、ツールバーには出さない。
+     */
     @Test
-    public void build_createsToggleForEveryDiagramKind() {
+    public void build_createsToggleForEveryNonMethodDiagramKind() {
         ToolBarBuilder.Result r = buildDefault();
         for (DiagramKind k : DiagramKind.values()) {
-            assertNotNull("Missing toggle for " + k, r.diagramToggles.get(k));
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+                assertNull("Method kind " + k + " should not appear in the toolbar",
+                        r.diagramToggles.get(k));
+            } else {
+                assertNotNull("Missing toggle for " + k, r.diagramToggles.get(k));
+            }
         }
-        assertEquals(DiagramKind.values().length, r.diagramToggles.size());
+        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size(),
+                r.diagramToggles.size());
+    }
+
+    /** メソッド系図種はツールバーのトグルとして生成されないこと。 */
+    @Test
+    public void build_omitsMethodKindToggles() {
+        ToolBarBuilder.Result r = buildDefault();
+        assertNull(r.diagramToggles.get(DiagramKind.SEQUENCE));
+        assertNull(r.diagramToggles.get(DiagramKind.ACTIVITY));
+        assertNull(r.diagramToggles.get(DiagramKind.CALLGRAPH));
     }
 
     @Test
@@ -48,8 +67,8 @@ public class ToolBarBuilderTest {
     @Test
     public void build_nonInitialKindIsNotSelected() {
         ToolBarBuilder.Result r = buildDefault();
-        JToggleButton seqBtn = r.diagramToggles.get(DiagramKind.SEQUENCE);
-        assertFalse("SEQUENCE button should not be selected initially", seqBtn.isSelected());
+        JToggleButton pkgBtn = r.diagramToggles.get(DiagramKind.PACKAGE);
+        assertFalse("PACKAGE button should not be selected initially", pkgBtn.isSelected());
     }
 
     @Test
