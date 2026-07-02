@@ -47,6 +47,9 @@ final class SketchCanvas extends JPanel {
 
         /** 空白位置への「クラスを追加」が要求された。 */
         void addClassRequested(Point at);
+
+        /** Esc 等で関係追加モードが取り消された (ツールバーのモード表示を戻すため)。 */
+        default void relationModeCancelled() { }
     }
 
     private static final int PAD_X = 10;
@@ -101,6 +104,11 @@ final class SketchCanvas extends JPanel {
                     selected = null;
                     listener.modelEdited();
                     repaint();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
+                    // 関係追加モードを中断して選択/移動モードへ戻す。
+                    // ツールバーのモード表示も戻すためリスナーへ通知する。
+                    setRelationMode(null);
+                    listener.relationModeCancelled();
                 }
             }
         });
@@ -141,10 +149,16 @@ final class SketchCanvas extends JPanel {
             return;
         }
         SketchClass hit = classAt(e.getPoint());
+        // 右ボタン押下は選択/関係クリックとして扱わず消費する。ただしポップアップの表示は
+        // プラットフォームごとのトリガー時点で 1 回だけ行う (Linux は press, Windows/Mac は
+        // release)。press で isRightMouseButton も見て showPopup すると、release の
+        // isPopupTrigger と二重表示になるため、ここでは isPopupTrigger のときだけ表示する。
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             selected = hit;
             repaint();
-            showPopup(e, hit);
+            if (e.isPopupTrigger()) {
+                showPopup(e, hit);
+            }
             return;
         }
         if (relationMode != null) {

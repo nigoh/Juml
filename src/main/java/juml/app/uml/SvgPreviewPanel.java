@@ -403,7 +403,8 @@ public class SvgPreviewPanel extends JPanel {
         }
         double zx = extent.width / iw;
         double zy = extent.height / ih;
-        setZoomLevel(Math.min(zx, zy));
+        // 図がビューポート端に密着して見切れて見えないよう 5% の余白を残す。
+        setZoomLevel(Math.min(zx, zy) * 0.95);
     }
 
     double contentWidth() {
@@ -587,6 +588,8 @@ public class SvgPreviewPanel extends JPanel {
                 if (!hasContent()) {
                     return;
                 }
+                // クリックでフォーカスを取得しズーム/パンのキーバインドを即有効化する。
+                requestFocusInWindow();
                 // ミニマップ上のクリックは最優先でパンに使う (本体ドラッグへ流さない)
                 if (SwingUtilities.isLeftMouseButton(e)
                         && minimap.mousePressed(e.getPoint(), SvgPreviewPanel.this)) {

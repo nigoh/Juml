@@ -42,7 +42,9 @@ final class AppCommands {
         add(list, "cmd.file.openPuml", cb.openPumlFile);
         add(list, "cmd.file.savePuml", cb.savePumlTab, MOD + "S");
         add(list, "cmd.file.savePumlAs", cb.savePumlTabAs);
-        add(list, "cmd.file.saveAs", cb.chooseAndExport, MOD + "S");
+        // Save As (Export) の実アクセラレータは Ctrl+Shift+S (MenuBarBuilder 参照)。
+        // Ctrl+S は PUML 保存用なので、パレット表示も Shift 付きに合わせる。
+        add(list, "cmd.file.saveAs", cb.chooseAndExport, MOD + SHIFT + "S");
         add(list, "cmd.file.exportPerFolder", cb.exportClassDiagramsPerFolder);
         add(list, "cmd.file.exportFunctions", cb.exportFunctionList);
         add(list, "cmd.file.exportMembers", cb.exportMemberList);
