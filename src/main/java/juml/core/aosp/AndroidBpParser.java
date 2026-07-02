@@ -468,10 +468,9 @@ public final class AndroidBpParser {
         if (children == null) return;
         for (File c : children) {
             if (c.isDirectory()) {
-                // .git や build ディレクトリは除外
-                String name = c.getName();
-                if (name.equals(".git") || name.equals(".gradle")
-                        || name.equals("build") || name.equals("out")) {
+                // .git / build / out に加え、prebuilts / .repo / out-soong 等の
+                // AOSP 級除外も適用する (AndroidProjectScanner の既定除外と整合)。
+                if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
                 collectBpFiles(c, out);

@@ -108,24 +108,7 @@ public final class CliDispatcher {
             AnalysisCommands.handleScreenFlow(ctx);
             return true;
         }
-        if (o.androidBp.isSet()) {
-            AospCommands.handleAndroidBp(ctx);
-            return true;
-        }
-        if (o.buildNinja.isSet()) {
-            AospCommands.handleBuildNinja(ctx);
-            return true;
-        }
-        if (o.intermediates.isSet()) {
-            AospCommands.handleIntermediates(ctx);
-            return true;
-        }
-        if (o.selinux.isSet()) {
-            AospCommands.handleSelinux(ctx);
-            return true;
-        }
-        if (o.rro.isSet()) {
-            AospCommands.handleRroOverlays(ctx);
+        if (dispatchAosp(o, ctx)) {
             return true;
         }
         if (o.settings.isSet()) {
@@ -160,6 +143,47 @@ public final class CliDispatcher {
                     o.classDiagram.isSet(),
                     o.sequenceDiagram.isSet()
                             ? o.sequenceDiagram.getArguments().getLast() : null);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * AOSP ビルドシステム系モード ({@code --android-bp} / {@code --android-mk} /
+     * {@code --vintf} / {@code --partitions} / {@code --build-ninja} /
+     * {@code --intermediates} / {@code --selinux} / {@code --rro-overlays}) のディスパッチ。
+     */
+    private static boolean dispatchAosp(CliOptions o, CliContext ctx) throws IOException {
+        if (o.androidBp.isSet()) {
+            AospCommands.handleAndroidBp(ctx);
+            return true;
+        }
+        if (o.androidMk.isSet()) {
+            AospCommands.handleAndroidMk(ctx);
+            return true;
+        }
+        if (o.vintf.isSet()) {
+            AospCommands.handleVintf(ctx);
+            return true;
+        }
+        if (o.partitions.isSet()) {
+            AospCommands.handlePartitions(ctx);
+            return true;
+        }
+        if (o.buildNinja.isSet()) {
+            AospCommands.handleBuildNinja(ctx);
+            return true;
+        }
+        if (o.intermediates.isSet()) {
+            AospCommands.handleIntermediates(ctx);
+            return true;
+        }
+        if (o.selinux.isSet()) {
+            AospCommands.handleSelinux(ctx);
+            return true;
+        }
+        if (o.rro.isSet()) {
+            AospCommands.handleRroOverlays(ctx);
             return true;
         }
         return false;

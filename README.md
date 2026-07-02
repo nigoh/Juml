@@ -40,6 +40,12 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp
 # パッケージ循環依存 / デッドコード候補 / 推定レイヤ) + 循環図を出力
 java -jar Juml.jar --insights -o ./insights ~/AndroidStudioProjects/MyApp
 
+# AOSP 解析: VINTF manifest の HAL 宣言 / Android.mk モジュール /
+# partition (system/vendor/...) 別集計を Markdown + PlantUML で出力
+java -jar Juml.jar --vintf      -o ./vintf      ~/aosp/device/acme
+java -jar Juml.jar --android-mk -o ./androidmk  ~/aosp/vendor/acme
+java -jar Juml.jar --partitions -o ./partitions ~/aosp/packages/apps/Car
+
 # APK を図化 (ソース不要)。同梱 Apktool が .apk を自動で逆コンパイルする
 java -jar Juml.jar --apk -o ./apkout app.apk
 #   既に `apktool d app.apk -o ./decoded` で展開済みなら、そのディレクトリも渡せる
