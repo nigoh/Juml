@@ -588,9 +588,7 @@ public class SvgPreviewPanel extends JPanel {
                 if (!hasContent()) {
                     return;
                 }
-                // クリックでフォーカスを取得し、ズーム/パン等のキーバインド (Ctrl+= / Ctrl+0 /
-                // Ctrl+A 等) を即座に有効化する。Swing はクリックだけでは自動でフォーカスを
-                // 移さないため、付箋のない図ではフォーカス不在でキー操作が効かなかった。
+                // クリックでフォーカスを取得しズーム/パンのキーバインドを即有効化する。
                 requestFocusInWindow();
                 // ミニマップ上のクリックは最優先でパンに使う (本体ドラッグへ流さない)
                 if (SwingUtilities.isLeftMouseButton(e)
