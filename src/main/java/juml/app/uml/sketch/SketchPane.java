@@ -6,6 +6,7 @@ package juml.app.uml.sketch;
 import juml.util.Messages;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -108,6 +109,9 @@ public final class SketchPane extends JPanel {
         redoButton.addActionListener(e -> redo());
         bar.add(undoButton);
         bar.add(redoButton);
+        JCheckBox snap = new JCheckBox(Messages.get("sketch.toolbar.snap"), true);
+        snap.addActionListener(e -> canvas.setSnapToGrid(snap.isSelected()));
+        bar.add(snap);
         installUndoRedoKeys();
         updateHistoryButtons();
 

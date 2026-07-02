@@ -67,6 +67,9 @@ final class SketchCanvas extends JPanel {
     private SketchRelation.Kind relationMode;
     /** 関係追加モードで最初にクリックした始点クラス。 */
     private SketchClass relationSource;
+    /** グリッド吸着 (移動確定時に座標を格子へ丸める)。既定で有効。 */
+    private boolean snapToGrid = true;
+    private static final int GRID = 8;
     /** ドラッグ中の掴み位置オフセット。 */
     private Point dragOffset;
     private boolean draggedSinceMousePress;
@@ -131,6 +134,15 @@ final class SketchCanvas extends JPanel {
 
     boolean isModelEditable() {
         return editable;
+    }
+
+    /** グリッド吸着の有効/無効を切り替える。 */
+    void setSnapToGrid(boolean on) {
+        this.snapToGrid = on;
+    }
+
+    private static int snap(int v) {
+        return Math.round(v / (float) GRID) * GRID;
     }
 
     /** 関係追加モードを切り替える (null で選択/移動モードへ戻す)。 */
@@ -209,6 +221,12 @@ final class SketchCanvas extends JPanel {
         }
         if (draggedSinceMousePress) {
             draggedSinceMousePress = false;
+            if (snapToGrid && selected != null) {
+                // 移動確定時に座標を格子へ吸着させ、ボックスの整列を容易にする。
+                selected.moveTo(snap(selected.getX()), snap(selected.getY()));
+                revalidate();
+                repaint();
+            }
             listener.modelEdited(); // 移動確定 → '@pos を再生成
         }
         dragOffset = null;
