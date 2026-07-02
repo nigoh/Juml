@@ -60,6 +60,11 @@ dependencies {
     // 複数シート・オートフィルタ・見出し固定に対応。fat jar に同梱される
     // (poi / poi-ooxml / xmlbeans / commons-compress 等を推移取得)。
     implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    // JGit (EDL/BSD-3-Clause)。開いているプロジェクトの git リポジトリを「閲覧のみ」で
+    // 参照する (コミット履歴 / diff / ブランチ・タグ / ファイル履歴 / blame)。
+    // 純 Java 実装のため git コマンド未インストール環境でも動作し、fat jar に同梱される。
+    // 書き込み系 API (commit/push 等) は Juml からは一切呼ばない。
+    implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r'
     testImplementation 'junit:junit:4.13.2'
     // Playwright (ブラウザ自動化) で生成 SVG をレンダリング・スナップショット検証する。
     // 初回テスト実行時に `playwright install chromium` がトリガーされ Chromium が

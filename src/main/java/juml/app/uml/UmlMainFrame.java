@@ -45,6 +45,8 @@ public class UmlMainFrame extends JFrame {
 
     private static final String WINDOW_TITLE = "Juml UML";
     private static final int MENU_MASK = MenuBarBuilder.menuShortcutMask();
+    /** 末尾固定のユーティリティタブ数 (Manifest ... Members + Git)。 */
+    private static final int FIXED_UTILITY_TABS = 11;
 
     private final ProjectAnalysisCache cache = new ProjectAnalysisCache();
     private final ReferenceIndexCache refIndexCache = new ReferenceIndexCache(cache);
@@ -66,6 +68,8 @@ public class UmlMainFrame extends JFrame {
             = new DoxygenGroupsPanel(cache, doxygenResultCache);
     private final MethodListPanel methodListPanel = new MethodListPanel();
     private final MemberListPanel memberListPanel = new MemberListPanel();
+    /** git リポジトリ閲覧タブ (読み取り専用。JGit ベース)。 */
+    private final juml.app.uml.git.GitPanel gitPanel = new juml.app.uml.git.GitPanel();
     private final JLabel status = new JLabel(" ");
     private final JLabel zoomLabel = new JLabel("100%");
     /** ステータスバー (題材/図種の常時表示を含む)。 */
@@ -321,7 +325,7 @@ public class UmlMainFrame extends JFrame {
         // タブ多数でも 1 段スクロール表示にし、多段折り返しで図領域が潰れるのを防ぐ。
         mainTabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
 
-        // ユーティリティタブ (固定・末尾 10 本)。Material アイコン + tooltip で用途を示す。
+        // ユーティリティタブ (固定・末尾 11 本)。Material アイコン + tooltip で用途を示す。
         mainTabs.addTab("Manifest", MaterialIcons.menu(MaterialIcons.Glyph.MANIFEST),
                 manifestSummaryPanel, "Components & permissions");
         mainTabs.addTab("Impact", MaterialIcons.menu(MaterialIcons.Glyph.BOLT),
@@ -342,13 +346,17 @@ public class UmlMainFrame extends JFrame {
                 methodListPanel, "Function usage table");
         mainTabs.addTab("Members", MaterialIcons.menu(MaterialIcons.Glyph.LAYERS),
                 memberListPanel, "All class members");
+        gitPanel.setStatusReporter(status::setText);
+        mainTabs.addTab("Git", MaterialIcons.menu(MaterialIcons.Glyph.CALL_SPLIT),
+                gitPanel, "Git history / branches / blame (read-only)");
 
-        // 動的タブマネージャ (fixedSuffix=10 で末尾ユーティリティタブの手前に挿入)
-        tabPane = new DiagramTabPane(mainTabs, 10, cache, state,
+        // 動的タブマネージャ (fixedSuffix=FIXED_UTILITY_TABS で末尾ユーティリティタブの手前に挿入)
+        tabPane = new DiagramTabPane(mainTabs, FIXED_UTILITY_TABS, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
-        // Ctrl+W / Ctrl+Shift+T / Ctrl+Tab 等。末尾 10 本の固定ユーティリティタブは
+        // Ctrl+W / Ctrl+Shift+T / Ctrl+Tab 等。末尾の固定ユーティリティタブは
         // Ctrl+Tab 巡回から除外し、VS Code 同様に図 (動的タブ) だけを循環する。
-        TabKeyBindings.install(mainTabs, 10, tabPane::closeActiveTab, tabPane::reopenLastClosedTab);
+        TabKeyBindings.install(mainTabs, FIXED_UTILITY_TABS,
+                tabPane::closeActiveTab, tabPane::reopenLastClosedTab);
 
         // Functions / Members タブ表示時は一覧を遅延生成
         mainTabs.addChangeListener(ev -> {
@@ -436,6 +444,7 @@ public class UmlMainFrame extends JFrame {
         loaderDeps.onLoadSuccess = root -> {
             persistAndRestoreProjectSettings(root);
             updateManifestSummary();
+            gitPanel.setRepositoryRoot(root); // git リポジトリなら Git タブを有効化
             centerCards.showWorkspace();
             controller.updateAvailableDiagrams(java.util.EnumSet.allOf(DiagramKind.class));
             controller.openDefaultDiagram();

@@ -38,7 +38,7 @@ import java.util.function.DoubleConsumer;
  *
  * <p>外部から渡された {@link JTabbedPane} に動的タブを挿入する。
  * 末尾 {@code fixedSuffix} 本はユーティリティタブ (Manifest / Impact / References /
- * Func Diff / Insights / Doxygen / TODO / Groups / Functions / Members) で、
+ * Func Diff / Insights / Doxygen / TODO / Groups / Functions / Members / Git) で、
  * 動的タブはその手前に挿入される。
  * 特別扱いの「Home タブ」は存在しない。</p>
  *
