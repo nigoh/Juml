@@ -87,9 +87,20 @@ public final class PlantUmlIntermediatesDiagram {
     private static String alias(IntermediateModule m) {
         String base = m.getModulePath() + "_" + m.getName();
         StringBuilder sb = new StringBuilder("im_");
+        boolean replaced = false;
         for (int i = 0; i < base.length(); i++) {
             char c = base.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) ? c : '_');
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+            } else {
+                sb.append('_');
+                replaced |= c != '_';
+            }
+        }
+        // "a/b"+"c" と "a"+"b_c" が同じ "im_a_b_c" に潰れて別モジュールが合成されないよう、
+        // 置換が起きた名前には元名のハッシュを付けて一意化する。
+        if (replaced) {
+            sb.append('_').append(Integer.toHexString(base.hashCode() & 0xfffff));
         }
         return sb.toString();
     }

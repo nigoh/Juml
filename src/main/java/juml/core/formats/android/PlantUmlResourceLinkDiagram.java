@@ -33,7 +33,7 @@ public final class PlantUmlResourceLinkDiagram {
     /** 出力オプション。 */
     public static class Options {
         public boolean includeLegend = true;
-        public int stringMaxLen = 28;
+        public int stringMaxLen = 0;
         public String title = "Resource Links: コード ↔ リソース";
     }
 

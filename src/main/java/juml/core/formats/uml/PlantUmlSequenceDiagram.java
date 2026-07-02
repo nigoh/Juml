@@ -99,8 +99,8 @@ public final class PlantUmlSequenceDiagram {
         /** コメント表示スタイル (クラス図と共通)。INLINE は 1 行 note、NOTE は複数行ブロック。 */
         public PlantUmlClassDiagram.CommentStyle commentStyle =
                 PlantUmlClassDiagram.CommentStyle.INLINE;
-        /** INLINE 時の 1 行最大文字数。NOTE 時の本体内コメント 1 行制限にも使用。0 以下で無制限。 */
-        public int commentMaxLength = 80;
+        /** INLINE 時の 1 行最大文字数。NOTE 時の本体内コメント 1 行制限にも使用。0 以下で無制限 (既定)。 */
+        public int commentMaxLength = 0;
         /**
          * コメント文字列の色 (PlantUML の {@code <color:#RRGGBB>} 値)。
          * INLINE 表示時はテキストを {@code <color:...>...</color>} で囲み、
@@ -543,7 +543,9 @@ public final class PlantUmlSequenceDiagram {
             // forEach/forEachOrdered は繰り返し意味論を持つので loop ブロックで囲む
             boolean isLoop = FOR_EACH_OPS.contains(call.getMethodName());
             if (isLoop) {
-                body.append(indent).append("loop ").append(call.getMethodName()).append('\n');
+                body.append(indent).append("loop ")
+                        .append(PlantUmlCommentFormatter.escapeLabel(call.getMethodName()))
+                        .append('\n');
             }
             for (JavaMethodInfo inline : call.getInlineMethods()) {
                 // 参加者名: 定義元クラス$コールバック識別子
@@ -558,7 +560,9 @@ public final class PlantUmlSequenceDiagram {
                 String inlineKey = inlineName + "." + inlineLabel;
                 if (stack.contains(inlineKey)) {
                     body.append(indent).append("note over ").append(quote(inlineName))
-                            .append(" : recursive call (").append(inlineLabel).append(")\n");
+                            .append(" : recursive call (")
+                            .append(PlantUmlCommentFormatter.escapeLabel(inlineLabel))
+                            .append(")\n");
                     continue;
                 }
                 body.append(indent).append(idRef(target)).append(" -> ").append(quote(inlineName))
@@ -587,7 +591,8 @@ public final class PlantUmlSequenceDiagram {
             String inlineKey = target + "." + inline.getName();
             if (stack.contains(inlineKey)) {
                 body.append(indent).append("note over ").append(quote(target))
-                        .append(" : recursive call (").append(inline.getName())
+                        .append(" : recursive call (")
+                        .append(PlantUmlCommentFormatter.escapeLabel(inline.getName()))
                         .append(")\n");
                 return;
             }
@@ -606,7 +611,8 @@ public final class PlantUmlSequenceDiagram {
         if (stack.contains(key)) {
             // サイクル検出: 既にスタック上にいるので展開しない
             body.append(indent).append("note over ").append(quote(target))
-                    .append(" : recursive call (").append(nextMethod.getName())
+                    .append(" : recursive call (")
+                    .append(PlantUmlCommentFormatter.escapeLabel(nextMethod.getName()))
                     .append(")\n");
             return;
         }

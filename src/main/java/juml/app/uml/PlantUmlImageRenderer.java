@@ -45,7 +45,18 @@ public final class PlantUmlImageRenderer {
         String prepared = PlantUmlRenderer.injectScaleMax(puml, PlantUmlRenderer.imageLimit());
         SourceStringReader reader = new SourceStringReader(PlantUmlRenderer.injectLayout(prepared));
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            reader.outputImage(baos, new FileFormatOption(FileFormat.PNG));
+            Object desc = reader.outputImage(baos, new FileFormatOption(FileFormat.PNG));
+            // PlantUML は失敗時も例外を投げず「An error has occured」画像を返す。
+            // その場合 DiagramDescription はちょうど "(Error)" になる (正常図は
+            // "(N entities)" 等でユーザー内容を含まないことを実測確認済み) ため、
+            // 厳密一致で判定し、壊れた PNG を正常出力として返さず例外に変換する。
+            if (desc != null && "(Error)".equals(String.valueOf(desc))) {
+                juml.util.AppLog.error("PlantUmlImageRenderer",
+                        "PNG render returned PlantUML error image: " + desc);
+                throw new juml.core.formats.uml.PlantUmlRenderFailedException(
+                        "PlantUML render failed (error image returned on PNG export). "
+                                + "Check logs/juml.log for details.");
+            }
             byte[] bytes = baos.toByteArray();
             if (bytes.length == 0) {
                 return null;

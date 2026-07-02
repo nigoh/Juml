@@ -101,7 +101,8 @@ public class PlantUmlActivityDiagramTest {
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { void run() { while (i<10) { step(); } } }");
         String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
-        assertTrue(puml, puml.contains("while (i<10) is (true)"));
+        // 条件中の < はタグ誤認防止のためチルダエスケープされる
+        assertTrue(puml, puml.contains("while (i~<10) is (true)"));
         assertTrue(puml, puml.contains(":step();"));
         assertTrue(puml, puml.contains("endwhile (false)"));
     }
@@ -420,5 +421,43 @@ public class PlantUmlActivityDiagramTest {
         String puml = PlantUmlActivityDiagram.generate(infos, "A", "process", o);
         assertFalse("Signature should be hidden when showComments=false",
                 puml.contains("入力:"));
+    }
+
+    // ---- commentMaxLength=0 (既定) では切り詰めなし ----
+
+    @Test
+    public void testLongLocalVarNoEllipsisWhenCommentMaxLengthDefault() {
+        // commentMaxLength が既定 (0 = 無制限) のとき、100 文字超のローカル変数宣言が
+        // "…" なしで全文アクションノードに出ることを確認する。
+        // 変数名を十分に長くして type + " " + name が 100 文字超になるようにする。
+        String longVarName = "aVeryVeryLongVariableNameForTestingNoTruncationInActivityDiagramNodes";
+        // "String " (7) + longVarName (>94) = >101 chars
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void m() { String " + longVarName + "; } }");
+        // commentMaxLength 既定 = 0 (無制限)
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "m", null);
+        // 変数名が全文含まれること (切り詰められていない)
+        assertTrue("long variable name should appear in full without ellipsis: " + puml,
+                puml.contains(longVarName));
+        // 省略記号 "…" が含まれないこと
+        assertFalse("ellipsis should NOT appear when commentMaxLength=0: " + puml,
+                puml.contains("…"));
+    }
+
+    @Test
+    public void testLongLocalVarEllipsisWhenCommentMaxLengthSet() {
+        // commentMaxLength=20 のとき、20 文字超のローカル変数宣言が "…" で切り詰められることを確認する。
+        String longVarName = "aVeryVeryLongVariableNameForTestingTruncationInActivityDiagramNodes";
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void m() { String " + longVarName + "; } }");
+        PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
+        o.commentMaxLength = 20;
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "m", o);
+        // commentMaxLength=20 なら省略記号 "…" が含まれること
+        assertTrue("ellipsis should appear when commentMaxLength=20: " + puml,
+                puml.contains("…"));
+        // 変数名の全文は含まれないこと
+        assertFalse("full variable name should NOT appear when truncated: " + puml,
+                puml.contains(longVarName));
     }
 }

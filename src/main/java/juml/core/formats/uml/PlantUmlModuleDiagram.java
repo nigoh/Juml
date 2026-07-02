@@ -58,7 +58,7 @@ public final class PlantUmlModuleDiagram {
         out.append("@startuml\n");
         out.append("top to bottom direction\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
 
         if (modules.isEmpty()) {

@@ -226,7 +226,7 @@ public class SettingTest {
         assertFalse(s.isClassDiagramExcludeExternal());
         assertFalse(s.isClassDiagramMarkExternalSupertypes());
         assertFalse(s.isClassDiagramColorCodeRelations());
-        assertEquals(60, s.getClassDiagramCommentMaxLength());
+        assertEquals(0, s.getClassDiagramCommentMaxLength());
         assertEquals("Override,SuppressWarnings",
                 s.getClassDiagramHiddenAnnotations());
     }
@@ -235,7 +235,7 @@ public class SettingTest {
     public void testCommentMaxLengthLegacyDefaultMatchesFieldDefault()
             throws java.io.IOException {
         // classDiagram.commentMaxLength キーを持たない旧 XML を読んでも、
-        // 新規 Setting と同じ既定値 (60) になること (round-trip 既定の一致)。
+        // 新規 Setting と同じ既定値 (0 = 無制限) になること (round-trip 既定の一致)。
         File file = tempFolder.newFile("legacy-no-commentmax.xml");
         String legacy = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 + "<!DOCTYPE properties SYSTEM "
@@ -249,7 +249,7 @@ public class SettingTest {
         Setting loaded = Setting.loadFromFile(file);
         assertEquals(new Setting().getClassDiagramCommentMaxLength(),
                 loaded.getClassDiagramCommentMaxLength());
-        assertEquals(60, loaded.getClassDiagramCommentMaxLength());
+        assertEquals(0, loaded.getClassDiagramCommentMaxLength());
     }
 
     @org.junit.Test

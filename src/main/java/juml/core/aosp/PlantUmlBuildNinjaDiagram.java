@@ -106,9 +106,20 @@ public final class PlantUmlBuildNinjaDiagram {
 
     private static String alias(String name) {
         StringBuilder sb = new StringBuilder("g_");
+        boolean replaced = false;
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) ? c : '_');
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+            } else {
+                sb.append('_');
+                replaced |= c != '_';
+            }
+        }
+        // "a/b" と "a.b" が同じ "g_a_b" に潰れて別グループが合成されないよう、
+        // 置換が起きた名前には元名のハッシュを付けて一意化する。
+        if (replaced) {
+            sb.append('_').append(Integer.toHexString(name.hashCode() & 0xfffff));
         }
         return sb.toString();
     }

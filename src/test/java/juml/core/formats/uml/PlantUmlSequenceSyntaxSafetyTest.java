@@ -50,14 +50,13 @@ public class PlantUmlSequenceSyntaxSafetyTest {
 
     @Test
     public void escapeLabelEscapesHtmlSpecials() {
-        // ラベル中の < > & は PlantUML が creole/HTML タグとして解釈するため
-        // HTML エンティティへ変換する (例: filter(x > 0) / foo(List<String>))。
-        assertEquals("filter(x &gt; 0)",
+        // ラベル中の < は PlantUML が creole/HTML タグとして解釈するため
+        // チルダエスケープする (例: foo(List<String>))。> と & は生のままで安全。
+        assertEquals("filter(x > 0)",
                 PlantUmlCommentFormatter.escapeLabel("filter(x > 0)"));
-        assertEquals("foo(List&lt;String&gt;)",
+        assertEquals("foo(List~<String>)",
                 PlantUmlCommentFormatter.escapeLabel("foo(List<String>)"));
-        // & は最初に変換し、二重エスケープしないこと
-        assertEquals("a &amp; b", PlantUmlCommentFormatter.escapeLabel("a & b"));
+        assertEquals("a & b", PlantUmlCommentFormatter.escapeLabel("a & b"));
     }
 
     /**
