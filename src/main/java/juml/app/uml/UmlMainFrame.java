@@ -360,6 +360,9 @@ public class UmlMainFrame extends JFrame {
         // 動的タブマネージャ (fixedSuffix=FIXED_UTILITY_TABS で末尾ユーティリティタブの手前に挿入)
         tabPane = new DiagramTabPane(mainTabs, FIXED_UTILITY_TABS, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
+        // References (逆参照) の行ダブルクリック → 参照箇所のソースへジャンプ。
+        referencesPanel.setOnOpenSite(site -> tabPane.openSourceSite(
+                site.getCallerFqn(), site.getFile(), site.getLineHint()));
         // Ctrl+W / Ctrl+Shift+T / Ctrl+Tab 等。末尾の固定ユーティリティタブは
         // Ctrl+Tab 巡回から除外し、VS Code 同様に図 (動的タブ) だけを循環する。
         TabKeyBindings.install(mainTabs, FIXED_UTILITY_TABS,

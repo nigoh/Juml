@@ -33,6 +33,10 @@ final class TypeDeclAdapter {
         JavaClassInfo c = new JavaClassInfo();
         c.setPackageName(ctx.packageName);
         c.setSimpleName(td.getNameAsString());
+        // 宣言行はアノテーション行ではなく名前の行を優先する (ソースジャンプの着地点)。
+        td.getName().getBegin().ifPresentOrElse(
+                p -> c.setStartLine(p.line),
+                () -> td.getBegin().ifPresent(p -> c.setStartLine(p.line)));
         c.setEnclosingClass(enclosing);
         c.getImports().addAll(ctx.imports);
         c.getModifiers().addAll(JpText.modifiers(td));

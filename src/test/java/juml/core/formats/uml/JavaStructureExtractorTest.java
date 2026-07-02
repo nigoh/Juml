@@ -42,6 +42,21 @@ public class JavaStructureExtractorTest {
     }
 
     @Test
+    public void testClassStartLine() {
+        // クラス宣言行 (アノテーション行ではなく名前の行) がソースジャンプ用に取れること
+        List<JavaClassInfo> cs = JavaStructureExtractor.extract(
+                "package com.x;\n"          // 1
+                        + "\n"               // 2
+                        + "@Deprecated\n"    // 3
+                        + "class Foo {\n"    // 4
+                        + "  void m() {}\n"  // 5
+                        + "}\n");
+        assertEquals(1, cs.size());
+        assertEquals(4, cs.get(0).getStartLine());
+        assertEquals(5, cs.get(0).getMethods().get(0).getStartLine());
+    }
+
+    @Test
     public void testInterface() {
         List<JavaClassInfo> cs = JavaStructureExtractor.extract(
                 "interface I { void foo(); int bar(); }");

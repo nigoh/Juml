@@ -645,6 +645,43 @@ public final class DiagramTabPane {
         }
     }
 
+    /**
+     * 指定クラス (と任意のメソッド) のソース定義へジャンプする。クラスのタブを
+     * 開き (既にあればフォーカスし)、Source ビューを前面に出して宣言行へスクロールする。
+     * 図上リンクの Ctrl+クリック / 右クリック「ソースを開く」/ メソッドポップアップから使う。
+     */
+    public void openSourceFor(JavaClassInfo classInfo, JavaMethodInfo methodInfo) {
+        if (classInfo == null) {
+            return;
+        }
+        addOrFocusTab(TreeNodeOpenRequest.classNode(classInfo));
+        DiagramTab t = activeTab();
+        if (t != null) {
+            t.selectSourceView(methodInfo);
+        }
+    }
+
+    /**
+     * 参照サイト (呼び出し元 FQN + file:line) のソースへジャンプする。
+     * References (逆参照) パネルの行ダブルクリックから使う。呼び出し元クラスの
+     * タブを開いて Source ビューを指定行へスクロールする。クラスがインデックスに
+     * 無い場合はファイルパスだけで開けないためステータスに通知する。
+     */
+    public void openSourceSite(String callerFqn, String file, int line) {
+        JavaClassInfo ci = callerFqn == null
+                ? null : cache.getIndex().header(callerFqn).orElse(null);
+        if (ci == null) {
+            reportStatus(Messages.get("source.notFound")
+                    + (file != null && !file.isEmpty() ? " (" + file + ")" : ""));
+            return;
+        }
+        addOrFocusTab(TreeNodeOpenRequest.classNode(ci));
+        DiagramTab t = activeTab();
+        if (t != null) {
+            t.selectSourceViewAtLine(line);
+        }
+    }
+
     /** アクティブタブの描画リクエストを差し替えて再描画する (スコープ/プリセット適用など)。 */
     public void setActiveTabSpecAndRender(DiagramRequest spec) {
         DiagramTab t = activeTab();
@@ -1237,6 +1274,33 @@ public final class DiagramTabPane {
         }
 
         /**
+         * Source サブタブを前面に出し、タブの題材クラスのソースを指定メソッドの
+         * 宣言行付きで表示する (図上のメソッドリンク「ソースを開く」用)。
+         */
+        void selectSourceView(JavaMethodInfo methodOverride) {
+            bottomTabs.setSelectedComponent(javaSourcePanel);
+            DiagramTabSupport.showSource(javaSourcePanel, treeSync, cache, methodOverride);
+        }
+
+        /** Source サブタブを前面に出し、題材クラスのソースを指定行で表示する (逆参照ジャンプ用)。 */
+        void selectSourceViewAtLine(int line) {
+            bottomTabs.setSelectedComponent(javaSourcePanel);
+            String fqn = (treeSync != null && treeSync.classInfo != null)
+                    ? treeSync.classInfo.getQualifiedName() : null;
+            java.io.File src = fqn == null
+                    ? null : cache.getIndex().source(fqn).orElse(null);
+            if (src == null) {
+                javaSourcePanel.showMessage(Messages.get("source.notFound"));
+                return;
+            }
+            if (line > 0) {
+                javaSourcePanel.showFileAtLine(src, line);
+            } else {
+                DiagramTabSupport.showSource(javaSourcePanel, treeSync, cache);
+            }
+        }
+
+        /**
          * このタブの題材クラスの実ソースを解決して {@link #javaSourcePanel} に読み込む。
          * 解決ロジックは {@link DiagramTabSupport#showSource} に委譲する。
          */
@@ -1465,8 +1529,16 @@ public final class DiagramTabPane {
             if (fqn == null) {
                 return;
             }
-            cache.getIndex().header(fqn).ifPresent(
-                    ci -> addOrFocusTab(TreeNodeOpenRequest.classNode(ci)));
+            JavaClassInfo ci = cache.getIndex().header(fqn).orElse(null);
+            if (ci == null) {
+                return;
+            }
+            // Ctrl(⌘)+クリック: IDE の Go to Definition と同様にソース定義へ直接ジャンプ。
+            if (event != null && (event.isControlDown() || event.isMetaDown())) {
+                openSourceFor(ci, null);
+                return;
+            }
+            addOrFocusTab(TreeNodeOpenRequest.classNode(ci));
         }
 
         private void showMethodMenuInTab(String href, MouseEvent event) {
@@ -1482,7 +1554,14 @@ public final class DiagramTabPane {
             }
             JavaClassInfo classInfo = cache.getIndex().header(classFqn).orElse(null);
             if (classInfo == null) {
+                // インデックスに無いクラスはスタブで代替する。tabKey() や図生成が
+                // FQN を参照するため、単純名だけでなくパッケージも復元しておく
+                // (未設定だと別クラスとタブキーが衝突し空図が開くバグの元)。
                 classInfo = new JavaClassInfo();
+                int lastDot = classFqn.lastIndexOf('.');
+                if (lastDot > 0) {
+                    classInfo.setPackageName(classFqn.substring(0, lastDot));
+                }
                 classInfo.setSimpleName(extractSimpleClass(classFqn));
             }
             JavaMethodInfo methodInfo = new JavaMethodInfo();
@@ -1500,6 +1579,10 @@ public final class DiagramTabPane {
             actItem.addActionListener(e -> addOrFocusTab(
                     TreeNodeOpenRequest.method(ci, mi, DiagramKind.ACTIVITY)));
             menu.add(actItem);
+            menu.addSeparator();
+            JMenuItem srcItem = new JMenuItem(Messages.get("source.openSource"));
+            srcItem.addActionListener(e -> openSourceFor(ci, mi));
+            menu.add(srcItem);
             menu.show(event.getComponent(), event.getX(), event.getY());
         }
 
@@ -1519,6 +1602,12 @@ public final class DiagramTabPane {
             if (fqn != null) {
                 popup.add(menuItem(Messages.get("note.menu.addToElement"),
                         () -> previewPanel.addElementNote(fqn)));
+                // 図上のクラス → ソース定義へジャンプ (Ctrl+クリックと同じ)。
+                cache.getIndex().header(fqn).ifPresent(ci -> {
+                    popup.addSeparator();
+                    popup.add(menuItem(Messages.get("source.openSource"),
+                            () -> openSourceFor(ci, null)));
+                });
             }
             if (!previewPanel.getTextItems().isEmpty()) {
                 popup.addSeparator();
