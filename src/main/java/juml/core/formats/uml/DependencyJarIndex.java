@@ -65,8 +65,12 @@ public final class DependencyJarIndex {
     private final Set<String> missingArtifacts = new LinkedHashSet<>();
     /** 解決済みの JavaClassInfo を FQN でキャッシュ。 */
     private final Map<String, JavaClassInfo> resolvedCache = new ConcurrentHashMap<>();
-    /** 「依存に宣言されているが見つからない」 simple/qualified 名のマーキング。 */
-    private final Set<String> declaredButMissing = new HashSet<>();
+    /**
+     * 「依存に宣言されているが見つからない」 simple/qualified 名のマーキング。
+     * {@link #resolve} が構築後・複数スレッドから呼ばれうる (resolvedCache が
+     * ConcurrentHashMap なのと同じ前提) ため、スレッドセーフな Set を使う。
+     */
+    private final Set<String> declaredButMissing = ConcurrentHashMap.newKeySet();
 
     /**
      * 与えられた依存リストから JAR/AAR を探索しインデックスを構築する。

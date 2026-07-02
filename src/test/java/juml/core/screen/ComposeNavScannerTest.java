@@ -16,6 +16,22 @@ import static org.junit.Assert.assertTrue;
 public class ComposeNavScannerTest {
 
     @Test
+    public void detectsStartDestinationAfterNestedCall() {
+        // startDestination の前に rememberNavController() のような関数呼び出しがあっても
+        // 括弧平衡で引数を切り出して startDestination を取り出せること (Compose の一般形)。
+        String src = "package com.x\n"
+                + "@Composable\n"
+                + "fun AppNav() {\n"
+                + "  NavHost(navController = rememberNavController(), startDestination = \"home\") {\n"
+                + "    composable(\"home\") { HomeScreen() }\n"
+                + "  }\n"
+                + "}\n";
+        ComposeNavScanner.Result r = new ComposeNavScanner()
+                .analyzeSource(src, "Nav.kt");
+        assertEquals("home", r.getStartDestination());
+    }
+
+    @Test
     public void detectsNavHostStartDestinationAndRoutes() {
         String src = "package com.x\n"
                 + "@Composable\n"

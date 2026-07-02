@@ -307,4 +307,62 @@ public class KotlinLightScannerTest {
         assertEquals(0, KotlinLightScanner.scan("", ErrorListener.silent()).size());
         assertNotNull(KotlinLightScanner.scan(null, ErrorListener.silent()));
     }
+
+    @Test
+    public void localValAndFunInsideMethodBodyAreNotMembers() {
+        // 関数本体内のローカル val / fun をクラスのフィールド/メソッドとして
+        // 誤抽出しないこと (ネストしたコードブロックをマスクする)。
+        String src = "class User(val id: Int) {\n"
+                + "  fun compute() {\n"
+                + "    val temp: String = load()\n"
+                + "    fun helper() { }\n"
+                + "  }\n"
+                + "  val realField: Int = 5\n"
+                + "}\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        assertEquals(1, infos.size());
+        JavaClassInfo c = infos.get(0);
+        java.util.Set<String> fieldNames = new java.util.HashSet<>();
+        for (JavaFieldInfo f : c.getFields()) {
+            fieldNames.add(f.getName());
+        }
+        assertTrue("primary ctor field kept", fieldNames.contains("id"));
+        assertTrue("class-level field kept", fieldNames.contains("realField"));
+        assertFalse("local val must not become a field", fieldNames.contains("temp"));
+        java.util.Set<String> methodNames = new java.util.HashSet<>();
+        for (juml.core.formats.uml.JavaMethodInfo m : c.getMethods()) {
+            methodNames.add(m.getName());
+        }
+        assertTrue("class-level fun kept", methodNames.contains("compute"));
+        assertFalse("local fun must not become a method", methodNames.contains("helper"));
+    }
+
+    @Test
+    public void companionConstStillExtractedAfterLocalMasking() {
+        // コードブロックのマスク導入後も companion object の const や
+        // メソッドはホイストされること (退行防止)。
+        String src = "data class User(val id: Long) {\n"
+                + "  companion object {\n"
+                + "    const val TABLE: String = \"users\"\n"
+                + "    fun create(): User = User(0)\n"
+                + "  }\n"
+                + "}\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        JavaClassInfo c = infos.get(0);
+        boolean hasTable = false;
+        for (JavaFieldInfo f : c.getFields()) {
+            if ("TABLE".equals(f.getName())) {
+                hasTable = true;
+                assertTrue("const val is static", f.isStatic());
+            }
+        }
+        assertTrue("companion const preserved", hasTable);
+        boolean hasCreate = false;
+        for (juml.core.formats.uml.JavaMethodInfo m : c.getMethods()) {
+            if ("create".equals(m.getName())) {
+                hasCreate = true;
+            }
+        }
+        assertTrue("companion fun preserved", hasCreate);
+    }
 }

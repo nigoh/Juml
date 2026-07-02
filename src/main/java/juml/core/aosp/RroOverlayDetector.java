@@ -30,6 +30,8 @@ public final class RroOverlayDetector {
             "<overlay\\b([^>]*)/?>", Pattern.DOTALL);
     private static final Pattern ATTR_PATTERN = Pattern.compile(
             "(?:android:)?(\\w+)\\s*=\\s*\"([^\"]*)\"");
+    /** XML コメント {@code <!-- ... -->}。コメントアウトされた要素の誤検出を防ぐため除去する。 */
+    private static final Pattern XML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
 
     /** プロジェクト下を再帰走査して RRO オーバレイを抽出する。 */
     public List<RroOverlay> analyzeProject(File projectRoot) {
@@ -56,6 +58,9 @@ public final class RroOverlayDetector {
     /** 1 件の Manifest XML を解析し RRO であれば {@link RroOverlay} を返す。 */
     public RroOverlay parseManifest(String src, String filePath) {
         if (src == null || src.isEmpty()) return null;
+        // コメントアウトされた <overlay> / <manifest> を実在の宣言と誤認しないよう、
+        // 先に XML コメントを除去する (兄弟パーサの stripComments と同方針)。
+        src = XML_COMMENT.matcher(src).replaceAll("");
         Matcher om = OVERLAY_ELEMENT.matcher(src);
         if (!om.find()) {
             return null;

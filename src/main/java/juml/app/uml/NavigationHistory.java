@@ -79,19 +79,24 @@ final class NavigationHistory {
 
     /** タブが閉じられたとき履歴から除去する。 */
     void remove(String tabKey) {
-        boolean beforeCursor = false;
+        // カーソルより前で削除した件数だけカーソルを戻す。
+        // 同一キーは非連続で複数回積まれうる (A→B→A→B 等) ため、
+        // boolean ではなく削除件数で補正しないとカーソルがズレる。
+        int removedBeforeCursor = 0;
         for (int i = entries.size() - 1; i >= 0; i--) {
             if (Objects.equals(entries.get(i), tabKey)) {
                 if (i < cursor) {
-                    beforeCursor = true;
+                    removedBeforeCursor++;
                 }
                 entries.remove(i);
             }
         }
-        if (beforeCursor) {
-            cursor = Math.max(0, cursor - 1);
+        cursor -= removedBeforeCursor;
+        if (entries.isEmpty()) {
+            cursor = -1;
+        } else {
+            cursor = Math.max(0, Math.min(cursor, entries.size() - 1));
         }
-        cursor = Math.min(cursor, entries.size() - 1);
     }
 
     void clear() {

@@ -218,7 +218,8 @@ public final class JavaLexer {
                 break;
             }
             if (c == '\n') {
-                line++;
+                // 未終端リテラル: 改行は消費せず break する。行番号の加算は
+                // tokenize() のメインループに任せる (ここで line++ すると二重加算になる)。
                 break;
             }
             pos++;
@@ -229,13 +230,20 @@ public final class JavaLexer {
     private JavaToken readNumber() {
         int start = pos;
         int startLine = line;
+        // 16 進リテラル (0x.. / 0X..) では e/E は指数記号ではなく 16 進数字。
+        // 指数記号は p/P のみ。10 進では e/E が指数記号。
+        boolean isHex = pos + 1 < len && src.charAt(pos) == '0'
+                && (src.charAt(pos + 1) == 'x' || src.charAt(pos + 1) == 'X');
         while (pos < len) {
             char c = src.charAt(pos);
             if (Character.isLetterOrDigit(c) || c == '.' || c == '_') {
-                // 指数表記の e/E の直後に符号 (+/-) が続く場合は数値トークンに取り込む
+                // 指数表記の直後に符号 (+/-) が続く場合は数値トークンに取り込む。
                 // 例: 1.5e-10 → [NUMBER:1.5e-10]、3.0E+2 → [NUMBER:3.0E+2]
-                // 16 進浮動小数点の指数部 p/P も同様 (例: 0x1.8p10、0x1.fp-3)
-                if ((c == 'e' || c == 'E' || c == 'p' || c == 'P') && pos + 1 < len) {
+                // 16 進浮動小数点の指数部 p/P も同様 (例: 0x1.8p10、0x1.fp-3)。
+                // ただし 16 進では e/E は数字なので指数扱いしない (例: 0x1e+5 は 0x1e と +5)。
+                boolean isExp = (c == 'p' || c == 'P')
+                        || (!isHex && (c == 'e' || c == 'E'));
+                if (isExp && pos + 1 < len) {
                     char next = src.charAt(pos + 1);
                     if (next == '+' || next == '-') {
                         pos += 2; // 指数文字と符号の両方を取り込む

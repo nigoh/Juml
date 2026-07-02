@@ -31,6 +31,16 @@ public class SharedPreferencesScannerTest {
     }
 
     @Test
+    public void defaultValueStartingWithParenDoesNotCrash() {
+        // デフォルト値が閉じ括弧で始まる文字列だと、正規表現が開きクォート 1 文字だけを
+        // 捕捉し substring(1, 0) で例外になっていた (StringIndexOutOfBounds のガード)。
+        String src = "String s = prefs.getString(\"theme\", \")\");\n";
+        List<SharedPreferencesEntry> entries = scanner.analyzeSource(src, "Test.java");
+        assertEquals(1, entries.size());
+        assertEquals("theme", entries.get(0).key);
+    }
+
+    @Test
     public void detectsConstantKeyInGetAndPut() {
         // 文字列リテラルでなく定数参照のキー (Android で一般的) も検出する
         String src = "editor.putString(KEY_TOKEN, value);\n"

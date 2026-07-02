@@ -51,9 +51,11 @@ public final class ComposeNavScanner {
             "@Composable[\\s\\n]+(?:public\\s+|private\\s+|internal\\s+)?fun\\s+"
                     + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
 
-    /** {@code NavHost(navController, startDestination = "home") { ... }} - グループ 1: 開始 route。 */
-    private static final Pattern NAVHOST_START_DEST = Pattern.compile(
-            "\\bNavHost\\s*\\([^)]*startDestination\\s*=\\s*\"([^\"]+)\"");
+    /** {@code NavHost(...)} 呼び出しの開始。引数は括弧平衡で切り出す。 */
+    private static final Pattern NAVHOST_CALL = Pattern.compile("\\bNavHost\\s*\\(");
+    /** NavHost 引数内の {@code startDestination = "home"} - グループ 1: 開始 route。 */
+    private static final Pattern START_DEST_ARG = Pattern.compile(
+            "startDestination\\s*=\\s*\"([^\"]+)\"");
 
     /** Compose 遷移走査結果。 */
     public static final class Result {
@@ -74,9 +76,21 @@ public final class ComposeNavScanner {
         if (src == null || src.isEmpty()) return r;
 
         // start destination
-        Matcher nm = NAVHOST_START_DEST.matcher(src);
-        if (nm.find()) {
-            r.startDestination = nm.group(1);
+        // NavHost( の引数を括弧平衡で切り出してから startDestination を探す。
+        // 素朴な [^)]* だと startDestination より前に rememberNavController() 等の
+        // 関数呼び出しがあると最初の ) で止まって取りこぼす (Compose の一般的な書き方)。
+        Matcher nm = NAVHOST_CALL.matcher(src);
+        while (nm.find()) {
+            int parenStart = nm.end() - 1;
+            int parenEnd = matchParen(src, parenStart);
+            if (parenEnd <= parenStart) {
+                continue;
+            }
+            Matcher sd = START_DEST_ARG.matcher(src.substring(parenStart + 1, parenEnd));
+            if (sd.find()) {
+                r.startDestination = sd.group(1);
+                break;
+            }
         }
 
         // 全 composable("route") を登録

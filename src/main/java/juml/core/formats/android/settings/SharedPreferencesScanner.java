@@ -125,8 +125,9 @@ public final class SharedPreferencesScanner {
                 }
                 String key = strKey != null ? strKey : constKey;
                 String defVal = gm.group(4) != null ? gm.group(4).trim() : "";
-                // 文字列リテラルのみのデフォルト値を抽出
-                if (defVal.startsWith("\"") && defVal.endsWith("\"")) {
+                // 文字列リテラルのみのデフォルト値を抽出。
+                // 単一の `"` (長さ 1) では substring(1, 0) が例外になるため長さでガードする。
+                if (defVal.length() >= 2 && defVal.startsWith("\"") && defVal.endsWith("\"")) {
                     defVal = defVal.substring(1, defVal.length() - 1);
                 } else if (!defVal.isEmpty()) {
                     defVal = "(" + defVal + ")";

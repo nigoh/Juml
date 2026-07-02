@@ -28,7 +28,9 @@ public class GradleDependency {
             int e = n.lastIndexOf(')');
             if (s >= 0 && e > s) {
                 String inner = n.substring(s + 1, e).trim();
-                if (inner.startsWith("'") || inner.startsWith("\"")) {
+                // 長さ 2 未満 (単一クォート) では substring(1, 0) が例外になるためガードする。
+                if (inner.length() >= 2
+                        && (inner.startsWith("'") || inner.startsWith("\""))) {
                     inner = inner.substring(1, inner.length() - 1);
                 }
                 if (inner.startsWith(":")) {

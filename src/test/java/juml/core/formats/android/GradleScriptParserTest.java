@@ -26,6 +26,27 @@ public class GradleScriptParserTest {
     }
 
     @Test
+    public void testOversizedVersionCodeDoesNotCrash() {
+        // タイムスタンプ由来の versionCode は int を超えることがある。
+        // 例外で解析全体を落とさず、当該項目だけ無視すること。
+        String script = "android {\n"
+                + "  compileSdk 34\n"
+                + "  defaultConfig {\n"
+                + "    versionCode 20260702123\n"
+                + "    versionName \"1.0\"\n"
+                + "    minSdk 21\n"
+                + "  }\n"
+                + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(script, "build.gradle");
+        assertNotNull(info);
+        // オーバーフローした versionCode は取り込まれない (null)。
+        assertNull(info.getVersionCode());
+        // 他の正常な値は取り込まれる。
+        assertEquals(Integer.valueOf(34), info.getCompileSdk());
+        assertEquals(Integer.valueOf(21), info.getMinSdk());
+    }
+
+    @Test
     public void testKtsType() {
         GradleProjectInfo info = GradleScriptParser.parse("", "build.gradle.kts");
         assertEquals("kotlin", info.getModuleType());

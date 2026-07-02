@@ -182,6 +182,10 @@ public final class VhalAnalyzer {
         }
 
         // 通常の receiver 呼び出し
+        // receiver が "CarPropertyManager" の呼び出しは CALL_PATTERN と
+        // STATIC_CALL_PATTERN の両方にマッチするため、CALL 側で処理済みの開始位置を
+        // 記録し、STATIC 側で二重計上しないようにする。
+        java.util.Set<Integer> handledStarts = new java.util.HashSet<>();
         Matcher m = CALL_PATTERN.matcher(src);
         while (m.find()) {
             String receiver = m.group(1);
@@ -201,11 +205,16 @@ public final class VhalAnalyzer {
             int line = lineOf(src, m.start());
             String callerMethod = enclosingMethodName(m.start(), methodSpans, methodNames);
             out.add(buildAccess(fqn, callerMethod, filePath, line, kind, method, args));
+            handledStarts.add(m.start());
         }
 
         // static 呼び出し
         Matcher s = STATIC_CALL_PATTERN.matcher(src);
         while (s.find()) {
+            // CALL_PATTERN で既に計上済みの位置は二重計上しない。
+            if (handledStarts.contains(s.start())) {
+                continue;
+            }
             String method = s.group(1);
             VhalAccess.Kind kind = VHAL_METHODS.get(method);
             if (kind == null) {
