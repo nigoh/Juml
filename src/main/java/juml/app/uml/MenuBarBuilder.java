@@ -445,6 +445,12 @@ public final class MenuBarBuilder {
         m.setMnemonic(KeyEvent.VK_D);
         java.util.Set<Integer> usedMnemonics = new java.util.HashSet<>();
         for (DiagramKind k : DiagramKind.values()) {
+            // メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) の切替はメソッド図タブ上部の
+            // 切替バーへ一本化したため、メニューの図種ラジオからは外す。起点選択・参加者
+            // フィルタ等の機能項目 (下の sequenceOnly/activityOnlyItems) は引き続き残す。
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+                continue;
+            }
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(k.getDisplayName());
             if (k == initialKind) {
                 item.setSelected(true);
@@ -455,7 +461,7 @@ public final class MenuBarBuilder {
                 usedMnemonics.add(mnemonic);
             }
             // 最頻使の図種にクイック切替アクセラレータを付与 (Preset の Ctrl+1..3 と衝突しない
-            // Ctrl+Shift+1..4 を使う)。Sequence/Activity は従来どおり起点メソッド選択へ誘導する。
+            // Ctrl+Shift+1..2 を使う)。
             int quickKey = quickSwitchKey(k);
             if (quickKey != KeyEvent.VK_UNDEFINED) {
                 item.setAccelerator(KeyStroke.getKeyStroke(quickKey,
@@ -551,13 +557,15 @@ public final class MenuBarBuilder {
         return KeyEvent.VK_UNDEFINED;
     }
 
-    /** 図種クイック切替アクセラレータのキーコード (未割当ては VK_UNDEFINED)。 */
+    /**
+     * 図種クイック切替アクセラレータのキーコード (未割当ては VK_UNDEFINED)。
+     * メソッド系 (SEQUENCE/ACTIVITY/CALLGRAPH) はメニューの図種ラジオを廃し、タブ上部の
+     * 切替バーへ一本化したため、ここではアクセラレータを割り当てない。
+     */
     private static int quickSwitchKey(DiagramKind k) {
         switch (k) {
             case CLASS:    return KeyEvent.VK_1;
             case PACKAGE:  return KeyEvent.VK_2;
-            case SEQUENCE: return KeyEvent.VK_3;
-            case ACTIVITY: return KeyEvent.VK_4;
             default:       return KeyEvent.VK_UNDEFINED;
         }
     }
