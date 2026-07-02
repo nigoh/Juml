@@ -26,10 +26,21 @@ public final class MarkdownSoongReport {
     }
 
     public static String render(List<AndroidBpModule> modules) {
+        return render(modules, "Soong (Android.bp) Module Report",
+                "(no Android.bp modules found)");
+    }
+
+    /**
+     * タイトル・空メッセージを差し替えて描画する。{@code --android-mk} が
+     * {@link AndroidMkParser} の結果 (同じ {@link AndroidBpModule} モデル) を
+     * 同じ体裁で出力するために使う。
+     */
+    public static String render(List<AndroidBpModule> modules, String title,
+                                String emptyNote) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# Soong (Android.bp) Module Report\n\n");
+        sb.append("# ").append(title).append("\n\n");
         if (modules == null || modules.isEmpty()) {
-            sb.append("(no Android.bp modules found)\n");
+            sb.append(emptyNote).append('\n');
             return sb.toString();
         }
 

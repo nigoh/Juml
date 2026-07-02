@@ -27,9 +27,17 @@ public final class PlantUmlSoongDependencyDiagram {
     }
 
     public static String render(List<AndroidBpModule> modules) {
+        return render(modules, "Soong (Android.bp) Module Dependencies");
+    }
+
+    /**
+     * タイトルを差し替えて描画する。{@code --android-mk} が {@link AndroidMkParser}
+     * の結果 (同じ {@link AndroidBpModule} モデル) を同じ体裁で出力するために使う。
+     */
+    public static String render(List<AndroidBpModule> modules, String title) {
         StringBuilder sb = new StringBuilder();
         sb.append("@startuml\n");
-        sb.append("title Soong (Android.bp) Module Dependencies\n");
+        sb.append("title ").append(title).append('\n');
         sb.append("skinparam componentStyle rectangle\n");
         sb.append("skinparam shadowing false\n");
 

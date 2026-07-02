@@ -45,6 +45,10 @@ public final class ReverseReferencePanel extends JPanel {
     private final JTable resultTable;
     private final DefaultTableModel tableModel;
     private final JLabel statusLabel;
+    /** 表示中の検索結果 (テーブル行のモデル添字と対応)。 */
+    private List<ReferenceSite> currentSites = java.util.Collections.emptyList();
+    /** 行ダブルクリックで参照箇所のソースを開くコールバック (UmlMainFrame が配線)。 */
+    private java.util.function.Consumer<ReferenceSite> onOpenSite;
 
     public ReverseReferencePanel(ReferenceIndexCache refCache) {
         super(new BorderLayout());
@@ -79,6 +83,46 @@ public final class ReverseReferencePanel extends JPanel {
 
         findButton.addActionListener(this::onFind);
         targetField.addActionListener(this::onFind);
+        resultTable.setToolTipText(Messages.get("explore.ref.rowTip"));
+        resultTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    openSelectedSite();
+                }
+            }
+        });
+        // Enter キーでも選択行のソースへ飛べるようにする (キーボード操作)。
+        resultTable.getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+                .put(javax.swing.KeyStroke.getKeyStroke(
+                        java.awt.event.KeyEvent.VK_ENTER, 0), "openSite");
+        resultTable.getActionMap().put("openSite", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                openSelectedSite();
+            }
+        });
+    }
+
+    /** 行ダブルクリック / Enter で参照箇所のソースを開くコールバックを設定する。 */
+    public void setOnOpenSite(java.util.function.Consumer<ReferenceSite> onOpenSite) {
+        this.onOpenSite = onOpenSite;
+    }
+
+    /** 選択行の {@link ReferenceSite} をコールバックへ渡す (ソート済みビュー添字を変換)。 */
+    private void openSelectedSite() {
+        if (onOpenSite == null) {
+            return;
+        }
+        int viewRow = resultTable.getSelectedRow();
+        if (viewRow < 0) {
+            return;
+        }
+        int modelRow = resultTable.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= currentSites.size()) {
+            return;
+        }
+        onOpenSite.accept(currentSites.get(modelRow));
     }
 
     /** 外部から呼んでシンボル検索を実行する。 */
@@ -114,6 +158,7 @@ public final class ReverseReferencePanel extends JPanel {
                     List<ReferenceSite> sites = get();
                     if (sites == null) {
                         statusLabel.setText(Messages.get("explore.ref.noProject"));
+                        currentSites = java.util.Collections.emptyList();
                         tableModel.setRowCount(0);
                         return;
                     }
@@ -150,6 +195,7 @@ public final class ReverseReferencePanel extends JPanel {
     }
 
     private void populateTable(List<ReferenceSite> sites) {
+        currentSites = sites;
         tableModel.setRowCount(0);
         for (ReferenceSite s : sites) {
             String fileCol = s.getFile();

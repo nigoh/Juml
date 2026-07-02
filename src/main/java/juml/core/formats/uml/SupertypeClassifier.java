@@ -76,6 +76,23 @@ public final class SupertypeClassifier {
     public static Result classify(String typeRef, JavaClassInfo owner,
                                   TypeRefResolver resolver, Set<String> knownQns,
                                   Set<String> externalPrefixes, boolean distinguishStd) {
+        return classify(typeRef, owner, resolver, knownQns, externalPrefixes,
+                distinguishStd, null);
+    }
+
+    /**
+     * 型参照を分類する ({@code dependencyClass} 付き)。
+     *
+     * @param dependencyClass FQN が依存 JAR/AAR (Gradle cache やリポジトリ同梱の
+     *                        ローカル JAR) に実在するかの判定器。prefix 集合に
+     *                        載らないパッケージ (例: 社内ライブラリ) でも、依存
+     *                        インデックスで解決できれば {@link Kind#EXTERNAL} と
+     *                        判定するために使う。null 可
+     */
+    public static Result classify(String typeRef, JavaClassInfo owner,
+                                  TypeRefResolver resolver, Set<String> knownQns,
+                                  Set<String> externalPrefixes, boolean distinguishStd,
+                                  java.util.function.Predicate<String> dependencyClass) {
         if (typeRef == null || typeRef.isEmpty()) {
             return new Result(Kind.UNKNOWN, typeRef);
         }
@@ -108,6 +125,10 @@ public final class SupertypeClassifier {
         Set<String> prefixes = (externalPrefixes == null || externalPrefixes.isEmpty())
                 ? ExternalPackageMatcher.DEFAULT_PREFIXES : externalPrefixes;
         if (ExternalPackageMatcher.isExternal(pkg, prefixes)) {
+            return new Result(Kind.EXTERNAL, fqn);
+        }
+        // prefix で判定できなくても、依存 JAR インデックスに実在するなら外部ライブラリ
+        if (dependencyClass != null && dependencyClass.test(fqn)) {
             return new Result(Kind.EXTERNAL, fqn);
         }
         return new Result(Kind.UNKNOWN, fqn);

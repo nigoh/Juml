@@ -13,22 +13,28 @@ import juml.core.aaos.VhalAccess;
 import juml.core.aaos.VhalAnalyzer;
 import juml.core.aosp.AndroidBpModule;
 import juml.core.aosp.AndroidBpParser;
+import juml.core.aosp.AndroidMkParser;
 import juml.core.aosp.BuildNinjaGraph;
 import juml.core.aosp.BuildNinjaParser;
 import juml.core.aosp.IntermediatesAnalyzer;
 import juml.core.aosp.IntermediatesInventory;
 import juml.core.aosp.MarkdownBuildNinjaReport;
 import juml.core.aosp.MarkdownIntermediatesReport;
+import juml.core.aosp.MarkdownPartitionReport;
 import juml.core.aosp.MarkdownRroReport;
 import juml.core.aosp.MarkdownSelinuxReport;
 import juml.core.aosp.MarkdownSoongReport;
+import juml.core.aosp.MarkdownVintfReport;
 import juml.core.aosp.PlantUmlBuildNinjaDiagram;
 import juml.core.aosp.PlantUmlIntermediatesDiagram;
+import juml.core.aosp.PlantUmlPartitionDiagram;
 import juml.core.aosp.PlantUmlSoongDependencyDiagram;
+import juml.core.aosp.PlantUmlVintfDiagram;
 import juml.core.aosp.RroOverlay;
 import juml.core.aosp.RroOverlayDetector;
 import juml.core.aosp.SelinuxPolicyParser;
 import juml.core.aosp.SelinuxRule;
+import juml.core.aosp.VintfProjectScanner;
 import juml.core.formats.uml.UmlGenerator;
 
 import java.io.File;
@@ -37,6 +43,7 @@ import java.io.IOException;
 /**
  * AOSP / AAOS 系の CLI モード
  * ({@code --vhal-flow} / {@code --aidl-binding} / {@code --android-bp} /
+ * {@code --android-mk} / {@code --vintf} / {@code --partitions} /
  * {@code --selinux} / {@code --rro-overlays}) のハンドラ群。
  */
 public final class AospCommands {
@@ -104,6 +111,70 @@ public final class AospCommands {
         String md = MarkdownSoongReport.render(modules);
         String puml = PlantUmlSoongDependencyDiagram.render(modules);
         CliOutput.writeImpactOutput(fileOut, md, puml, "android-bp");
+    }
+
+    /**
+     * {@code --android-mk}: プロジェクト下を再帰的に走査して {@code Android.mk}
+     * (legacy GNU Make 形式) を解析し、{@code --android-bp} と同等のモジュール一覧 +
+     * 依存グラフ (Markdown + PlantUML) を出力する。
+     */
+    public static void handleAndroidMk(CliContext ctx) throws IOException {
+        File fileIn = ctx.fileIn;
+        File fileOut = ctx.fileOut;
+        if (fileIn == null || !fileIn.isDirectory()) {
+            System.err.println("--android-mk requires a project directory as input.");
+            System.exit(1);
+            return;
+        }
+        java.util.List<AndroidBpModule> modules =
+                new AndroidMkParser().analyzeProject(fileIn);
+        // LOCAL_MODULE が取れなかった宣言は表・図のノイズになるため除外する
+        modules.removeIf(m -> m.getName().isEmpty());
+        String md = MarkdownSoongReport.render(modules,
+                "Android.mk (Make) Module Report", "(no Android.mk modules found)");
+        String puml = PlantUmlSoongDependencyDiagram.render(modules,
+                "Android.mk Module Dependencies");
+        CliOutput.writeImpactOutput(fileOut, md, puml, "android-mk");
+    }
+
+    /**
+     * {@code --vintf}: プロジェクト下の VINTF manifest ({@code manifest*.xml} /
+     * {@code compatibility_matrix*.xml}) を走査し、HAL 宣言の Markdown レポートと
+     * PlantUML 図 (manifest 種別ごとの HAL 一覧と interface/instance) を出力する。
+     */
+    public static void handleVintf(CliContext ctx) throws IOException {
+        File fileIn = ctx.fileIn;
+        File fileOut = ctx.fileOut;
+        if (fileIn == null || !fileIn.isDirectory()) {
+            System.err.println("--vintf requires a project directory as input.");
+            System.exit(1);
+            return;
+        }
+        java.util.List<VintfProjectScanner.Entry> entries =
+                new VintfProjectScanner().analyzeProject(fileIn);
+        String md = MarkdownVintfReport.render(entries);
+        String puml = PlantUmlVintfDiagram.render(entries);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "vintf");
+    }
+
+    /**
+     * {@code --partitions}: プロジェクト下の {@code Android.bp} を解析し、partition
+     * (system / vendor / product / system_ext / odm 等) 別のモジュール集計と
+     * partition を跨ぐ依存の可視化 (Markdown + PlantUML) を出力する。
+     */
+    public static void handlePartitions(CliContext ctx) throws IOException {
+        File fileIn = ctx.fileIn;
+        File fileOut = ctx.fileOut;
+        if (fileIn == null || !fileIn.isDirectory()) {
+            System.err.println("--partitions requires a project directory as input.");
+            System.exit(1);
+            return;
+        }
+        java.util.List<AndroidBpModule> modules =
+                new AndroidBpParser().analyzeProject(fileIn);
+        String md = MarkdownPartitionReport.render(modules);
+        String puml = PlantUmlPartitionDiagram.render(modules);
+        CliOutput.writeImpactOutput(fileOut, md, puml, "partitions");
     }
 
     /**

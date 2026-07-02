@@ -48,6 +48,8 @@ public class JavaClassInfo {
     private Origin origin = Origin.SOURCE;
     private String jarPath;
     private String sourceFile;
+    /** クラス宣言の開始行 (1 始まり)。不明なら 0。ソースジャンプの着地点に使う。 */
+    private int startLine;
     private final List<JavaModuleDirective> moduleDirectives = new ArrayList<>();
     /** ジェネリック型パラメータ宣言（{@code "<T, U extends Number>"}）。なければ null。 */
     private String typeParameters;
@@ -63,6 +65,15 @@ public class JavaClassInfo {
         }
         sb.append(simpleName);
         return sb.toString();
+    }
+
+    /** クラス宣言の開始行 (1 始まり)。不明なら 0。 */
+    public int getStartLine() {
+        return startLine;
+    }
+
+    public void setStartLine(int startLine) {
+        this.startLine = Math.max(0, startLine);
     }
 
     public String getPackageName() {

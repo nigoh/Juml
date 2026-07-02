@@ -99,6 +99,8 @@ public final class JavaSourcePanel extends JPanel {
     private SwingWorker<LoadResult, Void> activeLoad;
     /** 表示完了後にスクロールしたいメソッド名 (なければ null)。 */
     private String pendingScrollMethod;
+    /** 表示完了後にスクロールしたい行番号 (1 始まり。0 なら無指定)。 */
+    private int pendingScrollLine;
     /** 折り返し表示中か。 */
     private boolean wrapping;
 
@@ -196,14 +198,29 @@ public final class JavaSourcePanel extends JPanel {
      * その名前のメソッド定義行へスクロール・強調する。
      */
     public void showFile(File file, String scrollToMethod) {
+        showFile(file, scrollToMethod, 0);
+    }
+
+    /** 指定ファイルを表示し、指定行 (1 始まり) へスクロールする。 */
+    public void showFileAtLine(File file, int line) {
+        showFile(file, null, line);
+    }
+
+    /**
+     * 指定ファイルを表示する。{@code lineHint} (1 始まり) が正なら、解析インデックス
+     * 由来の宣言行として優先的にその行へスクロールする。{@code scrollToMethod} が
+     * 非 null かつ lineHint の行にメソッド名が見当たらない場合 (解析後にソースが
+     * 編集されたなど) は、従来のヒューリスティック探索へフォールバックする。
+     */
+    public void showFile(File file, String scrollToMethod, int lineHint) {
         if (file == null) {
             showMessage(Messages.get("source.notFound"));
             return;
         }
-        // 同じファイルを再要求された場合は再読み込みしない (メソッドだけ移動)。
+        // 同じファイルを再要求された場合は再読み込みしない (行/メソッドだけ移動)。
         if (file.equals(currentFile) && (activeLoad == null || activeLoad.isDone())) {
-            if (scrollToMethod != null) {
-                scrollToMethod(scrollToMethod);
+            if (lineHint > 0 || scrollToMethod != null) {
+                scrollToMethodOrLine(scrollToMethod, lineHint);
             }
             return;
         }
@@ -211,6 +228,7 @@ public final class JavaSourcePanel extends JPanel {
             activeLoad.cancel(true);
         }
         pendingScrollMethod = scrollToMethod;
+        pendingScrollLine = lineHint;
         pathLabel.setText(file.getName());
         pathLabel.setToolTipText(file.getAbsolutePath());
         findBar.reset();
@@ -268,10 +286,12 @@ public final class JavaSourcePanel extends JPanel {
                         + Messages.get("source.highlightOmitted"));
                 report(target.getName() + ": " + Messages.get("source.highlightOmitted"));
             }
-            if (pendingScrollMethod != null) {
+            if (pendingScrollMethod != null || pendingScrollLine > 0) {
                 final String m = pendingScrollMethod;
+                final int line = pendingScrollLine;
                 pendingScrollMethod = null;
-                SwingUtilities.invokeLater(() -> scrollToMethod(m));
+                pendingScrollLine = 0;
+                SwingUtilities.invokeLater(() -> scrollToMethodOrLine(m, line));
             } else {
                 textPane.setCaretPosition(0);
             }
@@ -447,6 +467,42 @@ public final class JavaSourcePanel extends JPanel {
     // -------------------------------------------------------------------------
     // メソッドへスクロール
     // -------------------------------------------------------------------------
+
+    /**
+     * 宣言行ヒントとメソッド名からスクロール先を決める。行ヒントが正で、その行に
+     * メソッド名が含まれる (またはメソッド名指定なし) ならその行へ。そうでなければ
+     * ヒューリスティックのメソッド探索、それも無ければ行ヒントのみでジャンプする。
+     */
+    private void scrollToMethodOrLine(String methodName, int lineHint) {
+        if (lineHint > 0) {
+            String lineText = textOfLine(lineHint);
+            if (methodName == null || methodName.isEmpty()
+                    || (lineText != null && lineText.contains(methodName))) {
+                jumpToLine(lineHint);
+                return;
+            }
+        }
+        if (methodName != null && !methodName.isEmpty()) {
+            scrollToMethod(methodName);
+        } else if (lineHint > 0) {
+            jumpToLine(lineHint);
+        }
+    }
+
+    /** 指定行 (1 始まり) のテキストを返す。範囲外なら null。 */
+    private String textOfLine(int line) {
+        Element root = textPane.getDocument().getDefaultRootElement();
+        if (line < 1 || line > root.getElementCount()) {
+            return null;
+        }
+        Element el = root.getElement(line - 1);
+        try {
+            return textPane.getDocument().getText(el.getStartOffset(),
+                    el.getEndOffset() - el.getStartOffset());
+        } catch (BadLocationException ex) {
+            return null;
+        }
+    }
 
     /** メソッド名の定義らしき行を探してスクロールし、その行を一時的に選択強調する。 */
     private void scrollToMethod(String methodName) {

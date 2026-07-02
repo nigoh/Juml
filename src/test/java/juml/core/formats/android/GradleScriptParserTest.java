@@ -215,6 +215,61 @@ public class GradleScriptParserTest {
     }
 
     @Test
+    public void testFileDependencies() {
+        // リポジトリ同梱 JAR: files('...') は 1 ファイル 1 依存として取れること
+        String src =
+                "dependencies {\n"
+                        + "  implementation files('libs/foo.jar', \"libs/bar.jar\")\n"
+                        + "  api(files('vendor/baz.aar'))\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        assertEquals(3, info.getDependencies().size());
+        GradleDependency d0 = info.getDependencies().get(0);
+        assertEquals("implementation", d0.getScope());
+        assertTrue(d0.isFileDependency());
+        assertEquals("libs/foo.jar", d0.getFilePath());
+        assertNull(d0.getFileTreeDir());
+        assertEquals("libs/bar.jar", info.getDependencies().get(1).getFilePath());
+        GradleDependency d2 = info.getDependencies().get(2);
+        assertEquals("api", d2.getScope());
+        assertEquals("vendor/baz.aar", d2.getFilePath());
+    }
+
+    @Test
+    public void testFileTreeDependencies() {
+        // fileTree(dir: 'libs') / fileTree("libs") / mapOf("dir" to "libs") の 3 方言
+        String src =
+                "dependencies {\n"
+                        + "  implementation fileTree(dir: 'libs', include: ['*.jar'])\n"
+                        + "  api(fileTree(\"extra\"))\n"
+                        + "  runtimeOnly(fileTree(mapOf(\"dir\" to \"deep/libs\")))\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        assertEquals(3, info.getDependencies().size());
+        GradleDependency d0 = info.getDependencies().get(0);
+        assertTrue(d0.isFileDependency());
+        assertEquals("libs", d0.getFileTreeDir());
+        assertNull(d0.getFilePath());
+        assertEquals("extra", info.getDependencies().get(1).getFileTreeDir());
+        assertEquals("deep/libs", info.getDependencies().get(2).getFileTreeDir());
+    }
+
+    @Test
+    public void testFileDependencyDoesNotDuplicateAsNotation() {
+        // files('libs/a.jar') が DEP_NOTATION 側 (座標依存) として二重計上されないこと
+        String src =
+                "dependencies {\n"
+                        + "  implementation files('libs/a.jar')\n"
+                        + "  implementation 'com.example:lib:1.0'\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        assertEquals(2, info.getDependencies().size());
+        long fileDeps = info.getDependencies().stream()
+                .filter(GradleDependency::isFileDependency).count();
+        assertEquals(1, fileDeps);
+    }
+
+    @Test
     public void testKspDependencies() {
         // ksp はカタログ参照だけでなく直書き表記/プロジェクト参照でも取れること
         String src =

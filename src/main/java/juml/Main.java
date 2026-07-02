@@ -39,18 +39,42 @@ public class Main {
         SettingManager.getInstance().save();
     }
 
-    /** 実行中の jar が置かれているディレクトリを返す。不明なら null。 */
+    /**
+     * 実行中の jar が置かれているディレクトリを返す。不明なら null。
+     *
+     * <p>jpackage の app-image やカスタム ClassLoader 経由の起動では
+     * {@code getCodeSource()} からパスが取れないことがあるため、
+     * {@code -Djuml.home=<dir>} システムプロパティ →
+     * {@code JUML_HOME} 環境変数の順でフォールバックする。
+     * 解決できなかった場合はログに残す (同梱 dot/doxygen の検出が
+     * カレントディレクトリ基点のみになり、静かに機能低下するのを防ぐため)。</p>
+     */
     private static File detectJarDir() {
+        File fromCodeSource = null;
         try {
             URL loc = Main.class.getProtectionDomain().getCodeSource().getLocation();
-            if (loc == null) {
-                return null;
+            if (loc != null) {
+                File f = new File(loc.toURI());
+                fromCodeSource = f.isFile() ? f.getParentFile() : f;
             }
-            File f = new File(loc.toURI());
-            return f.isFile() ? f.getParentFile() : f;
-        } catch (URISyntaxException | SecurityException e) {
-            return null;
+        } catch (URISyntaxException | IllegalArgumentException | SecurityException e) {
+            juml.util.AppLog.info("Main",
+                    "jar location unresolved from code source: " + e);
         }
+        if (fromCodeSource != null && fromCodeSource.isDirectory()) {
+            return fromCodeSource;
+        }
+        String home = System.getProperty("juml.home", System.getenv("JUML_HOME"));
+        if (home != null && !home.isEmpty()) {
+            File dir = new File(home);
+            if (dir.isDirectory()) {
+                juml.util.AppLog.info("Main", "jar dir resolved via juml.home/JUML_HOME: " + dir);
+                return dir;
+            }
+        }
+        juml.util.AppLog.info("Main",
+                "jar dir not resolved — bundled dot/doxygen lookup falls back to cwd");
+        return null;
     }
 
     /**

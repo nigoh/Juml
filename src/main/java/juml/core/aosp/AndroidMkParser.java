@@ -382,9 +382,8 @@ public final class AndroidMkParser {
         }
         for (File c : children) {
             if (c.isDirectory()) {
-                String name = c.getName();
-                if (name.equals(".git") || name.equals(".gradle")
-                        || name.equals("build") || name.equals("out")) {
+                // Android.bp 走査と同じ AOSP 級除外 (prebuilts / .repo / out-soong 等) を適用
+                if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
                 collectMkFiles(c, out);

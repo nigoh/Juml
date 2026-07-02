@@ -123,6 +123,38 @@ public class DependencyJarIndexTest {
     }
 
     @Test
+    public void testIndexLocalArtifact() throws IOException {
+        // リポジトリ同梱 JAR (Gradle cache 外) を直接インデックスできること
+        Path tmp = Files.createTempDirectory("juml-localjar-");
+        try {
+            Path localJar = tmp.resolve("libs/sample-lib-1.0.jar");
+            Files.createDirectories(localJar.getParent());
+            try (InputStream in = openResource("/jars/sample-lib-1.0.jar")) {
+                Files.copy(in, localJar);
+            }
+            DependencyJarIndex idx = new DependencyJarIndex();
+            assertTrue(idx.indexLocalArtifact(localJar, null));
+            assertEquals(2, idx.indexedClassCount());
+            assertTrue(idx.getMissingArtifacts().isEmpty());
+            Optional<JavaClassInfo> foo = idx.resolve("com.example.Foo");
+            assertTrue("local jar class should resolve", foo.isPresent());
+            assertEquals(JavaClassInfo.Origin.EXTERNAL_JAR, foo.get().getOrigin());
+        } finally {
+            deleteRecursively(tmp);
+        }
+    }
+
+    @Test
+    public void testIndexLocalArtifactMissingFile() {
+        // 実体の無いローカル JAR は missing として記録される
+        DependencyJarIndex idx = new DependencyJarIndex();
+        Path bogus = Path.of("no-such-dir", "no-such.jar");
+        assertFalse(idx.indexLocalArtifact(bogus, null));
+        assertEquals(0, idx.indexedClassCount());
+        assertFalse(idx.getMissingArtifacts().isEmpty());
+    }
+
+    @Test
     public void testMissingPlaceholderHasMissingOrigin() {
         DependencyJarIndex idx = new DependencyJarIndex();
         JavaClassInfo p = idx.missingPlaceholder("com.foo.Bar");

@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
@@ -402,11 +403,82 @@ public final class UmlGenerator {
             for (GradleProjectInfo info : analysis.getGradleByModule().values()) {
                 all.addAll(info.getDependencies());
             }
-            return DependencyJarIndex.build(all, err);
+            DependencyJarIndex idx = DependencyJarIndex.build(all, err);
+            indexLocalJars(idx, root, analysis, err);
+            return idx;
         } catch (IOException ex) {
             err.onError(null, -1, "dependency index build failed: " + ex.getMessage());
             return new DependencyJarIndex();
         }
+    }
+
+    /**
+     * リポジトリに同梱されたローカル JAR/AAR をインデックスへ追加登録する。
+     * Gradle cache に無い依存でも、プロジェクト内に実体があれば
+     * {@code <<external>>} クラスとして解決できるようにするのが目的。
+     *
+     * <p>対象は各モジュールの build.gradle が宣言する
+     * {@code files('...')} / {@code fileTree(dir: '...')} と、
+     * 宣言が拾えなかった場合の保険としての慣習ディレクトリ {@code <module>/libs/}。</p>
+     */
+    private static void indexLocalJars(DependencyJarIndex idx, File root,
+                                       AndroidProjectAnalysis analysis,
+                                       ErrorListener err) {
+        java.util.Set<java.nio.file.Path> done = new java.util.HashSet<>();
+        for (Map.Entry<String, GradleProjectInfo> e
+                : analysis.getGradleByModule().entrySet()) {
+            java.nio.file.Path moduleDir = moduleDirOf(root, e.getKey());
+            for (GradleDependency d : e.getValue().getDependencies()) {
+                if (d.getFilePath() != null) {
+                    java.nio.file.Path p = moduleDir.resolve(d.getFilePath()).normalize();
+                    if (done.add(p)) {
+                        idx.indexLocalArtifact(p, err);
+                    }
+                } else if (d.getFileTreeDir() != null) {
+                    indexJarsUnder(idx, moduleDir.resolve(d.getFileTreeDir()).normalize(),
+                            done, err);
+                }
+            }
+            // 慣習の libs/ ディレクトリ (fileTree 宣言が .kts 方言などで
+            // 拾えなかった場合の保険。存在しなければ何もしない)
+            indexJarsUnder(idx, moduleDir.resolve("libs"), done, err);
+        }
+    }
+
+    /** ディレクトリ直下 (2 階層まで) の *.jar / *.aar をローカル依存として索引する。 */
+    private static void indexJarsUnder(DependencyJarIndex idx, java.nio.file.Path dir,
+                                       java.util.Set<java.nio.file.Path> done,
+                                       ErrorListener err) {
+        if (!java.nio.file.Files.isDirectory(dir)) {
+            return;
+        }
+        try (java.util.stream.Stream<java.nio.file.Path> walk
+                     = java.nio.file.Files.walk(dir, 2)) {
+            walk.filter(p -> {
+                String fn = p.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                return fn.endsWith(".jar") || fn.endsWith(".aar");
+            }).forEach(p -> {
+                java.nio.file.Path n = p.normalize();
+                if (done.add(n)) {
+                    idx.indexLocalArtifact(n, err);
+                }
+            });
+        } catch (IOException ex) {
+            err.onError(dir.toString(), -1,
+                    "local jar scan failed: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * {@link juml.core.formats.android.AndroidProjectAnalyzer#inferModuleName(File, File)}
+     * が返すモジュール名 (例: {@code app} / {@code core:common} / {@code :root}) から
+     * モジュールディレクトリを復元する。
+     */
+    private static java.nio.file.Path moduleDirOf(File root, String moduleName) {
+        if (moduleName == null || moduleName.isEmpty() || ":root".equals(moduleName)) {
+            return root.toPath();
+        }
+        return root.toPath().resolve(moduleName.replace(':', File.separatorChar));
     }
 
     private static final class FileParseOutcome {

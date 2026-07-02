@@ -72,6 +72,9 @@ public final class CliOptions {
     public final Option dataFlow = new Option(null, "data-flow", false);
     public final Option screenFlow = new Option(null, "screen-flow", false);
     public final Option androidBp = new Option(null, "android-bp", false);
+    public final Option androidMk = new Option(null, "android-mk", false);
+    public final Option vintf = new Option(null, "vintf", false);
+    public final Option partitions = new Option(null, "partitions", false);
     public final Option buildNinja = new Option(null, "build-ninja", false);
     public final Option intermediates = new Option(null, "intermediates", false);
     public final Option selinux = new Option(null, "selinux", false);
@@ -107,7 +110,8 @@ public final class CliOptions {
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
             vhalFlow, aidlBinding, erDiagram, dataFlow,
-            screenFlow, androidBp, buildNinja, intermediates, selinux, rro,
+            screenFlow, androidBp, androidMk, vintf, partitions,
+            buildNinja, intermediates, selinux, rro,
             settings, initFlow, actionMap,
             funcDiff, insights, includeTests,
             apkSummary, apkClassDiagram, apk, apkPackage, apkDecode, apkSmali,
@@ -227,19 +231,7 @@ public final class CliOptions {
         System.err.println("  --screen-flow: Screen transitions (Intent startActivity/setClass"
                 + " + Car App Library ScreenManager.push) as Markdown (with multi-step routes)"
                 + " + PlantUML state diagram.");
-        System.err.println("  --android-bp: Parse all Android.bp (Soong) files under"
-                + " the project and emit module inventory + dependency graph"
-                + " (Markdown + PlantUML).");
-        System.err.println("  --build-ninja: Analyze build.ninja (Soong) rule usage and"
-                + " target dependency graph aggregated by module"
-                + " (Markdown + PlantUML). Point at out/soong or a tree containing it.");
-        System.err.println("  --intermediates: Inventory of out/soong/.intermediates/"
-                + " artifacts grouped by module / variant / kind (Markdown + PlantUML).");
-        System.err.println("  --selinux: Parse all *.te SELinux policy files under"
-                + " the project (type declarations, allow/neverallow rules,"
-                + " Markdown report).");
-        System.err.println("  --rro-overlays: Detect Android Runtime Resource Overlays"
-                + " by scanning AndroidManifest.xml for <overlay> elements.");
+        printAospUsage();
         System.err.println("  --settings: Scan SharedPreferences get*/put* calls and"
                 + " res/xml/ Preference XML to report keys, types, and access locations"
                 + " (Markdown).");
@@ -274,5 +266,32 @@ public final class CliOptions {
         System.err.println("  input: Java/AIDL file, .jar/.aar/.class file (compiled bytecode),"
                 + " a Gradle/Android project directory, an .apk file, or an apktool-decoded"
                 + " directory (for --apk* modes).");
+    }
+
+    /** AOSP ビルドシステム系モード ({@code --android-bp} 〜 {@code --rro-overlays}) の説明。 */
+    private void printAospUsage() {
+        System.err.println("  --android-bp: Parse all Android.bp (Soong) files under"
+                + " the project and emit module inventory + dependency graph"
+                + " (Markdown + PlantUML).");
+        System.err.println("  --android-mk: Parse all Android.mk (legacy Make) files under"
+                + " the project and emit module inventory + dependency graph"
+                + " (Markdown + PlantUML), same shape as --android-bp.");
+        System.err.println("  --vintf: Scan VINTF manifests (manifest*.xml /"
+                + " compatibility_matrix*.xml) under the project and emit the HAL"
+                + " declaration report + diagram (Markdown + PlantUML).");
+        System.err.println("  --partitions: Aggregate Android.bp modules by partition"
+                + " (system/vendor/product/system_ext/odm) and emit per-partition"
+                + " breakdown + cross-partition dependency diagram"
+                + " (Markdown + PlantUML).");
+        System.err.println("  --build-ninja: Analyze build.ninja (Soong) rule usage and"
+                + " target dependency graph aggregated by module"
+                + " (Markdown + PlantUML). Point at out/soong or a tree containing it.");
+        System.err.println("  --intermediates: Inventory of out/soong/.intermediates/"
+                + " artifacts grouped by module / variant / kind (Markdown + PlantUML).");
+        System.err.println("  --selinux: Parse all *.te SELinux policy files under"
+                + " the project (type declarations, allow/neverallow rules,"
+                + " Markdown report).");
+        System.err.println("  --rro-overlays: Detect Android Runtime Resource Overlays"
+                + " by scanning AndroidManifest.xml for <overlay> elements.");
     }
 }

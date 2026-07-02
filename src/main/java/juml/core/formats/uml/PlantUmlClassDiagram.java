@@ -151,6 +151,13 @@ public final class PlantUmlClassDiagram {
          */
         public TypeRefResolver supertypeResolver;
         /**
+         * {@link #markExternalSupertypes} 時に、FQN が依存 JAR/AAR
+         * (Gradle cache・リポジトリ同梱のローカル JAR) に実在するかを判定する任意の判定器。
+         * prefix 集合で判定できない社内ライブラリ等を {@code <<external>>} 扱いに
+         * するために使う。null 可。
+         */
+        public java.util.function.Predicate<String> dependencyClassPredicate;
+        /**
          * {@code public} 可視性のクラス / フィールド / メソッドのみを表示する。
          * 既定 false (全可視性を表示)。
          */

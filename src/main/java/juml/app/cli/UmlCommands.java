@@ -57,6 +57,7 @@ public final class UmlCommands {
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos;
         // 機能A: 継承先の単純名を FQN へ解決する任意の resolver (プロジェクト解析時のみ構築)。
         juml.core.formats.uml.TypeRefResolver supertypeResolver = null;
+        juml.core.formats.uml.DependencyJarIndex depIndex = null;
         UmlGenerator.ParseMode parseMode = overrides != null
                 ? overrides.parseMode : UmlGenerator.ParseMode.FULL;
         if (fileIn.isDirectory()) {
@@ -67,6 +68,7 @@ public final class UmlCommands {
             juml.core.refs.NameResolver nr = new juml.core.refs.NameResolver(
                     result.getIndex(), result.getDependencyIndex());
             supertypeResolver = nr::resolve;
+            depIndex = result.getDependencyIndex();
         } else if (isArchiveFile(fileIn)) {
             // .jar / .aar / .class はコンパイル済みバイトコードとして直接解析する。
             infos = UmlGenerator.extractFromArchive(fileIn, listener);
@@ -134,6 +136,10 @@ public final class UmlCommands {
             }
             if (supertypeResolver != null) {
                 clOpts.supertypeResolver = supertypeResolver;
+            }
+            if (depIndex != null) {
+                final juml.core.formats.uml.DependencyJarIndex di = depIndex;
+                clOpts.dependencyClassPredicate = fqn -> di.resolve(fqn).isPresent();
             }
             output = juml.core.formats.uml.PlantUmlClassDiagram.generate(infos, clOpts);
         }

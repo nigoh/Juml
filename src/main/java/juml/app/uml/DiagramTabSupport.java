@@ -156,6 +156,21 @@ final class DiagramTabSupport {
      */
     static void showSource(JavaSourcePanel panel, TreeNodeOpenRequest treeSync,
                            ProjectAnalysisCache cache) {
+        showSource(panel, treeSync, cache, treeSync != null ? treeSync.methodInfo : null);
+    }
+
+    /**
+     * {@link #showSource(JavaSourcePanel, TreeNodeOpenRequest, ProjectAnalysisCache)} の
+     * メソッド上書き版。図上のメソッドリンクなど、タブの題材とは別のメソッドへ
+     * ジャンプしたいときに {@code methodOverride} を渡す。
+     *
+     * <p>着地行は解析インデックスの宣言行 ({@code JavaMethodInfo#getStartLine()} /
+     * {@code JavaClassInfo#getStartLine()}) を優先し、無ければ従来の
+     * ヒューリスティック探索にフォールバックする。</p>
+     */
+    static void showSource(JavaSourcePanel panel, TreeNodeOpenRequest treeSync,
+                           ProjectAnalysisCache cache,
+                           juml.core.formats.uml.JavaMethodInfo methodOverride) {
         String fqn = (treeSync != null && treeSync.classInfo != null)
                 ? treeSync.classInfo.getQualifiedName() : null;
         if (fqn == null) {
@@ -171,7 +186,48 @@ final class DiagramTabSupport {
             panel.showMessage(juml.util.Messages.get("source.notFound"));
             return;
         }
-        String method = treeSync.methodInfo != null ? treeSync.methodInfo.getName() : null;
-        panel.showFile(src, method);
+        String method = methodOverride != null ? methodOverride.getName() : null;
+        int lineHint = 0;
+        if (methodOverride != null && methodOverride.getStartLine() > 0) {
+            lineHint = methodOverride.getStartLine();
+        } else if (method != null) {
+            // リンククリック由来のスタブ (名前のみ) は、インデックスの詳細情報から宣言行を引く。
+            lineHint = methodStartLineFromIndex(cache, fqn, method);
+        } else {
+            // クラスタブなど: クラス宣言行があればファイル先頭ではなく宣言へ着地する。
+            lineHint = classStartLine(treeSync.classInfo, cache, fqn);
+        }
+        panel.showFile(src, method, lineHint);
+    }
+
+    /** インデックスの詳細情報 (Stage B) から同名メソッドの宣言行を引く。無ければ 0。 */
+    private static int methodStartLineFromIndex(ProjectAnalysisCache cache,
+                                                String fqn, String method) {
+        try {
+            juml.core.formats.uml.JavaClassInfo detail = cache.getIndex()
+                    .detail(fqn, juml.util.ErrorListener.silent());
+            if (detail == null) {
+                return 0;
+            }
+            for (juml.core.formats.uml.JavaMethodInfo m : detail.getMethods()) {
+                if (method.equals(m.getName()) && m.getStartLine() > 0) {
+                    return m.getStartLine();
+                }
+            }
+        } catch (RuntimeException ex) {
+            // 詳細昇格に失敗してもジャンプ自体は諦めない (ヒューリスティックへ)。
+        }
+        return 0;
+    }
+
+    /** クラス宣言行を treeSync のヘッダ → インデックスの順で引く。無ければ 0。 */
+    private static int classStartLine(juml.core.formats.uml.JavaClassInfo ci,
+                                      ProjectAnalysisCache cache, String fqn) {
+        if (ci.getStartLine() > 0) {
+            return ci.getStartLine();
+        }
+        return cache.getIndex().header(fqn)
+                .map(juml.core.formats.uml.JavaClassInfo::getStartLine)
+                .orElse(0);
     }
 }
