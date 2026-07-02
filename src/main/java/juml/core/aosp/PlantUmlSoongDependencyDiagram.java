@@ -176,9 +176,20 @@ public final class PlantUmlSoongDependencyDiagram {
 
     private static String alias(String name) {
         StringBuilder sb = new StringBuilder("m_");
+        boolean replaced = false;
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) ? c : '_');
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+            } else {
+                sb.append('_');
+                replaced |= c != '_';
+            }
+        }
+        // "foo-bar" と "foo.bar" が同じ "m_foo_bar" に潰れて別モジュールが同一ノードへ
+        // 合成されるのを防ぐため、置換が起きた名前には元名のハッシュを付けて一意化する。
+        if (replaced) {
+            sb.append('_').append(Integer.toHexString(name.hashCode() & 0xfffff));
         }
         return sb.toString();
     }

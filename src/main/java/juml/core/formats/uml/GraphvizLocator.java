@@ -37,10 +37,13 @@ public final class GraphvizLocator {
         cachedJarDir = jarDir;
         if (System.getProperty(PLANTUML_DOT_PROP) != null) {
             PlantUmlRenderer.setGraphvizAvailable(true);
+            logResolved("system property " + PLANTUML_DOT_PROP,
+                    System.getProperty(PLANTUML_DOT_PROP));
             return;
         }
         if (System.getenv("GRAPHVIZ_DOT") != null) {
             PlantUmlRenderer.setGraphvizAvailable(true);
+            logResolved("GRAPHVIZ_DOT env", System.getenv("GRAPHVIZ_DOT"));
             return;
         }
         if (jarDir != null) {
@@ -48,6 +51,7 @@ public final class GraphvizLocator {
             if (bundled != null) {
                 System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
                 PlantUmlRenderer.setGraphvizAvailable(true);
+                logResolved("bundled binary", bundled.getAbsolutePath());
                 return;
             }
         }
@@ -55,7 +59,19 @@ public final class GraphvizLocator {
         if (systemDot != null) {
             System.setProperty(PLANTUML_DOT_PROP, systemDot);
             PlantUmlRenderer.setGraphvizAvailable(true);
+            logResolved("PATH", systemDot);
+            return;
         }
+        // 見つからない場合も、どのレイアウトエンジンで描画するかをログに残す
+        // (描画失敗の報告時に環境を切り分けやすくするため)。
+        juml.util.AppLog.info("GraphvizLocator",
+                "Graphviz dot not found — using bundled Smetana layout engine");
+    }
+
+    /** dot の解決元とパスを AppLog に記録する。 */
+    private static void logResolved(String via, String path) {
+        juml.util.AppLog.info("GraphvizLocator",
+                "Graphviz dot resolved via " + via + ": " + path);
     }
 
     /**

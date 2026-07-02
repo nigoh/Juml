@@ -30,7 +30,7 @@ public final class PlantUmlLayoutScreenDiagram {
         public boolean showIds = true;
         public int maxNodes = 200;
         public int maxDepth = 12;
-        public int textMaxLen = 30;
+        public int textMaxLen = 0;
         public String title;
         /** {@code @string/foo} を実文言へ解決する関数。null なら解決しない。 */
         public Function<String, String> stringResolver;
@@ -203,7 +203,7 @@ public final class PlantUmlLayoutScreenDiagram {
         if (o.showIds && node.shortId() != null) {
             sb.append(" #").append(node.shortId());
         }
-        return sanitize(sb.toString(), o.textMaxLen + 12);
+        return sanitize(sb.toString(), o.textMaxLen > 0 ? o.textMaxLen + 12 : 0);
     }
 
     /** {@code android:text} を表示用テキストへ解決する ({@code @string/} は実文言へ)。 */

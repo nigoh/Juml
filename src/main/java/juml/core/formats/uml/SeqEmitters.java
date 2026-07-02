@@ -76,7 +76,7 @@ final class SeqEmitters {
             for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                 if (!wl.isEmpty()) {
                     body.append(indent).append("  ")
-                            .append(PlantUmlCommentFormatter.escapeHtml(wl)).append('\n');
+                            .append(PlantUmlCommentFormatter.escapeText(wl)).append('\n');
                     any = true;
                 }
             }
@@ -95,7 +95,7 @@ final class SeqEmitters {
                     for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                         if (!wl.isEmpty()) {
                             body.append(indent).append("  // ")
-                                    .append(PlantUmlCommentFormatter.escapeHtml(wl)).append('\n');
+                                    .append(PlantUmlCommentFormatter.escapeText(wl)).append('\n');
                         }
                     }
                 }

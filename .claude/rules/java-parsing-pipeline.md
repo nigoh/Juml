@@ -40,8 +40,10 @@ PlantUML テキスト → SVG/PNG
   削減が目的なので、ヘッダ抽出に詳細パースを混ぜ込まない。
 - **ClassIndex の並行性**: `put()` は `synchronized`、`detailedCache` は `ConcurrentHashMap`。
   Stage B 昇格はマルチスレッドから安全に呼べる前提を崩さない。
-- **PlantUML テキスト生成**: `<` `>` `&` などのエスケープを忘れない。`skinparam` / `!theme` と
-  `UmlOverrides` の関係を尊重する。
+- **PlantUML テキスト生成**: テキスト文脈の `<` は `PlantUmlCommentFormatter.escapeText`
+  (チルダエスケープ `~<`) で無害化する。同梱 PlantUML 1.2026.x は `&lt;` 等の HTML
+  エンティティを解釈せずそのまま表示するため、**HTML エンティティ化は使わない**
+  (`>` と `&` は生のままで安全)。`skinparam` / `!theme` と `UmlOverrides` の関係を尊重する。
 - **テストの追従**: ロジックを変えたら `src/test/java/juml/core/formats/**` の該当テストを
   同時に更新し、壊れたまま放置しない。
 - **コメントは日本語の既存スタイルを維持**する。

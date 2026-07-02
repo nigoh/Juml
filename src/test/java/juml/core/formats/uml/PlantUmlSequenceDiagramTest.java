@@ -72,17 +72,17 @@ public class PlantUmlSequenceDiagramTest {
 
     @Test
     public void testNoteBodyHtmlEscaped() {
-        // NOTE モードの note 本文も < > & をエスケープする (INLINE と挙動を揃え、
-        // List<String> 等が PlantUML のタグ誤認で崩れるのを防ぐ)。
+        // NOTE モードの note 本文もタグ開始をチルダエスケープする (INLINE と挙動を
+        // 揃え、List<String> 等が PlantUML のタグ誤認で崩れるのを防ぐ)。
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { /** filter List<String> when x > 0 & ok */"
                         + " void run() { helper(); } void helper() {} }");
         PlantUmlSequenceDiagram.Options o = new PlantUmlSequenceDiagram.Options();
         o.commentStyle = PlantUmlClassDiagram.CommentStyle.NOTE;
         String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", o);
-        assertTrue(puml, puml.contains("List&lt;String&gt;"));
-        assertTrue(puml, puml.contains("&amp;"));
-        assertFalse("raw < > must not leak into NOTE body:\n" + puml,
+        assertTrue(puml, puml.contains("List~<String>"));
+        assertTrue(puml, puml.contains("x > 0 & ok"));
+        assertFalse("unescaped < must not leak into NOTE body:\n" + puml,
                 puml.contains("List<String>"));
     }
 
@@ -244,8 +244,8 @@ public class PlantUmlSequenceDiagramTest {
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { Service s; void run() { if (x > 0) { s.go(); } } }");
         String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", null);
-        // 制御フロー guard も escapeLabel を通るため < > & は HTML エンティティ化される
-        assertTrue(puml, puml.contains("opt x &gt; 0"));
+        // 制御フロー guard も escapeLabel を通る (> は生のままで安全に表示される)
+        assertTrue(puml, puml.contains("opt x > 0"));
         assertTrue(puml, puml.contains("A -> Service: Service.go()"));
         assertTrue(puml, puml.contains("end"));
     }
@@ -410,7 +410,7 @@ public class PlantUmlSequenceDiagramTest {
                         + "} void tick() {} }");
         String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", null);
         assertTrue(puml, puml.contains("loop for"));
-        assertTrue(puml, puml.contains("opt i &gt; 0"));
+        assertTrue(puml, puml.contains("opt i > 0"));
         assertTrue(puml, puml.contains("A -> A: A.tick()"));
     }
 

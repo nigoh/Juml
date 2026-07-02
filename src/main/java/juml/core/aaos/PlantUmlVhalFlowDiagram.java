@@ -98,9 +98,20 @@ public final class PlantUmlVhalFlowDiagram {
 
     private static String alias(String prefix, String id) {
         StringBuilder sb = new StringBuilder(prefix).append('_');
+        boolean replaced = false;
         for (int i = 0; i < id.length(); i++) {
             char c = id.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) ? c : '_');
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+            } else {
+                sb.append('_');
+                replaced |= c != '_';
+            }
+        }
+        // "a.b" と "a-b" が同じ別名に潰れて別ノードが合成されないよう、
+        // 置換が起きた id には元 id のハッシュを付けて一意化する。
+        if (replaced) {
+            sb.append('_').append(Integer.toHexString(id.hashCode() & 0xfffff));
         }
         return sb.toString();
     }

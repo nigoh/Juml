@@ -79,6 +79,9 @@ public final class PlantUmlRenderer {
     /** PlantUML のキャンバスサイズ上限を制御するシステムプロパティ / 環境変数名。 */
     private static final String LIMIT_SIZE_PROP = "PLANTUML_LIMIT_SIZE";
 
+    /** レンダリング中に捕捉する stderr の最大保持バイト数 (末尾のみ保持)。 */
+    private static final int STDERR_CAPTURE_MAX = 64 * 1024;
+
     /**
      * PNG ラスタライズ時の 1 辺あたり最大ピクセル数の既定値。PlantUML 既定の 4096 では
      * 巨大なクラス図/シーケンス図が PNG エクスポートで切り詰められてしまうため、より大きく取る。
@@ -208,7 +211,9 @@ public final class PlantUmlRenderer {
     /** PlantUML テキストを SVG として OutputStream に書き出す。
      *
      * <p>レンダリング結果が PlantUML のエラー画像にすり替わっていた場合は
-     * {@link PlantUmlRenderFailedException} を投げる。</p>
+     * {@link PlantUmlRenderFailedException} を投げる。失敗時はエラー SVG から
+     * 抽出した診断 (行番号・エラーテキスト) と stderr の末尾を例外に添え、
+     * {@link juml.util.AppLog} にも記録する。</p>
      */
     public static void renderSvg(String puml, OutputStream out) throws IOException {
         if (out == null) {
@@ -220,13 +225,23 @@ public final class PlantUmlRenderer {
             return;
         }
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        // Smetana/PlantUML が stderr へ直接書くデバッグ出力を捕捉する。verbose なら
+        // 元の stderr にも素通しし、非 verbose なら画面には出さない。いずれの場合も
+        // 失敗時の診断用に末尾を保持する (従来は非 verbose で完全に捨てていた)。
+        // Smetana は巨大な図で大量に出力するため、末尾のみ保持する有界バッファを使う。
+        StderrTailBuffer errCapture = new StderrTailBuffer(STDERR_CAPTURE_MAX);
         PrintStream origErr = System.err;
-        PrintStream sink = null;
-        if (!verbose) {
-            sink = new PrintStream(OutputStream.nullOutputStream(), false,
-                    StandardCharsets.UTF_8);
-            System.setErr(sink);
-        }
+        PrintStream capture = new PrintStream(errCapture, true, StandardCharsets.UTF_8) {
+            @Override
+            public void write(byte[] b, int off, int len) {
+                super.write(b, off, len);
+                if (verbose) {
+                    origErr.write(b, off, len);
+                    origErr.flush();
+                }
+            }
+        };
+        System.setErr(capture);
         try {
             BiConsumer<String, OutputStream> stub = rendererImplForTest;
             if (stub != null) {
@@ -236,22 +251,163 @@ public final class PlantUmlRenderer {
                 reader.outputImage(buf, new FileFormatOption(FileFormat.SVG));
             }
         } finally {
-            if (sink != null) {
-                System.setErr(origErr);
-                sink.close();
-            }
+            System.setErr(origErr);
+            capture.close();
         }
         byte[] bytes = buf.toByteArray();
         if (isErrorSvg(bytes)) {
-            // 描画失敗時は生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが
-            // 見つかればエラーメッセージへ添える (原因切り分けを助ける)。
-            String hint = PlantUmlSyntaxChecker.summarize(puml);
-            String base = "PlantUML layout error (likely Smetana). "
-                    + "Use the .puml source and re-render externally.";
-            throw new PlantUmlRenderFailedException(
-                    hint.isEmpty() ? base : base + " Possible cause — " + hint);
+            throw buildRenderFailure(puml, bytes, errCapture);
         }
         out.write(bytes);
+    }
+
+    /**
+     * エラー SVG・stderr 捕捉・軽量リンタの結果を突き合わせて、原因調査に十分な情報を
+     * 持つ {@link PlantUmlRenderFailedException} を構築し、{@link juml.util.AppLog} に
+     * 詳細を記録する。
+     */
+    private static PlantUmlRenderFailedException buildRenderFailure(
+            String puml, byte[] errorSvg, StderrTailBuffer errCapture) {
+        String detail = extractErrorDetail(errorSvg);
+        int errorLine = extractErrorLine(detail);
+        String stderrTail = tailOf(errCapture.tailString(), 2000);
+        // 生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが見つかれば添える。
+        String hint = PlantUmlSyntaxChecker.summarize(puml);
+
+        StringBuilder msg = new StringBuilder("PlantUML render failed");
+        if (errorLine > 0) {
+            msg.append(" at line ").append(errorLine).append(" of generated source");
+        }
+        msg.append('.');
+        if (!detail.isEmpty()) {
+            msg.append(" PlantUML says: ").append(detail);
+        }
+        if (!hint.isEmpty()) {
+            msg.append(" Possible cause — ").append(hint);
+        }
+        msg.append(" (layout=").append(graphvizAvailable ? "graphviz" : "smetana").append(')');
+
+        StringBuilder log = new StringBuilder(msg);
+        log.append('\n');
+        appendPumlExcerpt(log, puml, errorLine);
+        if (!stderrTail.isEmpty()) {
+            log.append("\n--- stderr tail ---\n").append(stderrTail);
+        }
+        juml.util.AppLog.error("PlantUmlRenderer", log.toString());
+
+        return new PlantUmlRenderFailedException(msg.toString(), errorLine, detail, stderrTail);
+    }
+
+    /**
+     * エラー SVG のテキストノードから診断メッセージを抽出する。PlantUML のエラー画像は
+     * {@code [From string (line N) ]}・失敗した行の内容・{@code Syntax Error?} 等を
+     * {@code <text>} 要素として含むため、それらを連結して返す (最大 500 文字)。
+     */
+    static String extractErrorDetail(byte[] svgBytes) {
+        if (svgBytes == null || svgBytes.length == 0) {
+            return "";
+        }
+        String svg = new String(svgBytes, 0, Math.min(svgBytes.length, 65536),
+                StandardCharsets.UTF_8);
+        StringBuilder sb = new StringBuilder();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<text[^>]*>([^<]+)</text>").matcher(svg);
+        while (m.find() && sb.length() < 500) {
+            String t = m.group(1).trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            // エラー画像のバナー文言 (ジョーク文含む) はノイズなので除外する
+            if (t.startsWith("An error has occured")
+                    || t.contains("plan comes together")
+                    || t.startsWith("Diagram size")) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(" | ");
+            }
+            sb.append(t);
+        }
+        return sb.toString();
+    }
+
+    /** 診断テキスト中の {@code [From string (line N)} から行番号を取り出す。無ければ -1。 */
+    static int extractErrorLine(String detail) {
+        if (detail == null || detail.isEmpty()) {
+            return -1;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\[From string \\(line (\\d+)\\)").matcher(detail);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException ignored) {
+                // 桁あふれ等は不明扱い
+            }
+        }
+        return -1;
+    }
+
+    /** 失敗行の前後数行を行番号付きでログへ添える。行番号不明なら先頭数行のみ。 */
+    private static void appendPumlExcerpt(StringBuilder log, String puml, int errorLine) {
+        String[] lines = puml.split("\n", -1);
+        int center = errorLine > 0 ? errorLine : 1;
+        int from = Math.max(1, center - 3);
+        int to = Math.min(lines.length, center + 3);
+        log.append("--- generated PlantUML (lines ").append(from).append('-').append(to)
+                .append(" of ").append(lines.length).append(") ---");
+        for (int i = from; i <= to; i++) {
+            log.append('\n').append(i == errorLine ? ">" : " ")
+                    .append(String.format("%4d| ", i)).append(lines[i - 1]);
+        }
+    }
+
+    /** 文字列の末尾 {@code maxChars} 文字を返す (診断ログの肥大化防止)。 */
+    private static String tailOf(String s, int maxChars) {
+        if (s == null) {
+            return "";
+        }
+        String t = s.trim();
+        return t.length() <= maxChars ? t : "…" + t.substring(t.length() - maxChars);
+    }
+
+    /** レンダリング中の stderr 捕捉に使う「末尾 maxBytes だけ保持する」有界バッファ。 */
+    private static final class StderrTailBuffer extends OutputStream {
+        private final byte[] ring;
+        private int pos;
+        private long total;
+
+        StderrTailBuffer(int maxBytes) {
+            this.ring = new byte[maxBytes];
+        }
+
+        @Override
+        public void write(int b) {
+            ring[pos] = (byte) b;
+            pos = (pos + 1) % ring.length;
+            total++;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            for (int i = 0; i < len; i++) {
+                write(b[off + i]);
+            }
+        }
+
+        /** 保持している末尾バイト列を UTF-8 文字列で返す。 */
+        String tailString() {
+            if (total <= 0) {
+                return "";
+            }
+            if (total < ring.length) {
+                return new String(ring, 0, (int) total, StandardCharsets.UTF_8);
+            }
+            byte[] linear = new byte[ring.length];
+            System.arraycopy(ring, pos, linear, 0, ring.length - pos);
+            System.arraycopy(ring, 0, linear, ring.length - pos, pos);
+            return new String(linear, StandardCharsets.UTF_8);
+        }
     }
 
     /**

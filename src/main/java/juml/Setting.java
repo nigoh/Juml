@@ -70,7 +70,7 @@ public class Setting {
     /** 関係線を種別ごとに色分け (継承=緑/実装=青/利用=灰破線) して大規模図を追いやすくするか。 */
     private boolean classDiagramColorCodeRelations = false;
     /** コメントの最大文字数。INLINE では省略幅、NOTE では折り返し幅として使用 (0 で非表示)。 */
-    private int classDiagramCommentMaxLength = 60;
+    private int classDiagramCommentMaxLength = 0;
     /** 非表示アノテーション名の CSV (例: "Override,SuppressWarnings")。 */
     private String classDiagramHiddenAnnotations = "Override,SuppressWarnings";
 
@@ -281,6 +281,9 @@ public class Setting {
                 Boolean.toString(classDiagramColorCodeRelations));
         props.setProperty("classDiagram.commentMaxLength",
                 Integer.toString(classDiagramCommentMaxLength));
+        // 旧既定値 60 → 0 の一括移行を済ませた印。これが立っていれば以後 60 は
+        // ユーザ指定値として尊重する (loadFromFile 参照)。
+        props.setProperty("classDiagram.commentMaxLength.migrated", "true");
         props.setProperty("classDiagram.hiddenAnnotations",
                 classDiagramHiddenAnnotations);
         props.setProperty("callGraph.maxDepth", Integer.toString(callGraphMaxDepth));
@@ -356,8 +359,16 @@ public class Setting {
                 props.getProperty("classDiagram.markExternalSupertypes"), false);
         s.classDiagramColorCodeRelations = parseBooleanSafe(
                 props.getProperty("classDiagram.colorCodeRelations"), false);
-        s.classDiagramCommentMaxLength = parseIntSafe(
-                props.getProperty("classDiagram.commentMaxLength"), 60);
+        // コメント最大長は既定を 60 → 0 (無制限 = 全文表示) に変更した。旧バージョンが
+        // 既定値のまま書き出した 60 が残っていると全文表示にならないため、未移行の
+        // 設定ファイルに限り旧既定値 60 を新既定値 0 へ移行する (それ以外のユーザ指定値、
+        // および移行後に明示設定された 60 はそのまま尊重する)。
+        int storedCommentMax = parseIntSafe(
+                props.getProperty("classDiagram.commentMaxLength"), 0);
+        boolean commentMaxMigrated = parseBooleanSafe(
+                props.getProperty("classDiagram.commentMaxLength.migrated"), false);
+        s.classDiagramCommentMaxLength =
+                (!commentMaxMigrated && storedCommentMax == 60) ? 0 : storedCommentMax;
         s.classDiagramHiddenAnnotations = stringOrDefault(
                 props.getProperty("classDiagram.hiddenAnnotations"),
                 "Override,SuppressWarnings");

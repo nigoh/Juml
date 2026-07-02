@@ -142,8 +142,8 @@ public class PlantUmlPackageDiagramTest {
 
     @Test
     public void testTitleWithSpecialCharsEscaped() {
-        // title に < > & が含まれる場合、PlantUML が HTML タグと誤認しないよう
-        // &lt; &gt; &amp; に変換されること。
+        // title に < が含まれる場合、PlantUML がタグと誤認しないよう
+        // ~< にチルダエスケープされること (> & は生のままで安全)。
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "package x; class Foo {}");
         PlantUmlPackageDiagram.Options opts = new PlantUmlPackageDiagram.Options();
@@ -151,8 +151,8 @@ public class PlantUmlPackageDiagramTest {
         opts.includeLegend = false;
         String puml = PlantUmlPackageDiagram.generate(infos, opts);
         assertTrue("escaped title expected: " + puml,
-                puml.contains("title A&lt;B&gt;&amp;C"));
-        assertFalse("raw < must not appear in title: " + puml,
+                puml.contains("title A~<B>&C"));
+        assertFalse("unescaped < must not appear in title: " + puml,
                 puml.contains("title A<B>"));
     }
 
