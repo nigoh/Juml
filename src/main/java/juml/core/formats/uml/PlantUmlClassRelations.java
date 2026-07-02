@@ -225,7 +225,7 @@ final class PlantUmlClassRelations {
         // parent alias → 子エイリアスの順序リスト (extends のみ追跡)
         java.util.Map<String, List<String>> childrenByParent = new java.util.LinkedHashMap<>();
         for (JavaClassInfo c : classes) {
-            if (!o.showInheritance) break;
+            if (!o.showInheritance) return;
             if (c.getSuperClass() == null || c.getSuperClass().isEmpty()) continue;
             String childAlias = aliasByQn.get(c.getQualifiedName());
             if (childAlias == null) continue;
@@ -347,6 +347,13 @@ final class PlantUmlClassRelations {
             return null;
         }
         String t = type.replaceAll("\\[\\]", "").trim();
+        // ワイルドカード境界を除去: "? extends Foo" / "? super Foo" → "Foo"
+        // 型アノテーション付き境界にも対応: "? extends @NonNull Foo" → "Foo"
+        // (@javax.annotation.Nullable のような完全修飾名アノテーションも除去する)
+        t = t.replaceAll(
+                "^\\?\\s+(?:extends|super)\\s+"
+                        + "(?:@[A-Za-z_$][A-Za-z0-9_$.]*(?:\\([^)]*\\))?\\s+)*",
+                "").trim();
         // 一番外側のジェネリックがあれば、その引数を再帰的に検索
         int lt = t.indexOf('<');
         if (lt >= 0) {

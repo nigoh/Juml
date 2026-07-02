@@ -57,6 +57,20 @@ import static org.junit.Assert.assertTrue;
  * <p>ヘッドレス環境では {@link Assume} でスキップ。CI で実行する場合は
  * {@code xvfb-run -a ./gradlew test} のように仮想ディスプレイを与えること。</p>
  *
+ * <h3>Xvfb 環境でもスキップされる場合について</h3>
+ * <p>{@code xvfb-run -a} で {@code DISPLAY} が設定されると
+ * {@code GraphicsEnvironment.isHeadless()} は {@code false} を返すため、
+ * {@link #requireDisplay()} の {@link Assume} は通過する。
+ * しかしその後 {@link #awaitInteractiveClassDiagram} 内でスキップが発生することがある。</p>
+ * <p>原因は Batik による SVG ヘッドフルレンダリングが Xvfb 環境の制限に依存するため:
+ * <ol>
+ *   <li>JVM フォントが見つからず PlantUML 描画が {@code status.renderFailed} で終端する</li>
+ *   <li>CPU 負荷や描画タイミングにより 60 秒以内にインタラクティブリンク領域が揃わない</li>
+ * </ol>
+ * これらは正当な環境依存スキップ (WM/フォント非依存の単体テストは別クラスで担保)。
+ * 再発防止: {@link #awaitInteractiveClassDiagram} 内の {@code Assume.assumeTrue} が
+ * スキップのエントリポイントであり、ログには {@code "skipping interactive-link E2E"} が出る。</p>
+ *
  * <p>各ステップで {@code build/playwright/gui/} 配下に PNG スクリーンショットを保存する。</p>
  * <ul>
  *   <li>{@code 01-class-diagram.png} - 初期表示のクラス図</li>
@@ -75,6 +89,11 @@ public class UmlMainFrameRightClickIT {
 
     @BeforeClass
     public static void requireDisplay() {
+        // DISPLAY が設定されていなければ headless=true になり、ここでスキップ。
+        // DISPLAY があっても (xvfb-run -a 等) Batik ヘッドフルレンダリングが失敗/タイムアウト
+        // すると awaitInteractiveClassDiagram() 内の Assume.assumeTrue でスキップされる。
+        // これは正当な環境依存スキップであり、クラス図の SVG/リンク単体検証は
+        // PlantUmlClassDiagramTest / PlantUmlSvgRendererTest で担保している。
         Assume.assumeFalse(
                 "DISPLAY が無い (xvfb-run でラップしてください)",
                 GraphicsEnvironment.isHeadless());

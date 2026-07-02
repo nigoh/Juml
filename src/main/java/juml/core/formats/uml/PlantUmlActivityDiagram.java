@@ -91,8 +91,13 @@ public final class PlantUmlActivityDiagram {
         if (o.title != null && !o.title.isEmpty()) {
             out.append("title ").append(o.title).append('\n');
         } else {
-            out.append("title ").append(cls.getSimpleName()).append('.')
-                    .append(method.getName()).append('\n');
+            // クラス名・メソッド名に < > & が含まれる場合 (合成メソッド等) をエスケープする
+            // (シーケンス図の同箇所と対称)
+            out.append("title ")
+                    .append(PlantUmlCommentFormatter.escapeHtml(cls.getSimpleName()))
+                    .append('.')
+                    .append(PlantUmlCommentFormatter.escapeHtml(method.getName()))
+                    .append('\n');
         }
         // メソッド JavaDoc を冒頭の note として出力
         if (o.showComments) {

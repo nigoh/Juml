@@ -89,4 +89,37 @@ public class KnownTypeIndexTest {
         assertEquals(PlantUmlClassRelations.pickUsageTarget("Foo", new KnownTypeIndex(k)),
                 PlantUmlClassRelations.pickUsageTarget("Foo", k));
     }
+
+    // ---------- Fix: ワイルドカードジェネリクスの usage 矢印欠落 (回帰テスト) ----------
+
+    @Test
+    public void wildcardExtendsBoundIsResolved() {
+        // "? extends Foo" の境界型 Foo を既知クラスとして解決できること
+        KnownTypeIndex idx = new KnownTypeIndex(known("com.demo.Foo"));
+        assertEquals("com.demo.Foo",
+                PlantUmlClassRelations.pickUsageTarget("? extends Foo", idx));
+    }
+
+    @Test
+    public void wildcardSuperBoundIsResolved() {
+        // "? super Bar" の境界型 Bar を既知クラスとして解決できること
+        KnownTypeIndex idx = new KnownTypeIndex(known("com.demo.Bar"));
+        assertEquals("com.demo.Bar",
+                PlantUmlClassRelations.pickUsageTarget("? super Bar", idx));
+    }
+
+    @Test
+    public void wildcardBoundInsideGenericIsResolved() {
+        // List<? extends Foo> のようにジェネリクス引数が ? extends 境界でも解決できること
+        KnownTypeIndex idx = new KnownTypeIndex(known("com.demo.Foo"));
+        assertEquals("com.demo.Foo",
+                PlantUmlClassRelations.pickUsageTarget("java.util.List<? extends Foo>", idx));
+    }
+
+    @Test
+    public void wildcardUnboundedReturnsNull() {
+        // 境界なし "?" は既知クラスに解決できない
+        KnownTypeIndex idx = new KnownTypeIndex(known("com.demo.Foo"));
+        assertNull(PlantUmlClassRelations.pickUsageTarget("?", idx));
+    }
 }

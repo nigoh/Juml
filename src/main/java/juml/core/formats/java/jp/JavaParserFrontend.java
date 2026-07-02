@@ -99,8 +99,90 @@ public final class JavaParserFrontend {
     private static final java.util.regex.Pattern TYPE_DECL = java.util.regex.Pattern.compile(
             "(?:\\b(?:class|interface|enum|record)|@interface)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
 
+    /**
+     * ソースからコメント・文字列リテラルを空白に置き換えたテキストを返す。
+     *
+     * <p>{@link #recoverSkeletons} が文字列/コメント内に書かれた "class Foo" などを
+     * 誤って型宣言と認識しないようにするための前処理。行番号を保つため
+     * 置換後の文字数は元と同じにする（改行はそのまま残す）。</p>
+     */
+    private static String stripStringsAndComments(String src) {
+        int len = src.length();
+        StringBuilder sb = new StringBuilder(len);
+        int i = 0;
+        while (i < len) {
+            char c = src.charAt(i);
+            // 行コメント: 行末まで空白で埋める
+            if (c == '/' && i + 1 < len && src.charAt(i + 1) == '/') {
+                while (i < len && src.charAt(i) != '\n') {
+                    sb.append(' ');
+                    i++;
+                }
+                continue;
+            }
+            // ブロックコメント: */ まで空白で埋める（改行は保持）
+            if (c == '/' && i + 1 < len && src.charAt(i + 1) == '*') {
+                sb.append("  "); // '/' と '*' の 2 文字
+                i += 2;
+                while (i < len) {
+                    char d = src.charAt(i);
+                    if (d == '*' && i + 1 < len && src.charAt(i + 1) == '/') {
+                        sb.append("  ");
+                        i += 2;
+                        break;
+                    }
+                    sb.append(d == '\n' ? '\n' : ' ');
+                    i++;
+                }
+                continue;
+            }
+            // テキストブロック: """ ... """ まで空白で埋める
+            if (c == '"' && i + 2 < len
+                    && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"') {
+                sb.append("   ");
+                i += 3;
+                while (i < len) {
+                    char d = src.charAt(i);
+                    if (d == '"' && i + 2 < len
+                            && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"') {
+                        sb.append("   ");
+                        i += 3;
+                        break;
+                    }
+                    sb.append(d == '\n' ? '\n' : ' ');
+                    i++;
+                }
+                continue;
+            }
+            // 文字列リテラル: " ... " まで空白で埋める（エスケープ考慮）
+            if (c == '"' || c == '\'') {
+                char delim = c;
+                sb.append(' ');
+                i++;
+                while (i < len) {
+                    char d = src.charAt(i);
+                    if (d == '\\' && i + 1 < len) {
+                        sb.append("  ");
+                        i += 2;
+                        continue;
+                    }
+                    sb.append(d == '\n' ? '\n' : ' ');
+                    i++;
+                    if (d == delim) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            sb.append(c);
+            i++;
+        }
+        return sb.toString();
+    }
+
     private static void recoverSkeletons(String src, String pkg, List<JavaClassInfo> out) {
-        java.util.regex.Matcher m = TYPE_DECL.matcher(src);
+        // コメント・文字列内の型キーワードを誤検出しないよう事前に除去する
+        java.util.regex.Matcher m = TYPE_DECL.matcher(stripStringsAndComments(src));
         while (m.find()) {
             JavaClassInfo c = new JavaClassInfo();
             c.setPackageName(pkg);

@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import org.assertj.swing.edt.GuiActionRunner;
 import org.junit.Test;
 
 import javax.swing.JPanel;
@@ -44,7 +45,8 @@ public class TabMruControllerTest {
     @Test
     public void mostRecentlyActivatedComesFirst() {
         JPanel[] dyn = new JPanel[3];
-        JTabbedPane tabs = pane(dyn);
+        // Swing コンポーネントの生成は EDT 上で行う (EDT 規律)
+        JTabbedPane tabs = GuiActionRunner.execute(() -> pane(dyn));
         TabMruController mru = new TabMruController(tabs, () -> 3);
         mru.onActivated(dyn[0], "A");
         mru.onActivated(dyn[1], "B");
@@ -56,7 +58,7 @@ public class TabMruControllerTest {
     @Test
     public void closingDropsFromMru() {
         JPanel[] dyn = new JPanel[3];
-        JTabbedPane tabs = pane(dyn);
+        JTabbedPane tabs = GuiActionRunner.execute(() -> pane(dyn));
         TabMruController mru = new TabMruController(tabs, () -> 3);
         mru.onActivated(dyn[0], "A");
         mru.onActivated(dyn[1], "B");
@@ -68,51 +70,53 @@ public class TabMruControllerTest {
     @Test
     public void cycleSelectsInMruOrder() {
         JPanel[] dyn = new JPanel[3];
-        JTabbedPane tabs = pane(dyn);
+        JTabbedPane tabs = GuiActionRunner.execute(() -> pane(dyn));
         TabMruController mru = new TabMruController(tabs, () -> 3);
         mru.onActivated(dyn[0], "A");
         mru.onActivated(dyn[1], "B");
         mru.onActivated(dyn[2], "C"); // MRU: C,B,A
-        tabs.setSelectedComponent(dyn[2]); // 現在 = C (MRU 先頭)
+        // Swing コンポーネントへの変異・読み取りは EDT 上で行う (EDT 規律)
+        GuiActionRunner.execute(() -> tabs.setSelectedComponent(dyn[2])); // 現在 = C (MRU 先頭)
         mru.cycle(1); // 次の MRU = B
-        assertEquals("B", tabs.getSelectedComponent().getName());
+        assertEquals("B", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
         mru.cycle(1); // 次 = A
-        assertEquals("A", tabs.getSelectedComponent().getName());
+        assertEquals("A", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
         mru.cycle(1); // 一周して C へ
-        assertEquals("C", tabs.getSelectedComponent().getName());
+        assertEquals("C", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
     }
 
     @Test
     public void cycleBackwardSelectsInReverseMruOrder() {
         JPanel[] dyn = new JPanel[3];
-        JTabbedPane tabs = pane(dyn);
+        JTabbedPane tabs = GuiActionRunner.execute(() -> pane(dyn));
         TabMruController mru = new TabMruController(tabs, () -> 3);
         mru.onActivated(dyn[0], "A");
         mru.onActivated(dyn[1], "B");
         mru.onActivated(dyn[2], "C"); // MRU: C,B,A
-        tabs.setSelectedComponent(dyn[2]); // 現在 = C (MRU 先頭)
+        GuiActionRunner.execute(() -> tabs.setSelectedComponent(dyn[2])); // 現在 = C (MRU 先頭)
 
         // Ctrl+Shift+Tab 相当: 逆順巡回は MRU の末尾から回り込む (floorMod)。
         mru.cycle(-1); // C → (回り込み) A
-        assertEquals("A", tabs.getSelectedComponent().getName());
+        assertEquals("A", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
         mru.cycle(-1); // A → B
-        assertEquals("B", tabs.getSelectedComponent().getName());
+        assertEquals("B", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
         mru.cycle(-1); // B → C
-        assertEquals("C", tabs.getSelectedComponent().getName());
+        assertEquals("C", GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
     }
 
     @Test
     public void forwardThenBackwardReturnsToStart() {
         JPanel[] dyn = new JPanel[3];
-        JTabbedPane tabs = pane(dyn);
+        JTabbedPane tabs = GuiActionRunner.execute(() -> pane(dyn));
         TabMruController mru = new TabMruController(tabs, () -> 3);
         mru.onActivated(dyn[0], "A");
         mru.onActivated(dyn[1], "B");
         mru.onActivated(dyn[2], "C"); // MRU: C,B,A
-        tabs.setSelectedComponent(dyn[2]); // C
+        GuiActionRunner.execute(() -> tabs.setSelectedComponent(dyn[2])); // C
 
         mru.cycle(1);  // → B
         mru.cycle(-1); // → C (往復で戻る)
-        assertEquals("往復巡回で開始タブへ戻る", "C", tabs.getSelectedComponent().getName());
+        assertEquals("往復巡回で開始タブへ戻る", "C",
+                GuiActionRunner.execute(() -> tabs.getSelectedComponent().getName()));
     }
 }

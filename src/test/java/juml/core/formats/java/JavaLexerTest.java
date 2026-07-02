@@ -322,4 +322,31 @@ public class JavaLexerTest {
         // 回復後のトークンがソース末尾まで span していること
         assertEquals(src, toks.get(0).text);
     }
+
+    // ---------- Fix: 16 進浮動小数の指数部 p/P 対応 (回帰テスト) ----------
+
+    @Test
+    public void testHexFloatWithNegativeExponent() {
+        // 0x1.8p-3 は 1 トークンとして読み取られるべき
+        // (修正前は 0x1 + . + 8p → NUMBER PUNCT IDENT となり壊れていた)
+        List<JavaToken> toks = tokenize("0x1.8p-3");
+        assertEquals("0x1.8p-3 は NUMBER 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "0x1.8p-3");
+    }
+
+    @Test
+    public void testHexFloatWithPositiveExponent() {
+        // 0x1.fp+10 は 1 トークン (大文字 P、正符号)
+        List<JavaToken> toks = tokenize("0x1.fp+10");
+        assertEquals("0x1.fp+10 は NUMBER 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "0x1.fp+10");
+    }
+
+    @Test
+    public void testHexFloatUpperCaseP() {
+        // 0x3.4P5 は 1 トークン (大文字 P、符号なし)
+        List<JavaToken> toks = tokenize("0x3.4P5");
+        assertEquals("0x3.4P5 は NUMBER 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "0x3.4P5");
+    }
 }

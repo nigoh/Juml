@@ -205,6 +205,9 @@ public final class UmlGenerator {
         h.setAaosCategory(c.getAaosCategory());
         h.setAndroidComponentType(c.getAndroidComponentType());
         h.getJetpackStereotypes().addAll(c.getJetpackStereotypes());
+        // 型パラメータ宣言 ("T extends Entity" など) は Stage A でも保持する
+        // (クラス図の型パラメータ表示に必要なため)。
+        h.setTypeParameters(c.getTypeParameters());
         h.setDetailed(false);
         return h;
     }

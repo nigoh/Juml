@@ -91,6 +91,14 @@ public final class MenuBarBuilder {
         public Runnable closeOtherTabs;
         public Runnable closeTabsToRight;
         public Runnable closeAllTabs;
+        /** 動的タブ枚数 (タブ系メニューの活性制御用)。null なら常時活性のまま。 */
+        public java.util.function.IntSupplier dynamicTabCount;
+        /** 閉じタブ履歴の件数 (Reopen Closed Tab の活性制御用)。null なら常時活性のまま。 */
+        public java.util.function.IntSupplier closedTabHistorySize;
+        /** いま動的タブが選択中か (Close Other Tabs の活性制御用)。null なら枚数のみで判定。 */
+        public java.util.function.BooleanSupplier dynamicTabFocused;
+        /** アクティブタブの右側に図タブがあるか (Close Tabs to the Right の活性制御用)。 */
+        public java.util.function.BooleanSupplier hasTabsToRightOfActive;
         /** Ctrl+Shift+P / View &gt; Command Palette: コマンドパレットを開く。 */
         public Runnable openCommandPalette;
         /** Ctrl+B / View &gt; Toggle Sidebar: 左ツリーペインの折りたたみ。 */
@@ -346,25 +354,66 @@ public final class MenuBarBuilder {
         m.add(cancelLoadingItem);
         m.addSeparator();
         m.add(closeTab);
+        JMenuItem closeOthers = null;
         if (cb.closeOtherTabs != null) {
-            JMenuItem closeOthers = new JMenuItem(Messages.get("menubar.file.closeOthers"));
+            closeOthers = new JMenuItem(Messages.get("menubar.file.closeOthers"));
             closeOthers.addActionListener(e -> cb.closeOtherTabs.run());
             m.add(closeOthers);
         }
+        JMenuItem closeRight = null;
         if (cb.closeTabsToRight != null) {
-            JMenuItem closeRight = new JMenuItem(Messages.get("menubar.file.closeRight"));
+            closeRight = new JMenuItem(Messages.get("menubar.file.closeRight"));
             closeRight.addActionListener(e -> cb.closeTabsToRight.run());
             m.add(closeRight);
         }
+        JMenuItem closeAll = null;
         if (cb.closeAllTabs != null) {
-            JMenuItem closeAll = new JMenuItem(Messages.get("menubar.file.closeAllTabs"));
+            closeAll = new JMenuItem(Messages.get("menubar.file.closeAllTabs"));
             closeAll.addActionListener(e -> cb.closeAllTabs.run());
             m.add(closeAll);
         }
         m.add(reopenTab);
+        installTabMenuEnablement(m, closeOthers, closeRight, closeAll, reopenTab);
         m.addSeparator();
         m.add(exit);
         return m;
+    }
+
+    /**
+     * File メニューが開く直前に、タブ系メニュー項目 (Close Others / Close Right /
+     * Close All / Reopen Closed Tab) の有効/無効を現在のタブ状態から評価する。
+     * 空振りする操作をグレーアウトし「押しても何も起きない」状態を避ける。
+     */
+    private void installTabMenuEnablement(JMenu m, JMenuItem closeOthers,
+                                          JMenuItem closeRight, JMenuItem closeAll,
+                                          JMenuItem reopenTab) {
+        m.addMenuListener(new javax.swing.event.MenuListener() {
+            @Override public void menuSelected(javax.swing.event.MenuEvent e) {
+                if (cb.dynamicTabCount != null) {
+                    int dyn = cb.dynamicTabCount.getAsInt();
+                    boolean focused = cb.dynamicTabFocused == null
+                            || cb.dynamicTabFocused.getAsBoolean();
+                    if (closeOthers != null) {
+                        // 動的タブ選択中は「他のタブ」が存在するとき、ユーティリティタブ
+                        // 選択中は動的タブ全部が「他のタブ」になるため 1 枚以上で有効。
+                        closeOthers.setEnabled(focused ? dyn >= 2 : dyn >= 1);
+                    }
+                    if (closeRight != null) {
+                        closeRight.setEnabled(cb.hasTabsToRightOfActive != null
+                                ? cb.hasTabsToRightOfActive.getAsBoolean()
+                                : dyn >= 1);
+                    }
+                    if (closeAll != null) {
+                        closeAll.setEnabled(dyn >= 1);
+                    }
+                }
+                if (cb.closedTabHistorySize != null) {
+                    reopenTab.setEnabled(cb.closedTabHistorySize.getAsInt() > 0);
+                }
+            }
+            @Override public void menuDeselected(javax.swing.event.MenuEvent e) {}
+            @Override public void menuCanceled(javax.swing.event.MenuEvent e) {}
+        });
     }
 
     private void rebuildRecentMenu(JMenu recent) {
