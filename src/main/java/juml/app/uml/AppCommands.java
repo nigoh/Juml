@@ -30,6 +30,18 @@ final class AppCommands {
         List<CommandPalette.Command> list = new ArrayList<>();
         add(list, "cmd.file.openProject", cb.chooseProject, MOD + "O");
         add(list, "cmd.file.openArchive", cb.openArchive);
+        // 新規 UML 図はテンプレートごとにコマンド化する (メニューのサブメニューと対応)。
+        if (cb.newUmlDiagram != null) {
+            for (PumlTemplate t : PumlTemplate.values()) {
+                String shortcut = t == PumlTemplate.CLASS ? MOD + "N" : null;
+                list.add(new CommandPalette.Command(
+                        Messages.get("cmd.file.newUml") + t.displayName(), shortcut,
+                        () -> cb.newUmlDiagram.accept(t)));
+            }
+        }
+        add(list, "cmd.file.openPuml", cb.openPumlFile);
+        add(list, "cmd.file.savePuml", cb.savePumlTab, MOD + "S");
+        add(list, "cmd.file.savePumlAs", cb.savePumlTabAs);
         add(list, "cmd.file.saveAs", cb.chooseAndExport, MOD + "S");
         add(list, "cmd.file.exportPerFolder", cb.exportClassDiagramsPerFolder);
         add(list, "cmd.file.exportFunctions", cb.exportFunctionList);

@@ -45,6 +45,8 @@ public class UmlMainFrame extends JFrame {
 
     private static final String WINDOW_TITLE = "Juml UML";
     private static final int MENU_MASK = MenuBarBuilder.menuShortcutMask();
+    /** 末尾固定のユーティリティタブ数 (Manifest ... Members + Git)。 */
+    private static final int FIXED_UTILITY_TABS = 11;
 
     private final ProjectAnalysisCache cache = new ProjectAnalysisCache();
     private final ReferenceIndexCache refIndexCache = new ReferenceIndexCache(cache);
@@ -66,6 +68,8 @@ public class UmlMainFrame extends JFrame {
             = new DoxygenGroupsPanel(cache, doxygenResultCache);
     private final MethodListPanel methodListPanel = new MethodListPanel();
     private final MemberListPanel memberListPanel = new MemberListPanel();
+    /** git リポジトリ閲覧タブ (読み取り専用。JGit ベース)。 */
+    private final juml.app.uml.git.GitPanel gitPanel = new juml.app.uml.git.GitPanel();
     private final JLabel status = new JLabel(" ");
     private final JLabel zoomLabel = new JLabel("100%");
     /** ステータスバー (題材/図種の常時表示を含む)。 */
@@ -207,6 +211,8 @@ public class UmlMainFrame extends JFrame {
                     File f = files.get(0);
                     if (f.isDirectory()) {
                         loadProject(f);
+                    } else if (PumlEditorSupport.isPumlFile(f)) {
+                        openPumlFileDirect(f); // .puml はエディタタブで開く
                     } else {
                         String name = f.getName().toLowerCase(java.util.Locale.ROOT);
                         if (name.endsWith(".jar") || name.endsWith(".aar")
@@ -229,6 +235,10 @@ public class UmlMainFrame extends JFrame {
         MenuBarBuilder.Callbacks mcb = new MenuBarBuilder.Callbacks();
         mcb.chooseProject = this::chooseProject;
         mcb.openArchive = this::openArchive;
+        mcb.newUmlDiagram = t -> openPumlEditorTab(t.body(), null);
+        mcb.openPumlFile = this::openPumlFile;
+        mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
+        mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
         mcb.chooseAndExport = this::chooseAndExport;
         mcb.exportClassDiagramsPerFolder = this::exportClassDiagramsPerFolder;
         mcb.exportFunctionList = this::exportFunctionList;
@@ -322,7 +332,7 @@ public class UmlMainFrame extends JFrame {
         // タブ多数でも 1 段スクロール表示にし、多段折り返しで図領域が潰れるのを防ぐ。
         mainTabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
 
-        // ユーティリティタブ (固定・末尾 10 本)。Material アイコン + tooltip で用途を示す。
+        // ユーティリティタブ (固定・末尾 11 本)。Material アイコン + tooltip で用途を示す。
         mainTabs.addTab("Manifest", MaterialIcons.menu(MaterialIcons.Glyph.MANIFEST),
                 manifestSummaryPanel, "Components & permissions");
         mainTabs.addTab("Impact", MaterialIcons.menu(MaterialIcons.Glyph.BOLT),
@@ -343,13 +353,17 @@ public class UmlMainFrame extends JFrame {
                 methodListPanel, "Function usage table");
         mainTabs.addTab("Members", MaterialIcons.menu(MaterialIcons.Glyph.LAYERS),
                 memberListPanel, "All class members");
+        gitPanel.setStatusReporter(status::setText);
+        mainTabs.addTab("Git", MaterialIcons.menu(MaterialIcons.Glyph.CALL_SPLIT),
+                gitPanel, "Git history / branches / blame (read-only)");
 
-        // 動的タブマネージャ (fixedSuffix=10 で末尾ユーティリティタブの手前に挿入)
-        tabPane = new DiagramTabPane(mainTabs, 10, cache, state,
+        // 動的タブマネージャ (fixedSuffix=FIXED_UTILITY_TABS で末尾ユーティリティタブの手前に挿入)
+        tabPane = new DiagramTabPane(mainTabs, FIXED_UTILITY_TABS, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
-        // Ctrl+W / Ctrl+Shift+T / Ctrl+Tab 等。末尾 10 本の固定ユーティリティタブは
+        // Ctrl+W / Ctrl+Shift+T / Ctrl+Tab 等。末尾の固定ユーティリティタブは
         // Ctrl+Tab 巡回から除外し、VS Code 同様に図 (動的タブ) だけを循環する。
-        TabKeyBindings.install(mainTabs, 10, tabPane::closeActiveTab, tabPane::reopenLastClosedTab);
+        TabKeyBindings.install(mainTabs, FIXED_UTILITY_TABS,
+                tabPane::closeActiveTab, tabPane::reopenLastClosedTab);
 
         // Functions / Members タブ表示時は一覧を遅延生成
         mainTabs.addChangeListener(ev -> {
@@ -367,7 +381,8 @@ public class UmlMainFrame extends JFrame {
         centerSplit.setResizeWeight(0.22);
         centerSplit.setDividerLocation(280);
         centerCards = new CenterCardView(centerSplit,
-                new WelcomePanel(this::chooseProject, this::openArchive, this::loadProject));
+                new WelcomePanel(this::chooseProject, this::openArchive, this::loadProject,
+                        () -> openPumlEditorTab(PumlTemplate.CLASS.body(), null)));
         add(centerCards, BorderLayout.CENTER);
 
         // VS Code 風の左端アクティビティバー (主要導線をアイコン縦列に集約)。
@@ -436,6 +451,7 @@ public class UmlMainFrame extends JFrame {
         loaderDeps.onLoadSuccess = root -> {
             persistAndRestoreProjectSettings(root);
             updateManifestSummary();
+            gitPanel.setRepositoryRoot(root); // git リポジトリなら Git タブを有効化
             centerCards.showWorkspace();
             controller.updateAvailableDiagrams(java.util.EnumSet.allOf(DiagramKind.class));
             controller.openDefaultDiagram();
@@ -933,6 +949,39 @@ public class UmlMainFrame extends JFrame {
 
     private void chooseAndExport() {
         exportController.chooseAndExport();
+    }
+
+    // --- 自由編集 PlantUML エディタ --------------------------------------------
+
+    /**
+     * 自由編集 PlantUML エディタタブを開く。プロジェクト未ロード時は Welcome 表示の
+     * ままだとタブが見えないため、先にワークスペース表示へ切り替える。
+     */
+    private void openPumlEditorTab(String text, File file) {
+        centerCards.showWorkspace();
+        tabPane.openPumlEditor(text, file);
+    }
+
+    /** 既存の .puml ファイルを選択して自由編集エディタタブで開く (File メニュー / Welcome)。 */
+    private void openPumlFile() {
+        File chosen = PumlEditorSupport.choosePumlToOpen(this);
+        if (chosen == null) {
+            return;
+        }
+        openPumlFileDirect(chosen);
+    }
+
+    /** 指定の .puml ファイルをエディタタブで開く (ダイアログなし。ドロップ用)。 */
+    private void openPumlFileDirect(File file) {
+        try {
+            openPumlEditorTab(PumlEditorSupport.read(file), file);
+        } catch (java.io.IOException ex) {
+            juml.util.AppLog.error("UmlMainFrame",
+                    "puml open failed: " + file.getAbsolutePath(), ex);
+            JOptionPane.showMessageDialog(this,
+                    Messages.get("puml.editor.openFailed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     // --- 状態管理 -------------------------------------------------------------

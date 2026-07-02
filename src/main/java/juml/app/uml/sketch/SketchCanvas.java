@@ -1,0 +1,509 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.app.uml.sketch;
+
+import juml.util.Messages;
+
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Path2D;
+import java.util.List;
+
+/**
+ * GUI デザイナーの描画・マウス操作キャンバス。
+ *
+ * <p>クラスを UML 風の 3 段ボックス (名前 / フィールド / メソッド) で描き、
+ * ドラッグ移動・ダブルクリック編集・右クリックメニュー・関係の 2 クリック追加を
+ * 受け付ける。モデル変更は {@link Listener#modelEdited()} で通知し、テキストへの
+ * 反映 (PlantUML 再生成) は呼び出し側 ({@link SketchPane}) が行う。</p>
+ */
+final class SketchCanvas extends JPanel {
+
+    /** キャンバス操作の通知先。 */
+    interface Listener {
+        /** 移動・削除・関係追加などモデルが変わった (テキスト再生成が必要)。 */
+        void modelEdited();
+
+        /** クラスの編集 (ダブルクリック / メニュー) が要求された。 */
+        void editRequested(SketchClass c);
+
+        /** 空白位置への「クラスを追加」が要求された。 */
+        void addClassRequested(Point at);
+    }
+
+    private static final int PAD_X = 10;
+    private static final int TITLE_H = 24;
+    private static final int LINE_H = 16;
+    private static final int MIN_W = 120;
+
+    private SketchModel model = new SketchModel();
+    private boolean editable;
+    private List<String> unsupported = List.of();
+    private final Listener listener;
+
+    private SketchClass selected;
+    /** 関係追加モードの矢印種別 (null = 選択/移動モード)。 */
+    private SketchRelation.Kind relationMode;
+    /** 関係追加モードで最初にクリックした始点クラス。 */
+    private SketchClass relationSource;
+    /** ドラッグ中の掴み位置オフセット。 */
+    private Point dragOffset;
+    private boolean draggedSinceMousePress;
+
+    SketchCanvas(Listener listener) {
+        this.listener = listener;
+        setBackground(Color.WHITE);
+        setFocusable(true);
+        MouseAdapter mouse = new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent e) {
+                requestFocusInWindow();
+                handlePress(e);
+            }
+
+            @Override public void mouseDragged(MouseEvent e) {
+                handleDrag(e);
+            }
+
+            @Override public void mouseReleased(MouseEvent e) {
+                handleRelease(e);
+            }
+
+            @Override public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && editable && selected != null) {
+                    listener.editRequested(selected);
+                }
+            }
+        };
+        addMouseListener(mouse);
+        addMouseMotionListener(mouse);
+        addKeyListener(new KeyAdapter() {
+            @Override public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null) {
+                    model.removeClass(selected);
+                    selected = null;
+                    listener.modelEdited();
+                    repaint();
+                }
+            }
+        });
+    }
+
+    /** 表示・編集対象のモデルを差し替える。 */
+    void setModel(SketchModel model, boolean editable, List<String> unsupported) {
+        this.model = model;
+        this.editable = editable;
+        this.unsupported = unsupported != null ? unsupported : List.of();
+        this.selected = null;
+        this.relationSource = null;
+        revalidate();
+        repaint();
+    }
+
+    SketchModel model() {
+        return model;
+    }
+
+    boolean isModelEditable() {
+        return editable;
+    }
+
+    /** 関係追加モードを切り替える (null で選択/移動モードへ戻す)。 */
+    void setRelationMode(SketchRelation.Kind kind) {
+        this.relationMode = kind;
+        this.relationSource = null;
+        repaint();
+    }
+
+    // -------------------------------------------------------------------------
+    // マウス操作
+    // -------------------------------------------------------------------------
+
+    private void handlePress(MouseEvent e) {
+        if (!editable) {
+            return;
+        }
+        SketchClass hit = classAt(e.getPoint());
+        if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
+            selected = hit;
+            repaint();
+            showPopup(e, hit);
+            return;
+        }
+        if (relationMode != null) {
+            handleRelationClick(hit);
+            return;
+        }
+        selected = hit;
+        draggedSinceMousePress = false;
+        if (hit != null) {
+            dragOffset = new Point(e.getX() - hit.getX(), e.getY() - hit.getY());
+        }
+        repaint();
+    }
+
+    /** 関係追加モード: 1 クリック目で始点、2 クリック目で終点を確定する。 */
+    private void handleRelationClick(SketchClass hit) {
+        if (hit == null) {
+            relationSource = null;
+            repaint();
+            return;
+        }
+        if (relationSource == null) {
+            relationSource = hit;
+        } else if (relationSource != hit) {
+            model.getRelations().add(new SketchRelation(
+                    relationSource.getName(), relationMode, hit.getName(), null));
+            relationSource = null;
+            listener.modelEdited();
+        }
+        repaint();
+    }
+
+    private void handleDrag(MouseEvent e) {
+        if (!editable || relationMode != null || selected == null || dragOffset == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, e.getX() - dragOffset.x),
+                Math.max(0, e.getY() - dragOffset.y));
+        draggedSinceMousePress = true;
+        revalidate();
+        repaint();
+    }
+
+    private void handleRelease(MouseEvent e) {
+        if (e.isPopupTrigger()) {
+            showPopup(e, classAt(e.getPoint()));
+            return;
+        }
+        if (draggedSinceMousePress) {
+            draggedSinceMousePress = false;
+            listener.modelEdited(); // 移動確定 → '@pos を再生成
+        }
+        dragOffset = null;
+    }
+
+    private void showPopup(MouseEvent e, SketchClass hit) {
+        if (!editable) {
+            return;
+        }
+        JPopupMenu menu = new JPopupMenu();
+        if (hit != null) {
+            JMenuItem edit = new JMenuItem(Messages.get("sketch.menu.edit"));
+            edit.addActionListener(a -> listener.editRequested(hit));
+            menu.add(edit);
+            JMenuItem del = new JMenuItem(Messages.get("sketch.menu.delete"));
+            del.addActionListener(a -> {
+                model.removeClass(hit);
+                selected = null;
+                listener.modelEdited();
+                repaint();
+            });
+            menu.add(del);
+            addRelationDeleteMenu(menu, hit);
+        } else {
+            JMenuItem add = new JMenuItem(Messages.get("sketch.menu.addClassHere"));
+            final Point at = e.getPoint();
+            add.addActionListener(a -> listener.addClassRequested(at));
+            menu.add(add);
+        }
+        menu.show(this, e.getX(), e.getY());
+    }
+
+    /** クラスに接続している関係を個別に削除するサブメニュー。 */
+    private void addRelationDeleteMenu(JPopupMenu menu, SketchClass hit) {
+        List<SketchRelation> touching = model.getRelations().stream()
+                .filter(r -> r.touches(hit.getName())).toList();
+        if (touching.isEmpty()) {
+            return;
+        }
+        JMenu sub = new JMenu(Messages.get("sketch.menu.deleteRelation"));
+        for (SketchRelation r : touching) {
+            JMenuItem item = new JMenuItem(
+                    r.getLeft() + " " + r.getKind().arrow() + " " + r.getRight());
+            item.addActionListener(a -> {
+                model.getRelations().remove(r);
+                listener.modelEdited();
+                repaint();
+            });
+            sub.add(item);
+        }
+        menu.add(sub);
+    }
+
+    /** 指定点にあるクラス (重なりは後に描いたもの優先)。 */
+    private SketchClass classAt(Point p) {
+        List<SketchClass> cs = model.getClasses();
+        for (int i = cs.size() - 1; i >= 0; i--) {
+            if (boundsOf(cs.get(i)).contains(p)) {
+                return cs.get(i);
+            }
+        }
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // 描画
+    // -------------------------------------------------------------------------
+
+    /** クラスボックスの矩形 (フォントメトリクスから内容に合わせて算出)。 */
+    Rectangle boundsOf(SketchClass c) {
+        FontMetrics fm = getFontMetrics(getFont() != null ? getFont()
+                : new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        int w = fm.stringWidth(c.getName()) + 2 * PAD_X + 20;
+        for (String s : c.getFields()) {
+            w = Math.max(w, fm.stringWidth(s) + 2 * PAD_X);
+        }
+        for (String s : c.getMethods()) {
+            w = Math.max(w, fm.stringWidth(s) + 2 * PAD_X);
+        }
+        w = Math.max(w, MIN_W);
+        int h = TITLE_H + 4
+                + Math.max(1, c.getFields().size()) * LINE_H
+                + Math.max(1, c.getMethods().size()) * LINE_H + 8;
+        return new Rectangle(c.getX(), c.getY(), w, h);
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        int w = 400;
+        int h = 300;
+        for (SketchClass c : model.getClasses()) {
+            Rectangle r = boundsOf(c);
+            w = Math.max(w, r.x + r.width + 60);
+            h = Math.max(h, r.y + r.height + 60);
+        }
+        return new Dimension(w, h);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            for (SketchRelation r : model.getRelations()) {
+                paintRelation(g2, r);
+            }
+            for (SketchClass c : model.getClasses()) {
+                paintClass(g2, c);
+            }
+            if (!editable) {
+                paintDisabledBanner(g2);
+            } else if (relationMode != null) {
+                g2.setColor(new Color(0x1565C0));
+                g2.drawString(Messages.get(relationSource == null
+                        ? "sketch.hint.pickSource" : "sketch.hint.pickTarget"), 8, 14);
+            }
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    private void paintClass(Graphics2D g2, SketchClass c) {
+        Rectangle r = boundsOf(c);
+        g2.setColor(new Color(0xFFFBE6));
+        g2.fillRect(r.x, r.y, r.width, r.height);
+        boolean isSel = c == selected || c == relationSource;
+        g2.setColor(isSel ? new Color(0x1565C0) : new Color(0x555555));
+        g2.setStroke(new BasicStroke(isSel ? 2f : 1f));
+        g2.drawRect(r.x, r.y, r.width, r.height);
+
+        FontMetrics fm = g2.getFontMetrics();
+        int y = r.y + TITLE_H - 8;
+        String stereo = stereotypeOf(c);
+        Font base = g2.getFont();
+        if (!stereo.isEmpty()) {
+            g2.setFont(base.deriveFont(Font.PLAIN, base.getSize2D() - 2f));
+            g2.drawString(stereo, r.x + (r.width - fm.stringWidth(stereo)) / 2, r.y + 11);
+            g2.setFont(base);
+            y += 4;
+        }
+        Font nameFont = c.getKind() == SketchClass.Kind.ABSTRACT
+                ? base.deriveFont(Font.BOLD | Font.ITALIC) : base.deriveFont(Font.BOLD);
+        g2.setFont(nameFont);
+        g2.drawString(c.getName(),
+                r.x + (r.width - g2.getFontMetrics().stringWidth(c.getName())) / 2, y);
+        g2.setFont(base);
+        g2.setStroke(new BasicStroke(1f));
+
+        int sep1 = r.y + TITLE_H + 4;
+        g2.drawLine(r.x, sep1, r.x + r.width, sep1);
+        int line = sep1 + LINE_H - 4;
+        for (String s : c.getFields()) {
+            g2.drawString(s, r.x + PAD_X, line);
+            line += LINE_H;
+        }
+        int sep2 = sep1 + Math.max(1, c.getFields().size()) * LINE_H + 2;
+        g2.drawLine(r.x, sep2, r.x + r.width, sep2);
+        line = sep2 + LINE_H - 4;
+        for (String s : c.getMethods()) {
+            g2.drawString(s, r.x + PAD_X, line);
+            line += LINE_H;
+        }
+    }
+
+    private static String stereotypeOf(SketchClass c) {
+        switch (c.getKind()) {
+            case INTERFACE: return "«interface»";
+            case ENUM:      return "«enum»";
+            default:        return "";
+        }
+    }
+
+    private void paintRelation(Graphics2D g2, SketchRelation rel) {
+        SketchClass left = model.findClass(rel.getLeft());
+        SketchClass right = model.findClass(rel.getRight());
+        if (left == null || right == null) {
+            return;
+        }
+        Rectangle rl = boundsOf(left);
+        Rectangle rr = boundsOf(right);
+        Point pl = edgePoint(rl, center(rr));
+        Point pr = edgePoint(rr, center(rl));
+        // PlantUML 表記の意味に合わせ、線は right(子/利用側) → left(親/対象) へ向かう。
+        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS
+                || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
+        Stroke old = g2.getStroke();
+        g2.setColor(new Color(0x37474F));
+        g2.setStroke(dashed
+                ? new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                        10f, new float[]{6f, 5f}, 0f)
+                : new BasicStroke(1.2f));
+        g2.drawLine(pl.x, pl.y, pr.x, pr.y);
+        g2.setStroke(old);
+        switch (rel.getKind()) {
+            case EXTENDS:
+            case IMPLEMENTS:
+                paintTriangle(g2, pl, pr, false);
+                break;
+            case AGGREGATION:
+                paintDiamond(g2, pl, pr, false);
+                break;
+            case COMPOSITION:
+                paintDiamond(g2, pl, pr, true);
+                break;
+            case ASSOCIATION:
+            case DEPENDENCY:
+                paintOpenArrow(g2, pr, pl);
+                break;
+            default:
+                break;
+        }
+        if (rel.getLabel() != null && !rel.getLabel().isEmpty()) {
+            g2.setColor(new Color(0x555555));
+            g2.drawString(rel.getLabel(), (pl.x + pr.x) / 2 + 4, (pl.y + pr.y) / 2 - 4);
+        }
+    }
+
+    private static Point center(Rectangle r) {
+        return new Point(r.x + r.width / 2, r.y + r.height / 2);
+    }
+
+    /** 矩形の中心から {@code toward} へ向かう線と矩形境界の交点。 */
+    private static Point edgePoint(Rectangle r, Point toward) {
+        Point c = center(r);
+        double dx = toward.x - c.x;
+        double dy = toward.y - c.y;
+        if (dx == 0 && dy == 0) {
+            return c;
+        }
+        double scaleX = dx != 0 ? (r.width / 2.0) / Math.abs(dx) : Double.MAX_VALUE;
+        double scaleY = dy != 0 ? (r.height / 2.0) / Math.abs(dy) : Double.MAX_VALUE;
+        double t = Math.min(scaleX, scaleY);
+        return new Point((int) Math.round(c.x + dx * t), (int) Math.round(c.y + dy * t));
+    }
+
+    /** {@code at} に、{@code from} から向かってくる線に対する白三角 (継承/実現)。 */
+    private void paintTriangle(Graphics2D g2, Point at, Point from, boolean filled) {
+        Path2D p = arrowHead(at, from, 14, 8);
+        g2.setColor(filled ? new Color(0x37474F) : getBackground());
+        g2.fill(p);
+        g2.setColor(new Color(0x37474F));
+        g2.draw(p);
+    }
+
+    /** {@code at} にひし形 (集約=白 / コンポジション=黒)。 */
+    private void paintDiamond(Graphics2D g2, Point at, Point from, boolean filled) {
+        double ux = unitX(at, from);
+        double uy = unitY(at, from);
+        int len = 9;
+        int wid = 6;
+        Path2D p = new Path2D.Double();
+        p.moveTo(at.x, at.y);
+        p.lineTo(at.x + ux * len - uy * wid, at.y + uy * len + ux * wid);
+        p.lineTo(at.x + ux * 2 * len, at.y + uy * 2 * len);
+        p.lineTo(at.x + ux * len + uy * wid, at.y + uy * len - ux * wid);
+        p.closePath();
+        g2.setColor(filled ? new Color(0x37474F) : getBackground());
+        g2.fill(p);
+        g2.setColor(new Color(0x37474F));
+        g2.draw(p);
+    }
+
+    /** {@code at} に開き矢印 (関連/依存)。 */
+    private void paintOpenArrow(Graphics2D g2, Point at, Point from) {
+        double ux = unitX(at, from);
+        double uy = unitY(at, from);
+        int len = 11;
+        int wid = 6;
+        g2.setColor(new Color(0x37474F));
+        g2.drawLine(at.x, at.y,
+                (int) (at.x + ux * len - uy * wid), (int) (at.y + uy * len + ux * wid));
+        g2.drawLine(at.x, at.y,
+                (int) (at.x + ux * len + uy * wid), (int) (at.y + uy * len - ux * wid));
+    }
+
+    private static Path2D arrowHead(Point at, Point from, int len, int wid) {
+        double ux = unitX(at, from);
+        double uy = unitY(at, from);
+        Path2D p = new Path2D.Double();
+        p.moveTo(at.x, at.y);
+        p.lineTo(at.x + ux * len - uy * wid, at.y + uy * len + ux * wid);
+        p.lineTo(at.x + ux * len + uy * wid, at.y + uy * len - ux * wid);
+        p.closePath();
+        return p;
+    }
+
+    private static double unitX(Point at, Point from) {
+        double dx = from.x - at.x;
+        double dy = from.y - at.y;
+        double d = Math.max(1e-6, Math.hypot(dx, dy));
+        return dx / d;
+    }
+
+    private static double unitY(Point at, Point from) {
+        double dx = from.x - at.x;
+        double dy = from.y - at.y;
+        double d = Math.max(1e-6, Math.hypot(dx, dy));
+        return dy / d;
+    }
+
+    /** 未対応構文で GUI 編集を無効化しているときの警告バナー。 */
+    private void paintDisabledBanner(Graphics2D g2) {
+        String msg = java.text.MessageFormat.format(
+                Messages.get("sketch.disabled"), unsupported.size());
+        g2.setColor(new Color(0xB71C1C));
+        g2.fillRect(0, 0, getWidth(), 22);
+        g2.setColor(Color.WHITE);
+        g2.drawString(msg, 8, 15);
+    }
+}

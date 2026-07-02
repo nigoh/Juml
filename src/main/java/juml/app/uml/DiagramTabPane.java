@@ -38,7 +38,7 @@ import java.util.function.DoubleConsumer;
  *
  * <p>外部から渡された {@link JTabbedPane} に動的タブを挿入する。
  * 末尾 {@code fixedSuffix} 本はユーティリティタブ (Manifest / Impact / References /
- * Func Diff / Insights / Doxygen / TODO / Groups / Functions / Members) で、
+ * Func Diff / Insights / Doxygen / TODO / Groups / Functions / Members / Git) で、
  * 動的タブはその手前に挿入される。
  * 特別扱いの「Home タブ」は存在しない。</p>
  *
@@ -216,10 +216,16 @@ public final class DiagramTabPane {
         return lastDiagramRequest;
     }
 
-    /** フォーカス中タブの図種。動的タブでなければ null。 */
+    /** フォーカス中タブの図種。動的タブでない / 自由編集エディタタブなら null。 */
     public DiagramKind activeTabKind() {
         DiagramTab t = activeTab();
-        return t != null ? t.spec.getKind() : null;
+        return t != null && t.spec != null ? t.spec.getKind() : null;
+    }
+
+    /** フォーカス中のタブが自由編集 PlantUML エディタタブか。 */
+    public boolean activeTabIsPumlEditor() {
+        DiagramTab t = activeTab();
+        return t != null && t.isEditor();
     }
 
     /** フォーカス中タブの SVG プレビュー。動的タブでなければ null。 */
@@ -248,7 +254,10 @@ public final class DiagramTabPane {
             zoomReporter.accept(tab.previewPanel.getZoomLevel());
         }
         if (onTabFocused != null) {
-            onTabFocused.accept(new FocusedTab(tab.treeSync, tab.spec.getKind()));
+            // 自由編集エディタタブは spec を持たないため図種は null で通知する
+            // (受け取り側はツールバー/メニューの図種反映をスキップする)。
+            onTabFocused.accept(new FocusedTab(tab.treeSync,
+                    tab.spec != null ? tab.spec.getKind() : null));
         }
     }
 
@@ -367,11 +376,122 @@ public final class DiagramTabPane {
      * 常に最新のキーで動作する。
      */
     private java.awt.Component buildTabHeader(DiagramTab tab) {
-        String tip = DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync);
+        String tip = tab.isEditor()
+                ? (tab.editorFile != null ? tab.editorFile.getAbsolutePath()
+                        : Messages.get("puml.editor.tooltip"))
+                : DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync);
         return DiagramTabHeader.build(tab.label, tab.icon, tip,
                 () -> closeTab(tab, tab.key), e -> showTabMenu(tab, tab.key, e),
                 () -> tabs.setSelectedComponent(tab),
                 this::pinPreviewTab);
+    }
+
+    // -------------------------------------------------------------------------
+    // 自由編集 PlantUML エディタタブ
+    // -------------------------------------------------------------------------
+
+    /** 未保存 (Untitled) エディタタブの連番。 */
+    private int untitledCounter;
+
+    /**
+     * 自由編集 PlantUML エディタタブを開く。プロジェクト未ロードでも動作する
+     * (描画は解析キャッシュに依存しない {@link PlantUmlSvgRenderer} を直接使う)。
+     *
+     * @param initialText エディタの初期 PlantUML テキスト (null は空)
+     * @param file        編集対象の .puml ファイル (null なら Untitled の新規図)。
+     *                    同じファイルのタブが既に開いていればフォーカスのみ移す。
+     */
+    public void openPumlEditor(String initialText, java.io.File file) {
+        String key;
+        String label;
+        if (file != null) {
+            key = "PUML:" + file.getAbsolutePath();
+            label = file.getName();
+        } else {
+            untitledCounter++;
+            key = "PUML:untitled-" + untitledCounter;
+            label = Messages.get("puml.editor.untitled") + "-" + untitledCounter + ".puml";
+        }
+        DiagramTab existing = openTabs.get(key);
+        if (existing != null) {
+            tabs.setSelectedComponent(existing);
+            return;
+        }
+        pinPreviewTab();
+        DiagramTab tab = new DiagramTab(key, label, TreeNodeIcon.PUML, null, null);
+        tab.enableEditor(initialText != null ? initialText : "", file);
+        openTabs.put(key, tab);
+        int insertAt = tabs.getTabCount() - fixedSuffix;
+        if (insertAt < 0) {
+            insertAt = 0;
+        }
+        String tip = file != null ? file.getAbsolutePath()
+                : Messages.get("puml.editor.tooltip");
+        tabs.insertTab(label, null, tab, tip, insertAt);
+        java.awt.Component header = buildTabHeader(tab);
+        tabs.setTabComponentAt(insertAt, header);
+        TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
+        tabs.setSelectedIndex(insertAt);
+        refreshTabLabels();
+        tab.startRender();
+        applyTabBudget(key);
+    }
+
+    /**
+     * アクティブな自由編集エディタタブの内容を .puml に保存する。
+     * 保存先が未定 ({@code Untitled}) または {@code saveAs} 指定時はダイアログで選ばせる。
+     *
+     * @return 実際に保存できたら true (キャンセル・非エディタタブ・IO 失敗は false)
+     */
+    public boolean saveActivePumlEditor(boolean saveAs) {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor()) {
+            reportStatus(Messages.get("puml.editor.noEditorTab"));
+            return false;
+        }
+        return savePumlEditor(t, saveAs);
+    }
+
+    private boolean savePumlEditor(DiagramTab tab, boolean saveAs) {
+        java.io.File target = tab.editorFile;
+        if (saveAs || target == null) {
+            target = PumlEditorSupport.choosePumlSaveTarget(tabs, tab.label);
+            if (target == null) {
+                return false;
+            }
+        }
+        try {
+            PumlEditorSupport.write(target, tab.sourcePanel.getText());
+        } catch (java.io.IOException ex) {
+            juml.util.AppLog.error("DiagramTabPane",
+                    "puml save failed: " + target.getAbsolutePath(), ex);
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.editor.saveFailed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"),
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+        tab.editorFile = target;
+        tab.dirty = false;
+        // Save As で名前が付いたらタブラベルもファイル名に合わせる (キーは安定のため不変)。
+        tab.label = target.getName();
+        refreshTabLabels();
+        reportStatus(Messages.get("status.saved") + target.getAbsolutePath());
+        return true;
+    }
+
+    /** アクティブなエディタタブの PlantUML テキスト (非エディタタブなら null)。 */
+    String activeEditorText() {
+        DiagramTab t = activeTab();
+        return t != null && t.isEditor() ? t.sourcePanel.getText() : null;
+    }
+
+    /** アクティブなエディタタブのテキストを差し替える (編集扱いで再描画が走る)。 */
+    void setActiveEditorText(String text) {
+        DiagramTab t = activeTab();
+        if (t != null && t.isEditor()) {
+            t.sourcePanel.setText(text);
+        }
     }
 
     /**
@@ -471,6 +591,9 @@ public final class DiagramTabPane {
                     display = t.label + "  ·  " + q;
                 }
             }
+            if (t.dirty) {
+                display = "● " + display; // 未保存の変更を VS Code 風の ● で示す
+            }
             tabs.setTitleAt(i, display);
             DiagramTabHeader.updateTitle(tabs.getTabComponentAt(i), display);
         }
@@ -519,7 +642,8 @@ public final class DiagramTabPane {
     /** アクティブタブの描画リクエストを差し替えて再描画する (スコープ/プリセット適用など)。 */
     public void setActiveTabSpecAndRender(DiagramRequest spec) {
         DiagramTab t = activeTab();
-        if (t != null && spec != null) {
+        // 自由編集エディタタブは spec を持たない (テキストが真実源) ため差し替え対象外。
+        if (t != null && spec != null && !t.isEditor()) {
             t.spec = spec;
             t.startRender();
         }
@@ -704,11 +828,18 @@ public final class DiagramTabPane {
      * メモリ上限による自動クローズ (LRU) は履歴を汚さないよう false で呼ぶ。
      */
     private void closeTab(DiagramTab tab, String key, boolean recordForReopen) {
+        // ユーザー操作で未保存のエディタタブを閉じるときは保存/破棄/キャンセルを確認する。
+        if (recordForReopen && !confirmDiscardEdits(tab)) {
+            return;
+        }
         if (recordForReopen) {
             pushClosedTab(tab);
         }
         if (tab.activeWorker != null) {
             tab.activeWorker.cancel(true);
+        }
+        if (tab.renderDebounce != null) {
+            tab.renderDebounce.stop(); // クローズ後のデバウンス発火 (無駄な再描画) を止める
         }
         tab.previewPanel.notes().setOnChange(null);
         int index = tabs.indexOfComponent(tab);
@@ -725,14 +856,42 @@ public final class DiagramTabPane {
         tabMemory.onClose(key);
     }
 
+    /**
+     * 未保存の変更があるエディタタブを閉じてよいかユーザーへ確認する。
+     * Yes = 保存してから閉じる / No = 破棄して閉じる / Cancel = 閉じない。
+     *
+     * @return タブを閉じてよければ true
+     */
+    private boolean confirmDiscardEdits(DiagramTab tab) {
+        if (!tab.isEditor() || !tab.dirty) {
+            return true;
+        }
+        int choice = javax.swing.JOptionPane.showConfirmDialog(tabs,
+                java.text.MessageFormat.format(
+                        Messages.get("puml.editor.confirmClose"), tab.label),
+                Messages.get("puml.editor.confirmClose.title"),
+                javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+            return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
+        }
+        return choice == javax.swing.JOptionPane.NO_OPTION;
+    }
+
     private void pushClosedTab(DiagramTab tab) {
         // 重い DiagramTab を捕捉しないよう、再オープンに必要な軽量フィールドだけを束ねる。
-        final String key = tab.key;
-        final String label = tab.label;
-        final TreeNodeIcon icon = tab.icon;
-        final DiagramRequest spec = tab.spec;
-        final TreeNodeOpenRequest treeSync = tab.treeSync;
-        closedTabs.push(() -> openDiagram(key, label, icon, spec, treeSync));
+        if (tab.isEditor()) {
+            final String text = tab.sourcePanel.getText();
+            final java.io.File file = tab.editorFile;
+            closedTabs.push(() -> openPumlEditor(text, file));
+        } else {
+            final String key = tab.key;
+            final String label = tab.label;
+            final TreeNodeIcon icon = tab.icon;
+            final DiagramRequest spec = tab.spec;
+            final TreeNodeOpenRequest treeSync = tab.treeSync;
+            closedTabs.push(() -> openDiagram(key, label, icon, spec, treeSync));
+        }
         while (closedTabs.size() > MAX_CLOSED_HISTORY) {
             closedTabs.removeLast();
         }
@@ -801,6 +960,9 @@ public final class DiagramTabPane {
         @Override
         public void closeTab(String key) {
             DiagramTab t = openTabs.get(key);
+            if (t != null && t.isEditor() && t.dirty) {
+                return; // 未保存編集を LRU 自動クローズで失わせない
+            }
             if (t != null) {
                 String msg = Messages.get("status.tabAutoClosed") + t.label;
                 reportStatus(msg);
@@ -847,8 +1009,14 @@ public final class DiagramTabPane {
         private TreeNodeIcon icon;
         /** ツリーハイライト用の由来ノード (汎用タブでは null)。図種切替で更新される。 */
         private TreeNodeOpenRequest treeSync;
-        /** このタブが描画するリクエスト (差し替え可能)。 */
+        /** このタブが描画するリクエスト (差し替え可能)。null = 自由編集エディタタブ。 */
         private DiagramRequest spec;
+        /** 自由編集エディタ: 保存先の .puml (null = 未保存の Untitled)。 */
+        private java.io.File editorFile;
+        /** 自由編集エディタ: 未保存の変更があるか。 */
+        private boolean dirty;
+        /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
+        private javax.swing.Timer renderDebounce;
         /** メソッド図の SEQUENCE ⇄ ACTIVITY 切替バー (メソッド図以外では非表示)。 */
         private final JPanel kindBar;
         private final javax.swing.JToggleButton seqToggle;
@@ -979,12 +1147,56 @@ public final class DiagramTabPane {
             return tabs.getSelectedComponent() == this;
         }
 
+        /** 自由編集 PlantUML エディタタブか (spec を持たずテキストが真実源)。 */
+        boolean isEditor() {
+            return spec == null;
+        }
+
+        /**
+         * このタブを自由編集エディタモードに切り替える (生成直後・挿入前に呼ぶ)。
+         * PlantUML テキスト欄を編集可能にし、編集停止から少し置いてライブプレビューを
+         * 再描画するよう配線する。実 Java ソースのサブタブはエディタでは無意味なので外す。
+         */
+        void enableEditor(String initialText, java.io.File file) {
+            this.editorFile = file;
+            bottomTabs.remove(javaSourcePanel);
+            sourcePanel.setText(initialText);
+            sourcePanel.setEditable(true);
+            // デバウンス: 連続キー入力のたびに PlantUML 描画が走らないよう 600ms 待つ。
+            renderDebounce = new javax.swing.Timer(600, e -> startRender());
+            renderDebounce.setRepeats(false);
+            // リスナー登録は初期 setText の後 (初期化を dirty 扱いにしない)。
+            sourcePanel.setOnTextChange(() -> {
+                markEditorDirty();
+                renderDebounce.restart();
+            });
+            // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
+            // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
+            // 同時に見えるのは片方だけ (JTabbedPane) なので同期ループは起きない。
+            juml.app.uml.sketch.SketchPane sketchPane = new juml.app.uml.sketch.SketchPane();
+            sketchPane.setOnPumlChange(sourcePanel::setText);
+            bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
+            bottomTabs.addChangeListener(e -> {
+                if (bottomTabs.getSelectedComponent() == sketchPane) {
+                    sketchPane.loadFrom(sourcePanel.getText());
+                }
+            });
+        }
+
+        /** 編集発生を記録し、タブヘッダに未保存マーク (●) を付ける。 */
+        private void markEditorDirty() {
+            if (!dirty) {
+                dirty = true;
+                refreshTabLabels();
+            }
+        }
+
         /**
          * 図種切替バーの表示/選択状態を現在の図種に合わせる。メソッド図
          * (SEQUENCE/ACTIVITY) のときだけ表示し、それ以外の図種では隠す。
          */
         void updateKindToggle() {
-            DiagramKind k = spec.getKind();
+            DiagramKind k = spec != null ? spec.getKind() : null;
             boolean method = k == DiagramKind.SEQUENCE || k == DiagramKind.ACTIVITY;
             kindBar.setVisible(method);
             syncingKindToggle = true;
@@ -1064,10 +1276,15 @@ public final class DiagramTabPane {
             }
             state.currentPuml = renderedPuml;
             state.currentSvgXml = renderedSvgXml;
-            state.currentScope = spec.getScope();
             state.sequenceEntry = null;
             state.activityEntry = null;
             state.callGraphEntry = null;
+            if (spec == null) {
+                // 自由編集エディタタブ: 図種依存のパラメータは持たない。
+                state.currentScope = null;
+                return;
+            }
+            state.currentScope = spec.getScope();
             switch (spec.getKind()) {
                 case SEQUENCE:
                     state.sequenceEntry = entryOf(spec);
@@ -1122,6 +1339,8 @@ public final class DiagramTabPane {
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
             showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
             final DiagramRequest dreq = spec;
+            // エディタタブはテキストが真実源: EDT 上でスナップショットしてから背景描画する。
+            final String editorPuml = isEditor() ? sourcePanel.getText() : null;
             if (activeWorker != null) {
                 activeWorker.cancel(true); // 旧描画を破棄して競合・無駄な処理を防ぐ
             }
@@ -1132,7 +1351,9 @@ public final class DiagramTabPane {
                 @Override
                 protected RenderResult doInBackground() {
                     try {
-                        String puml = DiagramService.generatePuml(dreq, cache);
+                        String puml = dreq != null
+                                ? DiagramService.generatePuml(dreq, cache)
+                                : editorPuml;
                         pumlOnError = puml;
                         RenderedSvg svg = PlantUmlSvgRenderer.render(puml);
                         return new RenderResult(puml, svg);
@@ -1148,7 +1369,8 @@ public final class DiagramTabPane {
                         return; // キャンセル済み、または新しい描画に置き換わったので破棄
                     }
                     if (error != null) {
-                        if (pumlOnError != null) {
+                        // エディタタブでは編集中テキストを描画結果で上書きしない。
+                        if (pumlOnError != null && !isEditor()) {
                             sourcePanel.setText(pumlOnError);
                         }
                         previewPanel.setSvgGraphicsNode(null, 0, 0);
@@ -1167,7 +1389,9 @@ public final class DiagramTabPane {
                     try {
                         RenderResult r = get();
                         if (r == null || r.svg == null) {
-                            sourcePanel.setText(r != null ? r.puml : "");
+                            if (!isEditor()) {
+                                sourcePanel.setText(r != null ? r.puml : "");
+                            }
                             renderedPuml = r != null ? r.puml : null;
                             renderedSvgXml = null;
                             if (isActive()) {
@@ -1181,7 +1405,9 @@ public final class DiagramTabPane {
                                 r.svg.getWidth(), r.svg.getHeight());
                         previewPanel.setLinkAreas(r.svg.getLinkAreas());
                         previewPanel.setTextItems(r.svg.getTextItems());
-                        sourcePanel.setText(r.puml);
+                        if (!isEditor()) {
+                            sourcePanel.setText(r.puml);
+                        }
                         renderedPuml = r.puml;
                         renderedSvgXml = r.svg.getSvgXml();
                         showPreviewCard();
