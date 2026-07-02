@@ -74,13 +74,23 @@ public class MenuBarBuilderTest {
         assertFalse("cancelLoadingItem should start disabled", r.cancelLoadingItem.isEnabled());
     }
 
+    /**
+     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) を除く全図種にラジオ項目が作られること。
+     * メソッド系の切替はメソッド図タブ上部の切替バーへ一本化したため、メニューからは外す。
+     */
     @Test
-    public void build_diagramItemsContainsAllKinds() {
+    public void build_diagramItemsContainsEveryNonMethodKind() {
         MenuBarBuilder.Result r = buildDefault();
         for (DiagramKind k : DiagramKind.values()) {
-            assertNotNull("Missing diagram item for " + k, r.diagramItems.get(k));
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+                assertNull("Method kind " + k + " should not appear in the Diagram menu",
+                        r.diagramItems.get(k));
+            } else {
+                assertNotNull("Missing diagram item for " + k, r.diagramItems.get(k));
+            }
         }
-        assertEquals(DiagramKind.values().length, r.diagramItems.size());
+        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size(),
+                r.diagramItems.size());
     }
 
     @Test

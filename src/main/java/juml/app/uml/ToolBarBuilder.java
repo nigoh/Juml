@@ -164,19 +164,34 @@ public final class ToolBarBuilder {
         }
     }
 
+    /**
+     * トップツールバーには出さない図種。メソッド系 (SEQUENCE/ACTIVITY/CALLGRAPH) は
+     * メソッド図タブ上部の切替バー ({@link DiagramTabPane} の kindBar) へ一本化したため、
+     * ツールバーからは除外する。{@link #CATEGORIES}（アイコン着色に使う）からは外さず、
+     * 描画時にここでフィルタする。
+     */
+    private static final EnumSet<DiagramKind> TOOLBAR_HIDDEN_KINDS = EnumSet.of(
+            DiagramKind.SEQUENCE, DiagramKind.ACTIVITY, DiagramKind.CALLGRAPH);
+
     private JToolBar buildDiagramKindToolBar(EnumMap<DiagramKind, JToggleButton> toggles,
                                              javax.swing.ButtonGroup group) {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
         bar.setRollover(true);
         bar.add(new JLabel(Messages.get("toolbar.diagramLabel")));
-        boolean firstGroup = true;
+        boolean anyRendered = false;
         for (DiagramCategory cat : CATEGORIES) {
-            if (!firstGroup) {
-                bar.addSeparator();
-            }
-            firstGroup = false;
+            boolean firstInCategory = true;
             for (DiagramKind k : cat.kinds) {
+                if (TOOLBAR_HIDDEN_KINDS.contains(k)) {
+                    continue;
+                }
+                // カテゴリの先頭ボタンを描く直前だけセパレータを入れる (空カテゴリでは入れない)。
+                if (firstInCategory && anyRendered) {
+                    bar.addSeparator();
+                }
+                firstInCategory = false;
+                anyRendered = true;
                 // 図種ごとの Material グリフをカテゴリ色で着色し、ひと目で図種を識別できるようにする。
                 javax.swing.Icon icon = MaterialIcons.of(kindGlyph(k), 16, cat.color);
                 JToggleButton b = new JToggleButton(toolbarLabel(k), icon);

@@ -589,6 +589,41 @@ public class DiagramTabPaneTest {
     }
 
     @Test
+    public void switchActiveMethodKind_switchesToCallGraphInPlace() {
+        // シーケンス → コールグラフもタブを複製せずその場で切替できること
+        // (メソッド系トグルはトップツールバーから外し、タブ上部の切替バーへ一本化)。
+        TreeNodeOpenRequest seq = methodReq("com.example.Cg", "start", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.CALLGRAPH));
+
+        assertEquals("コールグラフへの切替でタブ数は増えない (複製しない)", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("トグル後はコールグラフになっているはず", DiagramKind.CALLGRAPH,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+        assertEquals("focusedTabRequest の図種も CALLGRAPH に更新されるはず", DiagramKind.CALLGRAPH,
+                GuiActionRunner.execute(() -> pane.focusedTabRequest().kind));
+    }
+
+    @Test
+    public void switchActiveMethodKind_cyclesSequenceActivityCallGraph() {
+        // シーケンス → アクティビティ → コールグラフ → シーケンス と 3 図種を巡回できること。
+        TreeNodeOpenRequest seq = methodReq("com.example.Cycle", "loop", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+        assertEquals(DiagramKind.ACTIVITY, GuiActionRunner.execute(() -> pane.activeTabKind()));
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.CALLGRAPH));
+        assertEquals(DiagramKind.CALLGRAPH, GuiActionRunner.execute(() -> pane.activeTabKind()));
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.SEQUENCE));
+        assertEquals(DiagramKind.SEQUENCE, GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        assertEquals("3 図種を巡回してもタブは 1 枚のまま", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
     public void switchActiveMethodKind_sameKind_isNoOp() {
         TreeNodeOpenRequest seq = methodReq("com.example.Svc3", "exec", DiagramKind.SEQUENCE);
         GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
