@@ -50,6 +50,9 @@ final class SketchCanvas extends JPanel {
 
         /** Esc 等で関係追加モードが取り消された (ツールバーのモード表示を戻すため)。 */
         default void relationModeCancelled() { }
+
+        /** 関係線のダブルクリック編集 (ラベル/種別) が要求された。 */
+        default void editRelationRequested(SketchRelation relation) { }
     }
 
     private static final int PAD_X = 10;
@@ -93,8 +96,17 @@ final class SketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && editable && selected != null) {
+                if (e.getClickCount() != 2 || !editable) {
+                    return;
+                }
+                if (selected != null) {
                     listener.editRequested(selected);
+                    return;
+                }
+                // クラス外のダブルクリック: 近くの関係線があればその場で編集する。
+                SketchRelation rel = relationAt(e.getPoint());
+                if (rel != null) {
+                    listener.editRelationRequested(rel);
                 }
             }
         };
@@ -448,6 +460,39 @@ final class SketchCanvas extends JPanel {
 
     private static Point center(Rectangle r) {
         return new Point(r.x + r.width / 2, r.y + r.height / 2);
+    }
+
+    /** クリック点に近い関係線を返す (しきい値内で最も近いもの)。無ければ null。 */
+    private SketchRelation relationAt(Point p) {
+        SketchRelation best = null;
+        double bestD = 7.0; // ヒットしきい値 (px)
+        for (SketchRelation rel : model.getRelations()) {
+            SketchClass left = model.findClass(rel.getLeft());
+            SketchClass right = model.findClass(rel.getRight());
+            if (left == null || right == null) {
+                continue;
+            }
+            Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
+            Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
+            double d = pointToSegment(p.x, p.y, pl.x, pl.y, pr.x, pr.y);
+            if (d < bestD) {
+                bestD = d;
+                best = rel;
+            }
+        }
+        return best;
+    }
+
+    private static double pointToSegment(double px, double py,
+                                         double x1, double y1, double x2, double y2) {
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double len2 = dx * dx + dy * dy;
+        double t = len2 == 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        double cx = x1 + t * dx;
+        double cy = y1 + t * dy;
+        return Math.hypot(px - cx, py - cy);
     }
 
     /** 矩形の中心から {@code toward} へ向かう線と矩形境界の交点。 */

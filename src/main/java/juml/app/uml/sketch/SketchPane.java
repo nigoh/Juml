@@ -85,6 +85,13 @@ public final class SketchPane extends JPanel {
                     modeCombo.setSelectedIndex(0);
                 }
             }
+
+            @Override public void editRelationRequested(SketchRelation relation) {
+                if (SketchEditDialogs.editRelation(SketchPane.this, relation)) {
+                    firePumlChanged();
+                    canvas.repaint();
+                }
+            }
         });
 
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
