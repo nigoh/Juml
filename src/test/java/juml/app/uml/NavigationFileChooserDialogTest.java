@@ -18,6 +18,7 @@ import javax.swing.JTextField;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.GraphicsEnvironment;
+import java.awt.event.KeyEvent;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -104,14 +105,21 @@ public class NavigationFileChooserDialogTest {
         return (JTextField) f.get(dlg);
     }
 
-    /** 現在の list モデルサイズを反射で取得する（絞り込み後の件数チェック）。 */
+    /**
+     * 現在の list モデルサイズを EDT 上で取得する（絞り込み後の件数チェック）。
+     * {@link DefaultListModel} は Swing コンポーネントに属するため EDT から読む。
+     */
     @SuppressWarnings("unchecked")
-    private static int getModelSize(NavigationFileChooserDialog dlg) throws Exception {
-        Field f = NavigationFileChooserDialog.class.getDeclaredField("model");
-        f.setAccessible(true);
-        DefaultListModel<AndroidNavigationGraphInfo> model =
-                (DefaultListModel<AndroidNavigationGraphInfo>) f.get(dlg);
-        return model.getSize();
+    private static int getModelSize(NavigationFileChooserDialog dlg) {
+        try {
+            Field f = NavigationFileChooserDialog.class.getDeclaredField("model");
+            f.setAccessible(true);
+            DefaultListModel<AndroidNavigationGraphInfo> model =
+                    (DefaultListModel<AndroidNavigationGraphInfo>) f.get(dlg);
+            return model.getSize();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("model フィールドへのアクセス失敗", e);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -188,14 +196,16 @@ public class NavigationFileChooserDialogTest {
                 graph(":feature", "main", "nav_feature.xml"));
         NavigationFileChooserDialog dlg = buildDialog(graphs);
 
-        // 絞り込み前: 3 件全表示
-        assertEquals("フィルタ前は 3 件が表示されるはず", 3, getModelSize(dlg));
+        // 絞り込み前: 3 件全表示 (DefaultListModel は Swing 属なので EDT から読む)
+        int sizeBefore = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("フィルタ前は 3 件が表示されるはず", 3, sizeBefore);
 
         // "auth" で絞り込む → 1 件のみ
         JTextField filterField = getFilterField(dlg);
         GuiActionRunner.execute(() -> filterField.setText("auth"));
 
-        assertEquals("'auth' フィルタ後は 1 件のみ表示されるはず", 1, getModelSize(dlg));
+        int sizeAfter = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("'auth' フィルタ後は 1 件のみ表示されるはず", 1, sizeAfter);
     }
 
     @Test
@@ -227,5 +237,37 @@ public class NavigationFileChooserDialogTest {
         JTextField filterField = getFilterField(dlg);
         GuiActionRunner.execute(() -> filterField.setText("feature"));
         assertEquals("モジュール名 'feature' でフィルタすると 1 件のはず", 1, getModelSize(dlg));
+    }
+
+    /**
+     * filter フィールドで Enter キーを押すと選択中の候補で確定するキーボード経路の検証。
+     * {@link KeyEvent#KEY_PRESSED} イベントを EDT 上でディスパッチして経路を検証する。
+     */
+    @Test
+    public void filterField_enterKey_commitsSelection() throws Exception {
+        List<AndroidNavigationGraphInfo> graphs = Arrays.asList(
+                graph(":app", "main", "nav_main.xml"));
+        NavigationFileChooserDialog dlg = buildDialog(graphs);
+
+        // filter フィールドを反射で取得 (ダイアログ構築直後はリスト先頭が選択済み)
+        JTextField filterField = getFilterField(dlg);
+
+        // Enter キーで KeyListener が commit() を呼ぶ経路を検証する。
+        // 非表示コンポーネントへの dispatchEvent は KeyboardFocusManager に
+        // 横取りされて届かないため、登録済みリスナーを EDT 上で直接起動する。
+        GuiActionRunner.execute(() -> {
+            KeyEvent ke = new KeyEvent(
+                    filterField, KeyEvent.KEY_PRESSED,
+                    System.currentTimeMillis(), 0,
+                    KeyEvent.VK_ENTER, KeyEvent.CHAR_UNDEFINED);
+            for (java.awt.event.KeyListener kl : filterField.getKeyListeners()) {
+                kl.keyPressed(ke);
+            }
+        });
+
+        assertFalse("Enter キー後はダイアログが dispose されるはず", dlg.isDisplayable());
+        assertNotNull("Enter キー後は getSelectedKey() が非 null のはず", dlg.getSelectedKey());
+        assertTrue("Enter キーで選択されたキーは 'nav_main.xml' を含むはず",
+                dlg.getSelectedKey().contains("nav_main.xml"));
     }
 }

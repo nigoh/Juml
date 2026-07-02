@@ -421,6 +421,135 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (h) バルククローズ: closeAllTabs / closeOtherTabsExceptActive / closeTabsToRightOfActive
+    //     DiagramTabPane.java:504-558 の package-private メソッドを同一パッケージから直接呼ぶ。
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void closeAllTabs_removesAllDynamicTabs() {
+        // Arrange: 3 枚の動的タブを追加
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.CloseAll1")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.CloseAll2")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.CloseAll3")));
+        });
+        assertEquals("前提: 動的 3 枚 + 固定 2 枚 = 5 タブ", FIXED + 3,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+
+        // Act
+        GuiActionRunner.execute(() -> pane.closeAllTabs());
+
+        // Assert: 固定タブのみが残る
+        int remaining = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("closeAllTabs() 後は固定タブのみが残るはず", FIXED, remaining);
+        assertFalse("closeAllTabs() 後は動的タブが存在しないはず",
+                GuiActionRunner.execute(() -> pane.hasActiveTab()));
+    }
+
+    @Test
+    public void closeOtherTabsExceptActive_keepsOnlyActiveTab() {
+        // Arrange: A, B, C を追加 → 最後に追加した C がアクティブ
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.OtherA")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.OtherB")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.OtherC")));
+        });
+
+        // Act
+        GuiActionRunner.execute(() -> pane.closeOtherTabsExceptActive());
+
+        // Assert: アクティブタブ(C) 1 枚 + 固定タブ 2 枚
+        int total = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("closeOtherTabsExceptActive() 後は動的 1 枚 + 固定 2 枚 = 3 のはず",
+                FIXED + 1, total);
+        assertTrue("closeOtherTabsExceptActive() 後もアクティブタブが残るはず",
+                GuiActionRunner.execute(() -> pane.hasActiveTab()));
+    }
+
+    /**
+     * ユーティリティタブ選択中に {@code closeOtherTabsExceptActive()} を呼ぶと
+     * {@code activeKey=null} で {@code closeOtherTabs(null)} が走るため
+     * 全動的タブが閉じる。これは「Close Others」の文脈では副作用に見えるが、
+     * 現行の実装仕様として本テストで固定する。
+     * {@code DiagramTabPane.java:524-534} の null 処理と合わせて読むこと。
+     */
+    @Test
+    public void closeOtherTabsExceptActive_whenUtilityTabSelected_closesAllDynamic() {
+        // Arrange: 2 枚追加してからユーティリティタブへ移動
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.UtilSel1")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.UtilSel2")));
+            // ユーティリティタブ (末尾) を選択する
+            tabs.setSelectedIndex(tabs.getTabCount() - 1);
+        });
+
+        // Act
+        GuiActionRunner.execute(() -> pane.closeOtherTabsExceptActive());
+
+        // Assert: activeKey=null → closeOtherTabs(null) で全動的タブが閉じる
+        int dynamicCount = GuiActionRunner.execute(() -> pane.dynamicTabCount());
+        assertEquals(
+                "ユーティリティタブ選択中は activeKey=null → 全動的タブが閉じるはず (仕様)", 0,
+                dynamicCount);
+    }
+
+    @Test
+    public void closeTabsToRightOfActive_removesOnlyRightSideTabs() {
+        // Arrange: A(0), B(1), C(2) を追加し、中央タブ B をアクティブにする
+        //   insertAt = tabCount - fixedSuffix なので末尾固定タブの直前に積まれる。
+        //   追加後: [A(0), B(1), C(2), Utility1(3), Utility2(4)]、C が選択中。
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.RightA")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.RightB")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.RightC")));
+            // 中央タブ B (index 1) をアクティブにする
+            tabs.setSelectedIndex(1);
+        });
+
+        // Act
+        GuiActionRunner.execute(() -> pane.closeTabsToRightOfActive());
+
+        // Assert: C が閉じ、A と B が残る → 動的 2 枚 + 固定 2 枚 = 4
+        int total = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals(
+                "closeTabsToRightOfActive() は B より右の C を閉じ、4 タブが残るはず",
+                FIXED + 2, total);
+    }
+
+    @Test
+    public void closeTabsToRightOfActive_whenLastTabActive_isNoOp() {
+        // Arrange: A, B, C を追加 → C が最後に追加されアクティブ (右端動的タブ)
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.LastA")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.LastB")));
+            pane.addOrFocusTab(
+                    TreeNodeOpenRequest.classNode(classInfo("com.example.LastC")));
+        });
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        // Act: C は動的タブの右端 → closeTabsToRight(C_key) のループで i > idx が成立しない
+        GuiActionRunner.execute(() -> pane.closeTabsToRightOfActive());
+
+        // Assert: タブ数が変わらない
+        int after = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("右端タブが選択中のとき closeTabsToRightOfActive() は no-op のはず",
+                before, after);
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
 

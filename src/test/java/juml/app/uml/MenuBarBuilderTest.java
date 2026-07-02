@@ -217,6 +217,42 @@ public class MenuBarBuilderTest {
     }
 
     @Test
+    public void tabEnablement_oneDynamicTab_closeAllEnabled() {
+        // 境界値: 実装は dyn >= 1 で有効。dyn = 1 でも有効であることを固定する
+        // (誤って >= 2 に変えられた場合に検出するため)。
+        MenuBarBuilder.Result r = buildWithTabSuppliers(1, 0, true, false);
+        JMenu fileMenu = r.menuBar.getMenu(0);
+        fireMenuSelected(fileMenu);
+
+        JMenuItem closeAll = findItem(fileMenu, Messages.get("menubar.file.closeAllTabs"));
+        assertNotNull("File メニューに Close All Tabs 項目があるはず", closeAll);
+        assertTrue("動的タブ 1 枚のとき Close All Tabs は有効のはず", closeAll.isEnabled());
+    }
+
+    @Test
+    public void tabEnablement_closeTabsToRight_followsHasRightSupplier() {
+        // hasTabsToRightOfActive supplier の true/false が Close Tabs to the Right の
+        // 活性状態へそのまま反映されることを両分岐で検証する。
+        MenuBarBuilder.Result rTrue = buildWithTabSuppliers(2, 0, true, true);
+        JMenu fileMenuTrue = rTrue.menuBar.getMenu(0);
+        fireMenuSelected(fileMenuTrue);
+        JMenuItem closeRightTrue =
+                findItem(fileMenuTrue, Messages.get("menubar.file.closeRight"));
+        assertNotNull("Close Tabs to the Right 項目があるはず", closeRightTrue);
+        assertTrue("右側にタブがあるとき Close Tabs to the Right は有効のはず",
+                closeRightTrue.isEnabled());
+
+        MenuBarBuilder.Result rFalse = buildWithTabSuppliers(2, 0, true, false);
+        JMenu fileMenuFalse = rFalse.menuBar.getMenu(0);
+        fireMenuSelected(fileMenuFalse);
+        JMenuItem closeRightFalse =
+                findItem(fileMenuFalse, Messages.get("menubar.file.closeRight"));
+        assertNotNull("Close Tabs to the Right 項目があるはず", closeRightFalse);
+        assertFalse("右側にタブがないとき Close Tabs to the Right は無効のはず",
+                closeRightFalse.isEnabled());
+    }
+
+    @Test
     public void tabEnablement_noClosedHistory_reopenDisabled() {
         MenuBarBuilder.Result r = buildWithTabSuppliers(1, 0, true, false);
         JMenu fileMenu = r.menuBar.getMenu(0);

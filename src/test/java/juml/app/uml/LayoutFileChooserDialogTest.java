@@ -18,6 +18,7 @@ import javax.swing.JTextField;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.GraphicsEnvironment;
+import java.awt.event.KeyEvent;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -101,14 +102,21 @@ public class LayoutFileChooserDialogTest {
         return (JTextField) f.get(dlg);
     }
 
-    /** 現在の list モデルサイズを反射で取得する（絞り込み後の件数チェック）。 */
+    /**
+     * 現在の list モデルサイズを EDT 上で取得する（絞り込み後の件数チェック）。
+     * {@link DefaultListModel} は Swing コンポーネントに属するため EDT から読む。
+     */
     @SuppressWarnings("unchecked")
-    private static int getModelSize(LayoutFileChooserDialog dlg) throws Exception {
-        Field f = LayoutFileChooserDialog.class.getDeclaredField("model");
-        f.setAccessible(true);
-        DefaultListModel<AndroidLayoutInfo> model =
-                (DefaultListModel<AndroidLayoutInfo>) f.get(dlg);
-        return model.getSize();
+    private static int getModelSize(LayoutFileChooserDialog dlg) {
+        try {
+            Field f = LayoutFileChooserDialog.class.getDeclaredField("model");
+            f.setAccessible(true);
+            DefaultListModel<AndroidLayoutInfo> model =
+                    (DefaultListModel<AndroidLayoutInfo>) f.get(dlg);
+            return model.getSize();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("model フィールドへのアクセス失敗", e);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -185,14 +193,16 @@ public class LayoutFileChooserDialogTest {
                 layout(":lib", "main", "item_card.xml"));
         LayoutFileChooserDialog dlg = buildDialog(layouts);
 
-        // 絞り込み前: 3 件全表示
-        assertEquals("フィルタ前は 3 件が表示されるはず", 3, getModelSize(dlg));
+        // 絞り込み前: 3 件全表示 (DefaultListModel は Swing 属なので EDT から読む)
+        int sizeBefore = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("フィルタ前は 3 件が表示されるはず", 3, sizeBefore);
 
         // "activity" で絞り込む → 1 件のみ
         JTextField filterField = getFilterField(dlg);
         GuiActionRunner.execute(() -> filterField.setText("activity"));
 
-        assertEquals("'activity' フィルタ後は 1 件のみ表示されるはず", 1, getModelSize(dlg));
+        int sizeAfter = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("'activity' フィルタ後は 1 件のみ表示されるはず", 1, sizeAfter);
     }
 
     @Test
@@ -205,11 +215,13 @@ public class LayoutFileChooserDialogTest {
         JTextField filterField = getFilterField(dlg);
         // 一度フィルタをかける
         GuiActionRunner.execute(() -> filterField.setText("activity"));
-        assertEquals("フィルタ後は 1 件のはず", 1, getModelSize(dlg));
+        int sizeFiltered = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("フィルタ後は 1 件のはず", 1, sizeFiltered);
 
         // フィルタをクリア → 全件復元
         GuiActionRunner.execute(() -> filterField.setText(""));
-        assertEquals("フィルタクリア後は全 2 件が復元されるはず", 2, getModelSize(dlg));
+        int sizeCleared = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("フィルタクリア後は全 2 件が復元されるはず", 2, sizeCleared);
     }
 
     @Test
@@ -223,6 +235,43 @@ public class LayoutFileChooserDialogTest {
         JTextField filterField = getFilterField(dlg);
         // ":lib" モジュール名でフィルタ (':'は除く)
         GuiActionRunner.execute(() -> filterField.setText("lib"));
-        assertEquals("モジュール名 'lib' でフィルタすると 1 件のはず", 1, getModelSize(dlg));
+        int sizeFiltered = GuiActionRunner.execute(() -> getModelSize(dlg));
+        assertEquals("モジュール名 'lib' でフィルタすると 1 件のはず", 1, sizeFiltered);
+    }
+
+    /**
+     * filter フィールドで Enter キーを押すと {@code commit()} が呼ばれ、
+     * 選択中アイテムの key が確定してダイアログが dispose される。
+     *
+     * <p>KeyListener は {@code filter.addKeyListener(new KeyAdapter { keyPressed → commit })
+     * (LayoutFileChooserDialog.java:122-133) で登録されており、
+     * {@link KeyEvent#KEY_PRESSED} イベントを EDT 上でディスパッチして経路を検証する。</p>
+     */
+    @Test
+    public void filterField_enterKey_commitsSelection() throws Exception {
+        List<AndroidLayoutInfo> layouts = Arrays.asList(
+                layout(":app", "main", "activity_main.xml"));
+        LayoutFileChooserDialog dlg = buildDialog(layouts);
+
+        // filter フィールドを反射で取得 (ダイアログ構築直後はリスト先頭が選択済み)
+        JTextField filterField = getFilterField(dlg);
+
+        // Enter キーで KeyListener が commit() を呼ぶ経路を検証する。
+        // 非表示コンポーネントへの dispatchEvent は KeyboardFocusManager に
+        // 横取りされて届かないため、登録済みリスナーを EDT 上で直接起動する。
+        GuiActionRunner.execute(() -> {
+            KeyEvent ke = new KeyEvent(
+                    filterField, KeyEvent.KEY_PRESSED,
+                    System.currentTimeMillis(), 0,
+                    KeyEvent.VK_ENTER, KeyEvent.CHAR_UNDEFINED);
+            for (java.awt.event.KeyListener kl : filterField.getKeyListeners()) {
+                kl.keyPressed(ke);
+            }
+        });
+
+        assertFalse("Enter キー後はダイアログが dispose されるはず", dlg.isDisplayable());
+        assertNotNull("Enter キー後は getSelectedKey() が非 null のはず", dlg.getSelectedKey());
+        assertTrue("Enter キーで選択されたキーは 'activity_main.xml' を含むはず",
+                dlg.getSelectedKey().contains("activity_main.xml"));
     }
 }
