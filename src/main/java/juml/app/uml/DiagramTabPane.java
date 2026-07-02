@@ -490,11 +490,40 @@ public final class DiagramTabPane {
         }
         tab.editorFile = target;
         tab.dirty = false;
-        // Save As で名前が付いたらタブラベルもファイル名に合わせる (キーは安定のため不変)。
+        // Save As で保存先が変わったらタブキーもファイルパス基準へ移行する。
+        // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
+        // タブが重複生成される (dedup の一貫性が崩れる)。
+        migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
+        // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
+        int idx = tabs.indexOfComponent(tab);
+        if (idx >= 0) {
+            tabs.setToolTipTextAt(idx, target.getAbsolutePath());
+        }
         refreshTabLabels();
         reportStatus(Messages.get("status.saved") + target.getAbsolutePath());
         return true;
+    }
+
+    /**
+     * エディタタブのキーを新パス基準へ移行する (Save As 後の dedup 一貫性のため)。
+     * openTabs / previewTabKey / 付箋保存キー / ナビ履歴の旧キーを更新する。
+     * 移行先キーが既に別タブで使われている稀なケースでは触らない (クロブ回避)。
+     */
+    private void migrateEditorTabKey(DiagramTab tab, String newKey) {
+        String oldKey = tab.key;
+        if (newKey.equals(oldKey) || openTabs.containsKey(newKey)) {
+            return;
+        }
+        openTabs.remove(oldKey);
+        tab.key = newKey;
+        openTabs.put(newKey, tab);
+        if (oldKey.equals(previewTabKey)) {
+            previewTabKey = newKey;
+        }
+        // 付箋の保存先を新キーへ (在メモリの付箋は保持され、以降 newKey へ保存される)。
+        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        navHistory.replaceKey(oldKey, newKey);
     }
 
     /** アクティブなエディタタブの PlantUML テキスト (非エディタタブなら null)。 */
@@ -559,6 +588,8 @@ public final class DiagramTabPane {
         tab.icon = DiagramTabSupport.iconFor(req);
         tab.label = req.displayLabel();
         openTabs.put(newKey, tab);
+        // ナビ履歴の旧キーを新キーへ置換 (Alt+Left/Right が消えた旧キーで no-op にならないよう)。
+        navHistory.replaceKey(oldKey, newKey);
         // 付箋メモは図ごとに別管理。別図種の付箋が残らないよう一旦クリアして新キーへ再バインド。
         tab.previewPanel.notes().setData(
                 java.util.Collections.emptyList(), java.util.Collections.emptyList());
@@ -574,6 +605,9 @@ public final class DiagramTabPane {
                 DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync));
         tab.updateKindToggle();
         refreshTabLabels();
+        // 図種切替では選択変更が起きず handleTabSelectionChanged を通らないため、
+        // MRU オーバーレイのラベルが旧図種のまま残らないよう明示的に更新する。
+        mru.onActivated(tab, tab.label);
         tab.startRender();
         // アクティブタブならツールバー/ツリー/ステータスの図種連動を更新する。
         if (activeTab() == tab) {
@@ -1311,9 +1345,14 @@ public final class DiagramTabPane {
             }
             state.currentPuml = renderedPuml;
             state.currentSvgXml = renderedSvgXml;
+            // 図種依存の起点/対象キーは毎回リセットし、アクティブタブの分だけを下で設定する。
+            // (リセットしないと前タブの layout/navigation キーが残り、別図種へ切替後に
+            //  古いキーで図が再構築される。seq/activity/callGraph は元からリセット済み。)
             state.sequenceEntry = null;
             state.activityEntry = null;
             state.callGraphEntry = null;
+            state.currentLayoutKey = null;
+            state.currentNavigationKey = null;
             if (spec == null) {
                 // 自由編集エディタタブ: 図種依存のパラメータは持たない。
                 state.currentScope = null;

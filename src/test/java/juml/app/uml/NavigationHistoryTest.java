@@ -142,6 +142,30 @@ public class NavigationHistoryTest {
     }
 
     @Test
+    public void replaceKey_updatesAllOccurrences_soNavigationStillWorks() {
+        // Save As / 図種切替でタブキーが変わったとき、履歴中の旧キーを新キーへ置換する。
+        // 置換しないと Alt+Left が消えた旧キーを指して no-op になる。
+        NavigationHistory h = new NavigationHistory();
+        h.push("A");
+        h.push("OLD");
+        h.push("B");
+        h.replaceKey("OLD", "NEW");
+        // カーソルは B。戻ると NEW (旧 OLD の位置) を指すべき。
+        assertEquals("NEW", h.back());
+        assertEquals("A", h.back());
+    }
+
+    @Test
+    public void replaceKey_noOpForUnknownOrSameKey() {
+        NavigationHistory h = new NavigationHistory();
+        h.push("A");
+        h.push("B");
+        h.replaceKey("ZZZ", "NEW"); // 存在しないキー
+        h.replaceKey("A", "A");     // 同一キー
+        assertEquals("A", h.back()); // 履歴は不変
+    }
+
+    @Test
     public void clear_resetsEverything() {
         NavigationHistory h = new NavigationHistory();
         h.push("A");

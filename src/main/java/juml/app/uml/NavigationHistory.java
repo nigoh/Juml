@@ -99,6 +99,21 @@ final class NavigationHistory {
         }
     }
 
+    /**
+     * タブキーが変わったとき (Save As / 図種切替) 履歴中の旧キーを新キーへ置換する。
+     * 置換しないと Alt+Left/Right が消えた旧キーを指して no-op になる。
+     */
+    void replaceKey(String oldKey, String newKey) {
+        if (oldKey == null || newKey == null || oldKey.equals(newKey)) {
+            return;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            if (Objects.equals(entries.get(i), oldKey)) {
+                entries.set(i, newKey);
+            }
+        }
+    }
+
     void clear() {
         entries.clear();
         cursor = -1;
