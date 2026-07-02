@@ -9,7 +9,7 @@ Change log
     * **中核 (`juml.core.structdiff`)**: 新旧 2 バージョンの解析結果 (`List<JavaClassInfo>`) を宣言単位で突き合わせる `ClassStructureDiff` (クラス = 完全修飾名、フィールド/enum 定数 = 名前、メソッド = 名前 + 引数型でオーバーロード対応。extends/implements/modifiers/型パラメータのヘッダ変化も検出)。結果を GitHub diff 風配色の PlantUML クラス図にする `PlantUmlStructureDiffDiagram` (追加 = 緑 `<<added>>`、削除 = 赤 `<<removed>>` + 打ち消し線、変更 = 黄 `<<modified>>` で旧宣言を打ち消し線併記。凡例付き、不変クラスは既定で非表示)。
     * **git 連携**: `GitRepoService` に指定 rev 時点の blob を読む `fileContentAt()` と第 1 親を返す `parentOf()` を追加 (従来どおり読み取り専用)。
     * **GUI**: File History サブタブに「UML Diff」ボタンを追加。履歴からコミットを 1 件選択 = 親コミットと比較、2 件選択 = コミット間比較。解析 → 差分計算 → PlantUML 生成 → SVG 描画を SwingWorker で背景実行し、モードレスダイアログに図 + PlantUML テキストのタブで表示 (描画失敗時もテキストは参照可能)。
-    * テスト: `ClassStructureDiffTest` (15 ケース) / `PlantUmlStructureDiffDiagramTest` (14 ケース、同梱 PlantUML での実レンダリング確認含む) / `GitRepoServiceTest` に blob 読み取り・親解決の 3 ケースを追加。
+    * テスト: `ClassStructureDiffTest` (15 ケース) / `PlantUmlStructureDiffDiagramTest` (14 ケース、同梱 PlantUML での実レンダリング確認含む) / `GitRepoServiceTest` に blob 読み取り・親解決の 3 ケースを追加。さらに結合レベルとして、実 git リポジトリで blob 取得 → 解析 → diff → PlantUML → Batik SVG の全連鎖をヘッドレスで通す `GitUmlDiffPipelineE2ETest` (親比較/2 コミット直接比較/初回コミット/存在しないパスの 4 ケース) と、ダイアログ実物を Xvfb 上で完走させる `GitUmlDiffDialogSwingTest` (3 ケース、リフレクション不使用) を追加。
     * 目的: コードレビューやリファクタリング確認で「このコミットで公開 API・クラス構造がどう変わったか」を図でひと目で把握できるようにするため。
 
 * **PlantUML 1.2026.x のエスケープ回帰を修正 (HTML エンティティ → チルダエスケープ) + 未エスケープ箇所の一掃 + alias 衝突解消** (`PlantUmlCommentFormatter` / `PlantUmlCallGraphDiagram` / `PlantUmlActivityDiagram` / `PlantUmlModuleDiagram` / `PlantUmlSequenceDiagram` / `PlantUmlClassDiagram` / aosp・aaos の `PlantUml*Diagram` 4 種)
