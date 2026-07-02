@@ -30,9 +30,19 @@ import java.util.function.Consumer;
  */
 public final class SketchPane extends JPanel {
 
+    private static final int HISTORY_LIMIT = 100;
+
     private final SketchCanvas canvas;
     private JComboBox<String> modeCombo;
+    private JButton undoButton;
+    private JButton redoButton;
     private Consumer<String> onPumlChange;
+    // Undo/Redo は PlantUML テキストのスナップショットで管理する (round-trip 実績を流用)。
+    // baseline は現在のモデル状態のテキスト、restoring は復元適用中の再記録抑止フラグ。
+    private final java.util.Deque<String> undoStack = new java.util.ArrayDeque<>();
+    private final java.util.Deque<String> redoStack = new java.util.ArrayDeque<>();
+    private String baseline = "@startuml\n@enduml\n";
+    private boolean restoring;
     /** モードコンボの並びに対応する関係種別 (先頭 null = 選択/移動)。 */
     private static final SketchRelation.Kind[] MODES = {
             null,
@@ -90,8 +100,40 @@ public final class SketchPane extends JPanel {
                 e -> canvas.setRelationMode(MODES[modeCombo.getSelectedIndex()]));
         bar.add(modeCombo);
 
+        undoButton = new JButton(Messages.get("sketch.toolbar.undo"));
+        undoButton.setToolTipText(Messages.get("sketch.toolbar.undo.tip"));
+        undoButton.addActionListener(e -> undo());
+        redoButton = new JButton(Messages.get("sketch.toolbar.redo"));
+        redoButton.setToolTipText(Messages.get("sketch.toolbar.redo.tip"));
+        redoButton.addActionListener(e -> redo());
+        bar.add(undoButton);
+        bar.add(redoButton);
+        installUndoRedoKeys();
+        updateHistoryButtons();
+
         add(bar, BorderLayout.NORTH);
         add(new JScrollPane(canvas), BorderLayout.CENTER);
+    }
+
+    /** Ctrl+Z=Undo、Ctrl+Y / Ctrl+Shift+Z=Redo をペイン全体に割り当てる。 */
+    private void installUndoRedoKeys() {
+        int mask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.InputMap im = getInputMap(JPanel.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        javax.swing.ActionMap am = getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, mask), "sketchUndo");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Y, mask), "sketchRedo");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z,
+                mask | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "sketchRedo");
+        am.put("sketchUndo", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                undo();
+            }
+        });
+        am.put("sketchRedo", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                redo();
+            }
+        });
     }
 
     private JButton addButton(String labelKey, SketchClass.Kind kind) {
@@ -112,6 +154,56 @@ public final class SketchPane extends JPanel {
     public void loadFrom(String pumlText) {
         SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(pumlText);
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
+        // 新しい内容を読み込んだら Undo 履歴はリセットする (別セッション扱い)。
+        baseline = currentPuml();
+        undoStack.clear();
+        redoStack.clear();
+        updateHistoryButtons();
+    }
+
+    /** キャンバス操作を 1 手戻す。 */
+    void undo() {
+        if (undoStack.isEmpty()) {
+            return;
+        }
+        redoStack.push(currentPuml());
+        applyPuml(undoStack.pop());
+    }
+
+    /** 戻した操作をやり直す。 */
+    void redo() {
+        if (redoStack.isEmpty()) {
+            return;
+        }
+        undoStack.push(currentPuml());
+        applyPuml(redoStack.pop());
+    }
+
+    /** スナップショット (PlantUML) をモデルへ復元し、テキスト欄へも同期する。 */
+    private void applyPuml(String puml) {
+        restoring = true;
+        try {
+            SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+            canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
+            baseline = puml;
+            if (onPumlChange != null) {
+                onPumlChange.accept(puml);
+            }
+        } finally {
+            restoring = false;
+        }
+        canvas.revalidate();
+        canvas.repaint();
+        updateHistoryButtons();
+    }
+
+    private void updateHistoryButtons() {
+        if (undoButton != null) {
+            undoButton.setEnabled(!undoStack.isEmpty());
+        }
+        if (redoButton != null) {
+            redoButton.setEnabled(!redoStack.isEmpty());
+        }
     }
 
     /** 現在のモデルから PlantUML を再生成して返す (テストおよび同期通知用)。 */
@@ -142,13 +234,29 @@ public final class SketchPane extends JPanel {
     }
 
     private void firePumlChanged() {
+        String now = SketchPumlCodec.toPuml(canvas.model());
+        // 復元適用中でなければ、変更前状態 (baseline) を Undo に積んで現在状態を baseline に更新。
+        if (!restoring) {
+            undoStack.push(baseline);
+            while (undoStack.size() > HISTORY_LIMIT) {
+                undoStack.removeLast();
+            }
+            redoStack.clear();
+            baseline = now;
+            updateHistoryButtons();
+        }
         if (onPumlChange != null) {
-            onPumlChange.accept(SketchPumlCodec.toPuml(canvas.model()));
+            onPumlChange.accept(now);
         }
     }
 
     /** テスト用: 現在の解析済みモデル。 */
     List<SketchClass> classesForTest() {
         return canvas.model().getClasses();
+    }
+
+    /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */
+    void addClassForTest(SketchClass.Kind kind) {
+        addClass(kind, null);
     }
 }
