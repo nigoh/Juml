@@ -77,8 +77,11 @@ public final class SketchPumlCodec {
                 continue;
             }
             if (line.startsWith("'")) {
-                // 一般コメントは図の意味に影響しないため読み飛ばす
-                // (GUI 編集で再生成すると失われる点は仕様とする)。
+                // '@pos 以外の一般コメントはモデル化できず、GUI 編集で再生成すると失われる。
+                // isFullySupported() は「編集してもテキストを失わない」ことを表すので、
+                // コメントがあるときは未対応として扱い、デザイナー編集を無効化して
+                // ユーザーのコメントを黙って消さないようにする。
+                unsupported.add(line);
                 continue;
             }
             Matcher decl = CLASS_DECL.matcher(line);
@@ -131,6 +134,12 @@ public final class SketchPumlCodec {
         int i = start;
         while (i < lines.length) {
             String line = lines[i].trim();
+            // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま
+            // @enduml/@startuml に達したら、これらを吸い込んで破損させないよう
+            // 消費せずにブロックを打ち切る (外側ループが処理する)。
+            if (line.equals("@enduml") || line.startsWith("@startuml")) {
+                break;
+            }
             i++;
             if (line.equals("}")) {
                 break;

@@ -116,6 +116,43 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void parse_generalComment_isReportedNotSilentlyDropped() {
+        // '@pos 以外の一般コメントはモデル化できず GUI 編集で失われるため、
+        // isFullySupported() は false (= デザイナー編集を無効化して保護) を返すべき。
+        // (以前は黙って読み飛ばして true を返し、編集でコメントを消していた。)
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(
+                "@startuml\n' IMPORTANT: keep this note\nclass Foo\n@enduml\n");
+        assertFalse("一般コメントを含む図は未対応として保護されるはず",
+                r.isFullySupported());
+        assertTrue("コメント行が未対応として報告されるはず",
+                r.unsupportedLines.contains("' IMPORTANT: keep this note"));
+        // 一方 '@pos コメントは対応構文なので保護対象にはしない。
+        SketchPumlCodec.ParseResult pos = SketchPumlCodec.parse(
+                "@startuml\nclass Foo\n'@pos Foo 10 20\n@enduml\n");
+        assertTrue("'@pos コメントだけなら編集可能のまま: " + pos.unsupportedLines,
+                pos.isFullySupported());
+    }
+
+    @Test
+    public void parse_unclosedBrace_doesNotSwallowEnduml() {
+        // 閉じ波括弧が欠けたまま @enduml に達しても、@enduml をメンバーとして
+        // 取り込んでテキストを破損させないこと。
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(
+                "@startuml\nclass Foo {\n  +x: int\n@enduml\n");
+        SketchClass foo = r.model.findClass("Foo");
+        assertNotNull(foo);
+        assertEquals("フィールドは +x: int のみ", 1, foo.getFields().size());
+        assertEquals("+x: int", foo.getFields().get(0));
+        assertTrue("@enduml をフィールド/メソッドとして取り込まないこと",
+                foo.getMethods().isEmpty()
+                        && !foo.getFields().contains("@enduml"));
+        // 再生成テキストに素の @enduml 混入や壊れた本体が無いこと。
+        String out = SketchPumlCodec.toPuml(r.model);
+        assertFalse("本体内に @enduml が混入していないこと",
+                out.contains("  @enduml"));
+    }
+
+    @Test
     public void toPuml_emptyModel_producesMinimalDocument() {
         String puml = SketchPumlCodec.toPuml(new SketchModel());
         assertEquals("@startuml\n@enduml\n", puml);
