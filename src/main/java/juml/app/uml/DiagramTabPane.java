@@ -501,15 +501,15 @@ public final class DiagramTabPane {
     }
 
     /**
-     * メソッド図タブ (SEQUENCE ⇄ ACTIVITY) を、同じ {@code Class.method} のまま
+     * メソッド図タブ (SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH) を、同じ {@code Class.method} のまま
      * 別図種へ「その場で」切り替える。タブを複製せず同じ位置のタブを描き替えるため、
      * 関数を選択したまま図種を行き来してもタブが増えない。
      *
      * <p>既に対象図種のタブが別に開いている場合は、重複を避けてそのタブへフォーカスする。
-     * METHOD 以外のタブ、SEQUENCE/ACTIVITY 以外の図種、同一図種への切替は無視する。</p>
+     * METHOD 以外のタブ、メソッド系 (DIAGRAMS_METHOD) 以外の図種、同一図種への切替は無視する。</p>
      */
     /**
-     * アクティブなメソッド図タブを、同じ関数のまま {@code next} (SEQUENCE/ACTIVITY) へ
+     * アクティブなメソッド図タブを、同じ関数のまま {@code next} (SEQUENCE/ACTIVITY/CALLGRAPH) へ
      * その場で切り替える。アクティブタブがメソッド図でなければ何もしない。タブは複製されない。
      */
     public void switchActiveMethodKind(DiagramKind next) {
@@ -520,7 +520,7 @@ public final class DiagramTabPane {
         if (tab == null || tab.treeSync == null
                 || tab.treeSync.target != TreeNodeOpenRequest.Target.METHOD
                 || next == null || next == tab.spec.getKind()
-                || !(next == DiagramKind.SEQUENCE || next == DiagramKind.ACTIVITY)) {
+                || !ToolBarBuilder.DIAGRAMS_METHOD.contains(next)) {
             return;
         }
         TreeNodeOpenRequest req = TreeNodeOpenRequest.method(
@@ -1060,10 +1060,11 @@ public final class DiagramTabPane {
         private boolean dirty;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
-        /** メソッド図の SEQUENCE ⇄ ACTIVITY 切替バー (メソッド図以外では非表示)。 */
+        /** メソッド図の SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH 切替バー (メソッド図以外では非表示)。 */
         private final JPanel kindBar;
         private final javax.swing.JToggleButton seqToggle;
         private final javax.swing.JToggleButton activityToggle;
+        private final javax.swing.JToggleButton callgraphToggle;
         /** トグルのプログラム的な選択更新中にアクションが発火しても切替しないためのガード。 */
         private boolean syncingKindToggle;
         private final SvgPreviewPanel previewPanel = new SvgPreviewPanel();
@@ -1157,17 +1158,22 @@ public final class DiagramTabPane {
             // 付箋メモを .juml/notes.json からロードし、変更時に保存するよう配線
             notesBinder.bind(previewPanel, cache.getProjectRoot(), key);
 
-            // メソッド図の上部に「シーケンス ⇄ アクティビティ」切替バーを置く。
+            // メソッド図の上部に「シーケンス ⇄ アクティビティ ⇄ コールグラフ」切替バーを置く。
             // 関数を選択したまま図種を行き来できるので、図種ごとにタブを開かずに済む。
+            // トップツールバーからメソッド系の図種ボタンは廃し、切替はこのバーへ一本化した。
             seqToggle = new javax.swing.JToggleButton(Messages.get("diagram.kind.SEQUENCE.short"));
             activityToggle = new javax.swing.JToggleButton(Messages.get("diagram.kind.ACTIVITY.short"));
+            callgraphToggle = new javax.swing.JToggleButton(Messages.get("diagram.kind.CALLGRAPH.short"));
             seqToggle.setFocusable(false);
             activityToggle.setFocusable(false);
+            callgraphToggle.setFocusable(false);
             seqToggle.setToolTipText(Messages.get("diagram.toggle.tip"));
             activityToggle.setToolTipText(Messages.get("diagram.toggle.tip"));
+            callgraphToggle.setToolTipText(Messages.get("diagram.toggle.tip"));
             javax.swing.ButtonGroup kindGroup = new javax.swing.ButtonGroup();
             kindGroup.add(seqToggle);
             kindGroup.add(activityToggle);
+            kindGroup.add(callgraphToggle);
             seqToggle.addActionListener(e -> {
                 if (!syncingKindToggle) {
                     switchMethodTabKind(this, DiagramKind.SEQUENCE);
@@ -1178,10 +1184,16 @@ public final class DiagramTabPane {
                     switchMethodTabKind(this, DiagramKind.ACTIVITY);
                 }
             });
+            callgraphToggle.addActionListener(e -> {
+                if (!syncingKindToggle) {
+                    switchMethodTabKind(this, DiagramKind.CALLGRAPH);
+                }
+            });
             kindBar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 2));
             kindBar.add(new JLabel(Messages.get("diagram.toggle.label")));
             kindBar.add(seqToggle);
             kindBar.add(activityToggle);
+            kindBar.add(callgraphToggle);
             add(kindBar, java.awt.BorderLayout.NORTH);
             updateKindToggle();
         }
@@ -1236,16 +1248,17 @@ public final class DiagramTabPane {
 
         /**
          * 図種切替バーの表示/選択状態を現在の図種に合わせる。メソッド図
-         * (SEQUENCE/ACTIVITY) のときだけ表示し、それ以外の図種では隠す。
+         * (SEQUENCE/ACTIVITY/CALLGRAPH) のときだけ表示し、それ以外の図種では隠す。
          */
         void updateKindToggle() {
             DiagramKind k = spec != null ? spec.getKind() : null;
-            boolean method = k == DiagramKind.SEQUENCE || k == DiagramKind.ACTIVITY;
+            boolean method = k != null && ToolBarBuilder.DIAGRAMS_METHOD.contains(k);
             kindBar.setVisible(method);
             syncingKindToggle = true;
             try {
                 seqToggle.setSelected(k == DiagramKind.SEQUENCE);
                 activityToggle.setSelected(k == DiagramKind.ACTIVITY);
+                callgraphToggle.setSelected(k == DiagramKind.CALLGRAPH);
             } finally {
                 syncingKindToggle = false;
             }
