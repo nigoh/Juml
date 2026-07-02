@@ -52,7 +52,8 @@ Anthropic の記事
 - **Skills**: `aosp-juml-analyzer`・`aaos-juml-analyzer`（各 SKILL.md + cheatsheet 群）。
   AOSP/AAOS の解析・図化手順とリファレンス。`gui-audit`（GUI ユーザビリティ監査手順）、
   `test-audit`（テスト監査をラウンドで回して枯らす手順）、
-  `verify-recording`（実装確認の様子を GIF/webm で録画する手順 + ハーネス雛形）。
+  `verify-recording`（実装確認の様子を GIF/webm で録画する手順 + ハーネス雛形）、
+  `juml-verify`（実装変更を CI と同じ合格基準で自己検証するループ手順）。
 - **Subagents**: `aosp-juml-explorer`・`aaos-juml-explorer`（戦略設計・読み取り専用）、
   `java-analyst`（Java 解析パイプラインの設計相談）、
   `gui-auditor`（Swing GUI のユーザビリティ監査・読み取り専用）、
@@ -72,15 +73,47 @@ Anthropic の記事
   `/verify-recording <対象>` で起動。**GUI 操作は Xvfb + アニメ GIF（方式 A）**、**図出力/Web は
   Playwright webm（方式 B）** で録る（同梱 ffmpeg は x11grab/gif 非対応のため方式 C は不可）。
   録画は人間レビュー用の補助成果物で、回帰保証は `/test-write` で別途テスト化する。
+- **自己検証ループ（変更が本当に「良い状態」か）**: `juml-verify` スキル + `/juml-verify`。
+  実装変更後に compile → checkstyle → test → jar → E2E スモークを **速い順** に回し、
+  「全ゲート緑 or 3 ラウンド」で停止する。合格基準は CI（`build.yml` の `check jar`）と同一。
+  headless で skip されたテストの明示（緑 ≠ GUI 検証済み）を義務付ける。
 - **Slash Commands**: `/juml-explore`・`/juml-quick`・`/aosp-help`・`/aaos-help`・
   `/java-analyze`・`/java-diagram`・`/java-struct`・`/java-lex`・`/gui-audit`・
-  `/test-audit`・`/test-write`・`/verify-recording`・`/release`（詳細は `.claude/commands/README.md`）。
+  `/test-audit`・`/test-write`・`/verify-recording`・`/juml-verify`・`/release`
+  （詳細は `.claude/commands/README.md`）。
 
 ### 決定論層 — `.claude/hooks/` + `settings.json`
-- **SessionStart** → `hooks/session-start.sh`: Java バージョンと `build/libs` の jar 有無を
-  確認してコンテキストへ通知（jar が無ければ `./gradlew jar` を案内、自動ビルドはしない）。
+- **SessionStart** → `hooks/session-start.sh`: Java バージョンと `build/libs` の jar の
+  有無・鮮度（src より古くないか）を確認してコンテキストへ通知（jar が無ければ
+  `./gradlew jar` を案内、自動ビルドはしない）。
 - **PreToolUse(Bash)** → `hooks/guard-git-push.sh`: 保護ブランチ(main/master)への push と
-  force push を `exit 2` でブロック。作業ブランチへの push は妨げない。
+  force push（`=` 付き `--force-with-lease=<ref>` 形式を含む）を `exit 2` でブロック。
+  作業ブランチへの push は妨げない。
+- **Stop** → `hooks/quality-gate.sh`: `.java` / `build.gradle` / checkstyle 設定に
+  **未検証の変更を残したままターンを終えようとしたら**、compile + checkstyle
+  （CI の `check` の静的部分）を実行し、失敗していれば `exit 2` で停止をブロックして
+  修正を続けさせる。同一変更状態の合格はハッシュ（`.git/juml-quality-gate.pass`）で
+  記憶して再実行しない。`stop_hook_active` 継続中の再失敗はブロックせず警告のみ
+  （無限ループ防止＝停止基準の明確化）。テストまで含むフル検証は `/juml-verify`。
+
+---
+
+## ループ設計（記事「Getting started with loops」の適用）
+
+ループ =「停止条件が満たされるまで作業サイクルを繰り返す」仕組み。Juml では
+**明確な停止条件** とセットで以下を運用する:
+
+| ループ | トリガー | 停止条件 | 実体 |
+|---|---|---|---|
+| 自己検証ループ | 実装変更後（turn-based） | 全ゲート緑 or 3 ラウンド | `juml-verify` スキル |
+| 品質ゲート | ターン終了（Stop イベント） | ゲート緑 or 1 継続で警告降格 | `hooks/quality-gate.sh` |
+| テスト監査ループ | `/test-audit` | 新規 Critical/High が連続 1–2 ラウンド 0（枯れ） | `test-audit` スキル |
+
+原則:
+- **停止条件を先に決める**（早期終了と過剰反復の両方を防ぐ）。
+- **決定論で済むものはスクリプト/Hook**（推論より安く確実）。ゲート判定は gradle、
+  強制は Hook、判断が要る修正だけを Claude が担う。
+- **skip の透明性**: headless で skip されたテストは「検証済み」と数えない。
 
 ---
 

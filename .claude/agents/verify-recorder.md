@@ -1,7 +1,7 @@
 ---
 name: verify-recorder
 description: Juml の実装確認（動作検証）の様子を「動画」で残す実作業エージェント。Swing GUI の操作シナリオを Xvfb 上で動かしてアニメ GIF 録画したり、PlantUML 図出力(HTML/SVG)を Playwright で webm 録画するハーネスを作成・実行し、生成物のパスを返す。録画ファイルの提示（SendUserFile）は親が行うため、このエージェントは**生成物の絶対パスと skip 状況を明確に返す**。Use when recording a video/GIF of Juml behavior to verify or demo an implementation.
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 

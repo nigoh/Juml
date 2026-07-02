@@ -32,19 +32,31 @@ block() {
   exit 2
 }
 
-# 1) force push を拒否
-if printf '%s' "$cmd" | grep -Eq '[[:space:]](--force|--force-with-lease|-f)([[:space:]]|$)'; then
-  block "force push は禁止" "履歴を破壊しうるため。通常の push を使ってください。"
-fi
-# refspec 先頭の '+'（強制）も拒否（例: git push origin +HEAD:main）
-if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push[^;&|]*[[:space:]]\+[^[:space:]]'; then
-  block "force refspec(+) は禁止" "履歴を破壊しうるため。"
-fi
+# 誤検知を避けるため、force / 保護ブランチの判定は「git push の呼び出し
+# セグメント（git push から次のシェル区切りまで）」に対してのみ行う。
+# コマンド全体に対して判定すると、コミットメッセージ等に含まれる
+# "--force-with-lease" や "main" という文字列にも反応してしまう。
+pushes="$(printf '%s' "$cmd" | grep -oE 'git[[:space:]]+push[^;&|]*')"
 
-# 2) 保護ブランチ(main/master)宛ての push を拒否
-if printf '%s' "$cmd" | grep -Eq '(^|[[:space:]/:])(main|master)([[:space:]]|$|:)'; then
-  block "保護ブランチ(main/master)への push は禁止" \
-        "作業ブランチ(claude/...)へ push し、PR 経由でマージしてください。"
-fi
+while IFS= read -r seg; do
+  [ -z "$seg" ] && continue
+
+  # 1) force push を拒否（--force-with-lease=<ref> の = 付き形式も対象）
+  if printf '%s' "$seg" | grep -Eq '[[:space:]](--force|--force-with-lease|--force-if-includes|-f)([=[:space:]]|$)'; then
+    block "force push は禁止" "履歴を破壊しうるため。通常の push を使ってください。"
+  fi
+  # refspec 先頭の '+'（強制）も拒否（例: git push origin +HEAD:main）
+  if printf '%s' "$seg" | grep -Eq '[[:space:]]\+[^[:space:]]'; then
+    block "force refspec(+) は禁止" "履歴を破壊しうるため。"
+  fi
+
+  # 2) 保護ブランチ(main/master)宛ての push を拒否
+  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]/:])(main|master)([[:space:]]|$|:)'; then
+    block "保護ブランチ(main/master)への push は禁止" \
+          "作業ブランチ(claude/...)へ push し、PR 経由でマージしてください。"
+  fi
+done <<EOF
+$pushes
+EOF
 
 exit 0

@@ -1,7 +1,7 @@
 ---
 name: gui-test-auditor
 description: Juml の Swing GUI（src/main/java/juml/app/uml/**）に対する **テストの品質とカバレッジ** を手厚く監査する読み取り専用エージェント。GUI 機能ごとのテスト有無、フレーキー（不安定）リスク、headless/EDT 規律、Robot テストの衛生、アサーションの薄さ、回帰スイートの穴を `file:line` 付きで洗い出す。コードもテストも変更せず、修正方針を提案する。1 ラウンドで指摘を出し切り、メインの Claude がラウンドを回して「枯れる」まで使う。Use when auditing the GUI test suite of Juml for coverage gaps, flakiness, and test hygiene.
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 
