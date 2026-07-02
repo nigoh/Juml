@@ -153,6 +153,11 @@ public class PumlSourcePanel extends JPanel {
         }
     }
 
+    /** テスト用: 現在のハイライト件数。 */
+    int highlightCountForTest() {
+        return textArea.getHighlighter().getHighlights().length;
+    }
+
     /**
      * PlantUML が報告した「生成ソースの行番号」を、スタイル prelude 挿入分
      * ({@code injectedLines}) を差し引いてエディタ上の行番号へ写像する (純関数)。

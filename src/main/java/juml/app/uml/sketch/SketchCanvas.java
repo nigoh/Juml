@@ -157,6 +157,11 @@ final class SketchCanvas extends JPanel {
         return Math.round(v / (float) GRID) * GRID;
     }
 
+    /** テスト用: グリッド吸着の丸め結果 (純関数)。 */
+    static int snapForTest(int v) {
+        return snap(v);
+    }
+
     /** 関係追加モードを切り替える (null で選択/移動モードへ戻す)。 */
     void setRelationMode(SketchRelation.Kind kind) {
         this.relationMode = kind;

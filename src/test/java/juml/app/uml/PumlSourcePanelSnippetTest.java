@@ -64,6 +64,24 @@ public class PumlSourcePanelSnippetTest {
         });
         assertEquals("ハイライト操作はテキストを変更しない",
                 original, GuiActionRunner.execute(panel::getText));
+        assertEquals("最後がクリアなのでハイライトは 0 件",
+                0, (int) GuiActionRunner.execute(panel::highlightCountForTest));
+    }
+
+    @Test
+    public void errorHighlight_appliesThenClears_countGoesUpThenDown() {
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> panel.setText("a\nb\nc\n"));
+        GuiActionRunner.execute(() -> panel.highlightErrorLine(2));
+        assertEquals("妥当行のハイライトで 1 件",
+                1, (int) GuiActionRunner.execute(panel::highlightCountForTest));
+        // 別の行を再ハイライトしても件数は 1 (前のを消してから付ける = 古い行に残らない)。
+        GuiActionRunner.execute(() -> panel.highlightErrorLine(1));
+        assertEquals("再ハイライトでも 1 件 (古い行に残らない)",
+                1, (int) GuiActionRunner.execute(panel::highlightCountForTest));
+        GuiActionRunner.execute(panel::clearErrorHighlight);
+        assertEquals("クリアで 0 件",
+                0, (int) GuiActionRunner.execute(panel::highlightCountForTest));
     }
 
     @Test
