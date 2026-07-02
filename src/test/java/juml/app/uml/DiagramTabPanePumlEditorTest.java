@@ -130,6 +130,22 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void openPumlEditor_markDirty_showsUnsavedMark() {
+        // 閉じたタブの再オープンで未保存(●)状態を復元する機構を検証する。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertTrue("markDirty=true で開いたタブは未保存マーク(●)が付くはず",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void confirmDiscardAllEdits_noDirtyTabs_returnsTrueWithoutDialog() {
+        // 未保存タブが無ければ確認ダイアログを出さず true (終了を許可) を返す。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        assertTrue("未保存タブが無ければ終了確認は true",
+                GuiActionRunner.execute(() -> pane.confirmDiscardAllEdits()));
+    }
+
+    @Test
     public void saveActivePumlEditor_returnsFalseWhenNoEditorTab() {
         boolean saved = GuiActionRunner.execute(() -> pane.saveActivePumlEditor(false));
         assertFalse("エディタタブが無いときの保存は false を返すはず", saved);

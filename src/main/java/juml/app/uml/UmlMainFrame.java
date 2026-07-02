@@ -903,6 +903,12 @@ public class UmlMainFrame extends JFrame {
 
     /** F5 / Refresh / フィルタ変更後にアクティブタブを再描画する。 */
     private void refreshDiagram() {
+        // エディタタブは spec を持たず applyStateToActiveTab では再描画されないため、
+        // テキストを真実源として直接再描画する (F5 が無反応にならないように)。
+        if (tabPane != null && tabPane.activeTabIsPumlEditor()) {
+            tabPane.rerenderActiveTab();
+            return;
+        }
         if (controller != null) {
             controller.applyStateToActiveTab();
         }
@@ -1006,6 +1012,11 @@ public class UmlMainFrame extends JFrame {
      * flush してから dispose する (デーモンスレッドの保存タスクドロップ防止)。
      */
     private void exitApplication() {
+        // 未保存のエディタタブがあれば保存/破棄/中止を確認する。中止なら終了しない
+        // (DO_NOTHING_ON_CLOSE のためウィンドウはそのまま残る)。
+        if (tabPane != null && !tabPane.confirmDiscardAllEdits()) {
+            return;
+        }
         saveWindowState();
         if (tabPane != null) {
             tabPane.shutdown();

@@ -408,6 +408,14 @@ public final class DiagramTabPane {
      *                    同じファイルのタブが既に開いていればフォーカスのみ移す。
      */
     public void openPumlEditor(String initialText, java.io.File file) {
+        openPumlEditor(initialText, file, false);
+    }
+
+    /**
+     * {@code markDirty} 版。閉じたタブの再オープン時に、未保存 (●) 状態も復元して
+     * 2 回目のクローズで無警告消失しないようにするために使う。
+     */
+    void openPumlEditor(String initialText, java.io.File file, boolean markDirty) {
         String key;
         String label;
         if (file != null) {
@@ -438,6 +446,9 @@ public final class DiagramTabPane {
         tabs.setTabComponentAt(insertAt, header);
         TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
         tabs.setSelectedIndex(insertAt);
+        if (markDirty) {
+            tab.dirty = true; // 復元した未保存内容は dirty のまま扱う
+        }
         refreshTabLabels();
         tab.startRender();
         applyTabBudget(key);
@@ -868,6 +879,23 @@ public final class DiagramTabPane {
      *
      * @return タブを閉じてよければ true
      */
+    /**
+     * 終了前に、未保存のエディタタブそれぞれについて保存/破棄/中止を確認する。
+     * いずれかで Cancel されたら false を返し、呼び出し側は終了を中止する。
+     * (ウィンドウの×/File &gt; Exit からの無警告データ消失を防ぐ。)
+     */
+    public boolean confirmDiscardAllEdits() {
+        for (DiagramTab t : new ArrayList<>(openTabs.values())) {
+            if (t.isEditor() && t.dirty) {
+                tabs.setSelectedComponent(t); // どのタブの確認かユーザーに見せる
+                if (!confirmDiscardEdits(t)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private boolean confirmDiscardEdits(DiagramTab tab) {
         if (!tab.isEditor() || !tab.dirty) {
             return true;
@@ -889,7 +917,8 @@ public final class DiagramTabPane {
         if (tab.isEditor()) {
             final String text = tab.sourcePanel.getText();
             final java.io.File file = tab.editorFile;
-            closedTabs.push(() -> openPumlEditor(text, file));
+            final boolean wasDirty = tab.dirty;
+            closedTabs.push(() -> openPumlEditor(text, file, wasDirty));
         } else {
             final String key = tab.key;
             final String label = tab.label;
