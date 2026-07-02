@@ -4,6 +4,14 @@ Change log
 2.1
 --------
 
+* **git 履歴の UML 構造 Diff を追加: コミット間のクラス構造差分を UML クラス図で比較** (`ClassStructureDiff` / `PlantUmlStructureDiffDiagram` 新設 (`juml.core.structdiff`)、`GitRepoService` / `GitFileHistoryPane` / `GitUmlDiffDialog` 新設 / `messages*.properties`)
+    * **背景**: git の差分は普段コード (unified diff) で見るが、「クラス構造がどう変わったか」は行 diff からは読み取りづらい。差分そのものを UML で見られるようにする。
+    * **中核 (`juml.core.structdiff`)**: 新旧 2 バージョンの解析結果 (`List<JavaClassInfo>`) を宣言単位で突き合わせる `ClassStructureDiff` (クラス = 完全修飾名、フィールド/enum 定数 = 名前、メソッド = 名前 + 引数型でオーバーロード対応。extends/implements/modifiers/型パラメータのヘッダ変化も検出)。結果を GitHub diff 風配色の PlantUML クラス図にする `PlantUmlStructureDiffDiagram` (追加 = 緑 `<<added>>`、削除 = 赤 `<<removed>>` + 打ち消し線、変更 = 黄 `<<modified>>` で旧宣言を打ち消し線併記。凡例付き、不変クラスは既定で非表示)。
+    * **git 連携**: `GitRepoService` に指定 rev 時点の blob を読む `fileContentAt()` と第 1 親を返す `parentOf()` を追加 (従来どおり読み取り専用)。
+    * **GUI**: File History サブタブに「UML Diff」ボタンを追加。履歴からコミットを 1 件選択 = 親コミットと比較、2 件選択 = コミット間比較。解析 → 差分計算 → PlantUML 生成 → SVG 描画を SwingWorker で背景実行し、モードレスダイアログに図 + PlantUML テキストのタブで表示 (描画失敗時もテキストは参照可能)。
+    * テスト: `ClassStructureDiffTest` (15 ケース) / `PlantUmlStructureDiffDiagramTest` (14 ケース、同梱 PlantUML での実レンダリング確認含む) / `GitRepoServiceTest` に blob 読み取り・親解決の 3 ケースを追加。
+    * 目的: コードレビューやリファクタリング確認で「このコミットで公開 API・クラス構造がどう変わったか」を図でひと目で把握できるようにするため。
+
 * **PlantUML 1.2026.x のエスケープ回帰を修正 (HTML エンティティ → チルダエスケープ) + 未エスケープ箇所の一掃 + alias 衝突解消** (`PlantUmlCommentFormatter` / `PlantUmlCallGraphDiagram` / `PlantUmlActivityDiagram` / `PlantUmlModuleDiagram` / `PlantUmlSequenceDiagram` / `PlantUmlClassDiagram` / aosp・aaos の `PlantUml*Diagram` 4 種)
     * **背景**: 「UML が描画されない / おかしい」報告の調査で、同梱 PlantUML 1.2026.x が `&lt;` 等の **HTML エンティティを解釈せずそのまま表示する** ことを実測で確認 (`&lt;init&gt;` が文字どおり画面に出る回帰)。一方、生の `<b>` のような既知タグは書式として解釈されテキストが欠落する。
     * **修正 (中核)**: `escapeHtml` (`& < >` → エンティティ) を `escapeText` (`<` → `~<` の creole チルダエスケープ) に置き換え。全コンテキスト (メンバ行 / note / ラベル / title / WBS / legend) で元の文字どおり表示されることをレンダリング実測で確認。`>` と `&` は生のままで安全のため変換しない。

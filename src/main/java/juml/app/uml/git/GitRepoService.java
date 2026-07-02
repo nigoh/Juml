@@ -218,6 +218,44 @@ public final class GitRepoService implements AutoCloseable {
         }
     }
 
+    /**
+     * 指定 rev (SHA / ブランチ / タグ) 時点のファイル内容を UTF-8 テキストとして返す。
+     * その rev にファイルが存在しなければ null。
+     */
+    public String fileContentAt(String rev, String relPath) throws IOException {
+        ObjectId id = repo.resolve(rev);
+        if (id == null || relPath == null || relPath.isEmpty()) {
+            return null;
+        }
+        try (RevWalk walk = new RevWalk(repo)) {
+            RevCommit commit = walk.parseCommit(id);
+            try (org.eclipse.jgit.treewalk.TreeWalk tw =
+                         org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                                 repo, relPath, commit.getTree())) {
+                if (tw == null) {
+                    return null;
+                }
+                ObjectId blob = tw.getObjectId(0);
+                return new String(repo.open(blob).getBytes(), StandardCharsets.UTF_8);
+            }
+        }
+    }
+
+    /** 指定コミットの第 1 親の SHA を返す。親がなければ (初回コミット等) null。 */
+    public String parentOf(String rev) throws IOException {
+        ObjectId id = repo.resolve(rev);
+        if (id == null) {
+            return null;
+        }
+        try (RevWalk walk = new RevWalk(repo)) {
+            RevCommit commit = walk.parseCommit(id);
+            if (commit.getParentCount() == 0) {
+                return null;
+            }
+            return commit.getParent(0).getId().getName();
+        }
+    }
+
     /** 指定ファイルの blame (各行を最後に変更したコミット) を返す。 */
     public List<BlameLine> blame(String ref, String relPath)
             throws GitAPIException, IOException {

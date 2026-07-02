@@ -53,7 +53,15 @@ final class GitFileHistoryPane extends JPanel {
         JButton blame = new JButton(Messages.get("git.file.blame"));
         blame.addActionListener(e -> loadBlame());
         bar.add(blame);
+        JButton umlDiff = new JButton(Messages.get("git.file.umlDiff"));
+        umlDiff.setToolTipText(Messages.get("git.file.umlDiffTip"));
+        umlDiff.addActionListener(e -> openUmlDiff());
+        bar.add(umlDiff);
         add(bar, BorderLayout.NORTH);
+
+        // UML Diff で 2 コミット選択比較を可能にする (1 選択時は親コミットと比較)
+        historyList.setSelectionMode(
+                javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         historyList.setCellRenderer(new javax.swing.DefaultListCellRenderer() {
             @Override public java.awt.Component getListCellRendererComponent(
@@ -172,6 +180,35 @@ final class GitFileHistoryPane extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    /**
+     * 選択コミットの Java ファイルをクラス構造 UML 差分として表示する。
+     * 1 コミット選択 = 親コミットとの比較、2 コミット選択 = 選択同士 (古い方が比較元)。
+     */
+    private void openUmlDiff() {
+        final GitRepoService svc = ctx.service();
+        final String path = pathField.getText().trim();
+        if (svc == null || path.isEmpty()) {
+            return;
+        }
+        if (!path.endsWith(".java")) {
+            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
+            return;
+        }
+        List<CommitInfo> sel = historyList.getSelectedValuesList();
+        if (sel.isEmpty() || sel.size() > 2) {
+            ctx.reportStatus(Messages.get("git.umldiff.selectHint"));
+            return;
+        }
+        // 履歴リストは新しい順なので先頭が比較先、2 件目 (あれば) が比較元
+        CommitInfo newer = sel.get(0);
+        CommitInfo older = sel.size() == 2 ? sel.get(1) : null;
+        GitUmlDiffDialog dialog = new GitUmlDiffDialog(
+                javax.swing.SwingUtilities.getWindowAncestor(this),
+                svc, path, older != null ? older.sha : null,
+                newer.sha, newer.shortSha);
+        dialog.setVisible(true);
     }
 
     /** 入力欄のファイルの blame (行単位の最終変更コミット) を表示する。 */

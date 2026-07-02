@@ -164,6 +164,33 @@ public class GitRepoServiceTest {
     }
 
     @Test
+    public void fileContentAt_returnsBlobOfEachCommit() throws Exception {
+        assertEquals("line1\n", service.fileContentAt(first.getName(), "a.txt"));
+        assertEquals("line1\nline2\n",
+                service.fileContentAt(second.getName(), "a.txt"));
+        assertEquals("ブランチ名でも解決できるはず", "line1\nline2\n",
+                service.fileContentAt(service.currentBranch(), "a.txt"));
+    }
+
+    @Test
+    public void fileContentAt_returnsNullForMissingPathOrRev() throws Exception {
+        assertNull("存在しないパスは null",
+                service.fileContentAt(second.getName(), "nope.txt"));
+        assertNull("最初のコミットにまだ無いファイルは null",
+                service.fileContentAt(first.getName(), "b.txt"));
+        assertNull("解決できない rev は null",
+                service.fileContentAt("no-such-ref", "a.txt"));
+        assertNull(service.fileContentAt(second.getName(), ""));
+    }
+
+    @Test
+    public void parentOf_returnsFirstParentOrNull() throws Exception {
+        assertEquals(first.getName(), service.parentOf(second.getName()));
+        assertNull("初回コミットの親は null", service.parentOf(first.getName()));
+        assertNull(service.parentOf("no-such-ref"));
+    }
+
+    @Test
     public void relativize_convertsAbsolutePathInsideWorkTree() throws Exception {
         assertEquals("a.txt", service.relativize(new File(root, "a.txt")));
         assertEquals("src/deep/x.java",
