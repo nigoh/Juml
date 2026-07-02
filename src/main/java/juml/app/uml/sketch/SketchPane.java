@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 public final class SketchPane extends JPanel {
 
     private final SketchCanvas canvas;
+    private JComboBox<String> modeCombo;
     private Consumer<String> onPumlChange;
     /** モードコンボの並びに対応する関係種別 (先頭 null = 選択/移動)。 */
     private static final SketchRelation.Kind[] MODES = {
@@ -66,6 +67,13 @@ public final class SketchPane extends JPanel {
             @Override public void addClassRequested(Point at) {
                 addClass(SketchClass.Kind.CLASS, at);
             }
+
+            @Override public void relationModeCancelled() {
+                // キャンバスで Esc が押されたらツールバーのモード表示も先頭 (選択/移動) へ戻す。
+                if (modeCombo != null) {
+                    modeCombo.setSelectedIndex(0);
+                }
+            }
         });
 
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
@@ -77,7 +85,7 @@ public final class SketchPane extends JPanel {
         for (int i = 0; i < MODE_KEYS.length; i++) {
             labels[i] = Messages.get(MODE_KEYS[i]);
         }
-        JComboBox<String> modeCombo = new JComboBox<>(labels);
+        modeCombo = new JComboBox<>(labels);
         modeCombo.addActionListener(
                 e -> canvas.setRelationMode(MODES[modeCombo.getSelectedIndex()]));
         bar.add(modeCombo);

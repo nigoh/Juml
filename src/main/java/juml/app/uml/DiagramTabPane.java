@@ -242,6 +242,12 @@ public final class DiagramTabPane {
     private void handleTabSelectionChanged() {
         DiagramTab tab = activeTab();
         if (tab == null) {
+            // ユーティリティタブ (Functions/Members/Manifest 等) 選択時は図タブが無いことを
+            // 通知し、ステータスバーの題材表示クリアと "Add Note" ボタンの無効化を促す。
+            // (通知しないと直前の図タブの状態が残り、見た目と挙動が食い違う。)
+            if (onTabFocused != null) {
+                onTabFocused.accept(null);
+            }
             return;
         }
         applyTabBudget(tab.key);

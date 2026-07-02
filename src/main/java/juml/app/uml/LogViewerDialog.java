@@ -227,6 +227,16 @@ final class LogViewerDialog extends JDialog {
     }
 
     private void clearLog() {
+        // 誤クリックでログが即消えて取り返せないため、実行前に確認する。
+        int answer = javax.swing.JOptionPane.showConfirmDialog(
+                this,
+                Messages.get("log.clear.confirm"),
+                Messages.get("log.clear.confirmTitle"),
+                javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+        if (answer != javax.swing.JOptionPane.OK_OPTION) {
+            return;
+        }
         AppLog.clearBuffer();
         model.setRows(new ArrayList<>());
         detail.setText(Messages.get("log.detail.empty"));

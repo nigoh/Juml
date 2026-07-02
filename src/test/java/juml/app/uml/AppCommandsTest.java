@@ -51,6 +51,25 @@ public class AppCommandsTest {
                 c.shortcut.contains("O"));
     }
 
+    /**
+     * Save As (Export) のショートカット表記は Ctrl+Shift+S。
+     * 実アクセラレータ (MenuBarBuilder) は Shift 付きなのに、以前はパレット表記が
+     * Ctrl+S (PUML 保存用) と食い違っていた。
+     */
+    @Test
+    public void saveAsShortcutIncludesShift() {
+        Callbacks cb = new Callbacks();
+        cb.chooseAndExport = () -> { };
+        List<CommandPalette.Command> cmds = AppCommands.from(cb);
+        assertEquals(1, cmds.size());
+        CommandPalette.Command c = cmds.get(0);
+        assertNotNull("Save As はショートカットを持つはず", c.shortcut);
+        assertTrue("Save As のショートカット表記は Shift を含むはず: " + c.shortcut,
+                c.shortcut.contains("Shift"));
+        assertTrue("Save As のショートカット表記は S を含むはず: " + c.shortcut,
+                c.shortcut.contains("S"));
+    }
+
     /** 単一アクションの結線: そのコマンドを実行すると当該コールバックが呼ばれる。 */
     @Test
     public void actionWiringInvokesTheBackingCallback() {
