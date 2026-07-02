@@ -48,6 +48,7 @@ public final class ImpactExplorerPanel extends JPanel {
     private final JTextField targetField;
     private final JSpinner depthSpinner;
     private final JButton runButton;
+    private final AnalysisRunControls runControls = new AnalysisRunControls();
     private final JTree resultTree;
     private final DefaultTreeModel treeModel;
     private final JLabel statusLabel;
@@ -71,6 +72,8 @@ public final class ImpactExplorerPanel extends JPanel {
         input.add(depthSpinner);
         runButton = new JButton(Messages.get("impact.btn.analyze"));
         input.add(runButton);
+        input.add(runControls.cancelButton());
+        input.add(runControls.progressBar());
         add(input, BorderLayout.NORTH);
 
         // 中央: 結果ツリー
@@ -122,6 +125,7 @@ public final class ImpactExplorerPanel extends JPanel {
             @Override
             protected void done() {
                 runButton.setEnabled(true);
+                runControls.finished();
                 try {
                     ImpactGraph graph = get();
                     if (graph == null) {
@@ -132,6 +136,8 @@ public final class ImpactExplorerPanel extends JPanel {
                     statusLabel.setText(java.text.MessageFormat.format(
                             Messages.get("impact.status.result"),
                             graph.directCallerCount(), graph.transitiveCallerCount()));
+                } catch (java.util.concurrent.CancellationException ce) {
+                    statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (Exception ex) {
                     juml.util.AppLog.error("ImpactExplorerPanel", "Impact analysis failed", ex);
                     statusLabel.setText(java.text.MessageFormat.format(
@@ -139,6 +145,7 @@ public final class ImpactExplorerPanel extends JPanel {
                 }
             }
         };
+        runControls.started(worker);
         worker.execute();
     }
 

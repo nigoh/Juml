@@ -47,6 +47,7 @@ public class FuncDiffPanel extends JPanel {
     private final JTextField methodBField = new JTextField(30);
     private final JButton compareButton = new JButton(Messages.get("explore.diff.btn.compare"));
     private final JButton saveButton = new JButton(Messages.get("explore.diff.btn.save"));
+    private final AnalysisRunControls runControls = new AnalysisRunControls();
     private final JLabel statusLabel = new JLabel(" ");
     private final JTextArea resultArea = new JTextArea();
 
@@ -108,6 +109,8 @@ public class FuncDiffPanel extends JPanel {
         JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
         buttons.add(compareButton);
         buttons.add(saveButton);
+        buttons.add(runControls.cancelButton());
+        buttons.add(runControls.progressBar());
         c.gridx = 0; c.gridy = 6; c.gridwidth = 3;
         c.insets = new Insets(6, 0, 2, 0);
         form.add(buttons, c);
@@ -210,7 +213,7 @@ public class FuncDiffPanel extends JPanel {
         final MethodDiffAnalyzer.MethodSpec finalA = parsedA;
         final MethodDiffAnalyzer.MethodSpec finalB = parsedB;
 
-        new SwingWorker<String, Void>() {
+        SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() throws Exception {
                 List<JavaClassInfo> classesA = UmlGenerator.extractFromSource(
@@ -231,12 +234,15 @@ public class FuncDiffPanel extends JPanel {
             @Override
             protected void done() {
                 compareButton.setEnabled(true);
+                runControls.finished();
                 try {
                     String report = get();
                     resultArea.setText(report);
                     resultArea.setCaretPosition(0);
                     saveButton.setEnabled(true);
                     statusLabel.setText(Messages.get("explore.diff.done"));
+                } catch (java.util.concurrent.CancellationException ce) {
+                    statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error("FuncDiffPanel", "Method diff analysis failed", cause);
@@ -249,7 +255,9 @@ public class FuncDiffPanel extends JPanel {
                     statusLabel.setText(Messages.get("explore.diff.interrupted"));
                 }
             }
-        }.execute();
+        };
+        runControls.started(worker);
+        worker.execute();
     }
 
     private void onSave(ActionEvent e) {
