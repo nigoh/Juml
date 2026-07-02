@@ -239,6 +239,7 @@ public class UmlMainFrame extends JFrame {
         mcb.openPumlFile = this::openPumlFile;
         mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
         mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
+        mcb.diffPumlVsSaved = () -> tabPane.showDiffVsSavedForActiveEditor();
         mcb.chooseAndExport = this::chooseAndExport;
         mcb.exportClassDiagramsPerFolder = this::exportClassDiagramsPerFolder;
         mcb.exportFunctionList = this::exportFunctionList;

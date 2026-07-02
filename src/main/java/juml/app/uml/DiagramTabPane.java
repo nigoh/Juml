@@ -469,6 +469,47 @@ public final class DiagramTabPane {
         return savePumlEditor(t, saveAs);
     }
 
+    /**
+     * アクティブなエディタタブの「編集中テキスト」と「保存済みファイル」の行差分を表示する。
+     * ファイル未保存 (Untitled) や差分なしのときは案内だけ出す。
+     */
+    public void showDiffVsSavedForActiveEditor() {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor()) {
+            reportStatus(Messages.get("puml.editor.noEditorTab"));
+            return;
+        }
+        if (t.editorFile == null || !t.editorFile.isFile()) {
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.noSaved"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String saved;
+        try {
+            saved = PumlEditorSupport.read(t.editorFile);
+        } catch (java.io.IOException ex) {
+            reportStatus(Messages.get("puml.editor.openFailed") + ex.getMessage());
+            return;
+        }
+        String current = t.sourcePanel.getText();
+        if (!PumlDiff.hasChanges(saved, current)) {
+            javax.swing.JOptionPane.showMessageDialog(tabs,
+                    Messages.get("puml.diff.none"), Messages.get("puml.diff.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        javax.swing.JTextArea area = new javax.swing.JTextArea(
+                PumlDiff.unified(saved, current), 24, 72);
+        area.setEditable(false);
+        area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+        area.setCaretPosition(0);
+        javax.swing.JOptionPane.showMessageDialog(tabs,
+                new javax.swing.JScrollPane(area),
+                Messages.get("puml.diff.title") + " — " + t.label,
+                javax.swing.JOptionPane.PLAIN_MESSAGE);
+    }
+
     private boolean savePumlEditor(DiagramTab tab, boolean saveAs) {
         java.io.File target = tab.editorFile;
         if (saveAs || target == null) {

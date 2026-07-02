@@ -46,6 +46,8 @@ public final class MenuBarBuilder {
         public Runnable savePumlTab;
         /** File &gt; Save .puml As...: アクティブなエディタタブを別名保存する。 */
         public Runnable savePumlTabAs;
+        /** File &gt; Diff vs Saved: 編集中テキストと保存ファイルの差分を表示する。 */
+        public Runnable diffPumlVsSaved;
         public Runnable chooseAndExport;
         public Runnable exportClassDiagramsPerFolder;
         public Runnable exportFunctionList;
@@ -344,6 +346,11 @@ public final class MenuBarBuilder {
         }
         if (savePumlAs != null) {
             m.add(savePumlAs);
+        }
+        if (cb.diffPumlVsSaved != null) {
+            JMenuItem diff = new JMenuItem(Messages.get("menubar.file.diffSaved"));
+            diff.addActionListener(e -> cb.diffPumlVsSaved.run());
+            m.add(diff);
         }
         m.add(save);
         m.add(perFolder);
