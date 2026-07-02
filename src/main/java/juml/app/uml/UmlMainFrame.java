@@ -323,6 +323,26 @@ public class UmlMainFrame extends JFrame {
         layoutOnlyMenuItems = menuResult.contextualItems.layoutOnlyItems;
         navigationOnlyMenuItems = menuResult.contextualItems.navigationOnlyItems;
         setJMenuBar(menuResult.menuBar);
+        installQuickOpenShortcut();
+    }
+
+    /**
+     * VS Code 流の Quick Open (Ctrl+P) を追加する。既存のエンティティ横断検索
+     * ({@link DiagramController#openEntitySearch()}, Ctrl+Shift+F) を、より馴染みのある
+     * ワンキーからも開けるようにするエイリアス。メニュー項目のアクセラレータ (Ctrl+Shift+F)
+     * とは別に、ルートペインへ WHEN_IN_FOCUSED_WINDOW でバインドする。
+     */
+    private void installQuickOpenShortcut() {
+        int menuMask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.KeyStroke ks = javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_P, menuMask);
+        javax.swing.JRootPane rp = getRootPane();
+        rp.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(ks, "quickOpen");
+        rp.getActionMap().put("quickOpen", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                controller.openEntitySearch();
+            }
+        });
     }
 
     /** 中央のツリー + タブ (動的ダイアグラムタブ + 末尾の固定ユーティリティタブ) を構築する。 */
