@@ -247,6 +247,47 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void fullLifecycle_editSaveAsEditDiffDiscard_staysConsistent() throws Exception {
+        // 機能の相互作用を 1 本の現実的なフローで通す:
+        //   Untitled で開く → 編集(●) → Save As(キー移行) → 再編集(●) →
+        //   保存内容と現在テキストが食い違う(=差分検出可) → 破棄で終了許可。
+        File f = tmp.newFile("lifecycle.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+
+        // 1) 編集 → dirty
+        String v1 = "@startuml\nclass One\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(v1));
+        assertTrue("編集で ●", GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+
+        // 2) Save As → キー移行 + ●解消 + ファイルへ書き込み
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(f)));
+        assertFalse("保存で ● 解消",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+        assertEquals(v1, PumlEditorSupport.read(f));
+
+        // 3) 再編集 → 再び dirty、保存内容と食い違う (差分検出のもと)
+        String v2 = "@startuml\nclass One\nclass Two\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(v2));
+        assertTrue("再編集で再び ●",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+        assertTrue("保存済みと現在テキストに差分がある",
+                PumlDiff.hasChanges(PumlEditorSupport.read(f),
+                        GuiActionRunner.execute(() -> pane.activeEditorText())));
+
+        // 4) 破棄(No)で終了許可 → ファイルは v1 のまま (v2 は書かれない)
+        boolean exitOk = GuiActionRunner.execute(
+                () -> pane.confirmDiscardAllEdits(label -> JOptionPane.NO_OPTION));
+        assertTrue("破棄で終了許可", exitOk);
+        assertEquals("破棄なのでファイルは保存前(v1)のまま", v1, PumlEditorSupport.read(f));
+
+        // 5) 同じファイルを開き直しても重複タブにならない (Save As のキー移行が効いている)
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        assertEquals("キー移行済みなので同ファイル再オープンで重複しない",
+                before, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
     public void closeAndReopen_restoresEditorTabWithText() {
         GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
         GuiActionRunner.execute(() -> pane.closeActiveTab());
