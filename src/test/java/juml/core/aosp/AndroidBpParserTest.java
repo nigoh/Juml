@@ -3,7 +3,9 @@
 
 package juml.core.aosp;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.util.List;
 
@@ -15,6 +17,9 @@ import static org.junit.Assert.assertTrue;
  * Android.bp (Soong) パーサのテスト。
  */
 public class AndroidBpParserTest {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
 
     @Test
     public void parsesSingleCcLibrary() {
@@ -435,5 +440,32 @@ public class AndroidBpParserTest {
         assertEquals(src.length(), stripped.length());
         // 元のオフセット位置で行情報が壊れていないこと
         assertEquals('\n', stripped.charAt(src.indexOf('\n')));
+    }
+
+    @Test
+    public void analyzeProjectSkipsPrebuiltsRepoAndOutSoong() throws java.io.IOException {
+        java.io.File root = tmp.newFolder("tree");
+        writeBp(new java.io.File(root, "Android.bp"), "libmain");
+        // AOSP フルツリー指定時のノイズ源はスキップされること
+        // (AndroidProjectScanner の既定除外との整合)
+        writeBp(new java.io.File(root, "prebuilts/module/Android.bp"), "libprebuilt");
+        writeBp(new java.io.File(root, ".repo/Android.bp"), "librepo");
+        writeBp(new java.io.File(root, "out-soong/Android.bp"), "liboutsoong");
+        writeBp(new java.io.File(root, "out/Android.bp"), "libout");
+
+        List<AndroidBpModule> mods = new AndroidBpParser().analyzeProject(root);
+        assertEquals(1, mods.size());
+        assertEquals("libmain", mods.get(0).getName());
+    }
+
+    private static void writeBp(java.io.File f, String moduleName)
+            throws java.io.IOException {
+        java.io.File parent = f.getParentFile();
+        if (parent != null && !parent.isDirectory()) {
+            assertTrue(parent.mkdirs());
+        }
+        java.nio.file.Files.write(f.toPath(),
+                ("cc_library { name: \"" + moduleName + "\" }\n")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }
