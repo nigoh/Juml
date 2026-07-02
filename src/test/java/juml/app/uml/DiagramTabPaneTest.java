@@ -551,8 +551,107 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (i) メソッド図の図種トグル (SEQUENCE ⇄ ACTIVITY) はタブを複製せずその場で切替
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void switchActiveMethodKind_togglesInPlaceWithoutAddingTab() {
+        TreeNodeOpenRequest seq = methodReq("com.example.Svc", "handle", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("前提: シーケンス図タブがアクティブ", DiagramKind.SEQUENCE,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        // シーケンス → アクティビティへその場切替。
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+
+        int after = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("図種トグルではタブ数が増えてはならない (複製しない)", before, after);
+        assertEquals("トグル後はアクティビティ図になっているはず", DiagramKind.ACTIVITY,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+        // 由来ノード (ツリー同期用) の図種も更新されているはず。
+        assertEquals("focusedTabRequest の図種も ACTIVITY に更新されるはず", DiagramKind.ACTIVITY,
+                GuiActionRunner.execute(() -> pane.focusedTabRequest().kind));
+    }
+
+    @Test
+    public void switchActiveMethodKind_togglesBackToSequence() {
+        TreeNodeOpenRequest seq = methodReq("com.example.Svc2", "run", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.SEQUENCE));
+
+        assertEquals("往復トグル後はシーケンス図に戻るはず", DiagramKind.SEQUENCE,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+        assertEquals("往復してもタブは 1 枚のまま", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
+    public void switchActiveMethodKind_sameKind_isNoOp() {
+        TreeNodeOpenRequest seq = methodReq("com.example.Svc3", "exec", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.SEQUENCE));
+
+        assertEquals("同一図種への切替は no-op でタブ数を変えない", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("図種は SEQUENCE のまま", DiagramKind.SEQUENCE,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    @Test
+    public void switchActiveMethodKind_whenTargetKindTabExists_focusesItInstead() {
+        // 同じメソッドのシーケンス図とアクティビティ図を別々に開く (別タブ)。
+        TreeNodeOpenRequest seq = methodReq("com.example.Dup", "call", DiagramKind.SEQUENCE);
+        TreeNodeOpenRequest act = methodReq("com.example.Dup", "call", DiagramKind.ACTIVITY);
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(seq);
+            pane.addOrFocusTab(act);
+            // シーケンス図タブ (index 0) をアクティブに戻す。
+            tabs.setSelectedIndex(0);
+        });
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("前提: シーケンス図がアクティブ", DiagramKind.SEQUENCE,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        // アクティビティへ切替 → 既存のアクティビティ図タブがあるので複製せずそこへフォーカス。
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+
+        assertEquals("既存タブがある場合は複製せずタブ数据え置き", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("既存のアクティビティ図タブへフォーカスが移るはず", DiagramKind.ACTIVITY,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    @Test
+    public void switchActiveMethodKind_onClassTab_isNoOp() {
+        // メソッド図でないタブ (クラス図) では図種トグルは効かない。
+        TreeNodeOpenRequest cls = TreeNodeOpenRequest.classNode(classInfo("com.example.Plain"));
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(cls));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+
+        assertEquals("クラス図タブでの図種トグルは no-op", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("クラス図のままであるはず", DiagramKind.CLASS,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
+
+    /** テスト用のメソッド図オープンリクエストを生成する。 */
+    private static TreeNodeOpenRequest methodReq(String ownerFqn, String method,
+                                                 DiagramKind kind) {
+        juml.core.formats.uml.JavaMethodInfo mi = new juml.core.formats.uml.JavaMethodInfo();
+        mi.setName(method);
+        return TreeNodeOpenRequest.method(classInfo(ownerFqn), mi, kind);
+    }
 
     /**
      * テスト用の最小 JavaClassInfo を生成する。
