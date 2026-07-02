@@ -139,7 +139,8 @@ final class PlantUmlClassRelations {
         }
         SupertypeClassifier.Result r = SupertypeClassifier.classify(
                 key, owner, o.supertypeResolver, knownNames,
-                o.externalPackagePrefixes, o.distinguishStandardLibrary);
+                o.externalPackagePrefixes, o.distinguishStandardLibrary,
+                o.dependencyClassPredicate);
         if ((r.kind == SupertypeClassifier.Kind.STANDARD
                 || r.kind == SupertypeClassifier.Kind.EXTERNAL)
                 && !knownNames.contains(r.fqn)) {

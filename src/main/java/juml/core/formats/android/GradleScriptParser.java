@@ -181,6 +181,23 @@ public final class GradleScriptParser {
                         + "|debugImplementation|releaseImplementation)\\b"
                         + "\\s*[(]?\\s*(?:enforcedPlatform|platform)\\s*[(]\\s*"
                         + "[\"']([^\"']+)[\"']\\s*[)]");
+        // implementation files('libs/a.jar', "libs/b.jar") のようなローカル JAR 依存。
+        // 引数部を丸ごと捕捉し、中の文字列リテラルを個別に取り出す。
+        private static final Pattern DEP_FILES = Pattern.compile(
+                "\\b(implementation|api|compileOnly|runtimeOnly|testImplementation"
+                        + "|androidTestImplementation|annotationProcessor|kapt|ksp"
+                        + "|debugImplementation|releaseImplementation)\\b"
+                        + "\\s*[(]?\\s*files\\s*[(]([^)]*)[)]");
+        // implementation fileTree(dir: 'libs', include: ['*.jar']) /
+        // fileTree("libs") / fileTree(mapOf("dir" to "libs", ...)) のような
+        // ディレクトリ一括のローカル JAR 依存。dir 指定が無ければ最初の文字列を dir とみなす。
+        private static final Pattern DEP_FILETREE = Pattern.compile(
+                "\\b(implementation|api|compileOnly|runtimeOnly|testImplementation"
+                        + "|androidTestImplementation|annotationProcessor|kapt|ksp"
+                        + "|debugImplementation|releaseImplementation)\\b"
+                        + "\\s*[(]?\\s*fileTree\\s*[(]([^)]*)[)]");
+        private static final Pattern FILETREE_DIR = Pattern.compile(
+                "(?:[\"']dir[\"']\\s*to|\\bdir\\s*[:=])\\s*[\"']([^\"']+)[\"']");
         private static final Pattern INCLUDE_PROJECT = Pattern.compile(
                 "\\binclude\\s*[(]?\\s*[\"']([^\"']+)[\"']");
         private static final Pattern FLAVOR_DIMENSIONS = Pattern.compile(
@@ -477,6 +494,46 @@ public final class GradleScriptParser {
                 String key = scope + " " + notation;
                 if (seen.add(key)) {
                     info.getDependencies().add(new GradleDependency(scope, notation));
+                }
+            }
+            // ローカル JAR: implementation files('libs/a.jar', ...)
+            Matcher mf = DEP_FILES.matcher(body);
+            while (mf.find()) {
+                String scope = mf.group(1);
+                Matcher items = STRING_LIST_ITEM.matcher(mf.group(2));
+                while (items.find()) {
+                    String path = items.group(1).trim();
+                    if (path.isEmpty()) {
+                        continue;
+                    }
+                    GradleDependency d = GradleDependency.forFile(scope, path);
+                    if (seen.add(scope + " " + d.getNotation())) {
+                        info.getDependencies().add(d);
+                    }
+                }
+            }
+            // ローカル JAR ディレクトリ: implementation fileTree(dir: 'libs', ...)
+            Matcher mt = DEP_FILETREE.matcher(body);
+            while (mt.find()) {
+                String scope = mt.group(1);
+                String args = mt.group(2);
+                Matcher dir = FILETREE_DIR.matcher(args);
+                String treeDir = null;
+                if (dir.find()) {
+                    treeDir = dir.group(1).trim();
+                } else {
+                    // fileTree("libs") のように dir キー無しの第一引数
+                    Matcher first = STRING_LIST_ITEM.matcher(args);
+                    if (first.find()) {
+                        treeDir = first.group(1).trim();
+                    }
+                }
+                if (treeDir == null || treeDir.isEmpty()) {
+                    continue;
+                }
+                GradleDependency d = GradleDependency.forFileTree(scope, treeDir);
+                if (seen.add(scope + " " + d.getNotation())) {
+                    info.getDependencies().add(d);
                 }
             }
             // Version Catalog 経由: implementation(libs.X.Y) を解決

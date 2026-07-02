@@ -54,6 +54,21 @@ public class SupertypeClassifierTest {
     }
 
     @Test
+    public void dependencyClassPredicatePromotesUnknownToExternal() {
+        // prefix 集合に無いパッケージ (社内ライブラリ / リポジトリ同梱 JAR) でも、
+        // 依存インデックスに実在するなら EXTERNAL と判定する
+        SupertypeClassifier.Result r = SupertypeClassifier.classify(
+                "com.example.Foo", owner(), null, new HashSet<>(), null, true,
+                fqn -> "com.example.Foo".equals(fqn));
+        assertEquals(SupertypeClassifier.Kind.EXTERNAL, r.kind);
+        // 実在しない FQN は従来通り UNKNOWN
+        SupertypeClassifier.Result r2 = SupertypeClassifier.classify(
+                "com.example.Ghost", owner(), null, new HashSet<>(), null, true,
+                fqn -> "com.example.Foo".equals(fqn));
+        assertEquals(SupertypeClassifier.Kind.UNKNOWN, r2.kind);
+    }
+
+    @Test
     public void simpleNameWithoutResolverIsUnknown() {
         SupertypeClassifier.Result r = SupertypeClassifier.classify(
                 "Activity", owner(), null, new HashSet<>(), null, true);

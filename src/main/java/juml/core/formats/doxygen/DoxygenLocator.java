@@ -89,16 +89,20 @@ public final class DoxygenLocator {
         if (env != null && new File(env).canExecute()) {
             return env;
         }
-        if (jarDir != null) {
-            File bundled = findBundledDoxygen(jarDir);
-            if (bundled != null) {
-                return bundled.getAbsolutePath();
-            }
+        // jarDir が null でもカレントディレクトリ基点の同梱探索は行える。
+        File bundled = findBundledDoxygen(jarDir);
+        if (bundled != null) {
+            return bundled.getAbsolutePath();
         }
         return findSystemDoxygen();
     }
 
-    /** {@code <jarDir>/doxygen/<platform>/doxygen[.exe]} を探す。見つからなければ null。 */
+    /**
+     * 同梱 doxygen バイナリ {@code doxygen/<platform>/doxygen[.exe]} を探す。
+     * 見つからなければ null。基点は {@link
+     * juml.core.formats.uml.GraphvizLocator#bundleSearchBases(File)} と同じく
+     * jar 隣接 → jar 隣接の bundle/ → カレントディレクトリ → cwd の bundle/ の順。
+     */
     static File findBundledDoxygen(File jarDir) {
         String os = System.getProperty("os.name", "").toLowerCase();
         String arch = normalizeArch(System.getProperty("os.arch", ""));
@@ -114,13 +118,19 @@ public final class DoxygenLocator {
             platform = "linux-" + arch;
             exe = "doxygen";
         }
-        File candidate = new File(jarDir, "doxygen" + File.separator + platform + File.separator + exe);
-        if (candidate.isFile() && candidate.canExecute()) {
-            return candidate;
+        for (File base : juml.core.formats.uml.GraphvizLocator.bundleSearchBases(jarDir)) {
+            File candidate = new File(base,
+                    "doxygen" + File.separator + platform + File.separator + exe);
+            if (candidate.isFile() && candidate.canExecute()) {
+                return candidate;
+            }
+            // プラットフォーム非区別のフォールバック
+            candidate = new File(base, "doxygen" + File.separator + exe);
+            if (candidate.isFile() && candidate.canExecute()) {
+                return candidate;
+            }
         }
-        // プラットフォーム非区別のフォールバック
-        candidate = new File(jarDir, "doxygen" + File.separator + exe);
-        return (candidate.isFile() && candidate.canExecute()) ? candidate : null;
+        return null;
     }
 
     /** PATH を検索して doxygen バイナリのフルパスを返す。見つからなければ null。 */

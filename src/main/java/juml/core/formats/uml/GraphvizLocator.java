@@ -46,14 +46,14 @@ public final class GraphvizLocator {
             logResolved("GRAPHVIZ_DOT env", System.getenv("GRAPHVIZ_DOT"));
             return;
         }
-        if (jarDir != null) {
-            File bundled = findBundledDot(jarDir);
-            if (bundled != null) {
-                System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
-                PlantUmlRenderer.setGraphvizAvailable(true);
-                logResolved("bundled binary", bundled.getAbsolutePath());
-                return;
-            }
+        // jarDir が null (jpackage 等でコード位置が取れない環境) でも、
+        // カレントディレクトリ基点の探索は行える。
+        File bundled = findBundledDot(jarDir);
+        if (bundled != null) {
+            System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            logResolved("bundled binary", bundled.getAbsolutePath());
+            return;
         }
         String systemDot = findSystemDot();
         if (systemDot != null) {
@@ -95,13 +95,11 @@ public final class GraphvizLocator {
             PlantUmlRenderer.setGraphvizAvailable(true);
             return true;
         }
-        if (cachedJarDir != null) {
-            File bundled = findBundledDot(cachedJarDir);
-            if (bundled != null) {
-                System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
-                PlantUmlRenderer.setGraphvizAvailable(true);
-                return true;
-            }
+        File bundled = findBundledDot(cachedJarDir);
+        if (bundled != null) {
+            System.setProperty(PLANTUML_DOT_PROP, bundled.getAbsolutePath());
+            PlantUmlRenderer.setGraphvizAvailable(true);
+            return true;
         }
         String systemDot = findSystemDot();
         if (systemDot != null) {
@@ -126,7 +124,15 @@ public final class GraphvizLocator {
         return true;
     }
 
-    /** {@code bundle/graphviz/<platform>/dot[.exe]} を探す。見つからなければ null。 */
+    /**
+     * 同梱 dot バイナリ {@code graphviz/<platform>/dot[.exe]} を探す。見つからなければ null。
+     *
+     * <p>配布 zip では jar と同階層に {@code graphviz/} が展開されるが、
+     * リポジトリから直接実行した場合 (jar は {@code build/libs/}) や
+     * zip の展開ディレクトリ外から起動した場合も拾えるよう、
+     * {@code <jarDir>} → {@code <jarDir>/bundle} → カレントディレクトリ →
+     * {@code <cwd>/bundle} の順に基点を変えて探索する。</p>
+     */
     static File findBundledDot(File jarDir) {
         String os = System.getProperty("os.name", "").toLowerCase();
         String arch = normalizeArch(System.getProperty("os.arch", ""));
@@ -142,13 +148,40 @@ public final class GraphvizLocator {
             platform = "linux-" + arch;
             exe = "dot";
         }
-        File candidate = new File(jarDir, "graphviz" + File.separator + platform + File.separator + exe);
-        if (candidate.isFile() && candidate.canExecute()) {
-            return candidate;
+        for (File base : bundleSearchBases(jarDir)) {
+            File candidate = new File(base,
+                    "graphviz" + File.separator + platform + File.separator + exe);
+            if (candidate.isFile() && candidate.canExecute()) {
+                return candidate;
+            }
+            // プラットフォーム非区別のフォールバック
+            candidate = new File(base, "graphviz" + File.separator + exe);
+            if (candidate.isFile() && candidate.canExecute()) {
+                return candidate;
+            }
         }
-        // プラットフォーム非区別のフォールバック
-        candidate = new File(jarDir, "graphviz" + File.separator + exe);
-        return (candidate.isFile() && candidate.canExecute()) ? candidate : null;
+        return null;
+    }
+
+    /**
+     * 同梱バイナリ探索の基点ディレクトリ列。jar 隣接 → jar 隣接の bundle/ →
+     * カレントディレクトリ → cwd の bundle/ の順 (重複と null は除外)。
+     */
+    public static java.util.List<File> bundleSearchBases(File jarDir) {
+        java.util.List<File> bases = new java.util.ArrayList<>();
+        if (jarDir != null) {
+            bases.add(jarDir);
+            bases.add(new File(jarDir, "bundle"));
+        }
+        String cwd = System.getProperty("user.dir");
+        if (cwd != null && !cwd.isEmpty()) {
+            File c = new File(cwd);
+            if (jarDir == null || !c.equals(jarDir)) {
+                bases.add(c);
+                bases.add(new File(c, "bundle"));
+            }
+        }
+        return bases;
     }
 
     /** PATH を検索して dot バイナリのフルパスを返す。見つからなければ null。 */

@@ -193,6 +193,11 @@ public final class DiagramService {
             if (o.markExternalSupertypes && index != null) {
                 o.supertypeResolver = new juml.core.refs.NameResolver(index, depIndex)::resolve;
             }
+            // 依存 JAR (リポジトリ同梱のローカル JAR 含む) に実在するクラスは
+            // prefix 判定に載らなくても <<external>> 扱いにする。
+            if (depIndex != null) {
+                o.dependencyClassPredicate = fqn -> depIndex.resolve(fqn).isPresent();
+            }
             if (scopedTotal < originalTotal) {
                 o.footerWarning = "scope filter: " + scopedTotal + " of "
                         + originalTotal + " classes";

@@ -122,6 +122,41 @@ public final class DependencyJarIndex {
         return idx;
     }
 
+    /**
+     * プロジェクトに同梱されたローカル JAR/AAR (例: {@code libs/foo.jar}、
+     * {@code files('libs/foo.jar')} / {@code fileTree(dir: 'libs')} 宣言) を
+     * インデックスへ追加登録する。Gradle cache / Maven local を経由しない
+     * リポジトリ同梱物を解決するための入口。
+     *
+     * @return 索引できたら true。ファイルが無い・拡張子対象外・読み込み失敗は
+     *         missing として記録し false。
+     */
+    public boolean indexLocalArtifact(Path jarOrAar, ErrorListener listener) {
+        ErrorListener l = listener != null ? listener : ErrorListener.silent();
+        if (jarOrAar == null) {
+            return false;
+        }
+        String fn = jarOrAar.getFileName() == null
+                ? "" : jarOrAar.getFileName().toString().toLowerCase();
+        if (!Files.isRegularFile(jarOrAar)) {
+            missingArtifacts.add(jarOrAar.toString());
+            l.onError(jarOrAar.toString(), -1, "local dependency jar not found");
+            return false;
+        }
+        if (!fn.endsWith(".jar") && !fn.endsWith(".aar")) {
+            return false;
+        }
+        try {
+            indexArtifact(jarOrAar);
+            return true;
+        } catch (IOException ex) {
+            missingArtifacts.add(jarOrAar.toString());
+            l.onError(jarOrAar.toString(), -1,
+                    "failed to index local artifact: " + ex.getMessage());
+            return false;
+        }
+    }
+
     /** Gradle cache → Maven local の順に JAR/AAR ファイルを探す。 */
     private static Path findArtifact(String group, String name, String version) {
         String home = System.getProperty("user.home");
