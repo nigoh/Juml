@@ -71,6 +71,36 @@ public class JavaLexerTest {
     }
 
     @Test
+    public void testHexLiteralWithELetterIsNotExponent() {
+        // 16 進では e/E は指数記号ではなく数字。0x1e+5 は 0x1e と + と 5 に分かれるべき
+        // (0x1e+5 という 1 トークンにまとめてはいけない)。
+        List<JavaToken> toks = tokenize("0x1e+5");
+        assertEquals("0x1e, +, 5, EOF の 4 トークンのはず", 4, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "0x1e");
+        assertToken(toks.get(1), JavaToken.Type.OP, "+");
+        assertToken(toks.get(2), JavaToken.Type.NUMBER, "5");
+    }
+
+    @Test
+    public void testHexFloatWithPExponentIsOneToken() {
+        // 16 進浮動小数点の指数 p/P は符号付きでも 1 トークン (0x1.8p-3)。
+        List<JavaToken> toks = tokenize("0x1.8p-3");
+        assertEquals("0x1.8p-3 は NUMBER トークン 1 個 + EOF のはず", 2, toks.size());
+        assertToken(toks.get(0), JavaToken.Type.NUMBER, "0x1.8p-3");
+    }
+
+    @Test
+    public void testUnterminatedStringDoesNotDoubleCountLine() {
+        // 未終端文字列が改行で切れても、行番号が二重加算されないこと。
+        // "abc<改行>foo → foo は line=2 のはず (line=3 になってはいけない)。
+        List<JavaToken> toks = tokenize("\"abc\nfoo");
+        assertToken(toks.get(0), JavaToken.Type.STRING, "\"abc");
+        assertEquals(1, toks.get(0).line);
+        assertToken(toks.get(1), JavaToken.Type.IDENT, "foo");
+        assertEquals("未終端文字列後のトークンは line=2 のはず", 2, toks.get(1).line);
+    }
+
+    @Test
     public void testScientificNotationInExpression() {
         // 式中での科学表記: a * 1.5e-10 で演算子 * と数値が正しく分離できるか
         List<JavaToken> toks = tokenize("a * 1.5e-10");

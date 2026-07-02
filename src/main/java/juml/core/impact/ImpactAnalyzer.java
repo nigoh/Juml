@@ -63,11 +63,12 @@ public final class ImpactAnalyzer {
      * @param maxDepth BFS 深さ
      */
     public ImpactGraph analyzeMethod(String ownerFqn, String methodName, int maxDepth) {
+        // null 連結で target ラベルが "null.xxx" にならないよう、先にガードする。
+        if (ownerFqn == null || methodName == null) {
+            return new ImpactGraph("");
+        }
         String target = ownerFqn + "." + methodName;
         ImpactGraph g = new ImpactGraph(target);
-        if (ownerFqn == null || methodName == null) {
-            return g;
-        }
         List<ReferenceSite> direct = index.sitesByMember(
                 ReferenceKey.Kind.METHOD, ownerFqn, methodName);
         runBfs(g, target, direct, maxDepth);

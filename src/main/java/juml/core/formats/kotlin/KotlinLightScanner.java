@@ -148,8 +148,13 @@ public final class KotlinLightScanner {
                     if (info.getKind() == JavaClassInfo.Kind.ENUM) {
                         extractEnumConstants(body, info);
                     }
-                    extractProperties(body, info);
-                    extractFunctions(body, info);
+                    // 関数本体・init/getter 等のコードブロック内を無視するためのマスク。
+                    // ローカル val/var/fun をクラスメンバとして誤抽出しないようにする。
+                    // 型本体 (nested class / object / companion object) は従来どおり降りて
+                    // メンバをホイストするため、マスク対象にしない。
+                    boolean[] codeMask = codeBlockMask(body);
+                    extractProperties(body, info, codeMask);
+                    extractFunctions(body, info, codeMask);
                 }
             }
 
@@ -351,9 +356,13 @@ public final class KotlinLightScanner {
     }
 
     /** クラス本体のプロパティを解析してフィールドとして追加。 */
-    private static void extractProperties(String body, JavaClassInfo info) {
+    private static void extractProperties(String body, JavaClassInfo info, boolean[] codeMask) {
         Matcher m = PROPERTY.matcher(body);
         while (m.find()) {
+            // 関数本体等のコードブロック内のローカル val/var は除外する。
+            if (m.start() < codeMask.length && codeMask[m.start()]) {
+                continue;
+            }
             String anns = m.group(1);
             String mods = m.group(2);
             String name = m.group(4);
@@ -373,9 +382,13 @@ public final class KotlinLightScanner {
     }
 
     /** クラス本体の {@code fun ...} を解析してメソッドとして追加。 */
-    private static void extractFunctions(String body, JavaClassInfo info) {
+    private static void extractFunctions(String body, JavaClassInfo info, boolean[] codeMask) {
         Matcher m = FUN_DECL.matcher(body);
         while (m.find()) {
+            // 関数本体等のコードブロック内のローカル fun は除外する。
+            if (m.start() < codeMask.length && codeMask[m.start()]) {
+                continue;
+            }
             String anns = m.group(1);
             String mods = m.group(2);
             String name = m.group(3);
@@ -729,6 +742,58 @@ public final class KotlinLightScanner {
     private static int matchBrace(String src, int open) {
         if (open < 0 || open >= src.length() || src.charAt(open) != '{') return open;
         return matchBalance(src, open, '{', '}');
+    }
+
+    /**
+     * クラス本体文字列のうち「コードブロック」(関数本体・getter/setter・二次コンストラクタ本体・
+     * init ブロック) の中身を true にしたマスクを返す。
+     *
+     * <p>ローカルの {@code val}/{@code var}/{@code fun} をクラスのフィールド/メソッドとして
+     * 誤抽出しないために使う。判定は {@code {} の直前の非空白文字が {@code )} (関数/アクセサ/
+     * コンストラクタのシグネチャ末尾)、または直前の語が {@code init} の場合をコードブロックとみなす。
+     * 型本体 ({@code class}/{@code object}/{@code companion object}/{@code enum}/{@code interface})
+     * の {@code {} はマスクせず走査を継続するため、ネストした型やコンパニオンのメンバは従来どおり
+     * 抽出 (ホイスト) される。ラムダ ({@code = { ... }}) はコードブロックだが稀なため対象外。</p>
+     */
+    private static boolean[] codeBlockMask(String body) {
+        int n = body.length();
+        boolean[] mask = new boolean[n];
+        boolean inString = false;
+        for (int i = 0; i < n; i++) {
+            char c = body.charAt(i);
+            if (inString) {
+                if (c == '\\' && i + 1 < n) { i++; continue; }
+                if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') { inString = true; continue; }
+            if (c != '{') { continue; }
+            int p = i - 1;
+            while (p >= 0 && Character.isWhitespace(body.charAt(p))) p--;
+            boolean codeBlock = false;
+            if (p >= 0) {
+                char pc = body.charAt(p);
+                if (pc == ')') {
+                    codeBlock = true;
+                } else if (isIdentPart(pc)) {
+                    int ws = p;
+                    while (ws >= 0 && isIdentPart(body.charAt(ws))) ws--;
+                    if ("init".equals(body.substring(ws + 1, p + 1))) {
+                        codeBlock = true;
+                    }
+                }
+            }
+            if (codeBlock) {
+                int close = matchBrace(body, i);
+                if (close > i) {
+                    for (int k = i; k <= close && k < n; k++) {
+                        mask[k] = true;
+                    }
+                    i = close; // ブロック全体 (入れ子のコードブロック含む) を一括スキップ
+                }
+            }
+        }
+        return mask;
     }
 
     private static int matchBalance(String src, int open, char openCh, char closeCh) {

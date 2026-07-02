@@ -97,6 +97,51 @@ public class NavigationHistoryTest {
     }
 
     @Test
+    public void remove_adjustsCursor_whenMultipleDuplicatesBeforeCursor() {
+        NavigationHistory h = new NavigationHistory();
+        // 非連続の同一キーを複数積む: [B, X, B, X, A, C]
+        h.push("B");
+        h.push("X");
+        h.push("B");
+        h.push("X");
+        h.push("A");
+        h.push("C");
+        h.back(); // → A (cursor=4)
+        // A を指した状態で B を閉じる。B はカーソル前に 2 件 (index 0, 2)。
+        h.remove("B");
+        // history は [X, X, A, C]、カーソルは依然 A (index 2) を指すべき。
+        assertEquals("X", h.back()); // A の 1 つ前 = index 1 の X
+        assertEquals("X", h.back()); // index 0 の X
+        assertFalse(h.canGoBack());
+    }
+
+    @Test
+    public void remove_currentEntry_pointsToNeighbor() {
+        NavigationHistory h = new NavigationHistory();
+        h.push("A");
+        h.push("B");
+        h.push("C");
+        h.back(); // → B (cursor=1)
+        h.remove("B"); // カーソル自身を削除 → [A, C]
+        // カーソルは後続 (C, index 1) を指し、戻ると A に行ける。
+        assertEquals("A", h.back());
+        assertFalse(h.canGoBack());
+    }
+
+    @Test
+    public void remove_allEntries_resetsCursor() {
+        NavigationHistory h = new NavigationHistory();
+        h.push("A");
+        h.push("A"); // 連続重複は無視されるので単一エントリ
+        h.push("B");
+        h.remove("A");
+        h.remove("B");
+        assertFalse(h.canGoBack());
+        assertFalse(h.canGoForward());
+        assertNull(h.back());
+    }
+
+    @Test
     public void clear_resetsEverything() {
         NavigationHistory h = new NavigationHistory();
         h.push("A");
