@@ -3,7 +3,8 @@
 
 package juml.core.formats.uml;
 
-import java.io.IOException;
+import juml.util.ErrorCode;
+import juml.util.JumlException;
 
 /**
  * PlantUML のレンダリング失敗 (Smetana のレイアウト例外等) を表す例外。
@@ -17,8 +18,12 @@ import java.io.IOException;
  * ({@link #getErrorDetail()})・失敗行番号 ({@link #getErrorLine()})・
  * レンダリング中に PlantUML/Smetana が stderr へ出力した内容の末尾
  * ({@link #getStderrTail()}) を構造化して保持する。</p>
+ *
+ * <p>{@link JumlException} 継承 (unchecked) で、原因分類済みのエラー ID
+ * ({@link ErrorCode#UML_R001} 構文エラー / {@link ErrorCode#UML_R002} レイアウト
+ * 失敗 / {@link ErrorCode#UML_R006} PNG エラー画像) を保持する。</p>
  */
-public final class PlantUmlRenderFailedException extends IOException {
+public final class PlantUmlRenderFailedException extends JumlException {
 
     private static final long serialVersionUID = 1L;
 
@@ -32,12 +37,16 @@ public final class PlantUmlRenderFailedException extends IOException {
     private final String stderrTail;
 
     public PlantUmlRenderFailedException(String message) {
-        this(message, -1, "", "");
+        this(ErrorCode.UML_R007, message, -1, "", "");
     }
 
-    public PlantUmlRenderFailedException(String message, int errorLine,
+    public PlantUmlRenderFailedException(ErrorCode code, String message) {
+        this(code, message, -1, "", "");
+    }
+
+    public PlantUmlRenderFailedException(ErrorCode code, String message, int errorLine,
                                           String errorDetail, String stderrTail) {
-        super(message);
+        super(code, message);
         this.errorLine = errorLine;
         this.errorDetail = errorDetail != null ? errorDetail : "";
         this.stderrTail = stderrTail != null ? stderrTail : "";

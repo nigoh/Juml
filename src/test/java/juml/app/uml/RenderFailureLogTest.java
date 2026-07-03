@@ -3,11 +3,14 @@
 
 package juml.app.uml;
 
+import juml.util.ErrorCode;
+
 import org.junit.Test;
 
 import java.io.File;
 
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 
 /**
  * {@link RenderFailureLog} のヘッドレス安全な動作を確認する。
@@ -23,7 +26,7 @@ public class RenderFailureLogTest {
         // puml が null のとき、ファイルを書かずに null を返すことを確認する。
         // "生成前に失敗" ケース: 例外はどんな Throwable でもよい。
         File result = RenderFailureLog.dump("test-label", null,
-                new RuntimeException("dummy error"));
+                new RuntimeException("dummy error"), false);
         assertNull("dump() with null puml should return null (no file written)",
                 result);
     }
@@ -31,7 +34,7 @@ public class RenderFailureLogTest {
     @Test
     public void testDumpNullPumlAndNullErrorReturnsNull() {
         // puml=null かつ error=null でも例外を投げずに null を返すことを確認する。
-        File result = RenderFailureLog.dump("test-label", null, null);
+        File result = RenderFailureLog.dump("test-label", null, null, false);
         assertNull("dump() with null puml and null error should return null",
                 result);
     }
@@ -40,8 +43,43 @@ public class RenderFailureLogTest {
     public void testDumpEmptyPumlReturnsNull() {
         // puml が空文字列のときも null を返すことを確認する (空文字はファイル書き込み対象外)。
         File result = RenderFailureLog.dump("test-label", "",
-                new RuntimeException("dummy error"));
+                new RuntimeException("dummy error"), false);
         assertNull("dump() with empty puml should return null",
                 result);
+    }
+
+    // ── classify: 失敗原因 → エラー ID の対応 ─────────────────────────
+
+    @Test
+    public void testClassifySyntaxErrorMapsToRenderOrEditorCode() {
+        Throwable syntax = new juml.core.formats.uml.PlantUmlRenderFailedException(
+                ErrorCode.UML_R001, "syntax", 3, "Syntax Error?", "");
+        assertSame(ErrorCode.UML_R001, RenderFailureLog.classify(syntax, false));
+        // エディタタブでは編集内容起因なので UML-E 系へ読み替える
+        assertSame(ErrorCode.UML_E001, RenderFailureLog.classify(syntax, true));
+    }
+
+    @Test
+    public void testClassifyLayoutErrorMapsToRenderOrEditorCode() {
+        Throwable layout = new juml.core.formats.uml.PlantUmlRenderFailedException(
+                ErrorCode.UML_R002, "layout", -1, "", "");
+        assertSame(ErrorCode.UML_R002, RenderFailureLog.classify(layout, false));
+        assertSame(ErrorCode.UML_E002, RenderFailureLog.classify(layout, true));
+    }
+
+    @Test
+    public void testClassifyOutOfMemory() {
+        assertSame(ErrorCode.UML_R003,
+                RenderFailureLog.classify(new OutOfMemoryError("heap"), false));
+        // 原因チェーンの奥の OOM も拾う
+        assertSame(ErrorCode.UML_R003, RenderFailureLog.classify(
+                new RuntimeException("wrap", new OutOfMemoryError("heap")), false));
+    }
+
+    @Test
+    public void testClassifyUnknownFallsBackToR007() {
+        assertSame(ErrorCode.UML_R007,
+                RenderFailureLog.classify(new RuntimeException("x"), false));
+        assertSame(ErrorCode.UML_R007, RenderFailureLog.classify(null, false));
     }
 }

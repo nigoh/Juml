@@ -140,8 +140,12 @@ final class DiagramTabSupport {
                 reporter.accept(juml.util.Messages.get("status.saved")
                         + chosen.getAbsolutePath());
             }
-        } catch (java.io.IOException ex) {
-            juml.util.AppLog.error("DiagramTabSupport",
+        } catch (java.io.IOException | juml.util.JumlException ex) {
+            // SVG エクスポート中の描画失敗は unchecked (PlantUmlRenderFailedException)
+            // で飛んでくるため、IOException と合わせてここで拾いダイアログ表示する。
+            juml.util.AppLog.error(
+                    juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.EXP_001),
+                    "DiagramTabSupport",
                     fmt + " export failed: " + chosen.getAbsolutePath(), ex);
             javax.swing.JOptionPane.showMessageDialog(parent,
                     juml.util.Messages.get("export.failed") + ex.getMessage(),

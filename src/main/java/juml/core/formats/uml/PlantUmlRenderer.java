@@ -273,6 +273,12 @@ public final class PlantUmlRenderer {
         String stderrTail = tailOf(errCapture.tailString(), 2000);
         // 生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが見つかれば添える。
         String hint = PlantUmlSyntaxChecker.summarize(puml);
+        // 原因を ID に分類する: 行番号や構文診断があれば構文エラー (UML-R001)、
+        // それ以外はレイアウトエンジン側の失敗 (UML-R002) とみなす。
+        boolean syntaxLike = errorLine > 0 || detail.contains("Syntax Error")
+                || !hint.isEmpty();
+        juml.util.ErrorCode code = syntaxLike
+                ? juml.util.ErrorCode.UML_R001 : juml.util.ErrorCode.UML_R002;
 
         StringBuilder msg = new StringBuilder("PlantUML render failed");
         if (errorLine > 0) {
@@ -293,9 +299,10 @@ public final class PlantUmlRenderer {
         if (!stderrTail.isEmpty()) {
             log.append("\n--- stderr tail ---\n").append(stderrTail);
         }
-        juml.util.AppLog.error("PlantUmlRenderer", log.toString());
+        juml.util.AppLog.error(code, "PlantUmlRenderer", log.toString());
 
-        return new PlantUmlRenderFailedException(msg.toString(), errorLine, detail, stderrTail);
+        return new PlantUmlRenderFailedException(code, msg.toString(),
+                errorLine, detail, stderrTail);
     }
 
     /**
@@ -466,8 +473,9 @@ public final class PlantUmlRenderer {
     public static void renderSvg(String puml, File outFile) throws IOException {
         try (OutputStream os = new FileOutputStream(outFile)) {
             renderSvg(puml, os);
-        } catch (IOException e) {
-            // 中身が無効な状態のファイルを残さない
+        } catch (IOException | juml.util.JumlException e) {
+            // 中身が無効な状態のファイルを残さない (レンダリング失敗は unchecked の
+            // PlantUmlRenderFailedException として飛んでくるため両方拾う)
             if (outFile.exists() && !outFile.delete()) {
                 outFile.deleteOnExit();
             }

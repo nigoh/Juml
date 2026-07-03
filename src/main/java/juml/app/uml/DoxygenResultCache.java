@@ -76,7 +76,7 @@ final class DoxygenResultCache {
                     publishResult(get());
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    juml.util.AppLog.error("DoxygenResultCache",
+                    juml.util.AppLog.error(juml.util.ErrorCode.DIAG_003, "DoxygenResultCache",
                             "Doxygen execution/parsing failed: " + root.getAbsolutePath(), cause);
                     if (onError != null) {
                         onError.accept(cause.getMessage());

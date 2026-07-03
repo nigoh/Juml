@@ -1006,7 +1006,7 @@ public class UmlMainFrame extends JFrame {
         try {
             openPumlEditorTab(PumlEditorSupport.read(file), file);
         } catch (java.io.IOException ex) {
-            juml.util.AppLog.error("UmlMainFrame",
+            juml.util.AppLog.error(juml.util.ErrorCode.UML_E004, "UmlMainFrame",
                     "puml open failed: " + file.getAbsolutePath(), ex);
             JOptionPane.showMessageDialog(this,
                     Messages.get("puml.editor.openFailed") + ex.getMessage(),

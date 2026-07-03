@@ -4,6 +4,7 @@
 package juml.app.uml;
 
 import juml.util.AppLog;
+import juml.util.ErrorCode;
 import juml.util.PathUtil;
 
 import java.io.File;
@@ -32,14 +33,51 @@ final class RenderFailureLog {
     }
 
     /**
+     * 描画失敗の原因をエラー ID に分類する。
+     *
+     * <p>PlantUML 由来の失敗 ({@link juml.core.formats.uml.PlantUmlRenderFailedException})
+     * はレンダラが分類済みの ID (UML-R001 構文 / UML-R002 レイアウト等) を持つ。
+     * エディタタブでは編集内容起因なので UML-E 系へ読み替える (生成図での構文エラーは
+     * Juml 側の生成不具合、エディタでの構文エラーはユーザ編集起因と、対処が異なるため)。
+     * メモリ不足は UML-R003、それ以外は未分類 UML-R007。</p>
+     *
+     * @param error  発生した例外 (null 可)
+     * @param editor エディタタブでの失敗なら true
+     */
+    static ErrorCode classify(Throwable error, boolean editor) {
+        Throwable t = error;
+        while (t != null) {
+            if (t instanceof OutOfMemoryError) {
+                return ErrorCode.UML_R003;
+            }
+            t = t.getCause();
+        }
+        if (error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
+            ErrorCode code = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                    .getErrorCode();
+            if (editor) {
+                if (code == ErrorCode.UML_R001) {
+                    return ErrorCode.UML_E001;
+                }
+                if (code == ErrorCode.UML_R002) {
+                    return ErrorCode.UML_E002;
+                }
+            }
+            return code;
+        }
+        return ErrorCode.UML_R007;
+    }
+
+    /**
      * 描画失敗を記録する。失敗した PlantUML をファイルへ保存し、例外を AppLog へ出力する。
      *
-     * @param label 図のラベル (タブ名等、ログの識別用)
-     * @param puml  失敗した生成 PlantUML (null 可 = 生成前に失敗)
-     * @param error 発生した例外
+     * @param label  図のラベル (タブ名等、ログの識別用)
+     * @param puml   失敗した生成 PlantUML (null 可 = 生成前に失敗)
+     * @param error  発生した例外
+     * @param editor エディタタブでの失敗なら true (エラー ID の分類に使う)
      * @return 保存した .puml ファイル。保存できなかった (puml が null 等) 場合は null。
      */
-    static File dump(String label, String puml, Throwable error) {
+    static File dump(String label, String puml, Throwable error, boolean editor) {
         File saved = null;
         if (puml != null && !puml.isEmpty()) {
             try {
@@ -52,18 +90,20 @@ final class RenderFailureLog {
                     Files.write(saved.toPath(), puml.getBytes(StandardCharsets.UTF_8));
                 }
             } catch (IOException | RuntimeException e) {
-                AppLog.warn("RenderFailureLog", "failed to save failing PlantUML", e);
+                AppLog.warn(ErrorCode.UML_R005, "RenderFailureLog",
+                        "failed to save failing PlantUML", e);
                 saved = null;
             }
         }
+        ErrorCode code = classify(error, editor);
         StringBuilder msg = new StringBuilder("render failed: ").append(label);
         if (saved != null) {
             msg.append(" — failing PlantUML saved to ").append(saved.getAbsolutePath());
         }
         if (error != null) {
-            AppLog.error("DiagramTab", msg.toString(), error);
+            AppLog.error(code, "DiagramTab", msg.toString(), error);
         } else {
-            AppLog.error("DiagramTab", msg.toString());
+            AppLog.error(code, "DiagramTab", msg.toString());
         }
         return saved;
     }
