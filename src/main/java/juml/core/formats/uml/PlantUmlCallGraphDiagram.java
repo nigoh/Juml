@@ -207,6 +207,15 @@ public final class PlantUmlCallGraphDiagram {
                 for (JavaMethodInfo.Branch branch : block.getBranches()) {
                     collectCalls(branch.getBody(), ownerClass, out);
                 }
+            } else if (stmt instanceof JavaMethodInfo.LocalVar) {
+                // ローカル変数初期化子内のラムダ/匿名クラス本体の呼び出しも追跡する
+                // (例: Runnable r = () -> svc.work();)。シーケンス図と挙動を揃え、
+                // 呼び出しエッジの取りこぼしを防ぐ。
+                for (JavaMethodInfo inline : ((JavaMethodInfo.LocalVar) stmt).getInlineMethods()) {
+                    if (inline.getStatements() != null) {
+                        collectCalls(inline.getStatements(), ownerClass, out);
+                    }
+                }
             }
         }
     }
