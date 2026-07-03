@@ -59,8 +59,27 @@ final class PlantUmlCommentFormatter {
         if (s == null || s.isEmpty()) {
             return s == null ? "" : s;
         }
-        return s.replace("<", "~<");
+        // 制御文字 (NUL 等) はソース由来の定数値・コメントから紛れ込むことがあり、
+        // PlantUML の解釈や出力 SVG を壊すため除去する (タブは許容)。
+        String cleaned = CONTROL_CHARS.matcher(s).replaceAll("");
+        // 図テキスト中に "@startuml"/"@enduml" という文字列 (例: テンプレート定数の値)
+        // が現れても、PlantUML にブロック境界と誤認されないよう不可視文字で分断する。
+        cleaned = BLOCK_DIRECTIVE.matcher(cleaned).replaceAll("@\u200B$1uml");
+        // "[[" は PlantUML のリンク構文 ([[url]]) として解釈され、テキストが実リンク化して
+        // 欠落する (正規表現定数などで頻出)。creole エスケープ ~ を間に挟んで
+        // リテラル "[[" として表示させる (実測確認済み)。意図的なリンク
+        // ([[juml://...]]) は本メソッドを通らず生成されるため影響しない。
+        cleaned = cleaned.replace("[[", "[~[");
+        return cleaned.replace("<", "~<");
     }
+
+    /** 除去対象の制御文字 (水平タブ・改行・復帰は除く)。 */
+    private static final java.util.regex.Pattern CONTROL_CHARS =
+            java.util.regex.Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
+
+    /** 図テキストに埋め込まれた PlantUML ブロック境界文字列。 */
+    private static final java.util.regex.Pattern BLOCK_DIRECTIVE =
+            java.util.regex.Pattern.compile("(?i)@(start|end)uml");
 
     /**
      * PlantUML の制御行 (矢印ラベル・guard・title 等) に安全に書ける形へ整形する。

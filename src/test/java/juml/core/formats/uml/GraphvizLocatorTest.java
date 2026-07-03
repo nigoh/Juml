@@ -115,10 +115,26 @@ public class GraphvizLocatorTest {
     }
 
     @Test
-    public void initWithNullJarDirStillChecksSysProp() {
-        System.setProperty(GraphvizLocator.PLANTUML_DOT_PROP, "/fake/dot");
+    public void initWithNullJarDirStillChecksSysProp() throws IOException {
+        // 実行可能な dot を指すプロパティは jarDir=null でも尊重される
+        File dot = tmp.newFile("dot");
+        if (!dot.setExecutable(true) && !dot.canExecute()) {
+            return; // 実行ビットを立てられない環境ではスキップ相当
+        }
+        System.setProperty(GraphvizLocator.PLANTUML_DOT_PROP, dot.getAbsolutePath());
         GraphvizLocator.init(null);
         assertTrue(PlantUmlRenderer.isGraphvizAvailable());
+    }
+
+    @Test
+    public void initIgnoresNonExecutableSysProp() {
+        // 実在しない dot を指す設定は無視して他の検出手段へフォールバックする。
+        // 実在チェックなしで有効化すると、レンダリング時に dot 起動が失敗して
+        // 要素の無い SVG が「成功」として生成されてしまう (無音破損の回帰防止)。
+        System.setProperty(GraphvizLocator.PLANTUML_DOT_PROP, "/fake/dot");
+        GraphvizLocator.init(null);
+        boolean hasSystemDot = GraphvizLocator.findSystemDot() != null;
+        assertTrue(PlantUmlRenderer.isGraphvizAvailable() == hasSystemDot);
     }
 
     @Test
