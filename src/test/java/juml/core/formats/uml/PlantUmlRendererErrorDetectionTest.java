@@ -277,10 +277,13 @@ public class PlantUmlRendererErrorDetectionTest {
 
     @Test
     public void testRenderSvgThrowsWithCorrectErrorLineFromStub() {
-        // スタブが "[From string (line 3) ]" を含むエラー SVG を返したとき、
-        // 投げられた例外の getErrorLine() == 3 であることを確認する。
+        // スタブが構文エラー画像相当の SVG を返したとき、投げられた例外の
+        // getErrorLine() == 3 であることを確認する。実際のエラー画像に合わせて
+        // 位置マーカー + 併記文言 (Syntax Error?) の組み合わせにする
+        // (マーカー単独では正常図のコメントと区別できないため判定されない)。
         String errorSvg = "<svg>"
                 + "<text>[From string (line 3) ]</text>"
+                + "<text>Syntax Error?</text>"
                 + "<text>unexpected token</text>"
                 + "</svg>";
         PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
@@ -412,5 +415,26 @@ public class PlantUmlRendererErrorDetectionTest {
         } catch (PlantUmlRenderFailedException expected) {
             assertEquals(juml.util.ErrorCode.UML_R002, expected.getErrorCode());
         }
+    }
+
+    // ── isErrorSvg の偽陽性防止 (図テキストにエラーマーカー風文字列がある場合) ──
+
+    @Test
+    public void testIsErrorSvgIgnoresSourceLineMarkerAlone() {
+        // 正常な図のコメントに "[From string (line N)" が含まれるだけでは
+        // エラーと判定しない (実例: extractErrorLine の Javadoc を含む図)
+        String body = "<svg><text>[From string (line 42) を解釈する</text></svg>";
+        assertFalse(PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    public void testIsErrorSvgDetectsSourceLineMarkerWithCorroboration() {
+        // 構文エラー画像はバージョンバナーを併記するため、組み合わせで検出できる
+        String body = "<svg><text>This version of PlantUML is 166 days old</text>"
+                + "<text>[From string (line 7) ]</text></svg>";
+        assertTrue(PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+        String syntax = "<svg><text>Syntax Error?</text>"
+                + "<text>[From string (line 3) ]</text></svg>";
+        assertTrue(PlantUmlRenderer.isErrorSvg(syntax.getBytes(StandardCharsets.UTF_8)));
     }
 }
