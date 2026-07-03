@@ -54,16 +54,19 @@ public final class AppLog {
         private final long seq;
         private final long timeMillis;
         private final Level level;
+        /** エラーカタログ ID。ID なしのログは {@link ErrorCode#NONE}。 */
+        private final ErrorCode code;
         private final String thread;
         private final String message;
         /** スタックトレース文字列 (例外なしなら null)。 */
         private final String detail;
 
-        Entry(long seq, long timeMillis, Level level, String thread,
+        Entry(long seq, long timeMillis, Level level, ErrorCode code, String thread,
               String message, String detail) {
             this.seq = seq;
             this.timeMillis = timeMillis;
             this.level = level;
+            this.code = code != null ? code : ErrorCode.NONE;
             this.thread = thread == null ? "" : thread;
             this.message = message == null ? "" : message;
             this.detail = detail;
@@ -80,6 +83,11 @@ public final class AppLog {
 
         public Level getLevel() {
             return level;
+        }
+
+        /** エラーカタログ ID (ID なしのログは {@link ErrorCode#NONE})。 */
+        public ErrorCode getCode() {
+            return code;
         }
 
         public String getThread() {
@@ -100,10 +108,14 @@ public final class AppLog {
             return TIME_FMT.format(Instant.ofEpochMilli(timeMillis));
         }
 
-        /** ファイル / クリップボード向けの 1 行表現 (詳細は含まない)。 */
+        /**
+         * ファイル / クリップボード向けの 1 行表現 (詳細は含まない)。
+         * エラー ID を {@code [UML-R001]} 形式で埋め込む (ID なしは {@code [-]})。
+         */
         public String formatLine() {
             return DATE_TIME_FMT.format(Instant.ofEpochMilli(timeMillis))
-                    + " [" + pad(level.name()) + "] [" + thread + "] " + message;
+                    + " [" + pad(level.name()) + "] " + code.tag()
+                    + " [" + thread + "] " + message;
         }
 
         private static String pad(String s) {
@@ -185,20 +197,50 @@ public final class AppLog {
         record(Level.INFO, source, message, null);
     }
 
+    /**
+     * ID なし WARN。原則 {@link #warn(ErrorCode, String, String)} を使うこと
+     * (採番ルールは {@code .claude/rules/error-logging.md})。
+     */
     public static void warn(String source, String message) {
-        record(Level.WARN, source, message, null);
+        record(Level.WARN, ErrorCode.NONE, source, message, null);
     }
 
+    /** ID なし WARN (例外付き)。原則 ErrorCode 付きのオーバーロードを使うこと。 */
     public static void warn(String source, String message, Throwable t) {
-        record(Level.WARN, source, message, t);
+        record(Level.WARN, ErrorCode.NONE, source, message, t);
     }
 
+    /** エラー ID 付き WARN。 */
+    public static void warn(ErrorCode code, String source, String message) {
+        record(Level.WARN, code, source, message, null);
+    }
+
+    /** エラー ID 付き WARN (例外付き)。 */
+    public static void warn(ErrorCode code, String source, String message, Throwable t) {
+        record(Level.WARN, code, source, message, t);
+    }
+
+    /**
+     * ID なし ERROR。原則 {@link #error(ErrorCode, String, String)} を使うこと
+     * (採番ルールは {@code .claude/rules/error-logging.md})。
+     */
     public static void error(String source, String message) {
-        record(Level.ERROR, source, message, null);
+        record(Level.ERROR, ErrorCode.NONE, source, message, null);
     }
 
+    /** ID なし ERROR (例外付き)。原則 ErrorCode 付きのオーバーロードを使うこと。 */
     public static void error(String source, String message, Throwable t) {
-        record(Level.ERROR, source, message, t);
+        record(Level.ERROR, ErrorCode.NONE, source, message, t);
+    }
+
+    /** エラー ID 付き ERROR。 */
+    public static void error(ErrorCode code, String source, String message) {
+        record(Level.ERROR, code, source, message, null);
+    }
+
+    /** エラー ID 付き ERROR (例外付き)。 */
+    public static void error(ErrorCode code, String source, String message, Throwable t) {
+        record(Level.ERROR, code, source, message, t);
     }
 
     /** 現在のリングバッファのスナップショット (古い順)。 */
@@ -235,6 +277,11 @@ public final class AppLog {
     // ── 内部 ───────────────────────────────────────────────────────────
 
     private static void record(Level level, String source, String message, Throwable t) {
+        record(level, ErrorCode.NONE, source, message, t);
+    }
+
+    private static void record(Level level, ErrorCode code, String source,
+            String message, Throwable t) {
         if (level.ordinal() < minLevel.ordinal()) {
             return;
         }
@@ -244,7 +291,7 @@ public final class AppLog {
                 : (message == null ? "" : message);
         String detail = t != null ? stackTraceOf(t) : null;
         Entry entry = new Entry(SEQ.getAndIncrement(), System.currentTimeMillis(),
-                level, thread, msg, detail);
+                level, code, thread, msg, detail);
         synchronized (LOCK) {
             BUFFER.addLast(entry);
             while (BUFFER.size() > MAX_ENTRIES) {
@@ -344,7 +391,8 @@ public final class AppLog {
     private static void installUncaughtHandler() {
         Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
-            error("uncaught", "Uncaught exception in thread \"" + thread.getName() + "\"", ex);
+            error(ErrorCode.SYS_002, "uncaught",
+                    "Uncaught exception in thread \"" + thread.getName() + "\"", ex);
             if (prev != null) {
                 prev.uncaughtException(thread, ex);
             } else if (consoleErr != null) {
@@ -402,7 +450,9 @@ public final class AppLog {
             }
             String text = new String(line.toByteArray(), StandardCharsets.UTF_8);
             line.reset();
-            record(Level.WARN, "stderr", text, null);
+            // 発生元不明の stderr 出力は未分類 ID (SYS-001) で拾う。
+            // 頻出するパターンが見つかったら専用 ID への昇格を検討する。
+            record(Level.WARN, ErrorCode.SYS_001, "stderr", text, null);
         }
     }
 }

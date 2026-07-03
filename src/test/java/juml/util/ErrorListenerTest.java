@@ -90,9 +90,38 @@ public class ErrorListenerTest {
     @Test
     public void testCustomLambda() {
         StringBuilder sb = new StringBuilder();
-        ErrorListener custom = (src, ln, msg) -> sb.append(src).append('@').append(ln)
+        ErrorListener custom = (code, src, ln, msg) -> sb.append(src).append('@').append(ln)
                 .append(':').append(msg);
         custom.onError("X", 10, "y");
         assertEquals("X@10:y", sb.toString());
+    }
+
+    @Test
+    public void testThreeArgOverloadDelegatesWithNone() {
+        List<ErrorCode> codes = new ArrayList<>();
+        ErrorListener l = (code, src, ln, msg) -> codes.add(code);
+        l.onError("A.java", 1, "info");
+        assertEquals(1, codes.size());
+        assertEquals(ErrorCode.NONE, codes.get(0));
+    }
+
+    @Test
+    public void testStderrPrependsErrorId() {
+        ErrorListener.stderr().onError(ErrorCode.PRJ_005, "Foo.java", 42, "bad token");
+        assertTrue(errText(), errText().contains("[PRJ-005] Foo.java:42: bad token"));
+    }
+
+    @Test
+    public void testCollectingPrependsErrorId() {
+        List<String> sink = new ArrayList<>();
+        ErrorListener.collecting(sink).onError(ErrorCode.PRJ_006, "IFoo.aidl", 3, "bad aidl");
+        assertEquals("[PRJ-006] IFoo.aidl:3: bad aidl", sink.get(0));
+    }
+
+    @Test
+    public void testNoneCodeHasNoIdPrefix() {
+        List<String> sink = new ArrayList<>();
+        ErrorListener.collecting(sink).onError(ErrorCode.NONE, "A.java", 1, "note");
+        assertEquals("A.java:1: note", sink.get(0));
     }
 }

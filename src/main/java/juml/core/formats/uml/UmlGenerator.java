@@ -217,8 +217,8 @@ public final class UmlGenerator {
         if (fileName == null || fileName.isEmpty()) {
             return inner;
         }
-        return (source, line, message) ->
-                inner.onError(source != null && !source.isEmpty() ? source : fileName,
+        return (code, source, line, message) ->
+                inner.onError(code, source != null && !source.isEmpty() ? source : fileName,
                         line, message);
     }
 
