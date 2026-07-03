@@ -45,7 +45,14 @@ public final class PlantUmlImageRenderer {
         String prepared = PlantUmlRenderer.injectScaleMax(puml, PlantUmlRenderer.imageLimit());
         SourceStringReader reader = new SourceStringReader(PlantUmlRenderer.injectLayout(prepared));
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            Object desc = reader.outputImage(baos, new FileFormatOption(FileFormat.PNG));
+            Object[] descHolder = new Object[1];
+            // SVG 経路と同じ stderr 捕捉で、PlantUML が握りつぶすレイアウトエンジンの
+            // 致命的障害 (dot 実行失敗 / Smetana 内部クラッシュ) を PNG 経路でも検出する。
+            // 障害時は要素が配置されない「ほぼ空の PNG」が正常出力として返るため、
+            // マーカー画像判定だけでは壊れたエクスポートを防げない。
+            String stderrTail = PlantUmlRenderer.captureStderrDuring(() ->
+                    descHolder[0] = reader.outputImage(baos, new FileFormatOption(FileFormat.PNG)));
+            Object desc = descHolder[0];
             // PlantUML は失敗時も例外を投げず「An error has occured」画像を返す。
             // その場合 DiagramDescription はちょうど "(Error)" になる (正常図は
             // "(N entities)" 等でユーザー内容を含まないことを実測確認済み) ため、
@@ -57,6 +64,16 @@ public final class PlantUmlImageRenderer {
                         juml.util.ErrorCode.UML_R006,
                         "PlantUML render failed (error image returned on PNG export). "
                                 + "Check logs/juml.log for details.");
+            }
+            juml.util.ErrorCode fatal = PlantUmlRenderer.fatalLayoutErrorCode(stderrTail);
+            if (fatal != null) {
+                juml.util.AppLog.error(fatal, "PlantUmlImageRenderer",
+                        "PNG render hit a fatal layout engine failure; stderr tail:\n"
+                                + stderrTail);
+                throw new juml.core.formats.uml.PlantUmlRenderFailedException(
+                        fatal,
+                        "PlantUML layout engine failed during PNG render; "
+                                + "the diagram would be rendered incomplete.");
             }
             byte[] bytes = baos.toByteArray();
             if (bytes.length == 0) {

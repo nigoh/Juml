@@ -474,6 +474,19 @@ public class UmlMainFrame extends JFrame {
         loaderDeps.cancelTokenSetter = token -> loadingCancelToken = token;
         loaderDeps.projectRootSetter = root -> currentProjectRoot = root;
         loaderDeps.onLoadSuccess = root -> {
+            // 旧プロジェクトの図タブ・再オープン履歴・ナビ履歴を破棄する。残すと
+            // 再描画 (F5/スタイル変更/LRU 復帰) が新プロジェクトの解析結果に対して走り、
+            // 旧ラベルのまま空図・別クラスの図が表示される。
+            tabPane.onProjectSwitched();
+            // Doxygen/TODO/Groups タブの前プロジェクト結果も破棄する。
+            doxygenResultCache.clear();
+            // Functions / Members は遅延生成のため、表示中でなければ次回選択時に
+            // 新プロジェクトで再生成される。表示中なら即再生成して旧一覧を残さない。
+            if (mainTabs.getSelectedComponent() == methodListPanel) {
+                updateFunctionList();
+            } else if (mainTabs.getSelectedComponent() == memberListPanel) {
+                updateMemberList();
+            }
             persistAndRestoreProjectSettings(root);
             updateManifestSummary();
             gitPanel.setRepositoryRoot(root); // git リポジトリなら Git タブを有効化

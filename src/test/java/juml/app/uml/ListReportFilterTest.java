@@ -71,4 +71,36 @@ public class ListReportFilterTest {
         assertEquals("", ListReportFilter.filterTable("", "x"));
         assertEquals("", ListReportFilter.filterCsv(null, "x"));
     }
+
+    /**
+     * 複数テーブルを含むレポートでは、2 個目以降のテーブルの見出し行・区切り行も
+     * 残す。以前は pipeSeen を文書全体で数えていたため、2 番目のテーブルのヘッダが
+     * データ行扱いになり絞り込みで消えていた。
+     */
+    @Test
+    public void multipleTables_eachKeepsItsOwnHeader() {
+        String twoTables =
+                "## Foo クラス\n"
+                + "| 関数 | 戻り値 |\n"
+                + "|---|---|\n"
+                + "| bar | void |\n"
+                + "| skip | int |\n"
+                + "\n"
+                + "## Zed クラス\n"
+                + "| 関数 | 戻り値 |\n"
+                + "|---|---|\n"
+                + "| bar | long |\n"
+                + "| gone | int |\n";
+        String out = ListReportFilter.filterTable(twoTables, "bar");
+        // 2 番目のテーブルの見出し・区切りも残る (テーブル境界で pipeSeen リセット)。
+        int headerCount = out.split("\\| 関数 \\| 戻り値 \\|", -1).length - 1;
+        assertEquals("両テーブルのヘッダが残るべき", 2, headerCount);
+        int sepCount = out.split("\\|---\\|---\\|", -1).length - 1;
+        assertEquals("両テーブルの区切り行が残るべき", 2, sepCount);
+        // 各テーブルのマッチ行は残り、非マッチ行は消える。
+        assertTrue(out.contains("| bar | void |"));
+        assertTrue(out.contains("| bar | long |"));
+        assertFalse(out.contains("| skip | int |"));
+        assertFalse(out.contains("| gone | int |"));
+    }
 }

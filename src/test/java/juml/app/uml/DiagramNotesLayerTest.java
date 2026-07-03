@@ -184,6 +184,40 @@ public class DiagramNotesLayerTest {
         assertEquals(0, layer.getConnectors().size());
     }
 
+    /**
+     * ELEMENT アンカー付箋のエクスポート座標は、対象要素の位置を解決した絶対座標に
+     * なる。以前は SVG 出力が相対オフセットを絶対座標として書き、要素から離れた
+     * 原点付近へ描画されていた。
+     */
+    @Test
+    public void notesForExportResolvesElementAnchorToAbsolute() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        // 対象要素は (800, 300) に幅 120。付箋は要素右隣 (offX = 120+16=136, offY=0)。
+        layer.setElementResolver(fqn -> new double[] {800, 300, 120, 60});
+        layer.addElementNote("com.x.Foo", new double[] {800, 300, 120, 60});
+
+        List<DiagramNote> resolved = layer.notesForExportResolved();
+        assertEquals(1, resolved.size());
+        DiagramNote n = resolved.get(0);
+        // 絶対座標 = 要素左上 + オフセット。原点付近ではなく要素の隣にあること。
+        assertEquals("X は要素の右隣の絶対座標", 800 + 136, n.getX(), 0.001);
+        assertEquals("Y は要素上端の絶対座標", 300 + 0, n.getY(), 0.001);
+        assertEquals("エクスポート用は FREE 化される",
+                DiagramNote.Anchor.FREE, n.getAnchor());
+    }
+
+    /** FREE 付箋のエクスポート座標はそのまま (アンカー解決の影響を受けない)。 */
+    @Test
+    public void notesForExportKeepsFreeCoordinates() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(45, 67), 1.0);
+        DiagramNote n = layer.notesForExportResolved().get(0);
+        assertEquals(45, n.getX(), 0.001);
+        assertEquals(67, n.getY(), 0.001);
+    }
+
     @Test
     public void lockedNoteIsNotMovedByArrowKeys() {
         JPanel owner = new JPanel();

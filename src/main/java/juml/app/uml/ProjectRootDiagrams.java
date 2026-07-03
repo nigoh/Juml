@@ -32,7 +32,7 @@ final class ProjectRootDiagrams {
             return juml.core.screen.PlantUmlScreenFlowDiagram.render(transitions);
         } catch (java.io.IOException ex) {
             return "@startuml\ntitle Screen Flow\nnote as N\nScan failed: "
-                    + ex.getMessage().replace("\n", " ") + "\nend note\n@enduml\n";
+                    + safeMessage(ex) + "\nend note\n@enduml\n";
         }
     }
 
@@ -46,8 +46,15 @@ final class ProjectRootDiagrams {
                     + "note as N\nOpen a project directory to detect Android.bp modules.\nend note\n"
                     + "@enduml\n";
         }
-        java.util.List<juml.core.aosp.AndroidBpModule> modules =
-                new juml.core.aosp.AndroidBpParser().analyzeProject(projectRoot);
+        java.util.List<juml.core.aosp.AndroidBpModule> modules;
+        try {
+            modules = new juml.core.aosp.AndroidBpParser().analyzeProject(projectRoot);
+        } catch (RuntimeException ex) {
+            // 壊れた Android.bp でパーサが失敗しても図生成全体を殺さない
+            // (ProjectLoader の Soong 走査と同じ扱い)。
+            return "@startuml\ntitle Soong (Android.bp) Module Dependencies\n"
+                    + "note as N\nScan failed: " + safeMessage(ex) + "\nend note\n@enduml\n";
+        }
         if (modules.isEmpty()) {
             return "@startuml\ntitle Soong (Android.bp) Module Dependencies\n"
                     + "note as N\nNo Android.bp modules were found under this project.\nend note\n"
@@ -72,7 +79,7 @@ final class ProjectRootDiagrams {
             return juml.core.aosp.PlantUmlBuildNinjaDiagram.render(graph);
         } catch (java.io.IOException ex) {
             return "@startuml\ntitle build.ninja Target Dependencies\nnote as N\nScan failed: "
-                    + ex.getMessage().replace("\n", " ") + "\nend note\n@enduml\n";
+                    + safeMessage(ex) + "\nend note\n@enduml\n";
         }
     }
 
@@ -92,7 +99,7 @@ final class ProjectRootDiagrams {
             return juml.core.aosp.PlantUmlIntermediatesDiagram.render(inv);
         } catch (java.io.IOException ex) {
             return "@startuml\ntitle Soong .intermediates Inventory\nnote as N\nScan failed: "
-                    + ex.getMessage().replace("\n", " ") + "\nend note\n@enduml\n";
+                    + safeMessage(ex) + "\nend note\n@enduml\n";
         }
     }
 
@@ -112,7 +119,17 @@ final class ProjectRootDiagrams {
             return PlantUmlResourceLinkDiagram.generate(model);
         } catch (java.io.IOException ex) {
             return "@startuml\ntitle Resource Links\nnote as N\nScan failed: "
-                    + ex.getMessage().replace("\n", " ") + "\nend note\n@enduml\n";
+                    + safeMessage(ex) + "\nend note\n@enduml\n";
         }
+    }
+
+    /**
+     * 例外メッセージをノート 1 行に整形する。{@code getMessage()} は null になりうる
+     * (メッセージ無し IOException 等) ため、null 安全に例外型名へフォールバックする。
+     */
+    private static String safeMessage(Exception ex) {
+        String m = ex.getMessage();
+        return (m == null || m.isEmpty())
+                ? ex.getClass().getSimpleName() : m.replace("\n", " ");
     }
 }

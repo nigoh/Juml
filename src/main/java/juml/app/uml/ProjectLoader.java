@@ -89,9 +89,16 @@ public final class ProjectLoader {
         if (loadingOverlay != null) {
             loadingOverlay.setCancelAction(cancel::cancel);
         }
+        // 進捗イベントは「まだアクティブなロード」のものだけ反映する。キャンセル済みでも
+        // 走り続けている古いワーカーの遅延イベントが、次のロードの進捗表示を上書きしない
+        // ようにするため。
+        final SwingWorker<?, ?>[] workerRef = new SwingWorker<?, ?>[1];
         final ProgressListener prog = ProgressListener.throttled(
-                (done, total, message) -> SwingUtilities.invokeLater(
-                        () -> updateLoadProgress(done, total, message)),
+                (done, total, message) -> SwingUtilities.invokeLater(() -> {
+                    if (workerRef[0] != null && workerRef[0] == activeWorker) {
+                        updateLoadProgress(done, total, message);
+                    }
+                }),
                 150L);
         final ProjectAnalysisCache.LoadOptions options =
                 new ProjectAnalysisCache.LoadOptions();
@@ -134,6 +141,13 @@ public final class ProjectLoader {
 
             @Override
             protected void done() {
+                // 追い越された古いワーカーの done() は何もしない。SwingWorker.cancel(true)
+                // 直後の done() は doInBackground 実行中に走り得るため、そのまま進めると
+                // 新しいロードの UI 状態 (オーバーレイ・キャンセルトークン・進捗) を壊し、
+                // 未確定の error/cancelled フィールドで成功経路まで実行してしまう。
+                if (activeWorker != this) {
+                    return;
+                }
                 activeWorker = null;
                 activeCancelToken = null;
                 cancelTokenSetter.accept(null);
@@ -146,6 +160,9 @@ public final class ProjectLoader {
                 loadProgress.setValue(0);
                 loadProgress.setString(null);
                 if (error != null) {
+                    // 半端に入った解析結果を残さない (UI は「未ロード」を表示しているため)。
+                    cache.clear();
+                    refIndexCache.invalidate();
                     juml.util.AppLog.error(juml.util.ErrorCode.PRJ_001, "ProjectLoader",
                             "Project analysis failed: " + root.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
@@ -157,6 +174,10 @@ public final class ProjectLoader {
                     return;
                 }
                 if (cancelled) {
+                    // ロード完了直前のキャンセルでは cache に結果が入っていることがある。
+                    // ツリーは空のままなので、キャッシュも空へ揃えて食い違いを防ぐ。
+                    cache.clear();
+                    refIndexCache.invalidate();
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }
@@ -183,6 +204,7 @@ public final class ProjectLoader {
                 onLoadSuccess.accept(root);
             }
         };
+        workerRef[0] = worker;
         activeWorker = worker;
         worker.execute();
     }
@@ -231,6 +253,10 @@ public final class ProjectLoader {
 
             @Override
             protected void done() {
+                // 追い越された古いワーカーの done() は何もしない (start() 側と同じ理由)。
+                if (activeWorker != this) {
+                    return;
+                }
                 activeWorker = null;
                 activeCancelToken = null;
                 cancelTokenSetter.accept(null);
@@ -242,6 +268,8 @@ public final class ProjectLoader {
                 loadProgress.setIndeterminate(false);
                 loadProgress.setString(null);
                 if (error != null) {
+                    cache.clear();
+                    refIndexCache.invalidate();
                     juml.util.AppLog.error(juml.util.ErrorCode.PRJ_002, "ProjectLoader",
                             "Archive read failed: " + archive.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
@@ -251,6 +279,10 @@ public final class ProjectLoader {
                     return;
                 }
                 if (cancelled) {
+                    // 抽出はキャンセル非対応で最後まで走るため、結果だけ破棄して
+                    // 「ツリーは空・キャッシュは読込済み」の食い違いを防ぐ。
+                    cache.clear();
+                    refIndexCache.invalidate();
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }

@@ -353,6 +353,9 @@ final class LogViewerDialog extends JDialog {
             return;
         }
         File target = fc.getSelectedFile();
+        if (!DialogUtils.confirmOverwrite(this, target)) {
+            return;
+        }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < model.getRowCount(); i++) {
             AppLog.Entry e = model.getEntry(i);

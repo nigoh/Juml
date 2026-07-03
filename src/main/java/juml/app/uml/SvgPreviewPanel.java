@@ -169,9 +169,9 @@ public class SvgPreviewPanel extends JPanel {
         repaint();
     }
 
-    /** エクスポート用: 現在の付箋一覧 (図座標)。 */
+    /** エクスポート用: 現在の付箋一覧 (アンカー解決済みの絶対図座標)。 */
     public java.util.List<DiagramNote> notesForExport() {
-        return notesLayer.getNotes();
+        return notesLayer.notesForExportResolved();
     }
 
     /** 図 (SVG) + 付箋を 1 枚に描画して返す (PNG エクスポート用)。SVG 未表示なら null。EDT 専用。 */

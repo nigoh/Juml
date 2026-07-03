@@ -25,7 +25,6 @@ import java.awt.event.KeyEvent;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * {@link JavaSourcePanel} のソース内インクリメンタル検索バー (VS Code の {@code Ctrl+F} 相当)。
@@ -156,18 +155,21 @@ final class SourceFindBar extends JPanel {
         } catch (BadLocationException ex) {
             return;
         }
-        String hay = text.toLowerCase(Locale.ROOT);
-        String needle = query.toLowerCase(Locale.ROOT);
+        // 大文字小文字を無視した走査は regionMatches で行い、オフセットは常に元テキスト
+        // 基準にする。toLowerCase は長さが変わることがあり (例: U+0130 "İ" → 2 文字)、
+        // 小文字化したコピーのオフセットを元ドキュメントに適用すると、以降のヒットの
+        // 強調・選択が全て 1 文字ずつずれる。
         Highlighter h = target.getHighlighter();
         Highlighter.HighlightPainter painter =
                 new DefaultHighlighter.DefaultHighlightPainter(searchHitColor());
+        int qlen = query.length();
         int from = 0;
-        while (true) {
-            int p = hay.indexOf(needle, from);
+        while (from + qlen <= text.length()) {
+            int p = indexOfIgnoreCase(text, query, from);
             if (p < 0) {
                 break;
             }
-            int end = p + needle.length();
+            int end = p + qlen;
             hits.add(new int[]{p, end});
             try {
                 tags.add(h.addHighlight(p, end, painter));
@@ -192,6 +194,17 @@ final class SourceFindBar extends JPanel {
             }
         }
         showCurrent();
+    }
+
+    /** {@code from} 以降で大文字小文字を無視して {@code needle} を探す (元テキスト基準)。 */
+    private static int indexOfIgnoreCase(String text, String needle, int from) {
+        int max = text.length() - needle.length();
+        for (int i = Math.max(0, from); i <= max; i++) {
+            if (text.regionMatches(true, i, needle, 0, needle.length())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void move(int delta) {

@@ -27,6 +27,21 @@ final class DoxygenResultCache {
     private DoxModel model;
     private final List<Runnable> listeners = new ArrayList<>();
     private boolean running;
+    /** 実行中/保持中の結果がどのルートのものか。プロジェクト切替の混線防止に使う。 */
+    private File modelRoot;
+
+    /**
+     * 保持している結果を破棄してリスナーへ通知する (プロジェクト切替時)。
+     * 破棄しないと Doxygen/TODO/Groups タブが前プロジェクトの内容を
+     * 新プロジェクトのものとして表示し続ける。
+     */
+    void clear() {
+        model = null;
+        modelRoot = null;
+        for (Runnable listener : listeners) {
+            listener.run();
+        }
+    }
 
     /** 最後に解析した結果。未実行なら null。 */
     DoxModel getModel() {
@@ -55,9 +70,19 @@ final class DoxygenResultCache {
      */
     void runAsync(File root, Runnable onStart, Consumer<String> onError, Runnable onFinally) {
         if (running) {
+            // 既に実行中でも呼び出し元へ開始通知だけは返す (2 つ目のタブから Run しても
+            // 「実行中」の表示が出ず、ボタンが無反応に見えるのを防ぐ)。
+            if (onStart != null) {
+                onStart.run();
+            }
+            if (onFinally != null) {
+                // 完了は既存ランのリスナー通知で拾えるため、ここでは即時に後始末を返す。
+                onFinally.run();
+            }
             return;
         }
         running = true;
+        modelRoot = root;
         if (onStart != null) {
             onStart.run();
         }
@@ -73,7 +98,12 @@ final class DoxygenResultCache {
             protected void done() {
                 running = false;
                 try {
-                    publishResult(get());
+                    DoxModel m = get();
+                    // 実行中にプロジェクトが切り替わり clear() された場合は結果を捨てる
+                    // (前プロジェクトの解析結果を新プロジェクトへ注入しない)。
+                    if (root.equals(modelRoot)) {
+                        publishResult(m);
+                    }
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error(juml.util.ErrorCode.DIAG_003, "DoxygenResultCache",

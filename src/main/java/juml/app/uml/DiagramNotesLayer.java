@@ -154,6 +154,23 @@ final class DiagramNotesLayer {
         owner.repaint();
     }
 
+    /**
+     * エクスポート用: アンカーを解決して絶対図座標へ変換した付箋コピーを返す。
+     * ELEMENT アンカー付箋の x/y は「対象要素からのオフセット」であり、そのまま
+     * SVG に書くと原点付近へ飛んでしまうため、必ずこちらを使うこと。
+     */
+    List<DiagramNote> notesForExportResolved() {
+        List<DiagramNote> out = new ArrayList<>(notes.size());
+        for (DiagramNote n : notes) {
+            DiagramNote c = n.copyDeep();
+            c.setX(effX(n));
+            c.setY(effY(n));
+            c.setAnchor(DiagramNote.Anchor.FREE);
+            out.add(c);
+        }
+        return out;
+    }
+
     /** 指定 id の付箋の実効矩形 {@code [x,y,w,h]} (図座標)。なければ null。 */
     double[] noteRect(String id) {
         DiagramNote n = byId(id);
@@ -866,11 +883,13 @@ final class DiagramNotesLayer {
                 });
             }
         } else if (n.getText().trim().isEmpty() && n.getTags().isEmpty() && notes.contains(n)) {
-            // 新規作成直後に空 (本文・タグなし) のままキャンセル → 付箋を残さない
-            notes.remove(n);
-            selectedIds.remove(n.getId());
-            fireChange();
-            owner.repaint();
+            // 空 (本文・タグなし) のままキャンセル → 付箋を残さない。commit 経由で
+            // Undo 履歴に積む: 以前は履歴を通さず直接削除していたため、既存の空付箋
+            // (色付きマーカー用途) を誤って Esc で消すと Ctrl+Z でも戻せなかった。
+            commit(null, () -> {
+                notes.remove(n);
+                selectedIds.remove(n.getId());
+            });
         }
     }
 }

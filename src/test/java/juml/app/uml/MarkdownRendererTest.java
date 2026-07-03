@@ -73,4 +73,29 @@ public class MarkdownRendererTest {
         assertEquals("", MarkdownRenderer.toHtml(null));
         assertEquals("", MarkdownRenderer.toHtml(""));
     }
+
+    /**
+     * コードスパンの中身は Markdown 的にリテラル扱い。以前は生成した
+     * {@code <code>} の中を後段の装飾規則が再処理し、コード内で太字/リンクが
+     * 効いてしまっていた。
+     */
+    @Test
+    public void codeSpanContentIsNotReDecorated() {
+        String bold = MarkdownRenderer.toHtml("`a**b**c`");
+        assertTrue("コード内は太字化されない: " + bold, bold.contains("<code>a**b**c</code>"));
+        assertFalse("コード内に <b> が入ってはいけない: " + bold, bold.contains("<b>"));
+
+        String link = MarkdownRenderer.toHtml("`[x](y)`");
+        assertTrue("コード内はリンク化されない: " + link, link.contains("<code>[x](y)</code>"));
+        assertFalse("コード内に <a が入ってはいけない: " + link, link.contains("<a "));
+    }
+
+    /** コードスパンの外側は通常どおり装飾される (プレースホルダの誤爆がない)。 */
+    @Test
+    public void decorationOutsideCodeStillWorks() {
+        String html = MarkdownRenderer.toHtml("**b** `code` *i*");
+        assertTrue(html.contains("<b>b</b>"));
+        assertTrue(html.contains("<code>code</code>"));
+        assertTrue(html.contains("<i>i</i>"));
+    }
 }

@@ -7,6 +7,7 @@ import juml.core.formats.uml.ClassIndex;
 import juml.core.formats.uml.JavaClassInfo;
 import juml.core.formats.uml.db.DbBootstrap;
 import juml.core.formats.uml.db.IndexDatabase;
+import juml.core.formats.uml.db.IncrementalScanner;
 import juml.core.formats.uml.db.IndexReader;
 import juml.core.formats.uml.db.IndexWriter;
 import juml.core.formats.uml.db.LegacyCacheArchiver;
@@ -73,12 +74,27 @@ public final class DiskAnalysisCache {
     }
 
     /**
-     * 指定プロジェクトの解析結果を DB から復元する。
+     * 指定プロジェクトの解析結果を DB から復元する (陳腐化チェックなし)。
      *
      * <p>DB が存在しない / classes が 0 件なら {@link Optional#empty()}。
      * 旧 TSV ディレクトリは見つけ次第退避する (初回 open 時のみ)。</p>
      */
     public Optional<Snapshot> load(File projectRoot, ProgressListener progress) {
+        return load(projectRoot, progress, null);
+    }
+
+    /**
+     * 指定プロジェクトの解析結果を DB から復元する。{@code currentJavaFiles} が
+     * 非 null のときは、DB に記録した各ファイルの {@code mtime}/{@code size} と
+     * 現在のファイルシステムを突き合わせ、追加/変更/削除が 1 件でもあれば
+     * 「キャッシュミス」として {@link Optional#empty()} を返す (陳腐化した図を
+     * 表示し続けないようにするため)。差分検出のためのファイル走査は full parse より
+     * 十分に軽い。
+     *
+     * @param currentJavaFiles 現在 FS 上に存在する Java ソース一覧 (null で陳腐化チェック省略)
+     */
+    public Optional<Snapshot> load(File projectRoot, ProgressListener progress,
+                                   List<File> currentJavaFiles) {
         ProgressListener prog = progress != null ? progress : ProgressListener.silent();
         archiveLegacyOnce();
         File dbFile = DbBootstrap.resolveDbFile(baseDir, projectRoot);
@@ -92,6 +108,16 @@ public final class DiskAnalysisCache {
             int count = reader.classCount();
             if (count == 0) {
                 return Optional.empty();
+            }
+            // 陳腐化チェック: DB 記録時から 1 ファイルでも追加/変更/削除されていたら
+            // キャッシュを捨てて再解析させる (古いクラス一覧・消えたクラスを出さない)。
+            if (currentJavaFiles != null) {
+                IncrementalScanner.DiffResult diff = IncrementalScanner.diff(
+                        db.connection(), projectRoot, IndexWriter.KIND_JAVA, currentJavaFiles);
+                if (!diff.getAdded().isEmpty() || !diff.getModified().isEmpty()
+                        || !diff.getDeletedPaths().isEmpty()) {
+                    return Optional.empty();
+                }
             }
             ClassIndex idx = reader.loadStageAClassIndex(projectRoot);
             List<JavaClassInfo> classes = idx.headers();

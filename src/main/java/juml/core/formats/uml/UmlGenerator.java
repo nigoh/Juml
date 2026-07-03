@@ -399,17 +399,32 @@ public final class UmlGenerator {
         }
         try {
             AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(root, err);
-            List<GradleDependency> all = new ArrayList<>();
-            for (GradleProjectInfo info : analysis.getGradleByModule().values()) {
-                all.addAll(info.getDependencies());
-            }
-            DependencyJarIndex idx = DependencyJarIndex.build(all, err);
-            indexLocalJars(idx, root, analysis, err);
-            return idx;
+            return buildDependencyIndex(root, analysis, err);
         } catch (IOException ex) {
             err.onError(juml.util.ErrorCode.PRJ_002, null, -1, "dependency index build failed: " + ex.getMessage());
             return new DependencyJarIndex();
         }
+    }
+
+    /**
+     * 既に得ている {@link AndroidProjectAnalysis} から依存 JAR/AAR インデックスを構築する。
+     * ディスクキャッシュ Hit で parse をスキップしても外部型 ({@code <<external>>}) 解決を
+     * 初回ロードと揃えるため、{@link juml.app.uml.ProjectAnalysisCache} から呼ぶ想定。
+     * 解析を再実行しないので比較的軽い。
+     */
+    public static DependencyJarIndex buildDependencyIndex(File root,
+                                                          AndroidProjectAnalysis analysis,
+                                                          ErrorListener err) {
+        if (root == null || analysis == null) {
+            return new DependencyJarIndex();
+        }
+        List<GradleDependency> all = new ArrayList<>();
+        for (GradleProjectInfo info : analysis.getGradleByModule().values()) {
+            all.addAll(info.getDependencies());
+        }
+        DependencyJarIndex idx = DependencyJarIndex.build(all, err);
+        indexLocalJars(idx, root, analysis, err);
+        return idx;
     }
 
     /**

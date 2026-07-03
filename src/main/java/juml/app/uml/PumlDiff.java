@@ -101,6 +101,11 @@ final class PumlDiff {
         }
         if (start < s.length()) {
             out.add(s.substring(start)); // 末尾に改行が無い残りの行
+        } else {
+            // 末尾が改行で終わる場合は最終空行を保持する。これを落とすと "a" と "a\n" の
+            // 行リストが同一になり、hasChanges (文字比較) は変化ありと言うのに
+            // unified は +/- ゼロの差分を表示する食い違いが起きる。
+            out.add("");
         }
         return out;
     }

@@ -33,6 +33,14 @@ final class DiagramRenderCache {
     /** 可視領域の外側に余分にラスタライズしておくマージン (px)。連続パンの再生成を抑える。 */
     private static final int BUFFER_MARGIN = 384;
 
+    /**
+     * バックバッファの総画素数の上限。TYPE_INT_ARGB は 1 画素 4 byte のため
+     * 48M px ≒ 192MB。4K 最大化 + 高 renderScale の組み合わせで数百 MB を
+     * 一括確保して paint 中に OutOfMemoryError → 再描画のたび再発、となるのを防ぐ。
+     * 超える場合は renderScale を落として収める (見た目は等倍描画に近づくだけ)。
+     */
+    private static final long MAX_BUFFER_PIXELS = 48L * 1024 * 1024;
+
     private BufferedImage backBuffer;
     /** {@link #backBuffer} がカバーするパネル座標 (デバイス座標) の左上 X。 */
     private int bufX;
@@ -73,6 +81,9 @@ final class DiagramRenderCache {
         if (need.isEmpty()) {
             return;
         }
+        // 総画素数の上限を paint 側でも同じ式で適用する (rebuild 側と食い違うと
+        // bufferCovers が毎回 false になり、フレームごとに全再ラスタライズしてしまう)。
+        rs = capScale(rs, bufferTarget(content, viewport));
         if (!bufferCovers(need, zoom, rs)) {
             rebuildBuffer(src, zoom, content, viewport, rs);
         }
@@ -119,6 +130,25 @@ final class DiagramRenderCache {
         return base.intersection(content);
     }
 
+    /** バックバッファが被覆すべきパネル座標矩形 (= 可視領域 + マージン ∩ 図範囲)。 */
+    private static Rectangle bufferTarget(Rectangle content, Rectangle viewport) {
+        Rectangle base = (viewport != null) ? new Rectangle(viewport) : new Rectangle(content);
+        base.grow(BUFFER_MARGIN, BUFFER_MARGIN);
+        return base.intersection(content);
+    }
+
+    /** {@code target} を renderScale 倍でラスタライズしても画素上限に収まる倍率へ丸める。 */
+    private static double capScale(double rs, Rectangle target) {
+        if (target.isEmpty()) {
+            return rs;
+        }
+        double area = (double) target.width * (double) target.height;
+        if (area * rs * rs <= MAX_BUFFER_PIXELS) {
+            return rs;
+        }
+        return Math.max(1.0, Math.sqrt(MAX_BUFFER_PIXELS / area));
+    }
+
     /** ビューポートの可視矩形を取得する (パネル座標)。スクロールペイン外なら null。 */
     static Rectangle viewportRect(JViewport vp) {
         if (vp == null) {
@@ -137,9 +167,7 @@ final class DiagramRenderCache {
     private void rebuildBuffer(Source src,
                                double zoom, Rectangle content, Rectangle viewport,
                                double renderScale) {
-        Rectangle base = (viewport != null) ? new Rectangle(viewport) : new Rectangle(content);
-        base.grow(BUFFER_MARGIN, BUFFER_MARGIN);
-        Rectangle target = base.intersection(content);
+        Rectangle target = bufferTarget(content, viewport);
         if (target.isEmpty()) {
             invalidate();
             return;
@@ -149,7 +177,14 @@ final class DiagramRenderCache {
         int pxH = Math.max(1, (int) Math.ceil(target.height * renderScale));
         BufferedImage buf = backBuffer;
         if (buf == null || buf.getWidth() != pxW || buf.getHeight() != pxH) {
-            buf = new BufferedImage(pxW, pxH, BufferedImage.TYPE_INT_ARGB);
+            try {
+                buf = new BufferedImage(pxW, pxH, BufferedImage.TYPE_INT_ARGB);
+            } catch (OutOfMemoryError oom) {
+                // 確保に失敗したら既存バッファを解放して 1 フレームだけ描画を諦める
+                // (次の paint で再挑戦)。OOM をそのまま EDT へ投げると再描画ループになる。
+                invalidate();
+                return;
+            }
         }
         Graphics2D bg = buf.createGraphics();
         try {

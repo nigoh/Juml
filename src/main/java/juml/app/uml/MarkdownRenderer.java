@@ -152,16 +152,25 @@ final class MarkdownRenderer {
         return null;
     }
 
-    /** インライン装飾を適用する。エスケープ後にプレースホルダ無しの単純置換で行う。 */
+    /** インライン装飾を適用する。エスケープ後に置換で行う。 */
     private static String inline(String text) {
         String s = escape(text);
-        // インラインコードを先に処理 (中の * は装飾しない簡易方針)
-        s = replace(s, CODE, m -> "<code>" + m.group(1) + "</code>");
+        // インラインコードを先に処理し、中身は Markdown 的にリテラル扱いにする。
+        // 生成した <code>…</code> をそのまま残すと後段の LINK/BOLD/ITALIC が
+        // コード内を再装飾してしまうため、一旦プレースホルダへ退避して最後に戻す。
+        java.util.List<String> codeSpans = new java.util.ArrayList<>();
+        s = replace(s, CODE, m -> {
+            codeSpans.add("<code>" + m.group(1) + "</code>");
+            return "\uE000" + (codeSpans.size() - 1) + "\uE001";
+        });
         // href は属性値なので引用符も無害化する (escape 済み文字列に対してさらに ")。
         s = replace(s, LINK, m -> "<a href=\"" + m.group(2).replace("\"", "&quot;") + "\">"
                 + m.group(1) + "</a>");
         s = replace(s, BOLD, m -> "<b>" + m.group(1) + "</b>");
         s = replace(s, ITALIC, m -> "<i>" + m.group(1) + "</i>");
+        for (int i = 0; i < codeSpans.size(); i++) {
+            s = s.replace("\uE000" + i + "\uE001", codeSpans.get(i));
+        }
         return s;
     }
 

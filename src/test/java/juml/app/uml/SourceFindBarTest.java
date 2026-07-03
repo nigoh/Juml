@@ -79,4 +79,35 @@ public class SourceFindBarTest {
         bar.activate();
         assertEquals("空クエリではハイライトされないこと", baseline, highlightCount(area));
     }
+
+    /**
+     * 小文字化で長さが変わる文字 (U+0130 "İ" → "i̇") が前方にあっても、ヒットの
+     * ハイライト位置が元テキスト基準で正しいこと。以前は小文字化コピーのオフセットを
+     * 元ドキュメントへ適用していたため、後続ヒットが 1 文字ずつずれていた。
+     */
+    @Test
+    public void highlightOffsetsStayCorrectWithLocaleChangingChars() {
+        // "İ" の後に "foo" を 2 箇所置く。オフセットずれがあると 2 個目がずれる。
+        String text = "İ foo İ foo";
+        JTextArea area = new JTextArea(text);
+        SourceFindBar bar = new SourceFindBar(area, null);
+        // 最初の "foo" (index 2..5) を選択してクエリにする。
+        int firstFoo = text.indexOf("foo");
+        area.select(firstFoo, firstFoo + 3);
+        area.getCaret().setSelectionVisible(true);
+        bar.activate();
+
+        // 長さ 3 のハイライトはすべて実テキスト上の "foo" を正しく指すこと。
+        int fooHighlights = 0;
+        for (javax.swing.text.Highlighter.Highlight h : area.getHighlighter().getHighlights()) {
+            int s = h.getStartOffset();
+            int e = h.getEndOffset();
+            if (e - s == 3) {
+                assertTrue("ハイライトは元テキストの foo を指すべき (s=" + s + ")",
+                        text.regionMatches(true, s, "foo", 0, 3));
+                fooHighlights++;
+            }
+        }
+        assertTrue("2 箇所の foo がハイライトされること", fooHighlights >= 2);
+    }
 }

@@ -85,6 +85,32 @@ final class DiagramNotesStore {
         return writeFile();
     }
 
+    /**
+     * 図キーの変更 (Save As によるタブキー移行) に追従して保存エントリを移す。
+     * 移さないと付箋が旧キーの下に取り残され、ファイルを開き直しても二度と
+     * ロードされない (事実上の消失)。移行先に既存エントリがあれば上書きする。
+     *
+     * @return 書き込みに成功した (または移動不要だった) 場合 true
+     */
+    synchronized boolean rename(String oldKey, String newKey) {
+        if (jsonFile == null || oldKey == null || newKey == null || oldKey.equals(newKey)) {
+            return true;
+        }
+        ensureLoaded();
+        List<DiagramNote> notes = byDiagram.remove(oldKey);
+        List<DiagramConnector> conns = connByDiagram.remove(oldKey);
+        if (notes == null && conns == null) {
+            return true;
+        }
+        if (notes != null) {
+            byDiagram.put(newKey, notes);
+        }
+        if (conns != null) {
+            connByDiagram.put(newKey, conns);
+        }
+        return writeFile();
+    }
+
     private void ensureLoaded() {
         if (byDiagram != null) {
             return;
@@ -154,8 +180,20 @@ final class DiagramNotesStore {
                 }
             }
             root.put("diagrams", diagrams);
-            Files.write(jsonFile.toPath(),
-                    MiniJson.write(root).getBytes(StandardCharsets.UTF_8));
+            // 一時ファイル → アトミック rename で書く。直接上書きだとクラッシュ・ディスク
+            // フル時に途中まで書けた壊れた JSON が残り、次回起動でパース不能 → 空扱い →
+            // 次の保存で全図の付箋が丸ごと失われる連鎖になる。
+            byte[] bytes = MiniJson.write(root).getBytes(StandardCharsets.UTF_8);
+            java.nio.file.Path target = jsonFile.toPath();
+            java.nio.file.Path tmp = target.resolveSibling(jsonFile.getName() + ".tmp");
+            Files.write(tmp, bytes);
+            try {
+                Files.move(tmp, target,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
             return true;
         } catch (IOException ex) {
             // 保存失敗を呼び出し側へ伝え、ステータスバー通知に使う (サイレント消失を防ぐ)。

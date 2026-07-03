@@ -83,6 +83,11 @@ final class PumlEditorSupport {
         if (!isPumlFile(chosen)) {
             chosen = new File(chosen.getAbsolutePath() + ".puml");
         }
+        // 拡張子補完後の最終保存先で上書き確認する (JFileChooser は確認しない上、
+        // 補完後のパスはダイアログに表示されていないため)。
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return null;
+        }
         return chosen;
     }
 
@@ -91,9 +96,22 @@ final class PumlEditorSupport {
         return isPumlFile(new File(name)) ? name : name + ".puml";
     }
 
-    /** .puml テキストを UTF-8 で読み込む。 */
+    /** UTF-8 BOM (EF BB BF)。Windows Notepad 等が付けることがある。 */
+    private static final byte[] UTF8_BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+
+    /**
+     * .puml テキストを UTF-8 で読み込む。先頭の UTF-8 BOM は取り除く
+     * (残すと不可視の {@code ﻿} が {@code @startuml} の前に挿入され、
+     * 行 1 のキャレット挙動が狂い、保存で BOM が伝播する)。
+     */
     static String read(File file) throws IOException {
-        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        int offset = 0;
+        if (bytes.length >= 3 && bytes[0] == UTF8_BOM[0]
+                && bytes[1] == UTF8_BOM[1] && bytes[2] == UTF8_BOM[2]) {
+            offset = 3;
+        }
+        return new String(bytes, offset, bytes.length - offset, StandardCharsets.UTF_8);
     }
 
     /** .puml テキストを UTF-8 で書き込む (親ディレクトリが無ければ作る)。 */

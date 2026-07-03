@@ -240,11 +240,27 @@ public final class DiagramTabPane {
     }
 
     private void handleTabSelectionChanged() {
+        // ドラッグ並び替えの remove→insert 過渡で発火する一時的な選択変更は無視する
+        // (並び替え完了時に必要なら TabReorderHandler が 1 回だけ再通知する)。
+        if (Boolean.TRUE.equals(tabs.getClientProperty(TabReorderHandler.CLIENT_PROP_REORDERING))) {
+            return;
+        }
         DiagramTab tab = activeTab();
         if (tab == null) {
             // ユーティリティタブ (Functions/Members/Manifest 等) 選択時は図タブが無いことを
             // 通知し、ステータスバーの題材表示クリアと "Add Note" ボタンの無効化を促す。
             // (通知しないと直前の図タブの状態が残り、見た目と挙動が食い違う。)
+            // 共有 state の描画結果も消す。残すと閉じたタブの図が Export/Copy SVG で
+            // 「現在の図」として出力されてしまう。
+            if (state != null) {
+                state.currentPuml = null;
+                state.currentSvgXml = null;
+                state.sequenceEntry = null;
+                state.activityEntry = null;
+                state.callGraphEntry = null;
+                state.currentLayoutKey = null;
+                state.currentNavigationKey = null;
+            }
             if (onTabFocused != null) {
                 onTabFocused.accept(null);
             }
@@ -298,7 +314,10 @@ public final class DiagramTabPane {
         if (previewTabKey != null && !previewTabKey.equals(key)) {
             DiagramTab old = openTabs.get(previewTabKey);
             if (old != null) {
-                closeTab(old, previewTabKey);
+                // プレビュータブの自動置換はユーザーの「閉じる」操作ではないため、
+                // Ctrl+Shift+T の再オープン履歴には積まない (明示的に閉じたタブが
+                // プレビューの置換ラッシュで履歴から押し出されるのを防ぐ)。
+                closeTab(old, previewTabKey, false);
             }
             previewTabKey = null;
         }
@@ -536,6 +555,18 @@ public final class DiagramTabPane {
             if (target == null) {
                 return false;
             }
+            // 保存先が別タブで開かれている場合は拒否する。書いてしまうと「同じファイルを
+            // 指す 2 つのタブが別内容・別 dirty 状態で並ぶ」状態になり、もう一方のタブの
+            // Ctrl+S が今回の保存を黙って巻き戻す。
+            DiagramTab other = openTabs.get("PUML:" + target.getAbsolutePath());
+            if (other != null && other != tab) {
+                javax.swing.JOptionPane.showMessageDialog(tabs,
+                        java.text.MessageFormat.format(
+                                Messages.get("puml.editor.saveTargetOpen"), target.getName()),
+                        Messages.get("dlg.error.title"),
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
+                return false;
+            }
         }
         return writeEditorTo(tab, target);
     }
@@ -585,9 +616,13 @@ public final class DiagramTabPane {
         if (oldKey.equals(previewTabKey)) {
             previewTabKey = newKey;
         }
-        // 付箋の保存先を新キーへ (在メモリの付箋は保持され、以降 newKey へ保存される)。
+        // 付箋の保存先を新キーへ。ストア上のエントリも移す (移さないと旧キーに取り残され、
+        // ファイルを開き直しても付箋がロードされない)。
+        notesBinder.renameKey(cache.getProjectRoot(), oldKey, newKey);
         notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
         navHistory.replaceKey(oldKey, newKey);
+        // メモリ管理の MRU も追従させる (旧キーの幽霊が退避枠を浪費しないように)。
+        tabMemory.rename(oldKey, newKey);
     }
 
     /** アクティブなエディタタブの PlantUML テキスト (非エディタタブなら null)。 */
@@ -633,6 +668,9 @@ public final class DiagramTabPane {
         DiagramTab existing = openTabs.get(newKey);
         if (existing != null && existing != tab) {
             // 既に対象図種のタブがある → 複製せずそこへフォーカスするだけ。
+            // ただしユーザーのクリックで元タブのトグル選択は既に変わっているため、
+            // 元タブの実際の図種へ戻して見た目と内容のデシンクを防ぐ。
+            tab.updateKindToggle();
             tabs.setSelectedComponent(existing);
             return;
         }
@@ -654,6 +692,8 @@ public final class DiagramTabPane {
         openTabs.put(newKey, tab);
         // ナビ履歴の旧キーを新キーへ置換 (Alt+Left/Right が消えた旧キーで no-op にならないよう)。
         navHistory.replaceKey(oldKey, newKey);
+        // メモリ管理の MRU も追従させる (旧キーの幽霊が退避枠を浪費しないように)。
+        tabMemory.rename(oldKey, newKey);
         // 付箋メモは図ごとに別管理。別図種の付箋が残らないよう一旦クリアして新キーへ再バインド。
         tab.previewPanel.notes().setData(
                 java.util.Collections.emptyList(), java.util.Collections.emptyList());
@@ -928,6 +968,31 @@ public final class DiagramTabPane {
     }
 
     /**
+     * プロジェクト切替時の後始末。旧プロジェクトの解析キャッシュに依存する図タブを
+     * すべて閉じ (残すと再描画時に新プロジェクトのデータで空図・別図が出る)、
+     * 再オープン履歴・ナビ履歴も破棄する (どちらも旧プロジェクトのキー/クロージャを
+     * 参照しているため)。自由編集の PlantUML エディタタブはプロジェクト非依存なので
+     * 残し、付箋の保存先だけ新プロジェクトへ再バインドする。
+     */
+    public void onProjectSwitched() {
+        java.util.List<DiagramTab> toClose = new ArrayList<>();
+        for (DiagramTab t : openTabs.values()) {
+            if (!t.isEditor()) {
+                toClose.add(t);
+            }
+        }
+        for (DiagramTab t : toClose) {
+            closeTab(t, t.key, false);
+        }
+        closedTabs.clear();
+        navHistory.clear();
+        for (DiagramTab t : openTabs.values()) {
+            notesBinder.bind(t.previewPanel, cache.getProjectRoot(), t.key);
+            navHistory.push(t.key);
+        }
+    }
+
+    /**
      * タブ右クリック「Close All」の要求。ハンドラが設定されていればそちらへ委譲し
      * (フレーム側で確認ダイアログを挟む)、未設定なら従来どおり確認なしで閉じる。
      * {@link #closeAllTabs()} 自体は生のクローズ操作のまま維持する。
@@ -940,27 +1005,43 @@ public final class DiagramTabPane {
         }
     }
 
-    /** 指定タブより右にある図タブをすべて閉じる。 */
+    /**
+     * 指定タブより右にある図タブをすべて閉じる。「右」は JTabbedPane 上の視覚的な並びで
+     * 判定する。openTabs (挿入順) はドラッグ並び替えや図種のその場切替で見た目の順序と
+     * 食い違うため、順序の根拠に使わない。
+     */
     void closeTabsToRight(String pivotKey) {
-        java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
-        int idx = keys.indexOf(pivotKey);
-        if (idx < 0) {
+        DiagramTab pivot = openTabs.get(pivotKey);
+        int pivotIdx = pivot != null ? tabs.indexOfComponent(pivot) : -1;
+        if (pivotIdx < 0) {
             return;
         }
-        for (int i = keys.size() - 1; i > idx; i--) {
-            String k = keys.get(i);
-            DiagramTab t = openTabs.get(k);
-            if (t != null) {
-                closeTab(t, k);
+        java.util.List<DiagramTab> victims = new ArrayList<>();
+        for (int i = pivotIdx + 1; i < tabs.getTabCount(); i++) {
+            java.awt.Component c = tabs.getComponentAt(i);
+            if (c instanceof DiagramTab) {
+                victims.add((DiagramTab) c);
             }
+        }
+        for (int i = victims.size() - 1; i >= 0; i--) {
+            DiagramTab t = victims.get(i);
+            closeTab(t, t.key);
         }
     }
 
-    /** 指定タブの右側に図タブがあるか。 */
+    /** 指定タブの右側 (視覚順) に図タブがあるか。 */
     private boolean hasTabsToRight(String key) {
-        java.util.List<String> keys = new ArrayList<>(openTabs.keySet());
-        int idx = keys.indexOf(key);
-        return idx >= 0 && idx < keys.size() - 1;
+        DiagramTab pivot = openTabs.get(key);
+        int idx = pivot != null ? tabs.indexOfComponent(pivot) : -1;
+        if (idx < 0) {
+            return false;
+        }
+        for (int i = idx + 1; i < tabs.getTabCount(); i++) {
+            if (tabs.getComponentAt(i) instanceof DiagramTab) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** アクティブタブの右側に図タブがあるか (メニュー活性制御用)。動的タブ未選択なら false。 */
@@ -1158,19 +1239,21 @@ public final class DiagramTabPane {
     /** {@link TabMemoryManager} からの実操作 (キー → タブ) を Swing 側で実行する。 */
     private final TabMemoryManager.Actions tabBudgetActions = new TabMemoryManager.Actions() {
         @Override
-        public void closeTab(String key) {
+        public boolean closeTab(String key) {
             DiagramTab t = openTabs.get(key);
-            if (t != null && t.isEditor() && t.dirty) {
-                return; // 未保存編集を LRU 自動クローズで失わせない
+            if (t == null) {
+                return true; // 既に存在しない幽霊キー → 帳簿から外してよい
             }
-            if (t != null) {
-                String msg = Messages.get("status.tabAutoClosed") + t.label;
-                reportStatus(msg);
-                if (toastNotifier != null) {
-                    toastNotifier.accept(msg);
-                }
-                DiagramTabPane.this.closeTab(t, key, false);
+            if (t.isEditor() && t.dirty) {
+                return false; // 未保存編集を LRU 自動クローズで失わせない
             }
+            String msg = Messages.get("status.tabAutoClosed") + t.label;
+            reportStatus(msg);
+            if (toastNotifier != null) {
+                toastNotifier.accept(msg);
+            }
+            DiagramTabPane.this.closeTab(t, key, false);
+            return true;
         }
 
         @Override

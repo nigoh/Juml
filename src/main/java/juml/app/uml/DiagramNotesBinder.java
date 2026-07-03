@@ -8,6 +8,7 @@ import juml.util.Messages;
 import javax.swing.SwingUtilities;
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -88,11 +89,24 @@ final class DiagramNotesBinder {
      * @param projectRoot プロジェクトルート (null なら永続化されない)
      * @param diagramKey  図タブの識別キー (図種 + 題材)
      */
+    /**
+     * プレビューごとの現在のバインド世代トークン。非同期ロードの完了時に照合し、
+     * その間に再バインド (図種切替・Save As のキー移行) が起きていたら古いロード結果を
+     * 捨てる。捨てないと別キーの付箋が現在のタブへ注入され、次の保存で誤ったキーへ
+     * 永続化される (図をまたいだ付箋の混線)。
+     */
+    private final Map<SvgPreviewPanel, Object> bindToken =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
     void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
         final DiagramNotesStore s = storeFor(projectRoot);
+        final Object token = new Object();
+        bindToken.put(preview, token);
         // 変更時はバックグラウンドで保存 (移動・リサイズ・削除・色変更時の EDT フリーズ防止)。
+        // スナップショットは EDT 上で深いコピーを取る。ライブオブジェクトを IO スレッドで
+        // 直列化すると、ドラッグ中の座標変更やタグ変更と競合して不正な値が保存されうる。
         preview.notes().setOnChange(() -> {
-            List<DiagramNote> snapshot = preview.notes().getNotes();
+            List<DiagramNote> snapshot = deepCopy(preview.notes().getNotes());
             List<DiagramConnector> connectors = preview.notes().getConnectors();
             io.submit(() -> {
                 boolean ok = s.save(diagramKey, snapshot, connectors);
@@ -110,9 +124,32 @@ final class DiagramNotesBinder {
             List<DiagramNote> loaded = s.load(diagramKey);
             List<DiagramConnector> loadedConns = s.loadConnectors(diagramKey);
             if (!loaded.isEmpty()) {
-                SwingUtilities.invokeLater(() -> preview.notes().setData(loaded, loadedConns));
-                report(Messages.get("note.loaded") + loaded.size());
+                SwingUtilities.invokeLater(() -> {
+                    // 再バインド済み、またはロード完了前にユーザーが付箋を追加していたら
+                    // 反映しない (直前の編集を黙って消さない)。
+                    if (bindToken.get(preview) == token && !preview.notes().hasNotes()) {
+                        preview.notes().setData(loaded, loadedConns);
+                        report(Messages.get("note.loaded") + loaded.size());
+                    }
+                });
             }
         });
+    }
+
+    /**
+     * 図キーの変更 (Save As のタブキー移行) に合わせて保存エントリを新キーへ移す。
+     * IO スレッドで実行するため EDT を止めない。
+     */
+    void renameKey(File projectRoot, String oldKey, String newKey) {
+        final DiagramNotesStore s = storeFor(projectRoot);
+        io.submit(() -> s.rename(oldKey, newKey));
+    }
+
+    private static List<DiagramNote> deepCopy(List<DiagramNote> notes) {
+        List<DiagramNote> out = new java.util.ArrayList<>(notes.size());
+        for (DiagramNote n : notes) {
+            out.add(n.copyDeep());
+        }
+        return out;
     }
 }

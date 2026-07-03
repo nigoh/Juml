@@ -24,8 +24,13 @@ final class TabMemoryManager {
 
     /** タブに対する実操作 (Swing 側が実装)。 */
     interface Actions {
-        /** 指定キーのタブを閉じる。 */
-        void closeTab(String key);
+        /**
+         * 指定キーのタブを閉じる。
+         *
+         * @return 閉じた (またはキーに対応するタブが既に存在しない) 場合 true。
+         *         未保存編集の保護などで閉じられなかった場合 false。
+         */
+        boolean closeTab(String key);
         /** 指定キーのタブの描画済み SVG を解放する (メモリ節約)。 */
         void releaseRender(String key);
         /** 指定キーのタブが解放済みなら再描画する。 */
@@ -62,6 +67,21 @@ final class TabMemoryManager {
     }
 
     /**
+     * タブのキーが変わったとき (Save As / メソッド図のその場図種切替) に追従する。
+     * 追従しないと旧キーが幽霊として MRU に残り、退避・描画解放の枠を浪費して
+     * 実タブのメモリ管理が働かなくなる。
+     */
+    void rename(String oldKey, String newKey) {
+        if (oldKey == null || newKey == null || oldKey.equals(newKey)) {
+            return;
+        }
+        if (mru.remove(oldKey)) {
+            mru.remove(newKey);
+            mru.add(newKey);
+        }
+    }
+
+    /**
      * タブを開いた / フォーカスしたときに呼ぶ。MRU を更新し、上限超過タブのクローズと
      * 古いタブの描画解放を {@code actions} 経由で適用する。
      *
@@ -77,18 +97,31 @@ final class TabMemoryManager {
         actions.ensureRendered(activeKey);
 
         int count = openCount;
+        // 閉じられなかったタブ (未保存編集の保護等) は候補から外して次の犠牲を探す。
+        // カウントは実際に閉じたときだけ減らす。拒否をクローズ扱いにすると帳簿が
+        // 実態とずれ、後続のアクティブ化で新しいタブが身代わりに退避されてしまう。
+        java.util.Set<String> refused = new java.util.HashSet<>();
         String victim;
-        while ((victim = LruTabPolicy.victim(
-                new ArrayList<>(mru), activeKey, count, maxTabs)) != null) {
-            mru.remove(victim);
-            actions.closeTab(victim);
-            count--;
+        while ((victim = victimExcluding(refused, activeKey, count)) != null) {
+            if (actions.closeTab(victim)) {
+                mru.remove(victim);
+                count--;
+            } else {
+                refused.add(victim);
+            }
         }
         for (String k : LruTabPolicy.keysToRelease(new ArrayList<>(mru), keepRendered)) {
             if (!k.equals(activeKey)) {
                 actions.releaseRender(k);
             }
         }
+    }
+
+    /** {@code refused} を除いた MRU 候補から次の犠牲キーを選ぶ。 */
+    private String victimExcluding(java.util.Set<String> refused, String activeKey, int count) {
+        ArrayList<String> candidates = new ArrayList<>(mru);
+        candidates.removeAll(refused);
+        return LruTabPolicy.victim(candidates, activeKey, count, maxTabs);
     }
 
     private static int resolveInt(String prop, int def) {
