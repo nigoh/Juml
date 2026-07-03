@@ -46,6 +46,25 @@ final class PlantUmlCommentFormatter {
     }
 
     /**
+     * note ブロック本文の 1 行が終端キーワード ({@code end note} / {@code endnote})
+     * そのものだった場合に、行頭へゼロ幅スペースを挟んで終端と誤認されないようにする。
+     *
+     * <p>コメント本文に「end note」という行があると、そこで note ブロックが
+     * 打ち切られ、残りの本文が生の PlantUML ディレクティブとして解釈されて
+     * 構文エラーになる (終端注入)。表示上は元のテキストと変わらない。</p>
+     */
+    static String neutralizeNoteTerminator(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        return NOTE_TERMINATOR.matcher(s).matches() ? "\u200B" + s : s;
+    }
+
+    /** note ブロックの終端キーワードだけの行。 */
+    private static final java.util.regex.Pattern NOTE_TERMINATOR =
+            java.util.regex.Pattern.compile("(?i)^\\s*end\\s?note\\s*$");
+
+    /**
      * コメント/ラベル中の creole/HTML タグ開始 ({@code <}) をチルダエスケープする。
      *
      * <p>同梱の PlantUML 1.2026.x は {@code &lt;} 等の HTML エンティティを解釈せず
@@ -150,8 +169,10 @@ final class PlantUmlCommentFormatter {
             String wrapped = wordWrap(t, maxLen);
             for (String wl : wrapped.split("\n", -1)) {
                 if (!wl.isEmpty()) {
-                    // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)
-                    out.append(indent).append("  ").append(escapeText(wl)).append('\n');
+                    // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)。
+                    // "end note" だけの行は終端注入になるため無害化する。
+                    out.append(indent).append("  ")
+                            .append(neutralizeNoteTerminator(escapeText(wl))).append('\n');
                 }
             }
         }

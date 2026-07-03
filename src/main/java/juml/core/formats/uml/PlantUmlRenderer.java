@@ -65,15 +65,24 @@ public final class PlantUmlRenderer {
      */
     private static volatile BiConsumer<String, OutputStream> rendererImplForTest;
 
-    /** PlantUML フォールバック エラー SVG に必ず含まれるマーカー。 */
+    /** PlantUML フォールバック エラー SVG に必ず含まれる決定的マーカー。 */
     private static final String[] ERROR_MARKERS = {
             // PlantUML のレイアウト/内部エラー画像のバナー文言。
             "An error has occured",
             "I love it when a plan comes together",
-            // 構文エラー等の画像に必ず現れるエラー位置表記。生成 PlantUML が壊れた場合
-            // (例: コメントに @startuml が含まれ別図と誤認される等) に出る。PlantUML
-            // 内部の文言で正常な図のテキストには現れないため、誤検知なくエラー判定できる。
-            "[From string (line "
+    };
+
+    /**
+     * 構文エラー画像に現れるエラー位置表記。ただしユーザ図のコメントにも同じ文字列が
+     * 現れうる (実例: Juml 自身の {@code extractErrorLine} の Javadoc を含む図) ため、
+     * 単独では判定せず {@link #ERROR_CORROBORATION} との組み合わせでのみエラーとみなす。
+     */
+    private static final String SOURCE_LINE_MARKER = "[From string (line ";
+
+    /** 構文エラー画像に併記される文言 (バージョンバナー / 構文エラー表示)。 */
+    private static final String[] ERROR_CORROBORATION = {
+            "This version of PlantUML",
+            "Syntax Error",
     };
 
     /** PlantUML のキャンバスサイズ上限を制御するシステムプロパティ / 環境変数名。 */
@@ -205,6 +214,15 @@ public final class PlantUmlRenderer {
                 return true;
             }
         }
+        // エラー位置表記は正常な図のコメントにも現れうるため、構文エラー画像に
+        // 必ず併記される文言と揃ったときだけエラーと判定する (偽陽性防止)。
+        if (head.contains(SOURCE_LINE_MARKER)) {
+            for (String extra : ERROR_CORROBORATION) {
+                if (head.contains(extra)) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
@@ -242,20 +260,25 @@ public final class PlantUmlRenderer {
             }
         };
         System.setErr(capture);
+        boolean descIsError = false;
         try {
             BiConsumer<String, OutputStream> stub = rendererImplForTest;
             if (stub != null) {
                 stub.accept(puml, buf);
             } else {
                 SourceStringReader reader = new SourceStringReader(injectLayout(puml));
-                reader.outputImage(buf, new FileFormatOption(FileFormat.SVG));
+                Object desc = reader.outputImage(buf, new FileFormatOption(FileFormat.SVG));
+                // 失敗時の DiagramDescription はちょうど "(Error)" になる (PNG 経路の
+                // PlantUmlImageRenderer と同じ実測済みの一次シグナル)。SVG のマーカー
+                // 判定より確実で、図のテキスト内容に依存しない。
+                descIsError = desc != null && "(Error)".equals(String.valueOf(desc));
             }
         } finally {
             System.setErr(origErr);
             capture.close();
         }
         byte[] bytes = buf.toByteArray();
-        if (isErrorSvg(bytes)) {
+        if (descIsError || isErrorSvg(bytes)) {
             throw buildRenderFailure(puml, bytes, errCapture);
         }
         // PlantUML はレイアウトエンジンの致命的障害 (dot 実行失敗 / Smetana 内部クラッシュ)

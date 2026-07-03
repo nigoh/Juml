@@ -103,4 +103,32 @@ public class PlantUmlCommentFormatterTest {
         // 単独の "[" は無害なので変換しない
         assertEquals("a[0]", PlantUmlCommentFormatter.escapeText("a[0]"));
     }
+
+    @Test
+    public void neutralizeNoteTerminatorDefusesEndNoteLines() {
+        // "end note" だけの行は note ブロックを打ち切る終端注入になるため、
+        // 行頭にゼロ幅スペースを挟んで無害化する
+        assertEquals("\u200Bend note",
+                PlantUmlCommentFormatter.neutralizeNoteTerminator("end note"));
+        assertEquals("\u200BEND NOTE",
+                PlantUmlCommentFormatter.neutralizeNoteTerminator("END NOTE"));
+        assertEquals("\u200Bendnote",
+                PlantUmlCommentFormatter.neutralizeNoteTerminator("endnote"));
+        // 終端キーワード以外は変更しない
+        assertEquals("note the end",
+                PlantUmlCommentFormatter.neutralizeNoteTerminator("note the end"));
+        assertEquals("end noteworthy",
+                PlantUmlCommentFormatter.neutralizeNoteTerminator("end noteworthy"));
+    }
+
+    @Test
+    public void appendNoteBodyDefusesTerminatorInjection() {
+        StringBuilder out = new StringBuilder();
+        PlantUmlCommentFormatter.appendNoteBody(out,
+                "1 行目\nend note\nalt 攻撃", "", 0);
+        String body = out.toString();
+        assertFalse("note 本文の end note が終端として残らないこと: " + body,
+                body.contains("\n  end note\n"));
+        assertTrue(body.contains("\u200Bend note"));
+    }
 }

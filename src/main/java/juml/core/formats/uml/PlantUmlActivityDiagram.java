@@ -269,8 +269,8 @@ public final class PlantUmlActivityDiagram {
         if (text == null || text.isEmpty()) {
             return;
         }
-        String oneLine = truncate(text.replaceAll("\\s+", " ").trim(), opts.commentMaxLength);
-        if (oneLine == null || oneLine.isEmpty()) {
+        String oneLine = noteText(text, opts.commentMaxLength);
+        if (oneLine.isEmpty()) {
             return;
         }
         if (opts.commentColor != null && !opts.commentColor.isEmpty()) {
@@ -477,7 +477,9 @@ public final class PlantUmlActivityDiagram {
         if (first == null || first.isEmpty()) {
             return;
         }
-        String text = truncate(first, o.commentMaxLength);
+        // コメント本文の @startuml/@enduml やタグ開始 (<) をそのまま note へ書くと
+        // PlantUML が構文エラーになる/テキストが欠落するため、必ず無害化して出す。
+        String text = noteText(first, o.commentMaxLength);
         out.append("note\n");
         if (o.commentColor != null && !o.commentColor.isEmpty()) {
             out.append("<color:").append(o.commentColor).append('>')
@@ -510,7 +512,9 @@ public final class PlantUmlActivityDiagram {
                     params.append(' ').append(names.get(i));
                 }
             }
-            String paramLine = truncate(params.toString(), o.commentMaxLength);
+            // ジェネリクス型 (List<String> 等) の < が creole タグと誤認されて
+            // テキストが欠落しないよう、note 本文として無害化する。
+            String paramLine = noteText(params.toString(), o.commentMaxLength);
             if (o.commentColor != null && !o.commentColor.isEmpty()) {
                 out.append("<color:").append(o.commentColor).append('>')
                         .append(paramLine).append("</color>");
@@ -520,7 +524,7 @@ public final class PlantUmlActivityDiagram {
             out.append('\n');
         }
         if (hasReturnType) {
-            String retLine = truncate("戻り値: " + returnType, o.commentMaxLength);
+            String retLine = noteText("戻り値: " + returnType, o.commentMaxLength);
             if (o.commentColor != null && !o.commentColor.isEmpty()) {
                 out.append("<color:").append(o.commentColor).append('>')
                         .append(retLine).append("</color>");
@@ -580,6 +584,21 @@ public final class PlantUmlActivityDiagram {
         trimmed = trimmed.replace(";", "\\;");
         // <b> 等の creole/HTML タグと誤認されるとテキストが欠落するためエスケープ
         return PlantUmlCommentFormatter.escapeText(trimmed);
+    }
+
+    /**
+     * note 本文 1 行分の無害化。空白を畳んで切り詰め、@startuml/@enduml の分断・
+     * 制御文字除去・タグ開始 {@code <} のエスケープ ({@code escapeText}) を適用する。
+     * {@code <color:...>} ラッパはこの後から付けるため影響を受けない。
+     */
+    private static String noteText(String s, int maxLen) {
+        if (s == null) {
+            return "";
+        }
+        String oneLine = truncate(s.replaceAll("\\s+", " ").trim(), maxLen);
+        // 本文が "end note" だけになった場合の終端注入も防ぐ
+        return PlantUmlCommentFormatter.neutralizeNoteTerminator(
+                PlantUmlCommentFormatter.escapeText(oneLine));
     }
 
     /** {@code if (cond)} のような条件部に使うラベル。改行を畳み、タグ開始をエスケープ。 */
