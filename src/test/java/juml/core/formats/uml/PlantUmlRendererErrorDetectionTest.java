@@ -307,4 +307,110 @@ public class PlantUmlRendererErrorDetectionTest {
             fail("Unexpected IOException: " + other);
         }
     }
+
+    // ── レイアウト pragma のディレクティブ判定 (contains 誤検知の回帰) ──
+
+    @Test
+    public void testHasLayoutPragmaDirectiveDetectsRealDirective() {
+        assertTrue(PlantUmlRenderer.hasLayoutPragmaDirective(
+                "@startuml\n!pragma layout smetana\n@enduml\n"));
+        assertTrue("行頭の空白は許容",
+                PlantUmlRenderer.hasLayoutPragmaDirective(
+                        "@startuml\n  !pragma layout elk\n@enduml\n"));
+    }
+
+    @Test
+    public void testHasLayoutPragmaDirectiveIgnoresEmbeddedText() {
+        // 図に埋め込まれたコメント/定数値の "!pragma layout" 文字列 (例: Juml 自身の
+        // ソースを図化した場合) をディレクティブと誤認しないこと。
+        assertFalse(PlantUmlRenderer.hasLayoutPragmaDirective(
+                "@startuml\nclass A {\n"
+                        + "  .. @startuml の直後に !pragma layout smetana と、現在の ..\n"
+                        + "}\n@enduml\n"));
+    }
+
+    @Test
+    public void testInjectLayoutNotFooledByEmbeddedPragmaText() {
+        PlantUmlRenderer.setGraphvizAvailable(false);
+        String puml = "@startuml\nclass A {\n"
+                + "  .. !pragma layout smetana の説明コメント ..\n}\n@enduml\n";
+        String injected = PlantUmlRenderer.injectLayout(puml);
+        assertTrue("埋め込みテキストに騙されず smetana を注入すること: " + injected,
+                injected.startsWith("@startuml\n!pragma layout smetana\n"));
+    }
+
+    // ── レイアウトエンジンの致命的障害検出 (無音の壊れた SVG の回帰) ──
+
+    @Test
+    public void testFatalLayoutErrorCodeDetectsDotExecFailure() {
+        String stderr = "java.io.IOException: Cannot run program \"/opt/local/bin/dot\":"
+                + " Exec failed, error: 2 (No such file or directory)";
+        assertEquals(juml.util.ErrorCode.UML_R008,
+                PlantUmlRenderer.fatalLayoutErrorCode(stderr));
+    }
+
+    @Test
+    public void testFatalLayoutErrorCodeDetectsSmetanaCrash() {
+        assertEquals(juml.util.ErrorCode.UML_R002,
+                PlantUmlRenderer.fatalLayoutErrorCode(
+                        "java.lang.UnsupportedOperationException: xyz\n"
+                                + "\tat smetana.core.Macro.UNSUPPORTED(Macro.java:161)"));
+        assertEquals(juml.util.ErrorCode.UML_R002,
+                PlantUmlRenderer.fatalLayoutErrorCode(
+                        "java.lang.UnsupportedOperationException\n"
+                                + "\tat gen.lib.common.ns__c.init_rank(ns__c.java:307)"));
+    }
+
+    @Test
+    public void testFatalLayoutErrorCodeIgnoresBenignWarnings() {
+        assertEquals(null, PlantUmlRenderer.fatalLayoutErrorCode(null));
+        assertEquals(null, PlantUmlRenderer.fatalLayoutErrorCode(""));
+        // Smetana が通常動作で出す警告はスタックトレースを伴わないため無害と判定する
+        assertEquals(null, PlantUmlRenderer.fatalLayoutErrorCode(
+                "UNSURE_ABOUT SPLINES\nUNSURE_ABOUT ratio"));
+    }
+
+    @Test
+    public void testRenderSvgThrowsWhenDotExecFailsSilently() throws IOException {
+        // PlantUML が dot 起動失敗を握りつぶして "正常な" SVG を返すケースを再現:
+        // スタブが有効な SVG を書きつつ stderr に起動失敗を出力する。
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            try {
+                out.write("<svg><g>legend only</g></svg>"
+                        .getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            System.err.println(
+                    "java.io.IOException: Cannot run program \"/opt/local/bin/dot\"");
+        });
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            PlantUmlRenderer.renderSvg("@startuml\nclass X\n@enduml\n", out);
+            fail("Expected PlantUmlRenderFailedException");
+        } catch (PlantUmlRenderFailedException expected) {
+            assertEquals(juml.util.ErrorCode.UML_R008, expected.getErrorCode());
+            assertEquals("壊れた SVG を書き出していないこと", 0, out.size());
+        }
+    }
+
+    @Test
+    public void testRenderSvgThrowsWhenSmetanaCrashesSilently() throws IOException {
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            try {
+                out.write("<svg><g>partial</g></svg>".getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            System.err.println("java.lang.UnsupportedOperationException: 7sgp99x1l3");
+            System.err.println("\tat smetana.core.Macro.UNSUPPORTED(Macro.java:161)");
+        });
+        try {
+            PlantUmlRenderer.renderSvg("@startuml\nclass X\n@enduml\n",
+                    new ByteArrayOutputStream());
+            fail("Expected PlantUmlRenderFailedException");
+        } catch (PlantUmlRenderFailedException expected) {
+            assertEquals(juml.util.ErrorCode.UML_R002, expected.getErrorCode());
+        }
+    }
 }

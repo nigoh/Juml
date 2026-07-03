@@ -35,16 +35,30 @@ public final class GraphvizLocator {
      */
     public static void init(File jarDir) {
         cachedJarDir = jarDir;
-        if (System.getProperty(PLANTUML_DOT_PROP) != null) {
-            PlantUmlRenderer.setGraphvizAvailable(true);
-            logResolved("system property " + PLANTUML_DOT_PROP,
-                    System.getProperty(PLANTUML_DOT_PROP));
-            return;
+        // 設定値は「存在するだけ」で信用せず、実行可能かを必ず検証する。実在しない dot を
+        // 有効扱いにすると、レンダリング時に svek が起動失敗し要素の無い SVG が生成される。
+        String prop = System.getProperty(PLANTUML_DOT_PROP);
+        if (prop != null) {
+            if (new File(prop).canExecute()) {
+                PlantUmlRenderer.setGraphvizAvailable(true);
+                logResolved("system property " + PLANTUML_DOT_PROP, prop);
+                return;
+            }
+            juml.util.AppLog.warn(juml.util.ErrorCode.UML_R008, "GraphvizLocator",
+                    "system property " + PLANTUML_DOT_PROP
+                            + " points to a non-executable dot — ignoring: " + prop);
         }
-        if (System.getenv("GRAPHVIZ_DOT") != null) {
-            PlantUmlRenderer.setGraphvizAvailable(true);
-            logResolved("GRAPHVIZ_DOT env", System.getenv("GRAPHVIZ_DOT"));
-            return;
+        String env = System.getenv("GRAPHVIZ_DOT");
+        if (env != null) {
+            if (new File(env).canExecute()) {
+                // PlantUML 側にも同じパスを明示し、環境変数と食い違わないようにする
+                System.setProperty(PLANTUML_DOT_PROP, env);
+                PlantUmlRenderer.setGraphvizAvailable(true);
+                logResolved("GRAPHVIZ_DOT env", env);
+                return;
+            }
+            juml.util.AppLog.warn(juml.util.ErrorCode.UML_R008, "GraphvizLocator",
+                    "GRAPHVIZ_DOT env points to a non-executable dot — ignoring: " + env);
         }
         // jarDir が null (jpackage 等でコード位置が取れない環境) でも、
         // カレントディレクトリ基点の探索は行える。

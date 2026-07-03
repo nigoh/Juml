@@ -74,4 +74,33 @@ public class PlantUmlCommentFormatterTest {
         // 0 以下は無制限
         assertEquals("abcdefghij", PlantUmlCommentFormatter.escapeLabel("abcdefghij", 0));
     }
+
+    @Test
+    public void escapeTextStripsControlChars() {
+        // ソース定数由来の NUL 等の制御文字は PlantUML/SVG を壊すため除去する
+        assertEquals("ALL", PlantUmlCommentFormatter.escapeText("\u0000ALL"));
+        assertEquals("ab", PlantUmlCommentFormatter.escapeText("a\u0001\u001Fb"));
+        // タブは許容する
+        assertEquals("a\tb", PlantUmlCommentFormatter.escapeText("a\tb"));
+    }
+
+    @Test
+    public void escapeTextNeutralizesEmbeddedBlockDirectives() {
+        // 定数値などに含まれる @startuml/@enduml をゼロ幅スペースで分断し
+        // ブロック境界と誤認されないようにする
+        String out = PlantUmlCommentFormatter.escapeText("join(\"@startuml\", \"@enduml\")");
+        assertTrue(out, out.contains("@\u200Bstartuml"));
+        assertTrue(out, out.contains("@\u200Benduml"));
+        // uml が続かない @start/@end (アノテーション等) は変更しない
+        assertEquals("@Startup", PlantUmlCommentFormatter.escapeText("@Startup"));
+    }
+
+    @Test
+    public void escapeTextEscapesLinkBrackets() {
+        // "[[" は PlantUML リンク構文と誤認されテキストが欠落するため
+        // creole エスケープでリテラル表示させる
+        assertEquals("[~[label]](url)", PlantUmlCommentFormatter.escapeText("[[label]](url)"));
+        // 単独の "[" は無害なので変換しない
+        assertEquals("a[0]", PlantUmlCommentFormatter.escapeText("a[0]"));
+    }
 }

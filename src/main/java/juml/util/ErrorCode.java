@@ -45,6 +45,8 @@ public enum ErrorCode {
     UML_R006(Area.UML_RENDER, "UML-R006"),
     /** 図の描画に失敗しました（原因未分類）。 */
     UML_R007(Area.UML_RENDER, "UML-R007"),
+    /** 設定された Graphviz (dot) が実行できません。 */
+    UML_R008(Area.UML_RENDER, "UML-R008"),
 
     // ── UML_EDITOR ──
     /** 編集中の PlantUML に構文エラーがあります。 */

@@ -258,7 +258,66 @@ public final class PlantUmlRenderer {
         if (isErrorSvg(bytes)) {
             throw buildRenderFailure(puml, bytes, errCapture);
         }
+        // PlantUML はレイアウトエンジンの致命的障害 (dot 実行失敗 / Smetana 内部クラッシュ)
+        // を握りつぶし、要素が配置されない「ほぼ空の SVG」を正常出力として返すことがある。
+        // エラー画像マーカーでは検出できないため、捕捉した stderr の障害シグネチャで検出し
+        // 明示的な失敗に変換する (壊れた図を成功として保存・表示させない)。
+        juml.util.ErrorCode fatal = fatalLayoutErrorCode(errCapture.tailString());
+        if (fatal != null) {
+            throw buildLayoutCrashFailure(fatal, puml, errCapture);
+        }
         out.write(bytes);
+    }
+
+    /**
+     * stderr 捕捉からレイアウトエンジンの致命的障害を検出する。
+     *
+     * @return 該当するエラー ID ({@code UML-R008}=dot 実行不能 /
+     *         {@code UML-R002}=Smetana 内部クラッシュ)。障害シグネチャなしは null。
+     */
+    static juml.util.ErrorCode fatalLayoutErrorCode(String stderrText) {
+        if (stderrText == null || stderrText.isEmpty()) {
+            return null;
+        }
+        // dot サブプロセスの起動失敗 (存在しない・実行権限なし)。レンダリング中に走る
+        // 外部プロセスは dot だけなので、この文言はレイアウト不能と断定してよい。
+        if (stderrText.contains("Cannot run program")) {
+            return juml.util.ErrorCode.UML_R008;
+        }
+        // 純 Java レイアウタ (Smetana) の内部クラッシュ。巨大な図で発生しやすい。
+        // 通常動作の警告 (UNSURE_ABOUT 等) はスタックトレースを伴わないため誤検知しない。
+        if (stderrText.contains("smetana.core.Macro.UNSUPPORTED")
+                || (stderrText.contains("UnsupportedOperationException")
+                        && stderrText.contains("gen.lib"))) {
+            return juml.util.ErrorCode.UML_R002;
+        }
+        return null;
+    }
+
+    /**
+     * レイアウトエンジン障害を {@link PlantUmlRenderFailedException} に変換し、
+     * 原因調査用の詳細 (生成 PlantUML 抜粋 + stderr 末尾) を AppLog へ記録する。
+     */
+    private static PlantUmlRenderFailedException buildLayoutCrashFailure(
+            juml.util.ErrorCode code, String puml, StderrTailBuffer errCapture) {
+        String stderrTail = tailOf(errCapture.tailString(), 2000);
+        StringBuilder msg = new StringBuilder("PlantUML layout engine failed");
+        if (code == juml.util.ErrorCode.UML_R008) {
+            msg.append(": Graphviz dot could not be executed");
+        } else {
+            msg.append(": internal layout crash (Smetana)");
+        }
+        msg.append("; the diagram would be rendered incomplete.");
+        msg.append(" (layout=").append(graphvizAvailable ? "graphviz" : "smetana").append(')');
+
+        StringBuilder log = new StringBuilder(msg);
+        log.append('\n');
+        appendPumlExcerpt(log, puml, -1);
+        if (!stderrTail.isEmpty()) {
+            log.append("\n--- stderr tail ---\n").append(stderrTail);
+        }
+        juml.util.AppLog.error(code, "PlantUmlRenderer", log.toString());
+        return new PlantUmlRenderFailedException(code, msg.toString(), -1, "", stderrTail);
     }
 
     /**
@@ -572,6 +631,22 @@ public final class PlantUmlRenderer {
     }
 
     /**
+     * {@code !pragma layout} が「ディレクティブ行」として存在するかを判定する。
+     *
+     * <p>単純な {@code contains} 判定だと、図に埋め込まれたコメントや定数値に
+     * "!pragma layout" という文字列が含まれるだけ (例: Juml 自身のソースを図化した場合)
+     * で「指定済み」と誤認し、Smetana 注入がスキップされて Graphviz 不在環境で
+     * 描画が破綻する。行頭 (空白許容) に現れる場合のみディレクティブとみなす。</p>
+     */
+    static boolean hasLayoutPragmaDirective(String puml) {
+        return LAYOUT_PRAGMA_LINE.matcher(puml).find();
+    }
+
+    /** 行頭の {@code !pragma layout ...} ディレクティブ。 */
+    private static final java.util.regex.Pattern LAYOUT_PRAGMA_LINE =
+            java.util.regex.Pattern.compile("(?m)^\\s*!pragma\\s+layout\\b");
+
+    /**
      * スタイルを明示指定する {@link #injectLayout(String)} のオーバーロード (テスト用に公開)。
      */
     public static String injectLayout(String puml, DiagramStyle style) {
@@ -594,7 +669,7 @@ public final class PlantUmlRenderer {
             working = stripBodyDirectionLines(puml);
             idx = working.indexOf("@startuml");
         }
-        boolean hasLayoutPragma = working.contains("!pragma layout");
+        boolean hasLayoutPragma = hasLayoutPragmaDirective(working);
         String prelude = style != null ? style.toPlantUmlPrelude(allowDirection) : "";
         // スタイルでフォント未指定なら、日本語対応の既定フォントを補って文字化けを防ぐ。
         // !theme 由来のフォント指定より後に置くことで、こちらが優先される。
