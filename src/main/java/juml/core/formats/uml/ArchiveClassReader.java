@@ -98,7 +98,7 @@ public final class ArchiveClassReader {
             try {
                 all.addAll(read(f, l));
             } catch (IOException ex) {
-                l.onError(f.getPath(), -1, "failed to read archive: " + ex.getMessage());
+                l.onError(juml.util.ErrorCode.PRJ_002, f.getPath(), -1, "failed to read archive: " + ex.getMessage());
             }
         }
         return all;
@@ -112,7 +112,7 @@ public final class ArchiveClassReader {
         try (InputStream in = Files.newInputStream(classFile.toPath())) {
             out.add(ExternalClassReader.readHeader(in, classFile.getPath()));
         } catch (IOException ex) {
-            l.onError(classFile.getPath(), -1, "failed to read .class: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_004, classFile.getPath(), -1, "failed to read .class: " + ex.getMessage());
             throw ex;
         }
         return out;
@@ -131,7 +131,7 @@ public final class ArchiveClassReader {
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         byte[] classesJar = extractClassesJar(aar);
         if (classesJar == null) {
-            l.onError(aar.getPath(), -1, "aar has no classes.jar");
+            l.onError(juml.util.ErrorCode.PRJ_002, aar.getPath(), -1, "aar has no classes.jar");
             return new ArrayList<>();
         }
         return readClassesFromZip(new ByteArrayInputStream(classesJar), aar.getPath(), l);
@@ -162,7 +162,7 @@ public final class ArchiveClassReader {
                 try {
                     out.add(ExternalClassReader.readHeader(zip, archivePath));
                 } catch (IOException ex) {
-                    l.onError(archivePath, -1,
+                    l.onError(juml.util.ErrorCode.PRJ_004, archivePath, -1,
                             "failed to read class " + entryName + ": " + ex.getMessage());
                 }
             }

@@ -48,7 +48,7 @@ public final class StyleResourceParser {
             DocumentBuilder builder = createSecureBuilder();
             doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            l.onError(null, -1, "styles parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "styles parse failed: " + ex.getMessage());
             return res;
         }
         Element root = doc.getDocumentElement();

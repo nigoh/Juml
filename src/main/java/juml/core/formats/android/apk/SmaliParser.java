@@ -114,7 +114,7 @@ public final class SmaliParser {
         }
 
         if (info == null) {
-            log.onError(sourceName, -1, "no .class declaration found in smali file");
+            log.onError(juml.util.ErrorCode.PRJ_011, sourceName, -1, "no .class declaration found in smali file");
         }
         return info;
     }

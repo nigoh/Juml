@@ -121,7 +121,7 @@ public final class ProjectLoader {
                             bpModules = new juml.core.aosp.AndroidBpParser().analyzeProject(root);
                         } catch (RuntimeException bpEx) {
                             bpModules = java.util.Collections.emptyList();
-                            juml.util.AppLog.warn("ProjectLoader",
+                            juml.util.AppLog.warn(juml.util.ErrorCode.PRJ_003, "ProjectLoader",
                                     "Android.bp scan failed; continuing without Soong modules",
                                     bpEx);
                         }
@@ -146,7 +146,7 @@ public final class ProjectLoader {
                 loadProgress.setValue(0);
                 loadProgress.setString(null);
                 if (error != null) {
-                    juml.util.AppLog.error("ProjectLoader",
+                    juml.util.AppLog.error(juml.util.ErrorCode.PRJ_001, "ProjectLoader",
                             "Project analysis failed: " + root.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
                             juml.util.Messages.get("dialog.analyzeFailed.message")
@@ -242,7 +242,7 @@ public final class ProjectLoader {
                 loadProgress.setIndeterminate(false);
                 loadProgress.setString(null);
                 if (error != null) {
-                    juml.util.AppLog.error("ProjectLoader",
+                    juml.util.AppLog.error(juml.util.ErrorCode.PRJ_002, "ProjectLoader",
                             "Archive read failed: " + archive.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
                             Messages.get("archive.readFailed") + error.getMessage(),

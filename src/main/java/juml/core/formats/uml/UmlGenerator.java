@@ -352,7 +352,7 @@ public final class UmlGenerator {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (ExecutionException ee) {
-                    err.onError(null, -1, "parse task failed: " + ee.getMessage());
+                    err.onError(juml.util.ErrorCode.PRJ_005, null, -1, "parse task failed: " + ee.getMessage());
                 }
                 done++;
                 prog.onProgress(done, submitted, null);
@@ -407,7 +407,7 @@ public final class UmlGenerator {
             indexLocalJars(idx, root, analysis, err);
             return idx;
         } catch (IOException ex) {
-            err.onError(null, -1, "dependency index build failed: " + ex.getMessage());
+            err.onError(juml.util.ErrorCode.PRJ_002, null, -1, "dependency index build failed: " + ex.getMessage());
             return new DependencyJarIndex();
         }
     }
@@ -464,7 +464,7 @@ public final class UmlGenerator {
                 }
             });
         } catch (IOException ex) {
-            err.onError(dir.toString(), -1,
+            err.onError(juml.util.ErrorCode.PRJ_002, dir.toString(), -1,
                     "local jar scan failed: " + ex.getMessage());
         }
     }
@@ -529,7 +529,7 @@ public final class UmlGenerator {
             try {
                 src = AndroidProjectScanner.readFile(file);
             } catch (IOException ex) {
-                err.onError(file.getName(), -1, "read failed: " + ex.getMessage());
+                err.onError(juml.util.ErrorCode.PRJ_004, file.getName(), -1, "read failed: " + ex.getMessage());
                 return new FileParseOutcome(file, module, new ArrayList<>());
             }
             List<JavaClassInfo> classes;
@@ -540,7 +540,7 @@ public final class UmlGenerator {
                     classes = extractFromSource(src, file.getName(), err, solver);
                 }
             } catch (RuntimeException ex) {
-                err.onError(file.getName(), -1, "parse failed: " + ex.getMessage());
+                err.onError(juml.util.ErrorCode.PRJ_005, file.getName(), -1, "parse failed: " + ex.getMessage());
                 classes = new ArrayList<>();
             }
             return new FileParseOutcome(file, module, classes);
@@ -569,7 +569,7 @@ public final class UmlGenerator {
                 }
             }
         } catch (IOException ex) {
-            l.onError(null, -1, "manifest merge failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "manifest merge failed: " + ex.getMessage());
         }
     }
 

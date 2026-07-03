@@ -7,8 +7,9 @@ package juml.core.formats.java;
  * Java ソースの解析時に発生する例外。
  * 完全な Java コンパイラではないため、原因不明の構文の場合は
  * 例外を投げず可能な限り処理を続行するが、明らかな致命的エラーは本例外を投げる。
+ * エラー ID は {@link juml.util.ErrorCode#PRJ_005} (Java ソース解析エラー)。
  */
-public class JavaParseException extends RuntimeException {
+public class JavaParseException extends juml.util.JumlException {
 
     private static final long serialVersionUID = 1L;
 
@@ -19,7 +20,8 @@ public class JavaParseException extends RuntimeException {
     }
 
     public JavaParseException(String message, int line) {
-        super(line >= 0 ? ("line " + line + ": " + message) : message);
+        super(juml.util.ErrorCode.PRJ_005,
+                line >= 0 ? ("line " + line + ": " + message) : message);
         this.line = line;
     }
 

@@ -98,7 +98,7 @@ public final class DoxygenXmlParser {
         try {
             doc = builder.parse(file);
         } catch (Exception ex) {
-            log.onError(file.getName(), -1, "doxygen group parse failed: " + ex.getMessage());
+            log.onError(juml.util.ErrorCode.PRJ_010, file.getName(), -1, "doxygen group parse failed: " + ex.getMessage());
             return new DoxGroup(fallbackId, fallbackId);
         }
         NodeList defs = doc.getElementsByTagName("compounddef");
@@ -137,7 +137,7 @@ public final class DoxygenXmlParser {
         try {
             doc = builder.parse(file);
         } catch (Exception ex) {
-            log.onError(file.getName(), -1, "doxygen compound parse failed: " + ex.getMessage());
+            log.onError(juml.util.ErrorCode.PRJ_010, file.getName(), -1, "doxygen compound parse failed: " + ex.getMessage());
             return null;
         }
         NodeList defs = doc.getElementsByTagName("compounddef");

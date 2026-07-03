@@ -288,7 +288,7 @@ final class LogViewerDialog extends JDialog {
                 return;
             }
         } catch (IOException | RuntimeException ex) {
-            AppLog.warn("LogViewerDialog",
+            AppLog.warn(juml.util.ErrorCode.SYS_003, "LogViewerDialog",
                     "Desktop.open() for log file failed; showing path instead", ex);
         }
         javax.swing.JOptionPane.showMessageDialog(this,

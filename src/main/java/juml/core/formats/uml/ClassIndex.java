@@ -165,14 +165,14 @@ public final class ClassIndex {
         try {
             src = AndroidProjectScanner.readFile(source);
         } catch (IOException ex) {
-            l.onError(source.getName(), -1, "detail read failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_004, source.getName(), -1, "detail read failed: " + ex.getMessage());
             return header;
         }
         List<JavaClassInfo> full;
         try {
             full = UmlGenerator.extractFromSource(src, source.getName(), l);
         } catch (RuntimeException ex) {
-            l.onError(source.getName(), -1, "detail parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_005, source.getName(), -1, "detail parse failed: " + ex.getMessage());
             return header;
         }
         for (JavaClassInfo c : full) {

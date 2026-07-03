@@ -140,11 +140,13 @@ public class UmlGeneratorTest {
                 ErrorListener.collecting(log));
         boolean foundSource = false;
         for (String s : log) {
-            if (s.startsWith("A.java")) {
+            // エラー ID 導入後は "[PRJ-005] A.java:1: ..." の形式になる
+            if (s.contains("A.java")) {
                 foundSource = true;
+                assertTrue("expected error id prefix: " + s, s.startsWith("[PRJ-"));
             }
         }
-        assertTrue("expected listener entries prefixed with A.java: " + log, foundSource);
+        assertTrue("expected listener entries mentioning A.java: " + log, foundSource);
     }
 
     @Test

@@ -166,7 +166,8 @@ public final class DiskAnalysisCache {
                         "Migrated legacy TSV cache to " + archived.getName() + "/ (will rescan)");
             }
         } catch (IOException ex) {
-            juml.util.AppLog.warn("DiskAnalysisCache", "Failed to archive legacy cache", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_003, "DiskAnalysisCache",
+                    "Failed to archive legacy cache", ex);
         }
     }
 

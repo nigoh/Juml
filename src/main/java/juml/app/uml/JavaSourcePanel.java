@@ -332,7 +332,7 @@ public final class JavaSourcePanel extends JPanel {
                 report(Messages.get("source.openUnsupported"));
             }
         } catch (IOException | UnsupportedOperationException ex) {
-            juml.util.AppLog.warn("JavaSourcePanel",
+            juml.util.AppLog.warn(juml.util.ErrorCode.SYS_003, "JavaSourcePanel",
                     "Failed to open file in external app: " + currentFile.getAbsolutePath(), ex);
             report(Messages.get("source.openFailed") + ex.getMessage());
         }

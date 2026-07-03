@@ -49,7 +49,7 @@ public final class ProjectRepository implements AutoCloseable {
             ensureSchema(conn);
             instance = new ProjectRepository(conn);
         } catch (SQLException | IOException ex) {
-            juml.util.AppLog.error("ProjectRepository",
+            juml.util.AppLog.error(juml.util.ErrorCode.CFG_002, "ProjectRepository",
                     "SQLite init failed: " + dbFile.getAbsolutePath(), ex);
             instance = new ProjectRepository(null);
         }
@@ -94,7 +94,8 @@ public final class ProjectRepository implements AutoCloseable {
             ps.setLong(4, now);
             ps.executeUpdate();
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to record opened project", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to record opened project", ex);
         }
     }
 
@@ -112,7 +113,8 @@ public final class ProjectRepository implements AutoCloseable {
             ps.setLong(1, id);
             return ps.executeUpdate() > 0;
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to delete project by id", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to delete project by id", ex);
             return false;
         }
     }
@@ -130,7 +132,8 @@ public final class ProjectRepository implements AutoCloseable {
             ps.setString(1, canonical(projectRoot));
             return ps.executeUpdate() > 0;
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to delete project by path", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to delete project by path", ex);
             return false;
         }
     }
@@ -154,7 +157,8 @@ public final class ProjectRepository implements AutoCloseable {
             }
             ps.executeBatch();
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to save project settings", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to save project settings", ex);
         }
     }
 
@@ -175,7 +179,8 @@ public final class ProjectRepository implements AutoCloseable {
                 }
             }
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to load project settings", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to load project settings", ex);
         }
         return result;
     }
@@ -198,7 +203,8 @@ public final class ProjectRepository implements AutoCloseable {
                 }
             }
         } catch (SQLException ex) {
-            juml.util.AppLog.warn("ProjectRepository", "Failed to list recent projects", ex);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_003, "ProjectRepository",
+                    "Failed to list recent projects", ex);
         }
         return result;
     }

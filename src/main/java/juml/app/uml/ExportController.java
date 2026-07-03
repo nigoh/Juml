@@ -114,7 +114,7 @@ final class ExportController {
             }
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
-            juml.util.AppLog.error("ExportController",
+            juml.util.AppLog.error(juml.util.ErrorCode.EXP_001, "ExportController",
                     "Diagram export failed: " + chosen.getAbsolutePath(), ex);
             JOptionPane.showMessageDialog(parent,
                     Messages.get("export.failed") + ex.getMessage(),
@@ -138,7 +138,8 @@ final class ExportController {
             status.setText(Messages.get("export.svgCopiedPrefix")
                     + state.currentSvgXml.length() + Messages.get("export.svgCopiedSuffix"));
         } catch (Exception ex) {
-            juml.util.AppLog.error("ExportController", "SVG copy to clipboard failed", ex);
+            juml.util.AppLog.error(juml.util.ErrorCode.EXP_002, "ExportController",
+                    "SVG copy to clipboard failed", ex);
             JOptionPane.showMessageDialog(parent,
                     Messages.get("export.copyFailed") + ex.getMessage(),
                     Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
@@ -218,7 +219,7 @@ final class ExportController {
             juml.app.cli.CliOutput.writeText(chosen, asCsv ? csv : markdown);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
-            juml.util.AppLog.error("ExportController",
+            juml.util.AppLog.error(juml.util.ErrorCode.EXP_003, "ExportController",
                     "List export failed: " + chosen.getAbsolutePath(), ex);
             JOptionPane.showMessageDialog(parent,
                     Messages.get("export.failed") + ex.getMessage(),
@@ -250,7 +251,7 @@ final class ExportController {
             juml.core.formats.uml.MemberWorkbookExporter.write(classes, os);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
-            juml.util.AppLog.error("ExportController",
+            juml.util.AppLog.error(juml.util.ErrorCode.EXP_004, "ExportController",
                     "Member workbook export failed: " + chosen.getAbsolutePath(), ex);
             JOptionPane.showMessageDialog(parent,
                     Messages.get("export.failed") + ex.getMessage(),

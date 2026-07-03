@@ -48,12 +48,12 @@ public final class AndroidManifestParser {
             builder.setErrorHandler(new ErrorHandler() {
                 @Override
                 public void warning(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "warning: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "warning: " + ex.getMessage());
                 }
 
                 @Override
                 public void error(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "error: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "error: " + ex.getMessage());
                 }
 
                 @Override
@@ -63,12 +63,12 @@ public final class AndroidManifestParser {
             });
             doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            l.onError(null, -1, "manifest parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "manifest parse failed: " + ex.getMessage());
             return info;
         }
         Element root = doc.getDocumentElement();
         if (root == null || !"manifest".equals(root.getNodeName())) {
-            l.onError(null, -1, "root element is not <manifest>");
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "root element is not <manifest>");
             return info;
         }
         info.setPackageName(attr(root, "package", ""));

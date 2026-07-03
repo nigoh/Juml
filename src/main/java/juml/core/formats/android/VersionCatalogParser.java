@@ -43,7 +43,7 @@ public final class VersionCatalogParser {
             }
             int eq = findTopLevelEquals(line);
             if (eq < 0) {
-                l.onError(null, lineNo, "expected '=' in TOML line: " + rawLine);
+                l.onError(juml.util.ErrorCode.PRJ_009, null, lineNo, "expected '=' in TOML line: " + rawLine);
                 continue;
             }
             String key = line.substring(0, eq).trim();
@@ -64,7 +64,7 @@ public final class VersionCatalogParser {
                         break;
                 }
             } catch (RuntimeException ex) {
-                l.onError(null, lineNo, "TOML parse error: " + ex.getMessage());
+                l.onError(juml.util.ErrorCode.PRJ_009, null, lineNo, "TOML parse error: " + ex.getMessage());
             }
         }
         return cat;

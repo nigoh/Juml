@@ -61,12 +61,12 @@ public final class AndroidNavigationGraphParser {
             builder.setErrorHandler(new ErrorHandler() {
                 @Override
                 public void warning(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "warning: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "warning: " + ex.getMessage());
                 }
 
                 @Override
                 public void error(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "error: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "error: " + ex.getMessage());
                 }
 
                 @Override
@@ -76,17 +76,17 @@ public final class AndroidNavigationGraphParser {
             });
             doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            l.onError(null, -1, "navigation parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "navigation parse failed: " + ex.getMessage());
             return info;
         }
         Element root = doc.getDocumentElement();
         if (root == null) {
-            l.onError(null, -1, "no root element");
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "no root element");
             return info;
         }
         String rootTag = root.getLocalName() != null ? root.getLocalName() : root.getTagName();
         if (!"navigation".equals(rootTag)) {
-            l.onError(null, -1, "root element is not <navigation>: " + root.getTagName());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "root element is not <navigation>: " + root.getTagName());
         }
         parseNavigationRoot(root, info);
         return info;
