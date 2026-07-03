@@ -615,7 +615,9 @@ public final class PlantUmlActivityDiagram {
         if (s == null) {
             return "";
         }
-        String t = s.replaceAll("\\s+", " ").replace("\"", "\\\"").trim();
+        // partition "..." の名前中の ASCII " は PlantUML が \" を解釈しないため
+        // 全角引用符へ置換する (シーケンス図の quote と同じ方針)。
+        String t = s.replaceAll("\\s+", " ").replace('"', '＂').trim();
         return PlantUmlCommentFormatter.escapeText(t);
     }
 

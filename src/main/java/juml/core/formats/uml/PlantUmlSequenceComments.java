@@ -206,7 +206,9 @@ final class PlantUmlSequenceComments {
     }
 
     private static String quote(String s) {
-        return "\"" + s.replace("\"", "\\\"") + "\"";
+        // PlantUmlSequenceDiagram.quote と同じ理由で、名前中の ASCII " は
+        // 全角引用符へ置換する (PlantUML は \" を解釈せず構文エラーになる)。
+        return "\"" + s.replace('"', '＂') + "\"";
     }
 
     private static JavaClassInfo findClass(List<JavaClassInfo> classes, String name) {
