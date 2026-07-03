@@ -163,7 +163,7 @@ final class PlantUmlSequenceComments {
                     if (!wl[i].isEmpty()) {
                         // "end note" だけの行は終端注入になるため無害化する
                         out.append("    ").append(PlantUmlCommentFormatter
-                                .neutralizeNoteTerminator(
+                                .sanitizeNoteLine(
                                         PlantUmlCommentFormatter.escapeText(wl[i])))
                                 .append('\n');
                     }
@@ -173,7 +173,7 @@ final class PlantUmlSequenceComments {
                 for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                     if (!wl.isEmpty()) {
                         out.append("    ").append(PlantUmlCommentFormatter
-                                .neutralizeNoteTerminator(
+                                .sanitizeNoteLine(
                                         PlantUmlCommentFormatter.escapeText(wl)))
                                 .append('\n');
                     }

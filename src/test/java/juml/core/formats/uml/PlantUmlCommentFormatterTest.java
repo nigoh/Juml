@@ -105,20 +105,20 @@ public class PlantUmlCommentFormatterTest {
     }
 
     @Test
-    public void neutralizeNoteTerminatorDefusesEndNoteLines() {
+    public void sanitizeNoteLineDefusesEndNoteLines() {
         // "end note" だけの行は note ブロックを打ち切る終端注入になるため、
         // 行頭にゼロ幅スペースを挟んで無害化する
         assertEquals("\u200Bend note",
-                PlantUmlCommentFormatter.neutralizeNoteTerminator("end note"));
+                PlantUmlCommentFormatter.sanitizeNoteLine("end note"));
         assertEquals("\u200BEND NOTE",
-                PlantUmlCommentFormatter.neutralizeNoteTerminator("END NOTE"));
+                PlantUmlCommentFormatter.sanitizeNoteLine("END NOTE"));
         assertEquals("\u200Bendnote",
-                PlantUmlCommentFormatter.neutralizeNoteTerminator("endnote"));
+                PlantUmlCommentFormatter.sanitizeNoteLine("endnote"));
         // 終端キーワード以外は変更しない
         assertEquals("note the end",
-                PlantUmlCommentFormatter.neutralizeNoteTerminator("note the end"));
+                PlantUmlCommentFormatter.sanitizeNoteLine("note the end"));
         assertEquals("end noteworthy",
-                PlantUmlCommentFormatter.neutralizeNoteTerminator("end noteworthy"));
+                PlantUmlCommentFormatter.sanitizeNoteLine("end noteworthy"));
     }
 
     @Test
@@ -130,5 +130,21 @@ public class PlantUmlCommentFormatterTest {
         assertFalse("note 本文の end note が終端として残らないこと: " + body,
                 body.contains("\n  end note\n"));
         assertTrue(body.contains("\u200Bend note"));
+    }
+
+    @Test
+    public void sanitizeNoteLineDefusesPreprocessorAndCommentStarts() {
+        // 行頭の ! はプリプロセッサ命令 (!theme 等) と誤認され構文エラーになる
+        assertEquals("\u200B!theme / skinparam 行",
+                PlantUmlCommentFormatter.sanitizeNoteLine("!theme / skinparam 行"));
+        // 行頭の ' は行コメントとして本文が黙って消える
+        assertEquals("\u200B'quoted word",
+                PlantUmlCommentFormatter.sanitizeNoteLine("'quoted word"));
+        // 行頭の /' はブロックコメント開始として後続を飲み込む
+        assertEquals("\u200B/' block",
+                PlantUmlCommentFormatter.sanitizeNoteLine("/' block"));
+        // 行中の ! や // は無害なので変更しない
+        assertEquals("a != b", PlantUmlCommentFormatter.sanitizeNoteLine("a != b"));
+        assertEquals("// comment", PlantUmlCommentFormatter.sanitizeNoteLine("// comment"));
     }
 }

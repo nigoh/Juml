@@ -597,7 +597,7 @@ public final class PlantUmlActivityDiagram {
         }
         String oneLine = truncate(s.replaceAll("\\s+", " ").trim(), maxLen);
         // 本文が "end note" だけになった場合の終端注入も防ぐ
-        return PlantUmlCommentFormatter.neutralizeNoteTerminator(
+        return PlantUmlCommentFormatter.sanitizeNoteLine(
                 PlantUmlCommentFormatter.escapeText(oneLine));
     }
 

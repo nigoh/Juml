@@ -46,18 +46,40 @@ final class PlantUmlCommentFormatter {
     }
 
     /**
-     * note ブロック本文の 1 行が終端キーワード ({@code end note} / {@code endnote})
-     * そのものだった場合に、行頭へゼロ幅スペースを挟んで終端と誤認されないようにする。
+     * note ブロック本文の 1 行を、PlantUML に構文として解釈されない形へ無害化する。
+     * 該当する行の行頭へゼロ幅スペース (U+200B) を挟む。表示は元のテキストと変わらない。
      *
-     * <p>コメント本文に「end note」という行があると、そこで note ブロックが
-     * 打ち切られ、残りの本文が生の PlantUML ディレクティブとして解釈されて
-     * 構文エラーになる (終端注入)。表示上は元のテキストと変わらない。</p>
+     * <ul>
+     *   <li>終端キーワードだけの行 ({@code end note} / {@code endnote}): そこで
+     *       note ブロックが打ち切られ、残りの本文が生のディレクティブとして
+     *       解釈されて構文エラーになる (終端注入)。</li>
+     *   <li>{@code !} で始まる行: プリプロセッサ命令 ({@code !theme} 等) と誤認される。
+     *       wordWrap の折り返しで {@code !} が行頭に来るケースも含む。</li>
+     *   <li>{@code '} / {@code /'} で始まる行: PlantUML の行/ブロックコメントとして
+     *       本文が黙って消える・後続が飲み込まれる。</li>
+     * </ul>
      */
-    static String neutralizeNoteTerminator(String s) {
+    static String sanitizeNoteLine(String s) {
         if (s == null || s.isEmpty()) {
             return s;
         }
-        return NOTE_TERMINATOR.matcher(s).matches() ? "\u200B" + s : s;
+        if (NOTE_TERMINATOR.matcher(s).matches()) {
+            return "\u200B" + s;
+        }
+        int i = 0;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+            i++;
+        }
+        if (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '!' || c == '\'') {
+                return "\u200B" + s;
+            }
+            if (c == '/' && i + 1 < s.length() && s.charAt(i + 1) == '\'') {
+                return "\u200B" + s;
+            }
+        }
+        return s;
     }
 
     /** note ブロックの終端キーワードだけの行。 */
@@ -172,7 +194,7 @@ final class PlantUmlCommentFormatter {
                     // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)。
                     // "end note" だけの行は終端注入になるため無害化する。
                     out.append(indent).append("  ")
-                            .append(neutralizeNoteTerminator(escapeText(wl))).append('\n');
+                            .append(sanitizeNoteLine(escapeText(wl))).append('\n');
                 }
             }
         }
