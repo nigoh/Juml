@@ -98,4 +98,48 @@ public class ProjectAnalysisCacheLazyTest {
         // 非 lazy では getDetailedClasses() は getClasses() をそのまま返す (no-op)。
         assertSame(pc.getClasses(), pc.getDetailedClasses());
     }
+
+    /**
+     * clear() 後は未ロード状態 (isLoaded=false) に戻り、getClasses() は空になる。
+     * スナップショットが一貫して差し替わることの確認。
+     */
+    @Test
+    public void clearResetsToEmptySnapshot() throws IOException {
+        writeProject("src/x/A.java", "package x; class A { void run() {} }");
+        ProjectAnalysisCache pc = new ProjectAnalysisCache();
+        pc.load(tmp.getRoot(), ErrorListener.silent());
+        assertTrue(pc.isLoaded());
+        assertFalse(pc.getClasses().isEmpty());
+
+        pc.clear();
+        assertFalse("clear 後は未ロード", pc.isLoaded());
+        assertTrue("clear 後はクラス空", pc.getClasses().isEmpty());
+        org.junit.Assert.assertNull("clear 後は root なし", pc.getProjectRoot());
+        org.junit.Assert.assertNotNull("index は常に非 null", pc.getIndex());
+        org.junit.Assert.assertNotNull("depIndex は常に非 null", pc.getDependencyIndex());
+    }
+
+    /**
+     * 2 つの異なるプロジェクトを続けてロードすると、後のプロジェクトの内容だけが
+     * 見える (スナップショット単位で一貫して差し替わる)。projectRoot / classes が
+     * 別プロジェクトの組み合わせで混ざらないこと。
+     */
+    @Test
+    public void loadingSecondProjectFullyReplacesFirst() throws IOException {
+        writeProject("a/src/x/A.java", "package x; class Alpha { void run() {} }");
+        writeProject("b/src/y/B.java", "package y; class Beta { void go() {} }");
+        File rootA = new File(tmp.getRoot(), "a");
+        File rootB = new File(tmp.getRoot(), "b");
+
+        ProjectAnalysisCache pc = new ProjectAnalysisCache();
+        pc.load(rootA, ErrorListener.silent());
+        assertSame(rootA, pc.getProjectRoot());
+        classNamed(pc.getClasses(), "Alpha"); // 存在する
+
+        pc.load(rootB, ErrorListener.silent());
+        assertSame("2 つ目のルートに切り替わる", rootB, pc.getProjectRoot());
+        classNamed(pc.getClasses(), "Beta"); // 新プロジェクトのクラス
+        assertTrue("旧プロジェクトのクラスは残らない",
+                pc.getClasses().stream().noneMatch(c -> "Alpha".equals(c.getSimpleName())));
+    }
 }

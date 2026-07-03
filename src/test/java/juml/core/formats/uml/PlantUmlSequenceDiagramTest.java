@@ -87,6 +87,21 @@ public class PlantUmlSequenceDiagramTest {
     }
 
     @Test
+    public void testHiddenEntryParticipantYieldsFriendlyNote() {
+        // 起点クラス自身を participant フィルタで隠すと、Caller だけの空図ではなく
+        // 理由を説明する案内図を返す。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run() { foo.bar(); } }");
+        PlantUmlSequenceDiagram.Options o = new PlantUmlSequenceDiagram.Options();
+        o.hiddenParticipants = new java.util.HashSet<>(java.util.Arrays.asList("A"));
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", o);
+        assertTrue("案内図には起点名が含まれる:\n" + puml, puml.contains("A"));
+        assertTrue("hidden の理由が示される:\n" + puml, puml.contains("hidden"));
+        // 空のリフレーン (activate A なしの本体) にならないこと
+        assertFalse("本体呼び出しは描かれない:\n" + puml, puml.contains("foo.bar()"));
+    }
+
+    @Test
     public void testBasicSequence() {
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { void run() { foo.bar(); } }");

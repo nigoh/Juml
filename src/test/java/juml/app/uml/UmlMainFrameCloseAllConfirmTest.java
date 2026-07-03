@@ -10,7 +10,6 @@ import org.junit.Test;
 
 import javax.swing.JTabbedPane;
 import java.awt.GraphicsEnvironment;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -172,12 +171,10 @@ public class UmlMainFrameCloseAllConfirmTest {
 
     /** 固定タブ 2 本 + 指定クラスの動的タブを開いた DiagramTabPane を作る。 */
     private DiagramTabPane newPaneWithTabs(String... classFqns) throws Exception {
-        // ProjectAnalysisCache.isLoaded() が true を返すよう projectRoot を注入する
+        // ProjectAnalysisCache.isLoaded() が true を返すようテスト用フックで注入する
         // (load() を呼ぶと実プロジェクト解析が走るため)。
         ProjectAnalysisCache cache = new ProjectAnalysisCache();
-        Field rootField = ProjectAnalysisCache.class.getDeclaredField("projectRoot");
-        rootField.setAccessible(true);
-        rootField.set(cache, new java.io.File(System.getProperty("java.io.tmpdir")));
+        cache.setLoadedRootForTest(new java.io.File(System.getProperty("java.io.tmpdir")));
 
         DiagramTabPane pane = GuiActionRunner.execute(() -> {
             tabs = new JTabbedPane();

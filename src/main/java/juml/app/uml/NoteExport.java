@@ -42,15 +42,19 @@ final class NoteExport {
     }
 
     /**
-     * {@code puml} を SVG にレンダリングし、{@code preview} の付箋を注入してファイル保存する。
-     * 付箋が無ければ素の SVG をそのまま書き出す。
+     * {@code puml} を SVG にレンダリングし、付箋 ({@code notes}) を注入してファイル保存する。
+     * 付箋が無ければ (null/空) 素の SVG をそのまま書き出す。
+     *
+     * <p>{@code notes} はアンカー解決済みの絶対座標
+     * ({@link SvgPreviewPanel#notesForExport()}) を渡すこと。Swing コンポーネントに
+     * 触れないため、バックグラウンドスレッドから呼んでよい。</p>
      */
-    static void writeSvg(File target, String puml, SvgPreviewPanel preview) throws IOException {
+    static void writeSvg(File target, String puml, List<DiagramNote> notes) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PlantUmlRenderer.renderSvg(puml, buf);
         String svg = new String(buf.toByteArray(), StandardCharsets.UTF_8);
-        if (preview != null && preview.hasNotes()) {
-            svg = injectIntoSvg(svg, preview.notesForExport());
+        if (notes != null && !notes.isEmpty()) {
+            svg = injectIntoSvg(svg, notes);
         }
         Files.write(target.toPath(), svg.getBytes(StandardCharsets.UTF_8));
     }

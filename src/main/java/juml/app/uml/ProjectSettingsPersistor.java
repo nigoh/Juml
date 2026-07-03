@@ -42,7 +42,12 @@ public final class ProjectSettingsPersistor {
         }
         try {
             juml.ProjectRepository repo = juml.ProjectRepository.getInstance();
-            repo.touch(root);
+            // アーカイブ (.jar/.aar/.class) は「最近使用したプロジェクト」に積まない。
+            // 一覧側 (Welcome / Open Recent) はディレクトリ前提のため、積むと常に
+            // "missing" 表示の死にエントリになり、実プロジェクトを枠から押し出す。
+            if (root.isDirectory()) {
+                repo.touch(root);
+            }
             Map<String, String> saved = repo.loadSettings(root);
             if (saved.isEmpty()) {
                 return;

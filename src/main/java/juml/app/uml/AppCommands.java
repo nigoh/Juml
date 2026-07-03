@@ -74,7 +74,9 @@ final class AppCommands {
         add(list, "cmd.diagram.navGraph", cb.pickNavigationGraph);
         add(list, "cmd.diagram.scope", cb.openScopeDialog);
         add(list, "cmd.diagram.clearScope", cb.clearScope);
-        add(list, "cmd.view.zoomIn", cb.zoomIn, MOD + "+");
+        // 実際のアクセラレータは VK_EQUALS (MenuBarBuilder)。"Ctrl++" と表示すると
+        // ユーザーが Ctrl+Shift+= を試して動かないため、実キーに合わせて表示する。
+        add(list, "cmd.view.zoomIn", cb.zoomIn, MOD + "=");
         add(list, "cmd.view.zoomOut", cb.zoomOut, MOD + "-");
         add(list, "cmd.view.zoom100", cb.zoomReset, MOD + "0");
         add(list, "cmd.view.zoomFit", cb.zoomToFit, MOD + SHIFT + "0");

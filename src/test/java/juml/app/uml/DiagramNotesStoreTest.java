@@ -105,4 +105,47 @@ public class DiagramNotesStoreTest {
         store.save("k", Arrays.asList(new DiagramNote(0, 0, 10, 10, "x")));
         assertTrue(store.load("k").isEmpty());
     }
+
+    /**
+     * rename でキーを移すと、付箋・コネクタが新キーへ移り旧キーは空になる
+     * (Save As のタブキー移行で付箋が旧キーに取り残されないため)。
+     */
+    @Test
+    public void renameMovesNotesToNewKey() throws Exception {
+        File root = tmp.newFolder("rename");
+        DiagramNotesStore store = new DiagramNotesStore(root);
+        DiagramNote a = new DiagramNote(1, 2, 100, 80, "note");
+        store.save("PUML:untitled", Arrays.asList(a));
+
+        assertTrue(store.rename("PUML:untitled", "PUML:/path/file.puml"));
+
+        // 別インスタンスで読み直しても新キーで取れ、旧キーは空。
+        DiagramNotesStore reloaded = new DiagramNotesStore(root);
+        assertEquals(1, reloaded.load("PUML:/path/file.puml").size());
+        assertTrue(reloaded.load("PUML:untitled").isEmpty());
+    }
+
+    /** rename の移行元が存在しない場合は何もせず true。 */
+    @Test
+    public void renameOfMissingKeyIsNoOp() throws Exception {
+        File root = tmp.newFolder("rename2");
+        DiagramNotesStore store = new DiagramNotesStore(root);
+        assertTrue(store.rename("nope", "also-nope"));
+        assertTrue(store.load("also-nope").isEmpty());
+    }
+
+    /**
+     * 保存はアトミック (一時ファイル → rename) で行うため、書き込み後に
+     * {@code .tmp} が残らない。
+     */
+    @Test
+    public void saveLeavesNoTempFileBehind() throws Exception {
+        File root = tmp.newFolder("atomic");
+        new DiagramNotesStore(root).save("k",
+                Arrays.asList(new DiagramNote(0, 0, 10, 10, "x")));
+        File jumlDir = new File(root, ".juml");
+        File tmpFile = new File(jumlDir, "notes.json.tmp");
+        assertFalse("一時ファイルが残ってはいけない", tmpFile.exists());
+        assertTrue(new File(jumlDir, "notes.json").isFile());
+    }
 }

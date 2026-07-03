@@ -116,9 +116,13 @@ final class DiagramTabSupport {
                 != javax.swing.JFileChooser.APPROVE_OPTION) {
             return;
         }
-        java.io.File chosen = fc.getSelectedFile();
-        if (!chosen.getName().toLowerCase(java.util.Locale.ROOT).endsWith("." + ext)) {
-            chosen = new java.io.File(chosen.getAbsolutePath() + "." + ext);
+        java.io.File targetFile = fc.getSelectedFile();
+        if (!targetFile.getName().toLowerCase(java.util.Locale.ROOT).endsWith("." + ext)) {
+            targetFile = new java.io.File(targetFile.getAbsolutePath() + "." + ext);
+        }
+        final java.io.File chosen = targetFile;
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return;
         }
         boolean withNotes = preview != null && preview.hasNotes();
         if (fmt == UmlExporter.Format.PNG) {
@@ -130,28 +134,63 @@ final class DiagramTabSupport {
             }
             return;
         }
-        try {
-            if (fmt == UmlExporter.Format.SVG && withNotes) {
-                NoteExport.writeSvg(chosen, puml, preview); // 付箋を foreignObject で注入
-            } else {
-                UmlExporter.export(fmt, chosen, puml, null); // PUML は付箋を埋め込めない
+        if (fmt == UmlExporter.Format.SVG) {
+            // SVG も PlantUML の完全レンダリングを伴うため背景実行する。付箋スナップ
+            // ショットは Swing に触るため EDT で先に取る。
+            final java.util.List<DiagramNote> notes =
+                    withNotes ? preview.notesForExport() : null;
+            if (reporter != null) {
+                reporter.accept(juml.util.Messages.get("status.exportingSvg"));
             }
+            new javax.swing.SwingWorker<Void, Void>() {
+                private Exception failure;
+
+                @Override
+                protected Void doInBackground() {
+                    try {
+                        NoteExport.writeSvg(chosen, puml, notes); // 付箋を foreignObject で注入
+                    } catch (Exception ex) {
+                        failure = ex;
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    if (failure != null) {
+                        reportExportFailure(parent, fmt, chosen, failure);
+                    } else if (reporter != null) {
+                        reporter.accept(juml.util.Messages.get("status.saved")
+                                + chosen.getAbsolutePath());
+                    }
+                }
+            }.execute();
+            return;
+        }
+        try {
+            UmlExporter.export(fmt, chosen, puml, null); // PUML は付箋を埋め込めない
             if (reporter != null) {
                 reporter.accept(juml.util.Messages.get("status.saved")
                         + chosen.getAbsolutePath());
             }
         } catch (java.io.IOException | juml.util.JumlException ex) {
-            // SVG エクスポート中の描画失敗は unchecked (PlantUmlRenderFailedException)
-            // で飛んでくるため、IOException と合わせてここで拾いダイアログ表示する。
-            juml.util.AppLog.error(
-                    juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.EXP_001),
-                    "DiagramTabSupport",
-                    fmt + " export failed: " + chosen.getAbsolutePath(), ex);
-            javax.swing.JOptionPane.showMessageDialog(parent,
-                    juml.util.Messages.get("export.failed") + ex.getMessage(),
-                    juml.util.Messages.get("dlg.error.title"),
-                    javax.swing.JOptionPane.ERROR_MESSAGE);
+            reportExportFailure(parent, fmt, chosen, ex);
         }
+    }
+
+    /** エクスポート失敗をログ + ダイアログで通知する (SVG/PUML 共通)。 */
+    private static void reportExportFailure(java.awt.Component parent, UmlExporter.Format fmt,
+                                            java.io.File chosen, Exception ex) {
+        // SVG エクスポート中の描画失敗は unchecked (PlantUmlRenderFailedException)
+        // で飛んでくるため、IOException と合わせてここで拾いダイアログ表示する。
+        juml.util.AppLog.error(
+                juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.EXP_001),
+                "DiagramTabSupport",
+                fmt + " export failed: " + chosen.getAbsolutePath(), ex);
+        javax.swing.JOptionPane.showMessageDialog(parent,
+                juml.util.Messages.get("export.failed") + ex.getMessage(),
+                juml.util.Messages.get("dlg.error.title"),
+                javax.swing.JOptionPane.ERROR_MESSAGE);
     }
 
     /**

@@ -29,10 +29,16 @@ public class TabMemoryManagerTest {
         final List<String> closed = new ArrayList<>();
         final List<String> released = new ArrayList<>();
         final List<String> rendered = new ArrayList<>();
+        /** このキーへの closeTab は拒否する (未保存編集の保護を模す)。 */
+        final java.util.Set<String> refuseClose = new java.util.HashSet<>();
 
         @Override
-        public void closeTab(String key) {
+        public boolean closeTab(String key) {
+            if (refuseClose.contains(key)) {
+                return false;
+            }
             closed.add(key);
+            return true;
         }
 
         @Override
@@ -108,6 +114,44 @@ public class TabMemoryManagerTest {
         assertFalse("アクティブ c は解放されない", act.released.contains("c"));
         assertFalse("アクティブ d は解放されない", act.released.contains("d"));
         assertTrue("上限無効なのでタブは閉じられない", act.closed.isEmpty());
+    }
+
+    /**
+     * closeTab が拒否されたタブ (未保存編集の保護) は帳簿から消さず、
+     * 代わりに次の犠牲を探す。拒否をクローズ扱いにすると帳簿が実態とずれ、
+     * 後続のアクティブ化で別の新しいタブが身代わりに退避されてしまう。
+     */
+    @Test
+    public void refusedVictimStaysTrackedAndNextOldestIsEvicted() {
+        TabMemoryManager mgr = new TabMemoryManager(2, 10);
+        RecordingActions act = new RecordingActions();
+        act.refuseClose.add("a"); // 最古 a は dirty エディタ想定で閉じられない
+        mgr.onActivate("a", 1, act);
+        mgr.onActivate("b", 2, act);
+        mgr.onActivate("c", 3, act); // 3 > 2 → a は拒否され、次点 b が退避
+
+        assertEquals("拒否された a を飛ばして b が閉じられる", List.of("b"), act.closed);
+
+        // a は帳簿に残り続けるので、後で dirty が解消されれば通常どおり退避対象になる。
+        act.refuseClose.clear();
+        mgr.onActivate("d", 3, act); // 開いているのは a,c,d の 3 枚 → 最古 a を退避
+        assertEquals(List.of("b", "a"), act.closed);
+    }
+
+    /**
+     * rename (Save As / 図種のその場切替) 後は新キーで管理が続き、旧キーの幽霊が
+     * 退避枠を浪費しない。
+     */
+    @Test
+    public void renameKeepsTabTrackedUnderNewKey() {
+        TabMemoryManager mgr = new TabMemoryManager(2, 10);
+        RecordingActions act = new RecordingActions();
+        mgr.onActivate("old", 1, act);
+        mgr.onActivate("b", 2, act);
+        mgr.rename("old", "new"); // mru=[b, new]
+        mgr.onActivate("c", 3, act); // 3 > 2 → 最古 b が退避 (幽霊 "old" ではなく)
+
+        assertEquals("幽霊キーではなく実在する最古 b が閉じられる", List.of("b"), act.closed);
     }
 
     /** onClose で閉じたタブは MRU から外れ、以後の退避判定に含まれない。 */

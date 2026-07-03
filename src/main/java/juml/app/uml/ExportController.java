@@ -84,6 +84,9 @@ final class ExportController {
         if (!chosen.getName().toLowerCase(java.util.Locale.ROOT).endsWith("." + ext)) {
             chosen = new File(chosen.getAbsolutePath() + "." + ext);
         }
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return;
+        }
         exportToFile(fmt, chosen);
     }
 
@@ -105,21 +108,51 @@ final class ExportController {
             }
             return;
         }
-        // SVG/PUML はテキスト出力のみで軽いので EDT で実行する。
+        if (fmt == UmlExporter.Format.SVG) {
+            // SVG も PlantUML の完全レンダリング (数百 ms〜数秒) を伴うため背景実行する。
+            // 付箋スナップショットだけ EDT で先に取る (Swing コンポーネントに触るため)。
+            final java.util.List<DiagramNote> notes = withNotes ? preview.notesForExport() : null;
+            final String puml = state.currentPuml;
+            status.setText(Messages.get("status.exportingSvg"));
+            new javax.swing.SwingWorker<Void, Void>() {
+                private Exception failure;
+
+                @Override
+                protected Void doInBackground() {
+                    try {
+                        NoteExport.writeSvg(chosen, puml, notes);
+                    } catch (Exception ex) {
+                        failure = ex;
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    if (failure != null) {
+                        reportExportFailure(chosen, failure);
+                    } else {
+                        status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
+                    }
+                }
+            }.execute();
+            return;
+        }
+        // PUML はテキスト書き出しのみで軽いので EDT で実行する。
         try {
-            if (fmt == UmlExporter.Format.SVG && withNotes) {
-                NoteExport.writeSvg(chosen, state.currentPuml, preview);
-            } else {
-                UmlExporter.export(fmt, chosen, state.currentPuml, null);
-            }
+            UmlExporter.export(fmt, chosen, state.currentPuml, null);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
-            juml.util.AppLog.error(juml.util.ErrorCode.EXP_001, "ExportController",
-                    "Diagram export failed: " + chosen.getAbsolutePath(), ex);
-            JOptionPane.showMessageDialog(parent,
-                    Messages.get("export.failed") + ex.getMessage(),
-                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+            reportExportFailure(chosen, ex);
         }
+    }
+
+    private void reportExportFailure(File chosen, Exception ex) {
+        juml.util.AppLog.error(juml.util.ErrorCode.EXP_001, "ExportController",
+                "Diagram export failed: " + chosen.getAbsolutePath(), ex);
+        JOptionPane.showMessageDialog(parent,
+                Messages.get("export.failed") + ex.getMessage(),
+                Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
     }
 
     /** 現在の SVG XML 全体をクリップボードへコピーする。 */
@@ -181,6 +214,9 @@ final class ExportController {
             chosen = new File(chosen.getAbsolutePath() + "." + ext);
             fmt = UmlExporter.Format.fromFileName(chosen.getName());
         }
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return;
+        }
         exportToFile(fmt, chosen);
     }
 
@@ -215,6 +251,9 @@ final class ExportController {
         if (!lower.endsWith("." + ext)) {
             chosen = new File(chosen.getAbsolutePath() + "." + ext);
         }
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return;
+        }
         try {
             juml.app.cli.CliOutput.writeText(chosen, asCsv ? csv : markdown);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
@@ -246,6 +285,9 @@ final class ExportController {
         File chosen = fc.getSelectedFile();
         if (!chosen.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx")) {
             chosen = new File(chosen.getAbsolutePath() + ".xlsx");
+        }
+        if (!DialogUtils.confirmOverwrite(parent, chosen)) {
+            return;
         }
         try (java.io.OutputStream os = new java.io.FileOutputStream(chosen)) {
             juml.core.formats.uml.MemberWorkbookExporter.write(classes, os);

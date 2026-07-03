@@ -381,11 +381,9 @@ public class ProjectTreePanel extends JPanel {
         if (fqn == null || fqn.isEmpty()) {
             return;
         }
-        int lastDot = fqn.lastIndexOf('.');
-        String pkg = lastDot < 0 ? "(default)" : fqn.substring(0, lastDot);
         for (int m = 0; m < root.getChildCount(); m++) {
             DefaultMutableTreeNode moduleNode = (DefaultMutableTreeNode) root.getChildAt(m);
-            DefaultMutableTreeNode pkgNode = findPackageNode(moduleNode, pkg);
+            DefaultMutableTreeNode pkgNode = findPackageNodeForClass(moduleNode, fqn);
             if (pkgNode == null) {
                 continue;
             }
@@ -403,6 +401,26 @@ public class ProjectTreePanel extends JPanel {
     }
 
     /**
+     * FQN からクラスを含むパッケージノードを探す。ネストクラスの FQN は
+     * {@code pkg.Outer.Inner} のように外側クラス名を含むため、末尾セグメントを
+     * 1 つずつ剥がしながらパッケージ名として照合する (単純な lastIndexOf('.') では
+     * "pkg.Outer" をパッケージと誤解してネストクラスのツリー同期が全滅する)。
+     */
+    private DefaultMutableTreeNode findPackageNodeForClass(
+            DefaultMutableTreeNode moduleNode, String fqn) {
+        String candidate = fqn;
+        int dot;
+        while ((dot = candidate.lastIndexOf('.')) >= 0) {
+            candidate = candidate.substring(0, dot);
+            DefaultMutableTreeNode pkgNode = findPackageNode(moduleNode, candidate);
+            if (pkgNode != null) {
+                return pkgNode;
+            }
+        }
+        return findPackageNode(moduleNode, "(default)");
+    }
+
+    /**
      * 指定 FQN クラス + メソッド名のメソッドノードをツリーで選択・スクロールする。
      * クラス/パッケージノードは必要に応じて遅延展開する。
      * 選択変更コールバック ({@link #notifySelection}) は発火しない。
@@ -411,11 +429,9 @@ public class ProjectTreePanel extends JPanel {
         if (classFqn == null || classFqn.isEmpty() || methodName == null || methodName.isEmpty()) {
             return;
         }
-        int lastDot = classFqn.lastIndexOf('.');
-        String pkg = lastDot < 0 ? "(default)" : classFqn.substring(0, lastDot);
         for (int m = 0; m < root.getChildCount(); m++) {
             DefaultMutableTreeNode moduleNode = (DefaultMutableTreeNode) root.getChildAt(m);
-            DefaultMutableTreeNode pkgNode = findPackageNode(moduleNode, pkg);
+            DefaultMutableTreeNode pkgNode = findPackageNodeForClass(moduleNode, classFqn);
             if (pkgNode == null) {
                 continue;
             }
@@ -756,15 +772,24 @@ public class ProjectTreePanel extends JPanel {
             if (ce.expanded) {
                 return;
             }
-            ce.expanded = true;
             // lazy ロード時はここで初めて Stage B 昇格し、実メソッドを得る。
+            boolean promoted = true;
             if (!ce.info.isDetailed() && classIndex != null) {
                 JavaClassInfo detailed = classIndex.detail(
                         ce.info.getQualifiedName(), juml.util.ErrorListener.silent());
                 if (detailed != null) {
                     ce.info = detailed;
+                } else {
+                    // ソース移動・一時的な IO 失敗などで昇格できなかった。expanded を
+                    // 立てない (立てると空ノードに固定され、再展開しても二度と再試行
+                    // されない)。プレースホルダは残し、次の展開で再試行できるようにする。
+                    promoted = false;
                 }
             }
+            if (!promoted) {
+                return;
+            }
+            ce.expanded = true;
             node.removeAllChildren();
             addMethodNodes(node, ce.info);
             model.nodeStructureChanged(node);

@@ -29,6 +29,14 @@ import java.util.function.IntSupplier;
  */
 final class TabReorderHandler {
 
+    /**
+     * 並び替え中であることを示す {@link JTabbedPane} のクライアントプロパティ キー。
+     * {@link #moveTab} は remove→insert で実装されるため、その間 JTabbedPane が隣の
+     * タブを一時選択して選択変更イベントを発火する。選択リスナ側はこのプロパティが
+     * TRUE の間はイベントを無視し、ナビ履歴汚染や LRU 自動クローズの誤発火を防ぐ。
+     */
+    static final String CLIENT_PROP_REORDERING = "juml.tabReordering";
+
     /** これ未満の水平移動はクリックとみなし並び替えを始めない。 */
     private static final int DRAG_THRESHOLD = 5;
     private static final Color INDICATOR_COLOR = new Color(0x00, 0x7A, 0xCC);
@@ -144,11 +152,27 @@ final class TabReorderHandler {
         String tip = tabs.getToolTipTextAt(from);
         Icon icon = tabs.getIconAt(from);
         boolean wasSelected = tabs.getSelectedIndex() == from;
-        tabs.remove(from);
-        tabs.insertTab(title, icon, comp, tip, to);
-        tabs.setTabComponentAt(to, tabComp);
-        if (wasSelected) {
-            tabs.setSelectedIndex(to);
+        Component selectedBefore = tabs.getSelectedComponent();
+        // remove→insert の過渡状態で発火する選択変更イベントを抑止する
+        // (隣タブへの一時選択がアクティブ化パイプラインを通ると、ナビ履歴の
+        // 幻エントリ・ツリー/ステータスのちらつき・LRU 自動クローズを誘発する)。
+        tabs.putClientProperty(CLIENT_PROP_REORDERING, Boolean.TRUE);
+        try {
+            tabs.remove(from);
+            tabs.insertTab(title, icon, comp, tip, to);
+            tabs.setTabComponentAt(to, tabComp);
+            if (wasSelected) {
+                tabs.setSelectedIndex(to);
+            }
+        } finally {
+            tabs.putClientProperty(CLIENT_PROP_REORDERING, null);
+        }
+        // 抑止中に選択が実際に変わっていた場合のみ、確定後に 1 回だけ通知する。
+        if (tabs.getSelectedComponent() != selectedBefore) {
+            javax.swing.event.ChangeEvent ev = new javax.swing.event.ChangeEvent(tabs);
+            for (javax.swing.event.ChangeListener l : tabs.getChangeListeners()) {
+                l.stateChanged(ev);
+            }
         }
     }
 }

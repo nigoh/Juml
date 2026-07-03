@@ -72,4 +72,19 @@ public class PlantUmlCallGraphDiagramEscapeTest {
         assertTrue("output should contain method-not-found sentinel: " + puml,
                 puml.contains("[Method not found]"));
     }
+
+    @Test
+    public void testCallInsideLocalVarLambdaAppearsInWbs() {
+        // ローカル変数初期化子のラムダ本体内の呼び出し (svc.work()) も WBS に現れること。
+        // 以前は collectCalls が LocalVar を辿らず、この呼び出しを取りこぼしていた。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class Svc { void work() {} }\n"
+                        + "class A {\n"
+                        + "  Svc svc = new Svc();\n"
+                        + "  void run() { Runnable r = () -> svc.work(); r.run(); }\n"
+                        + "}");
+        String puml = PlantUmlCallGraphDiagram.generate(infos, "A", "run", null);
+        assertTrue("ラムダ本体内の work() が WBS に現れるべき: " + puml,
+                puml.contains("work()"));
+    }
 }

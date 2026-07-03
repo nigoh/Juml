@@ -32,6 +32,9 @@ final class ListReportFilter {
         for (String line : full.split("\n", -1)) {
             if (!line.startsWith("|")) {
                 sb.append(line).append('\n'); // 散文・節見出し・空行は文脈として保持
+                // テーブルの切れ目でリセットする。リセットしないと 2 個目以降の
+                // テーブルの見出し行・区切り行がデータ行扱いになり絞り込みで消える。
+                pipeSeen = 0;
                 continue;
             }
             pipeSeen++;

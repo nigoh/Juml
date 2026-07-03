@@ -105,6 +105,23 @@ final class TabMruController {
     void onClosed(Component tab) {
         mru.remove(tab);
         labels.remove(tab);
+        // 巡回中にタブが閉じられる (LRU 自動クローズ等) と、スナップショットに死んだ
+        // コンポーネントが残り setSelectedComponent が IllegalArgumentException を投げる。
+        // スナップショットからも取り除き、カーソルを繰り上がり分だけ補正する。
+        if (traversing && snapshot != null) {
+            int idx = snapshot.indexOf(tab);
+            if (idx >= 0) {
+                snapshot.remove(idx);
+                if (idx < cursor || cursor >= snapshot.size()) {
+                    cursor = Math.max(0, cursor - 1);
+                }
+                if (snapshot.isEmpty()) {
+                    endTraversal();
+                } else {
+                    updateOverlay();
+                }
+            }
+        }
     }
 
     /** MRU を {@code dir} 方向に 1 つ進める (初回は巡回モードに入りオーバーレイを出す)。 */
@@ -124,10 +141,27 @@ final class TabMruController {
             showOverlay();
             installReleaseDispatcher();
         }
-        cursor = Math.floorMod(cursor + dir, snapshot.size());
-        Component target = snapshot.get(cursor);
-        tabs.setSelectedComponent(target);
-        updateOverlay();
+        // onClosed の補正から漏れた死にコンポーネント (タブペイン外) が万一残っていても
+        // クラッシュしないよう、選択前にペイン所属を確認しながら進める。
+        for (int guard = snapshot.size(); guard > 0; guard--) {
+            cursor = Math.floorMod(cursor + dir, snapshot.size());
+            Component target = snapshot.get(cursor);
+            if (tabs.indexOfComponent(target) >= 0) {
+                tabs.setSelectedComponent(target);
+                updateOverlay();
+                return;
+            }
+            snapshot.remove(cursor);
+            if (snapshot.isEmpty()) {
+                endTraversal();
+                return;
+            }
+            // 削除で後続要素が 1 つ前へ詰まるため、前進時のみカーソルを 1 戻して
+            // 次の加算で「詰まってきた要素」を指すようにする (後退時は補正不要)。
+            if (dir > 0) {
+                cursor--;
+            }
+        }
     }
 
     /** 現在の動的タブを MRU 順に並べたリスト (MRU 未登録分は索引順で末尾に補完)。 */
@@ -191,7 +225,8 @@ final class TabMruController {
     private void cancel() {
         Component original = (snapshot != null && !snapshot.isEmpty()) ? snapshot.get(0) : null;
         endTraversal();
-        if (original != null) {
+        // 巡回中に元タブ自体が閉じられた場合は戻り先がないため何もしない。
+        if (original != null && tabs.indexOfComponent(original) >= 0) {
             tabs.setSelectedComponent(original);
         }
     }

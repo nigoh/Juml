@@ -73,4 +73,49 @@ public class MarkdownRendererTest {
         assertEquals("", MarkdownRenderer.toHtml(null));
         assertEquals("", MarkdownRenderer.toHtml(""));
     }
+
+    /**
+     * コードスパンの中身は Markdown 的にリテラル扱い。以前は生成した
+     * {@code <code>} の中を後段の装飾規則が再処理し、コード内で太字/リンクが
+     * 効いてしまっていた。
+     */
+    @Test
+    public void codeSpanContentIsNotReDecorated() {
+        String bold = MarkdownRenderer.toHtml("`a**b**c`");
+        assertTrue("コード内は太字化されない: " + bold, bold.contains("<code>a**b**c</code>"));
+        assertFalse("コード内に <b> が入ってはいけない: " + bold, bold.contains("<b>"));
+
+        String link = MarkdownRenderer.toHtml("`[x](y)`");
+        assertTrue("コード内はリンク化されない: " + link, link.contains("<code>[x](y)</code>"));
+        assertFalse("コード内に <a が入ってはいけない: " + link, link.contains("<a "));
+    }
+
+    /** コードスパンの外側は通常どおり装飾される (プレースホルダの誤爆がない)。 */
+    @Test
+    public void decorationOutsideCodeStillWorks() {
+        String html = MarkdownRenderer.toHtml("**b** `code` *i*");
+        assertTrue(html.contains("<b>b</b>"));
+        assertTrue(html.contains("<code>code</code>"));
+        assertTrue(html.contains("<i>i</i>"));
+    }
+
+    /**
+     * コードスパンのプレースホルダに使う私用領域文字 (U+E000/U+E001) が入力に
+     * 紛れ込んでも、プレースホルダと衝突して誤ってコードスパンに置換されない。
+     */
+    @Test
+    public void privateUseAreaCharsInInputDoNotCollideWithPlaceholders() {
+        char e0 = '\uE000';
+        char e1 = '\uE001';
+        // U+E000 + "0" + U+E001 はプレースホルダと同形。除去されて素通しされるべき。
+        String input = "before " + e0 + "0" + e1 + " `code` after";
+        String html = MarkdownRenderer.toHtml(input);
+        assertTrue("実コードスパンは正しく描画される",
+                html.contains("<code>code</code>"));
+        // PUA 文字は除去され、周囲テキストは保持される。
+        assertTrue(html.contains("before"));
+        assertTrue(html.contains("after"));
+        assertFalse("U+E000 は出力に残らない", html.indexOf(e0) >= 0);
+        assertFalse("U+E001 は出力に残らない", html.indexOf(e1) >= 0);
+    }
 }

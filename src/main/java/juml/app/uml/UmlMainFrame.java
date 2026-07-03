@@ -24,6 +24,7 @@ import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
@@ -474,6 +475,19 @@ public class UmlMainFrame extends JFrame {
         loaderDeps.cancelTokenSetter = token -> loadingCancelToken = token;
         loaderDeps.projectRootSetter = root -> currentProjectRoot = root;
         loaderDeps.onLoadSuccess = root -> {
+            // 旧プロジェクトの図タブ・再オープン履歴・ナビ履歴を破棄する。残すと
+            // 再描画 (F5/スタイル変更/LRU 復帰) が新プロジェクトの解析結果に対して走り、
+            // 旧ラベルのまま空図・別クラスの図が表示される。
+            tabPane.onProjectSwitched();
+            // Doxygen/TODO/Groups タブの前プロジェクト結果も破棄する。
+            doxygenResultCache.clear();
+            // Functions / Members は遅延生成のため、表示中でなければ次回選択時に
+            // 新プロジェクトで再生成される。表示中なら即再生成して旧一覧を残さない。
+            if (mainTabs.getSelectedComponent() == methodListPanel) {
+                updateFunctionList();
+            } else if (mainTabs.getSelectedComponent() == memberListPanel) {
+                updateMemberList();
+            }
             persistAndRestoreProjectSettings(root);
             updateManifestSummary();
             gitPanel.setRepositoryRoot(root); // git リポジトリなら Git タブを有効化
@@ -1002,17 +1016,49 @@ public class UmlMainFrame extends JFrame {
         openPumlFileDirect(chosen);
     }
 
-    /** 指定の .puml ファイルをエディタタブで開く (ダイアログなし。ドロップ用)。 */
+    /**
+     * 指定の .puml ファイルをエディタタブで開く (ダイアログなし。ドロップ用)。
+     * ファイル読み込みは {@link SwingWorker} で行い、低速/ハングしたネットワーク共有上の
+     * .puml を開くときに EDT (UI) がフリーズしないようにする。読み込み結果の反映と
+     * エラーダイアログは {@code done()} (EDT) で行う。
+     */
     private void openPumlFileDirect(File file) {
-        try {
-            openPumlEditorTab(PumlEditorSupport.read(file), file);
-        } catch (java.io.IOException ex) {
-            juml.util.AppLog.error(juml.util.ErrorCode.UML_E004, "UmlMainFrame",
-                    "puml open failed: " + file.getAbsolutePath(), ex);
-            JOptionPane.showMessageDialog(this,
-                    Messages.get("puml.editor.openFailed") + ex.getMessage(),
-                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
-        }
+        new SwingWorker<String, Void>() {
+            private java.io.IOException failure;
+
+            @Override
+            protected String doInBackground() {
+                try {
+                    return PumlEditorSupport.read(file);
+                } catch (java.io.IOException ex) {
+                    failure = ex;
+                    return null;
+                }
+            }
+
+            @Override
+            protected void done() {
+                if (failure != null) {
+                    juml.util.AppLog.error(juml.util.ErrorCode.UML_E004, "UmlMainFrame",
+                            "puml open failed: " + file.getAbsolutePath(), failure);
+                    JOptionPane.showMessageDialog(UmlMainFrame.this,
+                            Messages.get("puml.editor.openFailed") + failure.getMessage(),
+                            Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                String text;
+                try {
+                    text = get();
+                } catch (java.util.concurrent.ExecutionException
+                        | InterruptedException ex) {
+                    if (ex instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return;
+                }
+                openPumlEditorTab(text, file);
+            }
+        }.execute();
     }
 
     // --- 状態管理 -------------------------------------------------------------

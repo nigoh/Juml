@@ -118,13 +118,21 @@ public class PumlSourcePanel extends JPanel {
     }
 
     private Object errorHighlightTag;
-    private final javax.swing.text.Highlighter.HighlightPainter errorPainter =
-            new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
-                    new java.awt.Color(0xFF, 0xCD, 0xD2));
+
+    /** エラー行の強調色。テーマ (ライト/ダーク) に応じて描画時に解決する。 */
+    private static java.awt.Color errorHighlightColor() {
+        return EditorColors.isDark()
+                ? new java.awt.Color(0x5A, 0x1D, 0x1D)
+                : new java.awt.Color(0xFF, 0xCD, 0xD2);
+    }
 
     /**
-     * 描画失敗行 (1 始まり、エディタ行) を赤く強調してキャレットを移動する。
+     * 描画失敗行 (1 始まり、エディタ行) を赤く強調する。
      * {@code line} が 0 以下・範囲外なら既存の強調を消すだけ。
+     *
+     * <p>キャレットは移動しない: ライブプレビューの描画失敗は入力ポーズのたびに
+     * 非同期で届くため、キャレットを奪うと以降の入力が誤った行へ挿入される。
+     * 入力中でない (フォーカスが無い) 場合のみ、エラー行が見えるようスクロールする。</p>
      */
     public void highlightErrorLine(int line) {
         clearErrorHighlight();
@@ -138,8 +146,15 @@ public class PumlSourcePanel extends JPanel {
             }
             int start = textArea.getLineStartOffset(li);
             int end = textArea.getLineEndOffset(li);
-            errorHighlightTag = textArea.getHighlighter().addHighlight(start, end, errorPainter);
-            textArea.setCaretPosition(start);
+            errorHighlightTag = textArea.getHighlighter().addHighlight(start, end,
+                    new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
+                            errorHighlightColor()));
+            if (!textArea.hasFocus()) {
+                java.awt.geom.Rectangle2D r = textArea.modelToView2D(start);
+                if (r != null) {
+                    textArea.scrollRectToVisible(r.getBounds());
+                }
+            }
         } catch (javax.swing.text.BadLocationException ignored) {
             // 行範囲がずれた場合は強調しない (致命的でない)。
         }

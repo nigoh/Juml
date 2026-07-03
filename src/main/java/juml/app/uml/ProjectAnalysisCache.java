@@ -32,6 +32,12 @@ import java.util.Optional;
  * <p>大規模プロジェクト向けに、進捗・キャンセル・ヘッダのみロード (Stage A) を
  * 受け取る {@link #load(File, ErrorListener, ProgressListener, CancelToken, LoadOptions)}
  * を提供する。{@link ClassIndex} はモジュール紐付けとオンデマンド Stage B 昇格に使う。</p>
+ *
+ * <p><b>並行性:</b> ロードはバックグラウンドの SwingWorker、参照は EDT と描画ワーカーから
+ * 同時に行われる。結果一式は不変スナップショット ({@link Snapshot}) として単一の
+ * volatile フィールドに発行し、読み手は常に「ある時点の一貫した組」を見る。
+ * さらに {@link #clear()} が世代を進め、追い越された古いロードが遅れて結果を
+ * 発行する (新しいプロジェクトの結果を古い結果で上書きする) ことを防ぐ。</p>
  */
 public final class ProjectAnalysisCache {
 
@@ -52,20 +58,45 @@ public final class ProjectAnalysisCache {
         public boolean useDiskCache = true;
     }
 
-    private File projectRoot;
-    private AndroidProjectAnalysis analysis;
-    private List<JavaClassInfo> classes = Collections.emptyList();
-    private ClassIndex index = new ClassIndex();
-    private DependencyJarIndex dependencyIndex = new DependencyJarIndex();
+    /** ロード結果一式の不変スナップショット。読み手はこの単位で一貫性を得る。 */
+    private static final class Snapshot {
+        final File projectRoot;
+        final AndroidProjectAnalysis analysis;
+        final List<JavaClassInfo> classes;
+        final ClassIndex index;
+        final DependencyJarIndex dependencyIndex;
+        /**
+         * {@code classes} がヘッダのみ (Stage A) かどうか。{@code lazyDetails} ロードや
+         * ディスクキャッシュ復元時に true。true のときメンバー情報が要る消費者は
+         * {@link #getDetailedClasses()} を経由する。
+         */
+        final boolean lazy;
+
+        Snapshot(File projectRoot, AndroidProjectAnalysis analysis,
+                 List<JavaClassInfo> classes, ClassIndex index,
+                 DependencyJarIndex dependencyIndex, boolean lazy) {
+            this.projectRoot = projectRoot;
+            this.analysis = analysis;
+            this.classes = classes;
+            this.index = index;
+            this.dependencyIndex = dependencyIndex;
+            this.lazy = lazy;
+        }
+
+        static Snapshot empty() {
+            return new Snapshot(null, null, Collections.emptyList(),
+                    new ClassIndex(), new DependencyJarIndex(), false);
+        }
+    }
+
+    private volatile Snapshot snap = Snapshot.empty();
+    /** {@link #clear()} のたびに進む世代。古いロードの遅延発行を弾くために使う。 */
+    private long generation;
     private final DiskAnalysisCache disk;
-    /**
-     * {@code classes} がヘッダのみ (Stage A) かどうか。{@code lazyDetails} ロードや
-     * ディスクキャッシュ復元時に true。true のときメンバー情報が要る消費者は
-     * {@link #getDetailedClasses()} を経由する。
-     */
-    private boolean lazy = false;
     /** lazy=true 時、全クラスを Stage B 昇格した結果のメモ化 (初回 getDetailedClasses で構築)。 */
     private List<JavaClassInfo> detailedClasses;
+    /** {@code detailedClasses} がどのスナップショットに対する昇格結果か。 */
+    private Snapshot detailedFor;
 
     public ProjectAnalysisCache() {
         this(new DiskAnalysisCache());
@@ -73,6 +104,42 @@ public final class ProjectAnalysisCache {
 
     public ProjectAnalysisCache(DiskAnalysisCache disk) {
         this.disk = disk;
+    }
+
+    /**
+     * ディスクキャッシュの陳腐化チェック用に現在の Java ソース一覧だけを走査する
+     * (パースはしない)。DB の {@code KIND_JAVA} 行と突き合わせるため {@code .java} に絞る。
+     */
+    private static List<File> scanJavaFiles(File root,
+            juml.core.formats.java.AndroidProjectScanner.Options scanOpts) {
+        List<File> all = juml.core.formats.java.AndroidProjectScanner.scan(root, scanOpts);
+        List<File> java = new java.util.ArrayList<>();
+        for (File f : all) {
+            if (f.getName().endsWith(".java")) {
+                java.add(f);
+            }
+        }
+        return java;
+    }
+
+    /** 現在の世代を返す (ロード開始時に捕捉し、発行時に照合する)。 */
+    private synchronized long currentGeneration() {
+        return generation;
+    }
+
+    /**
+     * 世代が変わっていなければスナップショットを発行する。
+     *
+     * @return 発行できた場合 true。追い越された古いロードなら false (結果は破棄)。
+     */
+    private synchronized boolean install(long gen, Snapshot s) {
+        if (generation != gen) {
+            return false;
+        }
+        this.snap = s;
+        this.detailedClasses = null;
+        this.detailedFor = null;
+        return true;
     }
 
     /**
@@ -97,9 +164,11 @@ public final class ProjectAnalysisCache {
         if (root == null) {
             throw new IllegalArgumentException("root is null");
         }
-        if (projectRoot != null && projectRoot.equals(root)) {
+        Snapshot cur = snap;
+        if (cur.projectRoot != null && cur.projectRoot.equals(root)) {
             return;
         }
+        long gen = currentGeneration();
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         ProgressListener p = progress != null ? progress : ProgressListener.silent();
         CancelToken c = cancel != null ? cancel : CancelToken.NONE;
@@ -119,17 +188,23 @@ public final class ProjectAnalysisCache {
         scanOpts.includeAidl = true;
 
         // ディスクキャッシュは Stage A 用の永続化のみサポート。
-        // lazyDetails=true でかつ Hit したら parse をスキップ。
+        // lazyDetails=true でかつ Hit したら parse をスキップ。ただし DB 記録時から
+        // ソースが 1 つでも追加/変更/削除されていたらキャッシュを捨てて再解析する
+        // (陳腐化検出のための走査は full parse より十分軽い)。
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                Optional<DiskAnalysisCache.Snapshot> snap = disk.load(root, p);
-                if (snap.isPresent()) {
-                    this.projectRoot = root;
-                    this.analysis = a;
-                    this.classes = snap.get().getClasses();
-                    this.index = snap.get().getIndex();
-                    this.lazy = true; // ディスクキャッシュは Stage A スナップショット
-                    this.detailedClasses = null;
+                List<File> currentJava = scanJavaFiles(root, scanOpts);
+                if (c.isCancelled()) {
+                    return;
+                }
+                Optional<DiskAnalysisCache.Snapshot> diskSnap = disk.load(root, p, currentJava);
+                if (diskSnap.isPresent()) {
+                    // 依存 JAR インデックスは DB に持たないため、既に得ている analysis から
+                    // 再構築する (parse はスキップ)。省くと 2 回目以降のロードで外部型の
+                    // <<external>> 印が消え、初回ロードと図が食い違う。
+                    DependencyJarIndex depIndex = UmlGenerator.buildDependencyIndex(root, a, l);
+                    install(gen, new Snapshot(root, a, diskSnap.get().getClasses(),
+                            diskSnap.get().getIndex(), depIndex, true));
                     return;
                 }
             } catch (RuntimeException ex) {
@@ -145,19 +220,20 @@ public final class ProjectAnalysisCache {
         if (c.isCancelled()) {
             return;
         }
-        this.projectRoot = root;
-        this.analysis = a;
-        this.classes = result.getClasses() != null ? result.getClasses() : Collections.emptyList();
-        this.index = result.getIndex() != null ? result.getIndex() : new ClassIndex();
-        this.dependencyIndex = result.getDependencyIndex() != null
+        List<JavaClassInfo> classes = result.getClasses() != null
+                ? result.getClasses() : Collections.emptyList();
+        ClassIndex index = result.getIndex() != null ? result.getIndex() : new ClassIndex();
+        DependencyJarIndex depIndex = result.getDependencyIndex() != null
                 ? result.getDependencyIndex() : new DependencyJarIndex();
-        this.lazy = o.lazyDetails; // HEADERS_ONLY なら Stage A
-        this.detailedClasses = null;
+        if (!install(gen, new Snapshot(root, a, classes, index, depIndex, o.lazyDetails))) {
+            // 追い越された古いロード。新しいプロジェクトの結果を汚さないよう破棄する。
+            return;
+        }
 
         // 解析成功後にディスクキャッシュを更新 (Stage A 情報を永続化)
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                disk.save(root, this.classes, this.index);
+                disk.save(root, classes, index);
             } catch (IOException ex) {
                 l.onError(juml.util.ErrorCode.CACHE_002, null, -1, "disk cache save failed: " + ex.getMessage());
             }
@@ -178,6 +254,7 @@ public final class ProjectAnalysisCache {
         if (archive == null) {
             throw new IllegalArgumentException("archive is null");
         }
+        long gen = currentGeneration();
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         List<JavaClassInfo> infos = UmlGenerator.extractFromArchive(archive, l);
         ClassIndex idx = new ClassIndex();
@@ -185,13 +262,8 @@ public final class ProjectAnalysisCache {
             // source=null: 詳細昇格でソース再パースを試みない (バイナリ由来のため)
             idx.put(c, null, null);
         }
-        this.projectRoot = archive;
-        this.analysis = null;
-        this.classes = infos;
-        this.index = idx;
-        this.dependencyIndex = new DependencyJarIndex();
-        this.lazy = false; // アーカイブはソース未登録のため昇格不可 (ヘッダ確定)
-        this.detailedClasses = null;
+        // アーカイブはソース未登録のため昇格不可 (ヘッダ確定) → lazy=false
+        install(gen, new Snapshot(archive, null, infos, idx, new DependencyJarIndex(), false));
     }
 
     /**
@@ -199,21 +271,19 @@ public final class ProjectAnalysisCache {
      * 次回 {@link #load} で再解析が強制される。プロジェクト未読込なら no-op。
      */
     public void invalidate() {
-        if (projectRoot != null && disk != null) {
-            disk.invalidate(projectRoot);
+        File root = snap.projectRoot;
+        if (root != null && disk != null) {
+            disk.invalidate(root);
         }
         clear();
     }
 
     /** キャッシュをクリアする (プロジェクトを閉じたとき等)。 */
-    public void clear() {
-        projectRoot = null;
-        analysis = null;
-        classes = Collections.emptyList();
-        index = new ClassIndex();
-        dependencyIndex = new DependencyJarIndex();
-        lazy = false;
+    public synchronized void clear() {
+        generation++;
+        snap = Snapshot.empty();
         detailedClasses = null;
+        detailedFor = null;
     }
 
     /**
@@ -226,31 +296,42 @@ public final class ProjectAnalysisCache {
      * シーケンス起点ピッカー等) はこちらを使うこと。</p>
      *
      * <p>大規模プロジェクトでは初回呼び出しが全ソース再パースを伴うため、
-     * UI スレッドではなく SwingWorker から呼ぶことが望ましい。</p>
+     * UI スレッドではなく SwingWorker から呼ぶことが望ましい。昇格中にプロジェクトが
+     * 切り替わった場合、その昇格結果はメモ化しない (旧プロジェクトのクラス一覧が
+     * 新プロジェクトの詳細として蘇るのを防ぐ)。</p>
      */
-    public synchronized List<JavaClassInfo> getDetailedClasses() {
-        if (!lazy) {
-            return classes;
+    public List<JavaClassInfo> getDetailedClasses() {
+        Snapshot s = snap;
+        if (!s.lazy) {
+            return s.classes;
         }
-        if (detailedClasses != null) {
-            return detailedClasses;
+        synchronized (this) {
+            if (detailedClasses != null && detailedFor == s) {
+                return detailedClasses;
+            }
         }
-        List<JavaClassInfo> out = new java.util.ArrayList<>(classes.size());
-        for (JavaClassInfo c : classes) {
+        // モニタ外で昇格する (長時間のフルパース中に clear()/load() をブロックしない)。
+        List<JavaClassInfo> out = new java.util.ArrayList<>(s.classes.size());
+        for (JavaClassInfo c : s.classes) {
             if (c.isDetailed()) {
                 out.add(c);
                 continue;
             }
-            JavaClassInfo d = index.detail(c.getQualifiedName(), ErrorListener.silent());
+            JavaClassInfo d = s.index.detail(c.getQualifiedName(), ErrorListener.silent());
             out.add(d != null ? d : c);
         }
-        detailedClasses = out;
+        synchronized (this) {
+            if (snap == s) {
+                detailedClasses = out;
+                detailedFor = s;
+            }
+        }
         return out;
     }
 
     /** {@code classes} がヘッダのみ (Stage A) か。詳細が要る処理の分岐に使う。 */
     public boolean isLazy() {
-        return lazy;
+        return snap.lazy;
     }
 
     /**
@@ -259,36 +340,49 @@ public final class ProjectAnalysisCache {
      * UI 側はこれを見て、false のときだけ背景スレッドで昇格すれば EDT を止めずに済む。
      */
     public synchronized boolean isDetailedReady() {
-        return !lazy || detailedClasses != null;
+        Snapshot s = snap;
+        return !s.lazy || (detailedClasses != null && detailedFor == s);
     }
 
     public File getProjectRoot() {
-        return projectRoot;
+        return snap.projectRoot;
     }
 
     public AndroidProjectAnalysis getAnalysis() {
-        return analysis;
+        return snap.analysis;
     }
 
     public List<JavaClassInfo> getClasses() {
-        return classes;
+        return snap.classes;
     }
 
     public ClassIndex getIndex() {
-        return index;
+        return snap.index;
     }
 
     /** 依存 JAR/AAR の遅延解決インデックス (Gradle 宣言由来)。常に非 null。 */
     public DependencyJarIndex getDependencyIndex() {
-        return dependencyIndex;
+        return snap.dependencyIndex;
     }
 
     /** 完全修飾名 → モジュール名のマップ (Gradle 解析由来)。 */
     public Map<String, String> getClassToModule() {
-        return index.moduleMap();
+        return snap.index.moduleMap();
     }
 
     public boolean isLoaded() {
-        return projectRoot != null;
+        return snap.projectRoot != null;
+    }
+
+    /**
+     * テスト専用: 実解析を走らせずに「root が読込済み」の状態を作る
+     * ({@code isLoaded()} が true になる)。本番コードから呼ばないこと。
+     */
+    synchronized void setLoadedRootForTest(File root) {
+        generation++;
+        snap = new Snapshot(root, null, Collections.emptyList(),
+                new ClassIndex(), new DependencyJarIndex(), false);
+        detailedClasses = null;
+        detailedFor = null;
     }
 }

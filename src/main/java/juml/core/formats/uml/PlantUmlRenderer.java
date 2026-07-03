@@ -243,25 +243,10 @@ public final class PlantUmlRenderer {
             return;
         }
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        // Smetana/PlantUML が stderr へ直接書くデバッグ出力を捕捉する。verbose なら
-        // 元の stderr にも素通しし、非 verbose なら画面には出さない。いずれの場合も
-        // 失敗時の診断用に末尾を保持する (従来は非 verbose で完全に捨てていた)。
-        // Smetana は巨大な図で大量に出力するため、末尾のみ保持する有界バッファを使う。
-        StderrTailBuffer errCapture = new StderrTailBuffer(STDERR_CAPTURE_MAX);
-        PrintStream origErr = System.err;
-        PrintStream capture = new PrintStream(errCapture, true, StandardCharsets.UTF_8) {
-            @Override
-            public void write(byte[] b, int off, int len) {
-                super.write(b, off, len);
-                if (verbose) {
-                    origErr.write(b, off, len);
-                    origErr.flush();
-                }
-            }
-        };
-        System.setErr(capture);
-        boolean descIsError = false;
-        try {
+        // 失敗時の DiagramDescription "(Error)" を一次シグナルとして捕捉するホルダ。
+        // captureStderrDuring のラムダ内から書き込むため配列で持つ。
+        boolean[] descIsError = {false};
+        String stderrTail = captureStderrDuring(() -> {
             BiConsumer<String, OutputStream> stub = rendererImplForTest;
             if (stub != null) {
                 stub.accept(puml, buf);
@@ -271,25 +256,71 @@ public final class PlantUmlRenderer {
                 // 失敗時の DiagramDescription はちょうど "(Error)" になる (PNG 経路の
                 // PlantUmlImageRenderer と同じ実測済みの一次シグナル)。SVG のマーカー
                 // 判定より確実で、図のテキスト内容に依存しない。
-                descIsError = desc != null && "(Error)".equals(String.valueOf(desc));
+                descIsError[0] = desc != null && "(Error)".equals(String.valueOf(desc));
             }
-        } finally {
-            System.setErr(origErr);
-            capture.close();
-        }
+        });
         byte[] bytes = buf.toByteArray();
-        if (descIsError || isErrorSvg(bytes)) {
-            throw buildRenderFailure(puml, bytes, errCapture);
+        if (descIsError[0] || isErrorSvg(bytes)) {
+            throw buildRenderFailure(puml, bytes, stderrTail);
         }
         // PlantUML はレイアウトエンジンの致命的障害 (dot 実行失敗 / Smetana 内部クラッシュ)
         // を握りつぶし、要素が配置されない「ほぼ空の SVG」を正常出力として返すことがある。
         // エラー画像マーカーでは検出できないため、捕捉した stderr の障害シグネチャで検出し
         // 明示的な失敗に変換する (壊れた図を成功として保存・表示させない)。
-        juml.util.ErrorCode fatal = fatalLayoutErrorCode(errCapture.tailString());
+        juml.util.ErrorCode fatal = fatalLayoutErrorCode(stderrTail);
         if (fatal != null) {
-            throw buildLayoutCrashFailure(fatal, puml, errCapture);
+            throw buildLayoutCrashFailure(fatal, puml, stderrTail);
         }
         out.write(bytes);
+    }
+
+    /** stderr 捕捉付きで実行する描画アクション。 */
+    @FunctionalInterface
+    public interface RenderAction {
+        /** 描画本体。 */
+        void run() throws IOException;
+    }
+
+    /**
+     * {@link System#err} のスワップ区間を直列化するロック。{@code System.setErr} は
+     * プロセスグローバルのため、並行レンダリングでスワップ/復元が交錯すると、
+     * 別スレッドの捕捉バッファを「元の stderr」として保存してしまい、最終的に
+     * 閉じられた捕捉バッファへ恒久リダイレクトされる (以降の stderr が全て失われ、
+     * レイアウト障害検出も無効化される)。捕捉が必要な描画は必ずこのロック内で行う。
+     */
+    private static final Object STDERR_CAPTURE_LOCK = new Object();
+
+    /**
+     * Smetana/PlantUML が stderr へ直接書くデバッグ出力を捕捉しながら {@code action} を
+     * 実行し、捕捉した末尾テキストを返す。verbose なら元の stderr にも素通しし、
+     * 非 verbose なら画面には出さない。いずれの場合も失敗時の診断用に末尾を保持する。
+     * Smetana は巨大な図で大量に出力するため、末尾のみ保持する有界バッファを使う。
+     *
+     * <p>PNG 経路 ({@code PlantUmlImageRenderer}) からも共用するため public。</p>
+     */
+    public static String captureStderrDuring(RenderAction action) throws IOException {
+        StderrTailBuffer errCapture = new StderrTailBuffer(STDERR_CAPTURE_MAX);
+        synchronized (STDERR_CAPTURE_LOCK) {
+            PrintStream origErr = System.err;
+            PrintStream capture = new PrintStream(errCapture, true, StandardCharsets.UTF_8) {
+                @Override
+                public void write(byte[] b, int off, int len) {
+                    super.write(b, off, len);
+                    if (verbose) {
+                        origErr.write(b, off, len);
+                        origErr.flush();
+                    }
+                }
+            };
+            System.setErr(capture);
+            try {
+                action.run();
+            } finally {
+                System.setErr(origErr);
+                capture.close();
+            }
+        }
+        return errCapture.tailString();
     }
 
     /**
@@ -298,7 +329,7 @@ public final class PlantUmlRenderer {
      * @return 該当するエラー ID ({@code UML-R008}=dot 実行不能 /
      *         {@code UML-R002}=Smetana 内部クラッシュ)。障害シグネチャなしは null。
      */
-    static juml.util.ErrorCode fatalLayoutErrorCode(String stderrText) {
+    public static juml.util.ErrorCode fatalLayoutErrorCode(String stderrText) {
         if (stderrText == null || stderrText.isEmpty()) {
             return null;
         }
@@ -322,8 +353,8 @@ public final class PlantUmlRenderer {
      * 原因調査用の詳細 (生成 PlantUML 抜粋 + stderr 末尾) を AppLog へ記録する。
      */
     private static PlantUmlRenderFailedException buildLayoutCrashFailure(
-            juml.util.ErrorCode code, String puml, StderrTailBuffer errCapture) {
-        String stderrTail = tailOf(errCapture.tailString(), 2000);
+            juml.util.ErrorCode code, String puml, String capturedStderr) {
+        String stderrTail = tailOf(capturedStderr, 2000);
         StringBuilder msg = new StringBuilder("PlantUML layout engine failed");
         if (code == juml.util.ErrorCode.UML_R008) {
             msg.append(": Graphviz dot could not be executed");
@@ -349,10 +380,10 @@ public final class PlantUmlRenderer {
      * 詳細を記録する。
      */
     private static PlantUmlRenderFailedException buildRenderFailure(
-            String puml, byte[] errorSvg, StderrTailBuffer errCapture) {
+            String puml, byte[] errorSvg, String capturedStderr) {
         String detail = extractErrorDetail(errorSvg);
         int errorLine = extractErrorLine(detail);
-        String stderrTail = tailOf(errCapture.tailString(), 2000);
+        String stderrTail = tailOf(capturedStderr, 2000);
         // 生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが見つかれば添える。
         String hint = PlantUmlSyntaxChecker.summarize(puml);
         // 原因を ID に分類する: 行番号や構文診断があれば構文エラー (UML-R001)、

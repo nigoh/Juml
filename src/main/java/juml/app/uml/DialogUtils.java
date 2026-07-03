@@ -16,6 +16,27 @@ final class DialogUtils {
     private DialogUtils() {}
 
     /**
+     * 保存先ファイルが既に存在する場合に上書き確認ダイアログを出す。
+     * Swing の {@link javax.swing.JFileChooser} は上書き確認をしないため、
+     * 保存経路は必ず「最終的な保存先が確定した後」(拡張子補完後) にこれを通すこと。
+     *
+     * @return 書き込んでよければ true (未存在ファイルは常に true)
+     */
+    static boolean confirmOverwrite(java.awt.Component parent, java.io.File target) {
+        if (target == null || !target.exists()) {
+            return true;
+        }
+        int r = javax.swing.JOptionPane.showConfirmDialog(parent,
+                java.text.MessageFormat.format(
+                        juml.util.Messages.get("dialog.overwrite.message"),
+                        target.getAbsolutePath()),
+                juml.util.Messages.get("dialog.overwrite.title"),
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+        return r == javax.swing.JOptionPane.YES_OPTION;
+    }
+
+    /**
      * OK / Cancel ボタンを右寄せパネルにまとめる。順序は OK → Cancel で統一。
      * 追加ボタン ({@code extras}) がある場合は OK の前に並べる。
      */

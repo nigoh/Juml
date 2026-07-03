@@ -11,7 +11,6 @@ import org.junit.Test;
 
 import javax.swing.JTabbedPane;
 import java.awt.GraphicsEnvironment;
-import java.lang.reflect.Field;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -56,12 +55,10 @@ public class DiagramTabPaneTest {
         Assume.assumeFalse(
                 "ヘッドレス環境では DiagramTab の Swing コンポーネント生成が失敗するためスキップ",
                 GraphicsEnvironment.isHeadless());
-        // ProjectAnalysisCache の isLoaded() が true を返すよう projectRoot をセット。
-        // load() を呼ぶと実プロジェクト解析が走るため、最小侵襲のリフレクションで注入する。
+        // ProjectAnalysisCache の isLoaded() が true を返すようテスト用フックで注入する
+        // (load() を呼ぶと実プロジェクト解析が走るため)。
         cache = new ProjectAnalysisCache();
-        Field rootField = ProjectAnalysisCache.class.getDeclaredField("projectRoot");
-        rootField.setAccessible(true);
-        rootField.set(cache, new java.io.File(System.getProperty("java.io.tmpdir")));
+        cache.setLoadedRootForTest(new java.io.File(System.getProperty("java.io.tmpdir")));
 
         GuiActionRunner.execute(() -> {
             tabs = new JTabbedPane();
