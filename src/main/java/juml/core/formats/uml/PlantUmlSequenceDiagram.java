@@ -253,29 +253,38 @@ public final class PlantUmlSequenceDiagram {
                 && o.projectClassColor != null
                 && !o.projectClassColor.isEmpty();
         for (String p : participants) {
-            out.append("participant ").append(quote(p));
+            // PlantUML の participant 宣言はステレオタイプ (<<...>>) を色 (#...) より
+            // 前に置く必要がある。順序を誤ると「#color <<stereo>>」となり構文エラーに
+            // なるため、ステレオタイプ群と色を別々に組み立て、必ず stereo → color の
+            // 順で出力する。
+            StringBuilder stereos = new StringBuilder();
+            String color = null;
             JavaClassInfo.Origin origin = participantOrigins.get(p);
             if (origin == JavaClassInfo.Origin.EXTERNAL_JAR && o.showExternalParticipants) {
-                out.append(" <<external>>");
+                stereos.append(" <<external>>");
             } else if (origin == JavaClassInfo.Origin.MISSING_JAR && o.showMissingParticipants) {
-                out.append(" <<missing>>");
+                stereos.append(" <<missing>>");
                 if (o.missingParticipantColor != null && !o.missingParticipantColor.isEmpty()) {
-                    out.append(' ').append(o.missingParticipantColor);
+                    color = o.missingParticipantColor;
                 }
             } else if (inlineParticipants.contains(p)) {
-                out.append(" <<inline>>");
+                stereos.append(" <<inline>>");
                 if (o.inlineParticipantColor != null && !o.inlineParticipantColor.isEmpty()) {
-                    out.append(' ').append(o.inlineParticipantColor);
+                    color = o.inlineParticipantColor;
                 }
             } else if (colorize && findClass(classes, p) != null) {
-                out.append(' ').append(o.projectClassColor);
+                color = o.projectClassColor;
             }
             // AIDL 生成 stub を継承する binder service 実装は、`<<binder>>`
             // ステレオタイプを付与して participant 上で IPC 境界を示す。
             // 既存色付け・external/missing と独立に追加する。
             JavaClassInfo pCls = findClass(classes, p);
             if (pCls != null && AaosPattern.isAidlBinderImpl(pCls)) {
-                out.append(" <<binder>>");
+                stereos.append(" <<binder>>");
+            }
+            out.append("participant ").append(quote(p)).append(stereos);
+            if (color != null) {
+                out.append(' ').append(color);
             }
             out.append('\n');
         }

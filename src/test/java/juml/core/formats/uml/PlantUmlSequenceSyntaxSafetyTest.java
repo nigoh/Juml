@@ -98,6 +98,32 @@ public class PlantUmlSequenceSyntaxSafetyTest {
         assertNoPlantUmlSyntaxError(puml);
     }
 
+    /**
+     * AIDL binder 実装 ({@code X.Stub} 継承) かつプロジェクト内クラスの participant は、
+     * ステレオタイプ ({@code <<binder>>}) と色 ({@code #...}) の両方を持つ。PlantUML は
+     * ステレオタイプを色より前に要求するため、{@code #color <<binder>>} の順で出力すると
+     * 構文エラーになる (AOSP コーパスで 2,026 図が失敗)。stereo → color の順を保証する。
+     */
+    @Test
+    public void binderParticipantEmitsStereotypeBeforeColor() throws IOException {
+        // A は IFoo.Stub を継承する binder 実装。run() から self を色付き participant に出す。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A extends IFoo.Stub {\n"
+                + "  void run() { helper(); }\n"
+                + "  void helper() {}\n"
+                + "}\n");
+        PlantUmlSequenceDiagram.Options o = new PlantUmlSequenceDiagram.Options();
+        o.highlightProjectClasses = true;
+        o.projectClassColor = "#LightSkyBlue";
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", o);
+        assertTrue("binder stereotype must be present:\n" + puml,
+                puml.contains("<<binder>>"));
+        // 色の直後にステレオタイプが来る不正な順序が現れないこと
+        assertFalse("participant must not put color before stereotype:\n" + puml,
+                puml.matches("(?s).*participant \"[^\"]+\"[^\\n]*#\\S+ <<.*"));
+        assertNoPlantUmlSyntaxError(puml);
+    }
+
     /** 生成 PlantUML を実レンダリングし、PlantUML の構文エラー画像にならないことを確認する。 */
     private static void assertNoPlantUmlSyntaxError(String puml) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
