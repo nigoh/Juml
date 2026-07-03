@@ -46,6 +46,47 @@ final class PlantUmlCommentFormatter {
     }
 
     /**
+     * note ブロック本文の 1 行を、PlantUML に構文として解釈されない形へ無害化する。
+     * 該当する行の行頭へゼロ幅スペース (U+200B) を挟む。表示は元のテキストと変わらない。
+     *
+     * <ul>
+     *   <li>終端キーワードだけの行 ({@code end note} / {@code endnote}): そこで
+     *       note ブロックが打ち切られ、残りの本文が生のディレクティブとして
+     *       解釈されて構文エラーになる (終端注入)。</li>
+     *   <li>{@code !} で始まる行: プリプロセッサ命令 ({@code !theme} 等) と誤認される。
+     *       wordWrap の折り返しで {@code !} が行頭に来るケースも含む。</li>
+     *   <li>{@code '} / {@code /'} で始まる行: PlantUML の行/ブロックコメントとして
+     *       本文が黙って消える・後続が飲み込まれる。</li>
+     * </ul>
+     */
+    static String sanitizeNoteLine(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        if (NOTE_TERMINATOR.matcher(s).matches()) {
+            return "\u200B" + s;
+        }
+        int i = 0;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+            i++;
+        }
+        if (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '!' || c == '\'') {
+                return "\u200B" + s;
+            }
+            if (c == '/' && i + 1 < s.length() && s.charAt(i + 1) == '\'') {
+                return "\u200B" + s;
+            }
+        }
+        return s;
+    }
+
+    /** note ブロックの終端キーワードだけの行。 */
+    private static final java.util.regex.Pattern NOTE_TERMINATOR =
+            java.util.regex.Pattern.compile("(?i)^\\s*end\\s?note\\s*$");
+
+    /**
      * コメント/ラベル中の creole/HTML タグ開始 ({@code <}) をチルダエスケープする。
      *
      * <p>同梱の PlantUML 1.2026.x は {@code &lt;} 等の HTML エンティティを解釈せず
@@ -150,8 +191,10 @@ final class PlantUmlCommentFormatter {
             String wrapped = wordWrap(t, maxLen);
             for (String wl : wrapped.split("\n", -1)) {
                 if (!wl.isEmpty()) {
-                    // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)
-                    out.append(indent).append("  ").append(escapeText(wl)).append('\n');
+                    // note 本文もタグ開始をエスケープ (INLINE と挙動を揃え、タグ誤認を防ぐ)。
+                    // "end note" だけの行は終端注入になるため無害化する。
+                    out.append(indent).append("  ")
+                            .append(sanitizeNoteLine(escapeText(wl))).append('\n');
                 }
             }
         }
