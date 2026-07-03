@@ -848,7 +848,11 @@ public final class PlantUmlSequenceDiagram {
     }
 
     static String quote(String s) {
-        return "\"" + s.replace("\"", "\\\"") + "\"";
+        // PlantUML の引用符付き名前はバックスラッシュエスケープ (\") を解釈せず、
+        // 名前中に ASCII の " があると構文エラーになる (実例: 文字列リテラルを
+        // レシーバに取る呼び出し "alpha" が participant 名になる)。見た目が近く
+        // 構文を壊さない全角引用符 (U+FF02) へ置換して無害化する。
+        return "\"" + s.replace('"', '＂') + "\"";
     }
 
     /** 引用符なしで書ける単純な participant 識別子のパターン。 */

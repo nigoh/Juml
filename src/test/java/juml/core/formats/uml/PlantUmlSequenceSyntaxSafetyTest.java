@@ -133,4 +133,25 @@ public class PlantUmlSequenceSyntaxSafetyTest {
         assertFalse("PlantUML reported a syntax error for:\n" + puml,
                 svg.contains("Syntax Error"));
     }
+
+    @Test
+    public void quoteReplacesEmbeddedDoubleQuotes() {
+        // PlantUML は引用符付き名前中の \" を解釈しないため、名前に ASCII " を含む
+        // participant (文字列リテラルをレシーバに取る呼び出し等) は全角引用符へ置換する。
+        String q = PlantUmlSequenceDiagram.quote("\"alpha\"");
+        assertFalse("must not backslash-escape quotes: " + q, q.contains("\\\""));
+        assertEquals("\"\uFF02alpha\uFF02\"", q);
+    }
+
+    @Test
+    public void stringLiteralReceiverRendersWithoutSyntaxError() throws IOException {
+        // レシーバが文字列リテラル ("alpha".equals(x) 等) だと participant 名に " が入る。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run() { boolean b = \"alpha\".equals(name()); } "
+                + "String name() { return null; } }");
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", null);
+        assertFalse("no backslash-escaped quote in participant:\n" + puml,
+                puml.contains("\\\""));
+        assertNoPlantUmlSyntaxError(puml);
+    }
 }
