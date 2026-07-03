@@ -333,7 +333,7 @@ public final class IndexCommand {
             try {
                 FilesDao.delete(db.connection(), path);
             } catch (SQLException ex) {
-                listener.onError(path, -1, "failed to delete row: " + ex.getMessage());
+                listener.onError(juml.util.ErrorCode.PRJ_012, path, -1, "failed to delete row: " + ex.getMessage());
             }
         }
 
@@ -372,7 +372,7 @@ public final class IndexCommand {
             writer.upsertFile(relPath, IndexWriter.KIND_JAVA, mtime, size,
                     null, null, classes, parseError);
         } catch (SQLException ex) {
-            listener.onError(relPath, -1, "upsert failed: " + ex.getMessage());
+            listener.onError(juml.util.ErrorCode.PRJ_012, relPath, -1, "upsert failed: " + ex.getMessage());
         }
     }
 
@@ -458,7 +458,7 @@ public final class IndexCommand {
             List<ScreenTransition> transitions = detector.analyzeProject(projectRoot);
             EndpointAggregator.ingestIntentTransitions(db.connection(), transitions);
         } catch (IOException ex) {
-            listener.onError(null, -1,
+            listener.onError(juml.util.ErrorCode.PRJ_012, null, -1,
                     "intent navigation analysis failed: " + ex.getMessage());
         }
     }
@@ -507,11 +507,11 @@ public final class IndexCommand {
         try {
             f = new File(projectRoot, relPath).getCanonicalFile();
             if (!f.getPath().startsWith(projectRoot.getCanonicalPath() + File.separator)) {
-                listener.onError(relPath, -1, "path traversal rejected: " + relPath);
+                listener.onError(juml.util.ErrorCode.PRJ_012, relPath, -1, "path traversal rejected: " + relPath);
                 return null;
             }
         } catch (IOException ex) {
-            listener.onError(relPath, -1, "path resolution failed: " + ex.getMessage());
+            listener.onError(juml.util.ErrorCode.PRJ_012, relPath, -1, "path resolution failed: " + ex.getMessage());
             return null;
         }
         if (!f.isFile()) {
@@ -521,10 +521,10 @@ public final class IndexCommand {
             String src = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
             return AndroidManifestParser.parse(src, listener);
         } catch (IOException ex) {
-            listener.onError(relPath, -1, "manifest re-read failed: " + ex.getMessage());
+            listener.onError(juml.util.ErrorCode.PRJ_004, relPath, -1, "manifest re-read failed: " + ex.getMessage());
             return null;
         } catch (RuntimeException ex) {
-            listener.onError(relPath, -1, "manifest re-parse failed: " + ex.getMessage());
+            listener.onError(juml.util.ErrorCode.PRJ_008, relPath, -1, "manifest re-parse failed: " + ex.getMessage());
             return null;
         }
     }

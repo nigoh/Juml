@@ -544,7 +544,7 @@ public final class DiagramTabPane {
         try {
             PumlEditorSupport.write(target, tab.sourcePanel.getText());
         } catch (java.io.IOException ex) {
-            juml.util.AppLog.error("DiagramTabPane",
+            juml.util.AppLog.error(juml.util.ErrorCode.UML_E003, "DiagramTabPane",
                     "puml save failed: " + target.getAbsolutePath(), ex);
             javax.swing.JOptionPane.showMessageDialog(tabs,
                     Messages.get("puml.editor.saveFailed") + ex.getMessage(),
@@ -1239,11 +1239,18 @@ public final class DiagramTabPane {
         private NotesSidePanel notesPanel;
         /** プレビュー領域と付箋一覧の左右分割。 */
         private JSplitPane hsplit;
-        private final JLabel messageLabel = new JLabel("", javax.swing.SwingConstants.CENTER);
+        /**
+         * メッセージカード本体。JLabel ではなく JEditorPane にすることで、
+         * エラー内容をマウス選択してコピーできる (クローズド環境での転記支援)。
+         * juml-errcode: / juml-copy: リンクのクリックも受け付ける。
+         */
+        private final javax.swing.JEditorPane messageLabel = new javax.swing.JEditorPane();
         private final javax.swing.JProgressBar renderSpinner = new javax.swing.JProgressBar();
         private String renderedPuml;
         private String renderedSvgXml;
         private String lastStatus;
+        /** 直近の描画失敗の転記用テキスト (juml-copy: リンクでコピーされる)。 */
+        private String copyableFailureText;
         /** 描画済み SVG をメモリ節約のため解放した状態か (再フォーカスで再描画する)。 */
         private boolean renderReleased;
         /** 進行中の描画ワーカー。再描画/クローズ時にキャンセルして競合・無駄を防ぐ。 */
@@ -1267,7 +1274,15 @@ public final class DiagramTabPane {
             java.awt.Color msgBg = javax.swing.UIManager.getColor("Panel.background");
             msgPanel.setBackground(msgBg != null ? msgBg : java.awt.Color.WHITE);
             java.awt.Color msgFg = javax.swing.UIManager.getColor("Label.foreground");
+            messageLabel.setContentType("text/html");
+            messageLabel.setEditable(false);
+            messageLabel.setOpaque(false);
+            // JLabel と同じ UI フォント / 前景色で HTML を描画させる
+            messageLabel.putClientProperty(
+                    javax.swing.JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+            messageLabel.setFont(javax.swing.UIManager.getFont("Label.font"));
             messageLabel.setForeground(msgFg != null ? msgFg : new Color(0x555555));
+            messageLabel.addHyperlinkListener(this::handleMessageCardLink);
             renderSpinner.setIndeterminate(true);
             renderSpinner.setPreferredSize(new java.awt.Dimension(200, 6));
             renderSpinner.setVisible(false);
@@ -1496,8 +1511,50 @@ public final class DiagramTabPane {
         private void showMessageCard(String html, boolean showSpinner) {
             messageLabel.setText("<html><div style='text-align:center;width:460px'>"
                     + html + "</div></html>");
+            messageLabel.setCaretPosition(0);
             renderSpinner.setVisible(showSpinner);
             cards.show(viewCards, "msg");
+        }
+
+        /**
+         * メッセージカード内リンクの処理。{@code juml-errcode:<ID>} はアプリ内
+         * エラーリファレンスの該当項目を開き、{@code juml-copy:} は直近の失敗詳細を
+         * クリップボードへコピーする。
+         */
+        private void handleMessageCardLink(javax.swing.event.HyperlinkEvent e) {
+            if (e.getEventType() != javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
+                return;
+            }
+            String href = e.getDescription();
+            if (href == null) {
+                return;
+            }
+            if (href.startsWith("juml-errcode:")) {
+                ErrorReferenceDialog.showFor(
+                        javax.swing.SwingUtilities.getWindowAncestor(this),
+                        href.substring("juml-errcode:".length()));
+            } else if (href.startsWith("juml-copy:") && copyableFailureText != null) {
+                java.awt.datatransfer.StringSelection sel =
+                        new java.awt.datatransfer.StringSelection(copyableFailureText);
+                getToolkit().getSystemClipboard().setContents(sel, sel);
+                reportStatus(Messages.get("diag.fail.copied"));
+            }
+        }
+
+        /** 転記・報告用の失敗詳細テキストを組み立てる。 */
+        private String buildFailureText(juml.util.ErrorCode code, Throwable error,
+                java.io.File dumped) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(code.getId()).append(' ').append(code.summary()).append('\n');
+            sb.append(label).append('\n');
+            sb.append(DiagramFailureMessage.fullReason(error)).append('\n');
+            if (dumped != null) {
+                sb.append(Messages.get("diag.fail.savedTo")).append(' ')
+                  .append(dumped.getAbsolutePath()).append('\n');
+            }
+            sb.append(Messages.get("errref.remedyLabel")).append(' ')
+              .append(code.remedy());
+            return sb.toString();
         }
 
         private void setStatus(String msg) {
@@ -1645,9 +1702,13 @@ public final class DiagramTabPane {
                         }
                         // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
                         // (ユーザがそのまま報告できるようにする)。
-                        java.io.File dumped = RenderFailureLog.dump(label, pumlOnError, error);
-                        showMessageCard(DiagramFailureMessage.forError(error, dumped));
-                        setStatus(label + ": " + Messages.get("status.renderFailed") + " " + failureReason(error));
+                        juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
+                        java.io.File dumped = RenderFailureLog.dump(
+                                label, pumlOnError, error, isEditor());
+                        copyableFailureText = buildFailureText(code, error, dumped);
+                        showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
+                        setStatus(label + ": " + code.tag() + " "
+                                + Messages.get("status.renderFailed") + " " + failureReason(error));
                         return;
                     }
                     try {
@@ -1681,19 +1742,19 @@ public final class DiagramTabPane {
                         setStatus(label + " " + Messages.get("status.rendered") + " ("
                                 + (int) Math.round(r.svg.getWidth()) + "x" + (int) Math.round(r.svg.getHeight()) + ", SVG)");
                     } catch (Exception ex) {
-                        juml.util.AppLog.error("DiagramTab",
+                        juml.util.AppLog.error(juml.util.ErrorCode.UML_R004, "DiagramTab",
                                 "render result handling failed: " + label, ex);
-                        showMessageCard(failureMessage(ex));
-                        setStatus(label + ": " + ex.getMessage());
+                        copyableFailureText = buildFailureText(
+                                juml.util.ErrorCode.UML_R004, ex, null);
+                        showMessageCard(DiagramFailureMessage.forError(
+                                ex, null, juml.util.ErrorCode.UML_R004));
+                        setStatus(label + ": " + juml.util.ErrorCode.UML_R004.tag()
+                                + " " + ex.getMessage());
                     }
                 }
             };
             activeWorker = worker;
             worker.execute();
-        }
-
-        private String failureMessage(Throwable error) {
-            return DiagramFailureMessage.forError(error);
         }
 
         private String failureReason(Throwable error) {

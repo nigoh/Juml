@@ -96,7 +96,7 @@ final class PerFolderExporter {
             protected void done() {
                 resetBar(loadProgress);
                 if (error != null) {
-                    juml.util.AppLog.error("PerFolderExporter",
+                    juml.util.AppLog.error(juml.util.ErrorCode.EXP_005, "PerFolderExporter",
                             "Per-folder class diagram export failed: "
                                     + outDir.getAbsolutePath(), error);
                     status.setText(" ");

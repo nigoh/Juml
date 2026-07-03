@@ -119,6 +119,8 @@ public final class MenuBarBuilder {
         public Runnable navigateForward;
         /** Help &gt; Error Log: アプリのエラーログビューアを開く。 */
         public Runnable openLogViewer;
+        /** Help &gt; Error Code Reference: エラーコード一覧 (対処法) を開く。 */
+        public Runnable openErrorReference;
     }
 
     /**
@@ -772,6 +774,13 @@ public final class MenuBarBuilder {
                     menuMask | InputEvent.SHIFT_DOWN_MASK));
             logViewer.addActionListener(e -> cb.openLogViewer.run());
             m.add(logViewer);
+        }
+        if (cb.openErrorReference != null) {
+            JMenuItem errRef = new JMenuItem(Messages.get("menubar.help.errorReference"));
+            errRef.setToolTipText(Messages.get("menubar.help.errorReference.tooltip"));
+            errRef.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.INFO));
+            errRef.addActionListener(e -> cb.openErrorReference.run());
+            m.add(errRef);
         }
         m.addSeparator();
         m.add(about);

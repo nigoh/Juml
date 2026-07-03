@@ -73,7 +73,7 @@ public final class HidlParser {
         }
 
         private void warn(int line, String msg) {
-            listener.onError(null, line, msg);
+            listener.onError(juml.util.ErrorCode.PRJ_006, null, line, msg);
         }
 
         private JavaToken peek() {

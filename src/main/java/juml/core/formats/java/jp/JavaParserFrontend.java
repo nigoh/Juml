@@ -68,7 +68,7 @@ public final class JavaParserFrontend {
         ParseResult<CompilationUnit> result = parser.parse(expanded);
         if (!result.isSuccessful()) {
             for (Problem p : result.getProblems()) {
-                l.onError(null, lineOf(p), p.getMessage());
+                l.onError(juml.util.ErrorCode.PRJ_005, null, lineOf(p), p.getMessage());
             }
         }
         CompilationUnit cu = result.getResult().orElse(null);

@@ -122,7 +122,10 @@ public final class CliOptions {
         try {
             parser.parse(args);
         } catch (UnknownOptionException ex) {
-            System.err.println("Unknown option: " + ex.getOption());
+            // エラー ID を先頭に出し、クローズド環境でも ID から対処法 (docs/errors.md /
+            // GUI のエラーコード一覧) を辿れるようにする。
+            System.err.println(ex.getErrorCode().tag()
+                    + " Unknown option: " + ex.getOption());
             System.exit(1);
         }
     }

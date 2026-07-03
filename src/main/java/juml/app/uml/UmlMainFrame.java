@@ -310,6 +310,7 @@ public class UmlMainFrame extends JFrame {
         mcb.navigateBack = () -> tabPane.navigateBack();
         mcb.navigateForward = () -> tabPane.navigateForward();
         mcb.openLogViewer = () -> LogViewerDialog.showFor(this);
+        mcb.openErrorReference = () -> ErrorReferenceDialog.showFor(this, null);
         paletteCommands = AppCommands.from(mcb);
         MenuBarBuilder.Result menuResult =
                 new MenuBarBuilder(DiagramKind.CLASS, MENU_MASK, mcb, this).build();
@@ -1006,7 +1007,7 @@ public class UmlMainFrame extends JFrame {
         try {
             openPumlEditorTab(PumlEditorSupport.read(file), file);
         } catch (java.io.IOException ex) {
-            juml.util.AppLog.error("UmlMainFrame",
+            juml.util.AppLog.error(juml.util.ErrorCode.UML_E004, "UmlMainFrame",
                     "puml open failed: " + file.getAbsolutePath(), ex);
             JOptionPane.showMessageDialog(this,
                     Messages.get("puml.editor.openFailed") + ex.getMessage(),

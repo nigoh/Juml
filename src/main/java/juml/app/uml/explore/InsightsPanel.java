@@ -120,7 +120,8 @@ public final class InsightsPanel extends JPanel {
                     statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    juml.util.AppLog.error("InsightsPanel", "Insights analysis failed", cause);
+                    juml.util.AppLog.error(juml.util.ErrorCode.ANA_005, "InsightsPanel",
+                            "Insights analysis failed", cause);
                     statusLabel.setText(java.text.MessageFormat.format(
                             Messages.get("insights.status.failed"), cause.getMessage()));
                 } catch (InterruptedException ex) {
@@ -154,7 +155,7 @@ public final class InsightsPanel extends JPanel {
             statusLabel.setText(java.text.MessageFormat.format(
                     Messages.get("insights.status.saved"), chosen.getAbsolutePath()));
         } catch (IOException ex) {
-            juml.util.AppLog.error("InsightsPanel",
+            juml.util.AppLog.error(juml.util.ErrorCode.ANA_006, "InsightsPanel",
                     "Failed to save insights report: " + chosen.getAbsolutePath(), ex);
             statusLabel.setText(java.text.MessageFormat.format(
                     Messages.get("insights.status.saveFailed"), ex.getMessage()));

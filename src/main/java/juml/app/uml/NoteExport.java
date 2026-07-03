@@ -120,7 +120,7 @@ final class NoteExport {
             @Override
             protected void done() {
                 if (failure != null) {
-                    juml.util.AppLog.error("NoteExport",
+                    juml.util.AppLog.error(juml.util.ErrorCode.NOTE_001, "NoteExport",
                             "PNG export with notes failed: " + target.getAbsolutePath(), failure);
                     JOptionPane.showMessageDialog(parent,
                             Messages.get("export.failed") + failure.getMessage(),

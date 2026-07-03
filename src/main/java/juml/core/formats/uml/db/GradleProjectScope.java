@@ -116,7 +116,7 @@ public final class GradleProjectScope {
         try {
             script = new String(Files.readAllBytes(settings.toPath()), StandardCharsets.UTF_8);
         } catch (IOException ex) {
-            l.onError(settings.getName(), -1, "failed to read settings: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_009, settings.getName(), -1, "failed to read settings: " + ex.getMessage());
             return new Scope(Collections.emptyList(), Collections.emptyMap(), true);
         }
         GradleProjectInfo info = GradleScriptParser.parse(script, settings.getName(), l, null);

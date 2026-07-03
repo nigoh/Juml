@@ -56,12 +56,12 @@ public final class StringResourceParser {
             builder.setErrorHandler(new ErrorHandler() {
                 @Override
                 public void warning(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "warning: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "warning: " + ex.getMessage());
                 }
 
                 @Override
                 public void error(SAXParseException ex) {
-                    l.onError(null, ex.getLineNumber(), "error: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_007, null, ex.getLineNumber(), "error: " + ex.getMessage());
                 }
 
                 @Override
@@ -71,7 +71,7 @@ public final class StringResourceParser {
             });
             doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            l.onError(null, -1, "strings parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "strings parse failed: " + ex.getMessage());
             return res;
         }
         Element root = doc.getDocumentElement();

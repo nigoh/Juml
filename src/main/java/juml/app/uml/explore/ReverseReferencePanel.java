@@ -168,7 +168,7 @@ public final class ReverseReferencePanel extends JPanel {
                 } catch (java.util.concurrent.CancellationException ce) {
                     statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (Exception ex) {
-                    juml.util.AppLog.error("ReverseReferencePanel",
+                    juml.util.AppLog.error(juml.util.ErrorCode.ANA_001, "ReverseReferencePanel",
                             "Reference search failed", ex);
                     statusLabel.setText(Messages.get("explore.ref.failed")
                             + " " + ex.getMessage());

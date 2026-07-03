@@ -76,7 +76,7 @@ public final class AndroidProjectAnalyzer {
                 try {
                     info = GradleScriptParser.parse(content, f.getName(), l, catalog);
                 } catch (RuntimeException ex) {
-                    l.onError(f.getName(), -1, "gradle parse failed: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_009, f.getName(), -1, "gradle parse failed: " + ex.getMessage());
                     continue;
                 }
                 info.setModuleName(moduleName);
@@ -90,7 +90,7 @@ public final class AndroidProjectAnalyzer {
                 try {
                     info = AndroidNavigationGraphParser.parse(content, l);
                 } catch (RuntimeException ex) {
-                    l.onError(f.getName(), -1, "navigation parse failed: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_008, f.getName(), -1, "navigation parse failed: " + ex.getMessage());
                     continue;
                 }
                 info.setFilePath(f.getAbsolutePath());
@@ -109,7 +109,7 @@ public final class AndroidProjectAnalyzer {
                 try {
                     info = AndroidLayoutParser.parse(content, l);
                 } catch (RuntimeException ex) {
-                    l.onError(f.getName(), -1, "layout parse failed: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_008, f.getName(), -1, "layout parse failed: " + ex.getMessage());
                     continue;
                 }
                 info.setFilePath(f.getAbsolutePath());
@@ -131,7 +131,7 @@ public final class AndroidProjectAnalyzer {
                 try {
                     info = AndroidManifestParser.parse(content, l);
                 } catch (RuntimeException ex) {
-                    l.onError(f.getName(), -1, "manifest parse failed: " + ex.getMessage());
+                    l.onError(juml.util.ErrorCode.PRJ_008, f.getName(), -1, "manifest parse failed: " + ex.getMessage());
                     continue;
                 }
                 info.setSourceSet(inferSourceSet(f));
@@ -191,7 +191,7 @@ public final class AndroidProjectAnalyzer {
         try {
             strings = StringResourceParser.parse(content, l);
         } catch (RuntimeException ex) {
-            l.onError(f.getName(), -1, "strings parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, f.getName(), -1, "strings parse failed: " + ex.getMessage());
             strings = new AndroidStringResources();
         }
         if (!strings.getStrings().isEmpty()) {
@@ -209,7 +209,7 @@ public final class AndroidProjectAnalyzer {
         try {
             styles = StyleResourceParser.parse(content, l);
         } catch (RuntimeException ex) {
-            l.onError(f.getName(), -1, "styles parse failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_008, f.getName(), -1, "styles parse failed: " + ex.getMessage());
             styles = new AndroidStyleResources();
         }
         if (!styles.getStyles().isEmpty()) {
@@ -349,7 +349,7 @@ public final class AndroidProjectAnalyzer {
         try {
             return AndroidProjectScanner.readFile(f);
         } catch (IOException ex) {
-            l.onError(f.getName(), -1, "read failed: " + ex.getMessage());
+            l.onError(juml.util.ErrorCode.PRJ_004, f.getName(), -1, "read failed: " + ex.getMessage());
             return null;
         }
     }

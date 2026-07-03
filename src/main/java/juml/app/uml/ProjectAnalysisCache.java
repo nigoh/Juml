@@ -133,7 +133,7 @@ public final class ProjectAnalysisCache {
                     return;
                 }
             } catch (RuntimeException ex) {
-                l.onError(null, -1, "disk cache load failed: " + ex.getMessage());
+                l.onError(juml.util.ErrorCode.CACHE_001, null, -1, "disk cache load failed: " + ex.getMessage());
             }
         }
 
@@ -159,7 +159,7 @@ public final class ProjectAnalysisCache {
             try {
                 disk.save(root, this.classes, this.index);
             } catch (IOException ex) {
-                l.onError(null, -1, "disk cache save failed: " + ex.getMessage());
+                l.onError(juml.util.ErrorCode.CACHE_002, null, -1, "disk cache save failed: " + ex.getMessage());
             }
         }
     }

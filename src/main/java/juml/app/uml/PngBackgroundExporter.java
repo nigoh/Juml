@@ -48,7 +48,10 @@ final class PngBackgroundExporter {
             @Override
             protected void done() {
                 if (failure != null) {
-                    juml.util.AppLog.error("PngBackgroundExporter",
+                    juml.util.AppLog.error(
+                            juml.util.JumlException.codeOf(
+                                    failure, juml.util.ErrorCode.EXP_006),
+                            "PngBackgroundExporter",
                             "PNG render/export failed: " + target.getAbsolutePath(), failure);
                     String detail = failure.getMessage() != null
                             ? failure.getMessage() : failure.getClass().getSimpleName();

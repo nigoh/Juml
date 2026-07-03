@@ -83,6 +83,7 @@ final class AppCommands {
         add(list, "cmd.settings.graphviz", cb.enableGraphviz);
         add(list, "cmd.settings.clearCache", cb.clearAnalysisCache);
         add(list, "cmd.help.logViewer", cb.openLogViewer, MOD + SHIFT + "L");
+        add(list, "cmd.help.errorReference", cb.openErrorReference);
         if (cb.applyPreset != null) {
             for (DiagramPreset p : DiagramPreset.values()) {
                 if (p != DiagramPreset.CUSTOM) {

@@ -57,6 +57,8 @@
   （VS Code 風タブ中心アーキ方針 / 責務分離 / テスト方針。対象: `src/main/java/juml/app/uml/**`）
 - **Java 解析パイプラインを編集するとき** → `.claude/rules/java-parsing-pipeline.md`
   （lexer→structure→PlantUML の編集ガードレール。対象: `src/main/java/juml/core/formats/{java,uml}/**`）
+- **エラーログ・例外を書く/変えるとき** → `.claude/rules/error-logging.md`
+  （エラー ID (ErrorCode) の採番・記録規約 / docs/errors.md 自動生成。対象: `src/**/*.java`）
 
 `.claude/` 全体の仕組み（Rules / Skills / Subagents / Slash Commands / Hooks / settings）の
 使い分けマップは **`.claude/STEERING.md`** を参照。agents・commands・skills は Claude Code が

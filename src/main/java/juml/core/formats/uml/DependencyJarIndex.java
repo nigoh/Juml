@@ -108,14 +108,14 @@ public final class DependencyJarIndex {
             Path artifact = findArtifact(group, name, version);
             if (artifact == null) {
                 idx.missingArtifacts.add(notation);
-                l.onError(notation, -1, "dependency artifact not found");
+                l.onError(juml.util.ErrorCode.PRJ_002, notation, -1, "dependency artifact not found");
                 continue;
             }
             try {
                 idx.indexArtifact(artifact);
             } catch (IOException ex) {
                 idx.missingArtifacts.add(notation);
-                l.onError(artifact.toString(), -1,
+                l.onError(juml.util.ErrorCode.PRJ_002, artifact.toString(), -1,
                         "failed to index artifact: " + ex.getMessage());
             }
         }
@@ -140,7 +140,7 @@ public final class DependencyJarIndex {
                 ? "" : jarOrAar.getFileName().toString().toLowerCase();
         if (!Files.isRegularFile(jarOrAar)) {
             missingArtifacts.add(jarOrAar.toString());
-            l.onError(jarOrAar.toString(), -1, "local dependency jar not found");
+            l.onError(juml.util.ErrorCode.PRJ_002, jarOrAar.toString(), -1, "local dependency jar not found");
             return false;
         }
         if (!fn.endsWith(".jar") && !fn.endsWith(".aar")) {
@@ -151,7 +151,7 @@ public final class DependencyJarIndex {
             return true;
         } catch (IOException ex) {
             missingArtifacts.add(jarOrAar.toString());
-            l.onError(jarOrAar.toString(), -1,
+            l.onError(juml.util.ErrorCode.PRJ_002, jarOrAar.toString(), -1,
                     "failed to index local artifact: " + ex.getMessage());
             return false;
         }

@@ -134,7 +134,7 @@ public final class PerFolderClassDiagrams {
 
             File subDir = resolveSubDir(rootPath, folder, outputDir);
             if (!subDir.exists() && !subDir.mkdirs()) {
-                err.onError(folder.getAbsolutePath(), -1,
+                err.onError(juml.util.ErrorCode.EXP_005, folder.getAbsolutePath(), -1,
                         "Failed to create output subdir: " + subDir);
                 prog.onProgress(done, total, null);
                 continue;
@@ -147,7 +147,7 @@ public final class PerFolderClassDiagrams {
                 writeText(pumlFile, puml);
                 written.add(pumlFile);
             } catch (IOException ex) {
-                err.onError(pumlFile.getAbsolutePath(), -1,
+                err.onError(juml.util.ErrorCode.EXP_005, pumlFile.getAbsolutePath(), -1,
                         "Failed to write " + PUML_NAME + ": " + ex.getMessage());
                 prog.onProgress(done, total, null);
                 continue;
@@ -155,8 +155,11 @@ public final class PerFolderClassDiagrams {
             try {
                 PlantUmlRenderer.renderSvg(puml, svgFile);
                 written.add(svgFile);
-            } catch (IOException ex) {
-                err.onError(svgFile.getAbsolutePath(), -1,
+            } catch (IOException | juml.util.JumlException ex) {
+                // 描画失敗 (unchecked の PlantUmlRenderFailedException 含む) でも
+                // 1 フォルダの失敗で全体を止めず、次のフォルダへ続行する。
+                err.onError(juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.UML_R007),
+                        svgFile.getAbsolutePath(), -1,
                         "Failed to render " + SVG_NAME + ": " + ex.getMessage());
             }
             totalClasses += infos.size();

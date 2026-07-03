@@ -139,7 +139,8 @@ public final class ImpactExplorerPanel extends JPanel {
                 } catch (java.util.concurrent.CancellationException ce) {
                     statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (Exception ex) {
-                    juml.util.AppLog.error("ImpactExplorerPanel", "Impact analysis failed", ex);
+                    juml.util.AppLog.error(juml.util.ErrorCode.ANA_004, "ImpactExplorerPanel",
+                            "Impact analysis failed", ex);
                     statusLabel.setText(java.text.MessageFormat.format(
                             Messages.get("impact.status.failed"), ex.getMessage()));
                 }

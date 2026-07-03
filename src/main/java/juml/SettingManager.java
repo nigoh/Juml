@@ -45,7 +45,8 @@ public class SettingManager {
             try {
                 setting.saveToFile(settingFile);
             } catch (IOException e) {
-                juml.util.AppLog.warn("SettingManager", "Failed to save initial settings", e);
+                juml.util.AppLog.warn(juml.util.ErrorCode.CFG_001, "SettingManager",
+                        "Failed to save initial settings", e);
             }
         }
         instance = new SettingManager(setting, settingFile);
@@ -60,7 +61,8 @@ public class SettingManager {
         try {
             setting.saveToFile(settingFile);
         } catch (IOException e) {
-            juml.util.AppLog.warn("SettingManager", "Failed to save settings", e);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_001, "SettingManager",
+                    "Failed to save settings", e);
         }
     }
 

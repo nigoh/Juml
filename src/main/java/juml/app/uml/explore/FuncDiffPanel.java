@@ -245,7 +245,8 @@ public class FuncDiffPanel extends JPanel {
                     statusLabel.setText(Messages.get("analysis.cancelled"));
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    juml.util.AppLog.error("FuncDiffPanel", "Method diff analysis failed", cause);
+                    juml.util.AppLog.error(juml.util.ErrorCode.ANA_002, "FuncDiffPanel",
+                            "Method diff analysis failed", cause);
                     statusLabel.setText(Messages.get("explore.diff.error")
                             + " " + cause.getMessage());
                     resultArea.setText(Messages.get("explore.diff.error")
@@ -281,7 +282,7 @@ public class FuncDiffPanel extends JPanel {
             statusLabel.setText(Messages.get("explore.diff.savedTo")
                     + " " + chosen.getAbsolutePath());
         } catch (IOException ex) {
-            juml.util.AppLog.error("FuncDiffPanel",
+            juml.util.AppLog.error(juml.util.ErrorCode.ANA_003, "FuncDiffPanel",
                     "Failed to save diff report: " + chosen.getAbsolutePath(), ex);
             statusLabel.setText(Messages.get("explore.diff.saveFailed")
                     + " " + ex.getMessage());

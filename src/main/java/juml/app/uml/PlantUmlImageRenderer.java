@@ -51,9 +51,10 @@ public final class PlantUmlImageRenderer {
             // "(N entities)" 等でユーザー内容を含まないことを実測確認済み) ため、
             // 厳密一致で判定し、壊れた PNG を正常出力として返さず例外に変換する。
             if (desc != null && "(Error)".equals(String.valueOf(desc))) {
-                juml.util.AppLog.error("PlantUmlImageRenderer",
+                juml.util.AppLog.error(juml.util.ErrorCode.UML_R006, "PlantUmlImageRenderer",
                         "PNG render returned PlantUML error image: " + desc);
                 throw new juml.core.formats.uml.PlantUmlRenderFailedException(
+                        juml.util.ErrorCode.UML_R006,
                         "PlantUML render failed (error image returned on PNG export). "
                                 + "Check logs/juml.log for details.");
             }

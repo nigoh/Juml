@@ -287,7 +287,7 @@ public final class DiagramScopeDialog extends JDialog {
             try {
                 b.classNameRegex(regex);
             } catch (java.util.regex.PatternSyntaxException ex) {
-                juml.util.AppLog.warn("DiagramScopeDialog",
+                juml.util.AppLog.warn(juml.util.ErrorCode.DIAG_002, "DiagramScopeDialog",
                         "Invalid class-name regex in scope filter: " + regex, ex);
                 javax.swing.JOptionPane.showMessageDialog(this,
                         java.text.MessageFormat.format(

@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.util.ErrorCode;
 import juml.util.Messages;
 
 /**
@@ -10,6 +11,11 @@ import juml.util.Messages;
  *
  * <p>{@link DiagramTabPane} 本体の肥大化を避けるため、HTML メッセージ生成だけを
  * ここに切り出している。文言は {@link Messages} 経由で言語設定に追従する。</p>
+ *
+ * <p>クローズド環境での目視転記を想定し、エラー ID を大きく見出し表示する。
+ * ID は {@code juml-errcode:} リンクでアプリ内リファレンスへ、
+ * {@code juml-copy:} リンクで詳細のクリップボードコピーへ誘導する
+ * (処理は {@link DiagramTabPane} 側のハイパーリンクリスナーが行う)。</p>
  */
 final class DiagramFailureMessage {
 
@@ -18,16 +24,25 @@ final class DiagramFailureMessage {
 
     /** 失敗原因と対処を含む HTML メッセージを返す。 */
     static String forError(Throwable error) {
-        return forError(error, null);
+        return forError(error, null, null);
     }
 
     /**
      * 失敗原因と対処を含む HTML メッセージを返す。
      *
      * @param dumped 保存済みの失敗 PlantUML ファイル (null なら保存案内を省略)
+     * @param code   分類済みのエラー ID (null なら ID 見出しを省略)
      */
-    static String forError(Throwable error, java.io.File dumped) {
+    static String forError(Throwable error, java.io.File dumped, ErrorCode code) {
         StringBuilder sb = new StringBuilder();
+        if (code != null && code.hasId()) {
+            // 手書き転記の主役: ID を大きく表示し、リファレンスへのリンクにする
+            sb.append("<div style='font-size:16pt'><b><a href='juml-errcode:")
+              .append(code.getId()).append("'>").append(code.getId())
+              .append("</a></b></div>")
+              .append(esc(code.summary()))
+              .append("<br><br>");
+        }
         sb.append("<b>").append(Messages.get("diag.fail.title")).append("</b><br>")
           .append(esc(fullReason(error)))
           .append("<br><br>");
@@ -47,6 +62,12 @@ final class DiagramFailureMessage {
               .append(' ').append(esc(dumped.getAbsolutePath()));
         }
         sb.append("<br>").append(Messages.get("diag.fail.seeLog"));
+        if (code != null && code.hasId()) {
+            sb.append("<br><br><a href='juml-errcode:").append(code.getId()).append("'>")
+              .append(Messages.get("diag.fail.remedyLink")).append("</a>")
+              .append(" | <a href='juml-copy:'>")
+              .append(Messages.get("diag.fail.copyLink")).append("</a>");
+        }
         return sb.toString();
     }
 
