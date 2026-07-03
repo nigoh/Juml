@@ -189,6 +189,13 @@ final class MarkdownRenderer {
     }
 
     private static String escape(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        // コードスパンのプレースホルダに私用領域文字 (U+E000/U+E001) を使うため、
+        // 入力に紛れ込んだ同領域の文字は先に除去してプレースホルダ衝突を防ぐ
+        // (通常テキストには現れないが、貼り付け由来の制御文字対策)。
+        String cleaned = PUA.matcher(s).replaceAll("");
+        return cleaned.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
+
+    /** 私用領域 (Private Use Area) の文字。プレースホルダ衝突防止のため除去する。 */
+    private static final Pattern PUA = Pattern.compile("[\\uE000-\\uF8FF]");
 }
