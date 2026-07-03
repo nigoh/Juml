@@ -210,37 +210,36 @@ public final class PlantUmlSequenceDiagram {
             out.append("skinparam noteBorderColor ").append(o.commentColor).append('\n');
             out.append("skinparam noteFontColor ").append(o.commentColor).append('\n');
         }
+        // 起点クラス自身が participant フィルタで隠されている場合、本体を描いても
+        // Caller だけの空リフレーンになり、ユーザーには理由が分からない。友好的な
+        // 案内図に切り替える (起点は隠す対象にすべきでないことを伝える)。
+        if (isHidden(o, cls.getSimpleName())) {
+            return emptyDiagram(o, "Entry participant \"" + cls.getSimpleName()
+                    + "\" is hidden by the participant filter; show it to render this sequence.");
+        }
         Set<String> participants = new LinkedHashSet<>();
         Set<String> inlineParticipants = new LinkedHashSet<>();
         participants.add(o.callerName);
-        // 起点クラスが除外指定されていれば、空のシーケンスとして扱う
-        boolean entryHidden = isHidden(o, cls.getSimpleName());
-        if (!entryHidden) {
-            participants.add(cls.getSimpleName());
-        }
+        participants.add(cls.getSimpleName());
         // participant ごとに「シーケンス内で登場したメソッド名」を順序付きで記録する。
         // 冒頭の note 集約 (emitCommentNotes) で JavaDoc を表示するメソッドを決めるのに使う。
         Map<String, LinkedHashSet<String>> participantMethods = new LinkedHashMap<>();
-        if (!entryHidden) {
-            participantMethods.computeIfAbsent(cls.getSimpleName(),
-                    k -> new LinkedHashSet<>()).add(method.getName());
-        }
+        participantMethods.computeIfAbsent(cls.getSimpleName(),
+                k -> new LinkedHashSet<>()).add(method.getName());
 
         StringBuilder body = new StringBuilder();
-        if (!entryHidden) {
-            body.append(idRef(o.callerName)).append(" -> ").append(idRef(cls.getSimpleName()))
-                    .append(": ").append(PlantUmlCommentFormatter.escapeLabel(formatCallLabel(cls.getSimpleName(),
-                            method.getName(), o))).append('\n');
-            SeqEmitters.emitCallSiteComment(body, "", cls.getSimpleName(), method, o);
-            body.append("activate ").append(idRef(cls.getSimpleName())).append('\n');
+        body.append(idRef(o.callerName)).append(" -> ").append(idRef(cls.getSimpleName()))
+                .append(": ").append(PlantUmlCommentFormatter.escapeLabel(formatCallLabel(cls.getSimpleName(),
+                        method.getName(), o))).append('\n');
+        SeqEmitters.emitCallSiteComment(body, "", cls.getSimpleName(), method, o);
+        body.append("activate ").append(idRef(cls.getSimpleName())).append('\n');
 
-            Set<String> stack = new HashSet<>();
-            stack.add(cls.getSimpleName() + "." + method.getName());
-            walkStatements(method.getStatements(), cls, 1, "", new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, o));
-            stack.remove(cls.getSimpleName() + "." + method.getName());
+        Set<String> stack = new HashSet<>();
+        stack.add(cls.getSimpleName() + "." + method.getName());
+        walkStatements(method.getStatements(), cls, 1, "", new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, o));
+        stack.remove(cls.getSimpleName() + "." + method.getName());
 
-            body.append("deactivate ").append(idRef(cls.getSimpleName())).append('\n');
-        }
+        body.append("deactivate ").append(idRef(cls.getSimpleName())).append('\n');
 
         // walk 完了後に、解析対象外の participant を依存 JAR で解決 (EXTERNAL_JAR)
         // または missing 判定する。これにより emitCall 系の再帰呼び出しに
