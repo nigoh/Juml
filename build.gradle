@@ -138,6 +138,18 @@ checkstyle {
 tasks.named('checkstyleMain') { source = 'src/main/java' }
 tasks.named('checkstyleTest') { source = 'src/test/java' }
 
+// エラーコードカタログ (juml.util.ErrorCode + messages*.properties) から
+// docs/errors.md を生成する。enum がソースオブトゥルースで、乖離は
+// ErrorCatalogDocTest が CI で検出する。コード/文言変更時はこれを再実行してコミットする。
+tasks.register('generateErrorDocs', JavaExec) {
+    dependsOn 'classes'
+    group = 'documentation'
+    description = 'Generate docs/errors.md from the ErrorCode catalog'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'juml.devtools.ErrorCatalogDoc'
+    args 'docs/errors.md'
+}
+
 // `Juml.jar` は単体で動く fat jar なので、配布 zip には起動補助ファイル
 // (Windows/Unix 起動スクリプト、デフォルト設定) と jar 本体だけを含める。
 // bundle/graphviz/ に dot バイナリが置かれていれば自動的に同梱される。
