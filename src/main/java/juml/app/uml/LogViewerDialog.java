@@ -57,6 +57,8 @@ final class LogViewerDialog extends JDialog {
     private final JTextArea detail = new JTextArea();
     private final JCheckBox autoScroll = new JCheckBox(Messages.get("log.autoscroll"), true);
     private final JComboBox<LevelFilter> levelFilter = new JComboBox<>(LevelFilter.values());
+    /** エラー ID (例: UML-R001) やメッセージ本文でのテキスト絞り込み。 */
+    private final javax.swing.JTextField textFilter = new javax.swing.JTextField(12);
     private final AppLog.Listener listener = this::onLogLive;
 
     /**
@@ -100,6 +102,43 @@ final class LogViewerDialog extends JDialog {
         });
         configureColumns();
 
+        // 転記支援: Ctrl+C で選択行 (詳細込み) をコピー。右クリックにも同メニューを出す。
+        table.registerKeyboardAction(e -> copySelectedRow(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_C,
+                        getToolkit().getMenuShortcutKeyMaskEx()),
+                JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        javax.swing.JPopupMenu rowMenu = new javax.swing.JPopupMenu();
+        javax.swing.JMenuItem copyRowItem =
+                new javax.swing.JMenuItem(Messages.get("log.copyRow"));
+        copyRowItem.addActionListener(e -> copySelectedRow());
+        rowMenu.add(copyRowItem);
+        javax.swing.JMenuItem remedyItem =
+                new javax.swing.JMenuItem(Messages.get("log.remedy"));
+        remedyItem.addActionListener(e -> openRemedyForSelection());
+        rowMenu.add(remedyItem);
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(java.awt.event.MouseEvent e) {
+                if (!e.isPopupTrigger()) {
+                    return;
+                }
+                int row = table.rowAtPoint(e.getPoint());
+                if (row >= 0) {
+                    table.setRowSelectionInterval(row, row);
+                }
+                rowMenu.show(table, e.getX(), e.getY());
+            }
+        });
+
         detail.setEditable(false);
         detail.setLineWrap(false);
         detail.setFont(new Font(Font.MONOSPACED, Font.PLAIN, detail.getFont().getSize()));
@@ -127,10 +166,33 @@ final class LogViewerDialog extends JDialog {
         levelFilter.setMaximumSize(levelFilter.getPreferredSize());
         bar.add(levelFilter);
         bar.add(Box.createHorizontalStrut(8));
+        textFilter.setToolTipText(Messages.get("log.textFilter.tip"));
+        textFilter.setMaximumSize(textFilter.getPreferredSize());
+        textFilter.getDocument().addDocumentListener(
+                new javax.swing.event.DocumentListener() {
+                    @Override
+                    public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                        reload();
+                    }
+
+                    @Override
+                    public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                        reload();
+                    }
+
+                    @Override
+                    public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                        reload();
+                    }
+                });
+        bar.add(textFilter);
+        bar.add(Box.createHorizontalStrut(8));
         bar.add(autoScroll);
         bar.add(Box.createHorizontalGlue());
 
         bar.add(makeButton("log.refresh", this::reload));
+        bar.add(makeButton("log.remedy", this::openRemedyForSelection));
+        bar.add(makeButton("log.copyRow", this::copySelectedRow));
         bar.add(makeButton("log.copy", this::copyAll));
         bar.add(makeButton("log.save", this::saveToFile));
         bar.add(makeButton("log.openFile", this::openLogFile));
@@ -149,21 +211,35 @@ final class LogViewerDialog extends JDialog {
     }
 
     private void configureColumns() {
-        int[] widths = {110, 64, 130, 480};
+        int[] widths = {110, 64, 90, 130, 480};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             TableColumn col = table.getColumnModel().getColumn(i);
             col.setPreferredWidth(widths[i]);
         }
     }
 
+    /** 現在のレベル + テキストフィルタを 1 件に適用する。 */
+    private boolean accepts(AppLog.Entry e) {
+        LevelFilter filter = (LevelFilter) levelFilter.getSelectedItem();
+        if (filter != null && !filter.accepts(e.getLevel())) {
+            return false;
+        }
+        String q = textFilter.getText() == null ? ""
+                : textFilter.getText().trim().toLowerCase(java.util.Locale.ROOT);
+        if (q.isEmpty()) {
+            return true;
+        }
+        return e.getCode().getId().toLowerCase(java.util.Locale.ROOT).contains(q)
+                || e.getMessage().toLowerCase(java.util.Locale.ROOT).contains(q);
+    }
+
     /** リングバッファを取り直してフィルタを適用し、テーブルを再構築する。 */
     private void reload() {
-        LevelFilter filter = (LevelFilter) levelFilter.getSelectedItem();
         List<AppLog.Entry> filtered = new ArrayList<>();
         long highWater = reloadHighWater;
         for (AppLog.Entry e : AppLog.snapshot()) {
             highWater = Math.max(highWater, e.getSeq());
-            if (filter == null || filter.accepts(e.getLevel())) {
+            if (accepts(e)) {
                 filtered.add(e);
             }
         }
@@ -179,8 +255,7 @@ final class LogViewerDialog extends JDialog {
             if (entry.getSeq() <= reloadHighWater) {
                 return;
             }
-            LevelFilter filter = (LevelFilter) levelFilter.getSelectedItem();
-            if (filter != null && !filter.accepts(entry.getLevel())) {
+            if (!accepts(entry)) {
                 return;
             }
             model.addRow(entry);
@@ -221,8 +296,37 @@ final class LogViewerDialog extends JDialog {
                 sb.append(e.getDetail());
             }
         }
+        copyToClipboard(sb.toString());
+    }
+
+    /** 選択行 1 件 (スタックトレース含む) をクリップボードへコピーする。 */
+    private void copySelectedRow() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            return;
+        }
+        AppLog.Entry e = model.getEntry(row);
+        StringBuilder sb = new StringBuilder(e.formatLine());
+        if (e.getDetail() != null) {
+            sb.append('\n').append(e.getDetail());
+        }
+        copyToClipboard(sb.toString());
+    }
+
+    /**
+     * 選択行のエラー ID に対応する対処法 (アプリ内リファレンス) を開く。
+     * ID なしの行では単にリファレンスの一覧を開く。
+     */
+    private void openRemedyForSelection() {
+        int row = table.getSelectedRow();
+        String id = row >= 0 && model.getEntry(row).getCode().hasId()
+                ? model.getEntry(row).getCode().getId() : null;
+        ErrorReferenceDialog.showFor(this, id);
+    }
+
+    private void copyToClipboard(String text) {
         java.awt.datatransfer.StringSelection sel =
-                new java.awt.datatransfer.StringSelection(sb.toString());
+                new java.awt.datatransfer.StringSelection(text);
         getToolkit().getSystemClipboard().setContents(sel, sel);
     }
 
@@ -342,11 +446,12 @@ final class LogViewerDialog extends JDialog {
 
     // ── テーブルモデル ─────────────────────────────────────────────────
 
-    /** AppLog エントリのテーブルモデル (時刻 / レベル / スレッド / メッセージ)。 */
+    /** AppLog エントリのテーブルモデル (時刻 / レベル / ID / スレッド / メッセージ)。 */
     private static final class LogTableModel extends AbstractTableModel {
         private final String[] columns = {
             Messages.get("log.col.time"),
             Messages.get("log.col.level"),
+            Messages.get("log.col.code"),
             Messages.get("log.col.thread"),
             Messages.get("log.col.message"),
         };
@@ -388,8 +493,9 @@ final class LogViewerDialog extends JDialog {
             switch (columnIndex) {
                 case 0: return e.formatTime();
                 case 1: return e.getLevel().name();
-                case 2: return e.getThread();
-                case 3: return e.getMessage();
+                case 2: return e.getCode().hasId() ? e.getCode().getId() : "";
+                case 3: return e.getThread();
+                case 4: return e.getMessage();
                 default: return "";
             }
         }

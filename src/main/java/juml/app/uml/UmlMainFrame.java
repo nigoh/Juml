@@ -310,6 +310,7 @@ public class UmlMainFrame extends JFrame {
         mcb.navigateBack = () -> tabPane.navigateBack();
         mcb.navigateForward = () -> tabPane.navigateForward();
         mcb.openLogViewer = () -> LogViewerDialog.showFor(this);
+        mcb.openErrorReference = () -> ErrorReferenceDialog.showFor(this, null);
         paletteCommands = AppCommands.from(mcb);
         MenuBarBuilder.Result menuResult =
                 new MenuBarBuilder(DiagramKind.CLASS, MENU_MASK, mcb, this).build();

@@ -64,4 +64,31 @@ public class DiagramFailureMessageTest {
         assertTrue("メッセージ無しなら Smetana のフォールバック文言: " + reason,
                 reason.contains("Smetana"));
     }
+
+    // ── エラー ID 見出し / リンク (クローズド環境での転記支援) ──────────
+
+    @Test
+    public void forError_withCode_showsIdHeadlineAndLinks() {
+        String html = DiagramFailureMessage.forError(
+                new RuntimeException("boom"), null, juml.util.ErrorCode.UML_R002);
+        assertTrue("ID が見出しとして含まれること: " + html, html.contains("UML-R002"));
+        assertTrue("リファレンスへのリンクを含むこと",
+                html.contains("juml-errcode:UML-R002"));
+        assertTrue("詳細コピーのリンクを含むこと", html.contains("juml-copy:"));
+    }
+
+    @Test
+    public void forError_withoutCode_hasNoIdLinks() {
+        String html = DiagramFailureMessage.forError(new RuntimeException("boom"));
+        assertTrue("ID 無しでは errcode リンクを含まないこと",
+                !html.contains("juml-errcode:"));
+    }
+
+    @Test
+    public void forError_noneCode_hasNoIdLinks() {
+        String html = DiagramFailureMessage.forError(
+                new RuntimeException("boom"), null, juml.util.ErrorCode.NONE);
+        assertTrue("NONE では errcode リンクを含まないこと",
+                !html.contains("juml-errcode:"));
+    }
 }
