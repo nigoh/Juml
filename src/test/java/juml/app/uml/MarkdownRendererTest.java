@@ -98,4 +98,24 @@ public class MarkdownRendererTest {
         assertTrue(html.contains("<code>code</code>"));
         assertTrue(html.contains("<i>i</i>"));
     }
+
+    /**
+     * コードスパンのプレースホルダに使う私用領域文字 (U+E000/U+E001) が入力に
+     * 紛れ込んでも、プレースホルダと衝突して誤ってコードスパンに置換されない。
+     */
+    @Test
+    public void privateUseAreaCharsInInputDoNotCollideWithPlaceholders() {
+        char e0 = '\uE000';
+        char e1 = '\uE001';
+        // U+E000 + "0" + U+E001 はプレースホルダと同形。除去されて素通しされるべき。
+        String input = "before " + e0 + "0" + e1 + " `code` after";
+        String html = MarkdownRenderer.toHtml(input);
+        assertTrue("実コードスパンは正しく描画される",
+                html.contains("<code>code</code>"));
+        // PUA 文字は除去され、周囲テキストは保持される。
+        assertTrue(html.contains("before"));
+        assertTrue(html.contains("after"));
+        assertFalse("U+E000 は出力に残らない", html.indexOf(e0) >= 0);
+        assertFalse("U+E001 は出力に残らない", html.indexOf(e1) >= 0);
+    }
 }
