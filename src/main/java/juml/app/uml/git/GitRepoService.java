@@ -193,19 +193,23 @@ public final class GitRepoService implements AutoCloseable {
         if (id == null) {
             return List.of();
         }
-        try (RevWalk walk = new RevWalk(repo)) {
+        // CanonicalTreeParser.reset(ObjectReader, ...) は渡した reader を所有しない
+        // (呼び出し側が閉じる責務)。閉じ忘れると diff 表示のたびに ObjectReader の
+        // ネイティブ資源が積み上がるため、try-with-resources で確実に閉じる。
+        try (RevWalk walk = new RevWalk(repo);
+             org.eclipse.jgit.lib.ObjectReader reader = repo.newObjectReader()) {
             RevCommit commit = walk.parseCommit(id);
             AbstractTreeIterator oldTree;
             if (commit.getParentCount() > 0) {
                 RevCommit parent = walk.parseCommit(commit.getParent(0).getId());
                 CanonicalTreeParser p = new CanonicalTreeParser();
-                p.reset(repo.newObjectReader(), parent.getTree());
+                p.reset(reader, parent.getTree());
                 oldTree = p;
             } else {
                 oldTree = new EmptyTreeIterator();
             }
             CanonicalTreeParser newTree = new CanonicalTreeParser();
-            newTree.reset(repo.newObjectReader(), commit.getTree());
+            newTree.reset(reader, commit.getTree());
             try (DiffFormatter fmt = new DiffFormatter(
                     java.io.OutputStream.nullOutputStream())) {
                 fmt.setRepository(repo);

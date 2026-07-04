@@ -188,13 +188,12 @@ public final class MarkdownMethodDiffReport {
     }
 
     private static String callLabel(JavaMethodInfo.Call c) {
-        String base = c.getReceiver() != null
-                ? c.getReceiver() + "." + c.getMethodName() + "()"
-                : c.getMethodName() + "()";
-        if (c.getFirstArgLabel() != null) {
-            base = base.replace("()", "(" + c.getFirstArgLabel() + ")");
-        }
-        return base;
+        // 第1引数ラベルを直接埋め込む。以前は base.replace("()", ...) だったが、
+        // receiver に "()" が含まれると全出現が置換され受け手側にも引数が注入されて
+        // ラベルが壊れる。呼び出し部だけを組み立てて全置換を避ける。
+        String arg = c.getFirstArgLabel() != null ? c.getFirstArgLabel() : "";
+        String call = c.getMethodName() + "(" + arg + ")";
+        return c.getReceiver() != null ? c.getReceiver() + "." + call : call;
     }
 
     private static String fmt2(double v) {

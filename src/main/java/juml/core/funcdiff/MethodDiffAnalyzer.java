@@ -175,20 +175,26 @@ public final class MethodDiffAnalyzer {
             throw new IllegalArgumentException("methodName must not be empty in spec: " + spec);
         }
 
-        // "ClassName.methodName" または "methodName" を判別
-        // 最後の '.' の前が ClassName（大文字始まり）なら ClassName.method 形式
+        // "ClassName.methodName" または "methodName" を判別する。
+        // findMethod は className を単純名 (getSimpleName) と厳密一致で照合するため、
+        // 修飾名やネストクラス (com.example.Foo.bar / Outer.Inner.method) が来ても
+        // className は必ず「最後のドット前セグメントの単純名」(Foo / Inner) へ畳む。
+        // 以前は maybeClass をそのまま className にしていたため、修飾名では
+        // getSimpleName と一致せずメソッドが無言で見つからなかった。
         String className = null;
         String methodName = methodPart;
         int dot = methodPart.lastIndexOf('.');
-        if (dot > 0) {
-            String maybeClass = methodPart.substring(0, dot);
-            String maybeMethod = methodPart.substring(dot + 1);
-            if (!maybeClass.isEmpty() && !maybeMethod.isEmpty()) {
-                className = maybeClass;
-                methodName = maybeMethod;
-            }
+        if (dot > 0 && dot < methodPart.length() - 1) {
+            className = simpleName(methodPart.substring(0, dot));
+            methodName = methodPart.substring(dot + 1);
         }
         return new MethodSpec(filePath, className, methodName);
+    }
+
+    /** 修飾名 (a.b.C) の最後のセグメント (C) を返す。ドットが無ければそのまま。 */
+    private static String simpleName(String qualified) {
+        int dot = qualified.lastIndexOf('.');
+        return dot >= 0 ? qualified.substring(dot + 1) : qualified;
     }
 
     /**

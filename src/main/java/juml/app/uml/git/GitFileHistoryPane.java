@@ -34,8 +34,18 @@ final class GitFileHistoryPane extends JPanel {
     private final DefaultListModel<CommitInfo> historyModel = new DefaultListModel<>();
     private final JList<CommitInfo> historyList = new JList<>(historyModel);
     private final JTextArea textArea = new JTextArea();
-    /** 古い SwingWorker 結果で UI を上書きしない世代カウンタ。 */
-    private int gen;
+    /**
+     * 古い SwingWorker 結果で UI を上書きしない世代カウンタ。書き込み先ごとに分ける:
+     * 履歴一覧 (historyList) と、diff/blame が共有する textArea。
+     *
+     * <p>両者を 1 本で共有すると、履歴読込中にリストの旧コミットをクリックした
+     * (= textArea 側の world をインクリメント) だけで履歴読込の done() が
+     * 握りつぶされ、一覧がサイレントに更新されなくなる (兄弟の {@link GitCommitsPane}
+     * が用途別に世代を分けているのと同じ理由)。diff と blame は同じ textArea を
+     * 奪い合うので、こちらは 1 本に束ねて「最新のテキスト操作が勝つ」を保つ。</p>
+     */
+    private int historyGen;
+    private int textGen;
 
     GitFileHistoryPane(GitPanel.GitContext ctx) {
         super(new BorderLayout());
@@ -127,7 +137,9 @@ final class GitFileHistoryPane extends JPanel {
             return;
         }
         final String ref = ctx.selectedRef();
-        final int g = ++gen;
+        final int g = ++historyGen;
+        // 読込中に旧コミットをクリックして誤った diff を出さないよう、先にリストを空にする。
+        historyModel.clear();
         ctx.reportStatus(Messages.get("git.status.loading"));
         new SwingWorker<List<CommitInfo>, Void>() {
             @Override protected List<CommitInfo> doInBackground() throws Exception {
@@ -135,7 +147,7 @@ final class GitFileHistoryPane extends JPanel {
             }
 
             @Override protected void done() {
-                if (g != gen) {
+                if (g != historyGen) {
                     return;
                 }
                 try {
@@ -162,14 +174,14 @@ final class GitFileHistoryPane extends JPanel {
         if (svc == null || c == null || path.isEmpty()) {
             return;
         }
-        final int g = ++gen;
+        final int g = ++textGen;
         new SwingWorker<String, Void>() {
             @Override protected String doInBackground() throws Exception {
                 return svc.diffOf(c.sha, path);
             }
 
             @Override protected void done() {
-                if (g != gen) {
+                if (g != textGen) {
                     return;
                 }
                 try {
@@ -219,7 +231,7 @@ final class GitFileHistoryPane extends JPanel {
             return;
         }
         final String ref = ctx.selectedRef();
-        final int g = ++gen;
+        final int g = ++textGen;
         ctx.reportStatus(Messages.get("git.status.loading"));
         new SwingWorker<String, Void>() {
             @Override protected String doInBackground() throws Exception {
@@ -227,7 +239,7 @@ final class GitFileHistoryPane extends JPanel {
             }
 
             @Override protected void done() {
-                if (g != gen) {
+                if (g != textGen) {
                     return;
                 }
                 try {
