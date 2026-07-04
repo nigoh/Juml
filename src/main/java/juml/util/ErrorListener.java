@@ -62,6 +62,55 @@ public interface ErrorListener {
     }
 
     /**
+     * ID 付き (= 実エラー) の通知件数を数えつつ、任意の委譲先へ素通しするリスナー。
+     *
+     * <p>プロジェクト走査のように「1 ファイル失敗しても全体は続行する」処理で、
+     * 破棄せずに失敗件数を集計し、完了後にユーザーへ「N 件解析できなかった」と
+     * 伝えるために使う。{@link ErrorCode#NONE}（進捗・情報通知）は数に含めない。</p>
+     */
+    static Counting counting() {
+        return new Counting(null);
+    }
+
+    /**
+     * {@link #counting()} に委譲先を付けた版。各通知を数えつつ {@code delegate} へ
+     * そのまま転送する（例: 失敗を {@link AppLog} へ記録しながら件数も取る）。
+     */
+    static Counting counting(ErrorListener delegate) {
+        return new Counting(delegate);
+    }
+
+    /**
+     * ID 付きエラーの件数を数えるステートフルなリスナー。バックグラウンド解析から
+     * 呼ばれるため件数は {@link java.util.concurrent.atomic.AtomicInteger} で保持し、
+     * 別スレッド（EDT）から安全に読めるようにする。
+     */
+    final class Counting implements ErrorListener {
+        private final ErrorListener delegate;
+        private final java.util.concurrent.atomic.AtomicInteger errors =
+                new java.util.concurrent.atomic.AtomicInteger();
+
+        Counting(ErrorListener delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void onError(ErrorCode code, String source, int line, String message) {
+            if (code != null && code.hasId()) {
+                errors.incrementAndGet();
+            }
+            if (delegate != null) {
+                delegate.onError(code, source, line, message);
+            }
+        }
+
+        /** これまでに受け取った ID 付きエラー（情報通知を除く）の件数。 */
+        public int getErrorCount() {
+            return errors.get();
+        }
+    }
+
+    /**
      * 1 行表現を組み立てる共通整形。ID があれば {@code [UML-R001] } を先頭に付け、
      * クローズド環境でも ID の目視転記だけで対処法を辿れるようにする。
      */

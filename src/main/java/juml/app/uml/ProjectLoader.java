@@ -108,6 +108,9 @@ public final class ProjectLoader {
         // 2 回目以降の起動はさらに高速化する (通常プロジェクトは従来どおり FULL)。
         options.lazyDetails = aosp;
         options.useDiskCache = true;
+        // 個別ファイルの解析失敗を握り潰さず、件数を数えつつ各件を AppLog へ記録する。
+        // ロード自体は続行するが、完了後に「N 件解析できなかった」とユーザーへ伝える。
+        final ErrorListener.Counting parseErrors = ErrorListener.counting(loggingParseListener());
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             private Throwable error;
             private boolean cancelled;
@@ -119,7 +122,7 @@ public final class ProjectLoader {
                 try {
                     cache.clear();
                     refIndexCache.invalidate();
-                    cache.load(root, ErrorListener.silent(), prog, cancel, options);
+                    cache.load(root, parseErrors, prog, cancel, options);
                     cancelled = cancel.isCancelled();
                     // 左ツリー用に Android.bp (Soong Blueprint) も走査する。
                     // 重い処理になり得るのでバックグラウンドで実行し、失敗してもロードは継続。
@@ -192,15 +195,7 @@ public final class ProjectLoader {
                 state.callGraphEntry = null;
                 state.sequenceHiddenParticipants.clear();
                 state.currentScope = null;
-                String st = java.text.MessageFormat.format(
-                        Messages.get("loader.analyzedFormat"),
-                        cache.getClasses().size(), root.getAbsolutePath());
-                int missing = cache.getDependencyIndex().getMissingArtifacts().size();
-                if (missing > 0) {
-                    st += java.text.MessageFormat.format(
-                            Messages.get("loader.depsNotResolved"), missing);
-                }
-                statusLabel.setText(st);
+                statusLabel.setText(buildLoadedStatus(root, parseErrors.getErrorCount()));
                 onLoadSuccess.accept(root);
             }
         };
@@ -303,6 +298,46 @@ public final class ProjectLoader {
         };
         activeWorker = worker;
         worker.execute();
+    }
+
+    /**
+     * ロード成功時のステータス文言を組み立てる。解析クラス数に加えて、未解決依存の件数と
+     * 解析できなかったファイル件数を（あれば）追記し、ユーザーが「なぜかクラスが少ない」
+     * ときの手掛かりを得られるようにする。
+     */
+    private String buildLoadedStatus(File root, int parseErrorCount) {
+        String st = java.text.MessageFormat.format(
+                Messages.get("loader.analyzedFormat"),
+                cache.getClasses().size(), root.getAbsolutePath());
+        int missing = cache.getDependencyIndex().getMissingArtifacts().size();
+        if (missing > 0) {
+            st += java.text.MessageFormat.format(
+                    Messages.get("loader.depsNotResolved"), missing);
+        }
+        if (parseErrorCount > 0) {
+            st += java.text.MessageFormat.format(
+                    Messages.get("loader.parseErrors"), parseErrorCount);
+        }
+        return st;
+    }
+
+    /**
+     * 個別ファイルの解析失敗を {@link juml.util.AppLog} へ WARN 記録する委譲リスナー。
+     * ロード全体は続行するため ERROR ではなく WARN とし、パーサが付けた
+     * {@link juml.util.ErrorCode}（{@code PRJ-004}/{@code PRJ-005} 等）をそのまま残して
+     * ログビューアから ID で辿れるようにする。情報通知（{@link juml.util.ErrorCode#NONE}）は
+     * 記録しない。
+     */
+    private static ErrorListener loggingParseListener() {
+        return (code, source, line, message) -> {
+            if (code == null || !code.hasId()) {
+                return;
+            }
+            // 行番号・ソース名は message 側へ寄せ、ID は AppLog 側のタグ列で表示させる
+            // (二重表記を避けるため format() には NONE を渡す)。
+            juml.util.AppLog.warn(code, "ProjectLoader",
+                    ErrorListener.format(juml.util.ErrorCode.NONE, source, line, message));
+        };
     }
 
     private void cancelActiveWorker() {
