@@ -63,6 +63,7 @@ public class SettingTest {
         original.setWindowHeight(768);
         original.setMainSplitLocation(280);
         original.setLeftSplitLocation(150);
+        original.setWindowLocationSaved(true);
 
         File file = tempFolder.newFile("settings.xml");
         original.saveToFile(file);
@@ -74,6 +75,14 @@ public class SettingTest {
         assertEquals(768, loaded.getWindowHeight());
         assertEquals(280, loaded.getMainSplitLocation());
         assertEquals(150, loaded.getLeftSplitLocation());
+        assertTrue("windowLocationSaved がラウンドトリップするべき", loaded.isWindowLocationSaved());
+    }
+
+    /** 旧設定ファイル (windowLocationSaved キー無し) は未保存扱い = 既定 false になる。 */
+    @Test
+    public void testWindowLocationSavedDefaultsFalseForOldFiles() {
+        Setting fresh = new Setting();
+        assertFalse("既定は未保存 (false)", fresh.isWindowLocationSaved());
     }
 
     @Test

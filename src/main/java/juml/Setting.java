@@ -28,6 +28,11 @@ public class Setting {
     private int windowY = -1;
     private int windowWidth = 1200;
     private int windowHeight = 800;
+    /**
+     * ウィンドウ位置を一度でも保存したか。負座標 (プライマリより左/上のモニタ) を
+     * 「未保存」の sentinel (-1) と区別するための専用フラグ。false のうちは中央寄せする。
+     */
+    private boolean windowLocationSaved = false;
     /** 左/右ペインの分割位置 */
     private int mainSplitLocation = -1;
     private int leftSplitLocation = -1;
@@ -94,6 +99,8 @@ public class Setting {
 
     public int getWindowX() { return windowX; }
     public void setWindowX(int windowX) { this.windowX = windowX; }
+    public boolean isWindowLocationSaved() { return windowLocationSaved; }
+    public void setWindowLocationSaved(boolean saved) { this.windowLocationSaved = saved; }
     public int getWindowY() { return windowY; }
     public void setWindowY(int windowY) { this.windowY = windowY; }
     public int getWindowWidth() { return windowWidth; }
@@ -244,6 +251,7 @@ public class Setting {
         Properties props = new Properties();
         props.setProperty("windowX", Integer.toString(windowX));
         props.setProperty("windowY", Integer.toString(windowY));
+        props.setProperty("windowLocationSaved", Boolean.toString(windowLocationSaved));
         props.setProperty("windowWidth", Integer.toString(windowWidth));
         props.setProperty("windowHeight", Integer.toString(windowHeight));
         props.setProperty("mainSplitLocation", Integer.toString(mainSplitLocation));
@@ -317,6 +325,8 @@ public class Setting {
         Setting s = new Setting();
         s.windowX = parseIntSafe(props.getProperty("windowX"), -1);
         s.windowY = parseIntSafe(props.getProperty("windowY"), -1);
+        s.windowLocationSaved = parseBooleanSafe(
+                props.getProperty("windowLocationSaved"), false);
         s.windowWidth = parseIntSafe(props.getProperty("windowWidth"), 1200);
         s.windowHeight = parseIntSafe(props.getProperty("windowHeight"), 800);
         s.mainSplitLocation = parseIntSafe(props.getProperty("mainSplitLocation"), -1);
