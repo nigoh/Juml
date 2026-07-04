@@ -106,6 +106,8 @@ public class EntitySearchDialog extends JDialog {
                 BorderLayout.NORTH);
         filter.putClientProperty("JTextField.placeholderText",
                 Messages.get("dlg.search.placeholder"));
+        // 検索フィールドにワンクリッククリア (×) を出す。他の検索 UI (find バー) と揃える (#4)。
+        filter.putClientProperty("JTextField.showClearButton", true);
         north.add(filter, BorderLayout.CENTER);
         north.add(buildKindFilterBar(), BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);

@@ -75,6 +75,8 @@ public class SequenceEntryDialog extends JDialog {
                 BorderLayout.NORTH);
         filter.putClientProperty("JTextField.placeholderText",
                 Messages.get("dlg.seqEntry.filterPlaceholder"));
+        // 検索フィールドにワンクリッククリア (×) を出す。他の検索 UI と揃える (#4)。
+        filter.putClientProperty("JTextField.showClearButton", true);
         north.add(filter, BorderLayout.CENTER);
         add(north, BorderLayout.NORTH);
 
