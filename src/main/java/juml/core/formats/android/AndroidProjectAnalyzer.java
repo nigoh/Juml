@@ -333,16 +333,28 @@ public final class AndroidProjectAnalyzer {
             info.setApplicationClass(info.getPackageName() + info.getApplicationClass());
         }
         for (AndroidComponentInfo c : info.allComponents()) {
-            String n = c.getName();
-            if (n == null) {
-                continue;
-            }
-            if (n.startsWith(".")) {
-                c.setName(info.getPackageName() + n);
-            } else if (!n.contains(".")) {
-                c.setName(info.getPackageName() + "." + n);
+            c.setName(absolutize(info.getPackageName(), c.getName()));
+            // <activity-alias> の targetActivity も相対 → 絶対へ揃える。揃えないと別名の
+            // name だけが絶対化され、targetActivity (.Main) が対象 Activity の FQN と一致せず
+            // 別名→対象のリンクが切れる。
+            if (c.getTargetActivity() != null) {
+                c.setTargetActivity(absolutize(info.getPackageName(), c.getTargetActivity()));
             }
         }
+    }
+
+    /** 相対クラス名 ({@code .Foo} / {@code Foo}) をパッケージで絶対化する。null/絶対はそのまま。 */
+    private static String absolutize(String pkg, String name) {
+        if (name == null) {
+            return null;
+        }
+        if (name.startsWith(".")) {
+            return pkg + name;
+        }
+        if (!name.contains(".")) {
+            return pkg + "." + name;
+        }
+        return name;
     }
 
     private static String safeRead(File f, ErrorListener l) {
