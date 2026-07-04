@@ -432,4 +432,72 @@ public class KotlinLightScannerTest {
         assertNotNull(c);
         assertTrue("本体 field 'y' が抽出されるはず", hasField(c, "y"));
     }
+
+    @Test
+    public void useSiteTargetAnnotationCapturesRealName() {
+        // @field:SerializedName(...) の実名を拾うこと ("@field" として記録して名前を落とさない)。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  @field:SerializedName(\"user_id\") val id: Long = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        JavaFieldInfo id = c.getFields().stream().filter(f -> "id".equals(f.getName()))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue("実アノテーション名 @SerializedName を拾うはず",
+                id.getAnnotations().stream().anyMatch(a -> a.startsWith("@SerializedName")));
+        assertFalse("use-site target @field を名前として記録しないこと",
+                id.getAnnotations().stream().anyMatch(a -> a.equals("@field")));
+    }
+
+    @Test
+    public void annotationArgContainingEnumWordDoesNotMisclassifyKind() {
+        // @Entity(tableName = "enum_table") の "enum" 部分一致でクラスを ENUM 扱いしないこと。
+        String src = "package com.x\n"
+                + "@Entity(tableName = \"enum_table\")\n"
+                + "data class Foo(val id: Long)\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertEquals(JavaClassInfo.Kind.CLASS, c.getKind());
+    }
+
+    @Test
+    public void multiArgGenericSupertypeIsNotTruncated() {
+        // Map<String, Int> のカンマ入りジェネリック supertype を切り詰めないこと。
+        String src = "package com.x\n"
+                + "class Foo : HashMap<String, Int>() {\n"
+                + "  val y: Int = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertEquals("HashMap<String, Int>", c.getSuperClass());
+    }
+
+    @Test
+    public void multiArgGenericInterfaceSupertypeIsNotTruncated() {
+        // interface 側 (Comparator<Map<String, Int>>) も by 委譲だけを剥がして温存する。
+        String src = "package com.x\n"
+                + "class Foo(cmp: Comparator<Map<String, Int>>) "
+                + ": Comparator<Map<String, Int>> by cmp {\n"
+                + "  val y: Int = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("多引数ジェネリック interface を温存するはず",
+                c.getInterfaces().contains("Comparator<Map<String, Int>>"));
+    }
+
+    @Test
+    public void functionWithDefaultCallArgIsNotDropped() {
+        // 既定引数に呼び出し listOf() を含む関数を脱落させないこと (ネスト () を許容)。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  fun load(items: List<String> = listOf(), n: Int = 0): Int = n\n"
+                + "  val after: Int = 1\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("既定引数に () を含む fun 'load' が残るはず", hasMethod(c, "load"));
+        assertTrue("その後の field 'after' も残るはず", hasField(c, "after"));
+    }
 }
