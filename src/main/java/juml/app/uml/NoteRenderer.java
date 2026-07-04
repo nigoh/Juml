@@ -83,6 +83,18 @@ final class NoteRenderer {
                 }
             };
 
+    // 本文 HTML の必要高さ (完全レイアウト結果) を (幅, テキスト) 単位でキャッシュする。
+    // 付箋ドラッグ中は毎マウスイベントで全付箋が再描画され、各 paintNote が
+    // getPreferredSize() で HTML の完全レイアウトを走らせるため、多数の付箋で目に見えて
+    // カクついていた。内容・幅が変わらない付箋の高さ測定を省いて EDT 負荷を減らす (#39)。
+    private final java.util.Map<String, Integer> prefHeightCache =
+            new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> e) {
+                    return size() > 512;
+                }
+            };
+
     NoteRenderer() {
         htmlView.setEditable(false);
         htmlView.setContentType("text/html");
@@ -228,9 +240,25 @@ final class NoteRenderer {
         if (innerW <= 0 || n.getText() == null || n.getText().trim().isEmpty()) {
             return n.getHeight();
         }
-        htmlView.setText(html(n.getText()));
+        return layoutHtmlHeight(n.getText(), innerW) + pad * 2;
+    }
+
+    /**
+     * {@code htmlView} を {@code (md, innerW)} の内容へ揃えつつ、本文の必要高さを返す。
+     * paint 側はこの後の {@code htmlView} 状態をそのまま描画に使う。高さは {@link #prefHeightCache}
+     * にキャッシュし、内容・幅が同じ再描画では {@code getPreferredSize} の完全レイアウトを省く。
+     */
+    private int layoutHtmlHeight(String md, int innerW) {
+        htmlView.setText(html(md));
         htmlView.setSize(innerW, Short.MAX_VALUE);
-        return htmlView.getPreferredSize().height + pad * 2;
+        String key = innerW + " " + (md == null ? "" : md);
+        Integer cached = prefHeightCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        int h = htmlView.getPreferredSize().height;
+        prefHeightCache.put(key, h);
+        return h;
     }
 
     private void paintNote(Graphics2D g2, DiagramNote n, double zoom, Set<String> selectedIds) {
@@ -268,10 +296,10 @@ final class NoteRenderer {
             int innerW = (int) (n.getWidth() - pad * 2);
             int innerH = (int) (n.getHeight() - pad * 2);
             if (innerW > 0 && innerH > 0) {
-                htmlView.setText(html(n.getText()));
-                // あふれ検出: 与えた幅での必要高さが本文領域を超えるか。
-                htmlView.setSize(innerW, Short.MAX_VALUE);
-                overflow = htmlView.getPreferredSize().height > innerH;
+                // あふれ検出: 与えた幅での必要高さが本文領域を超えるか (高さはキャッシュ)。
+                // layoutHtmlHeight が htmlView を (text, innerW) へ揃えるので、続く
+                // paintComponent はその状態をそのまま描画に使える。
+                overflow = layoutHtmlHeight(n.getText(), innerW) > innerH;
                 SwingUtilities.paintComponent(ng, htmlView, rendererPane, pad, pad, innerW, innerH);
             }
         } finally {
