@@ -89,7 +89,7 @@ public final class PlantUmlErDiagram {
     private static void renderEntity(StringBuilder sb, RoomEntity e, String indent) {
         sb.append(indent).append("entity \"").append(escape(e.getDisplayName()));
         if (!e.getTableName().isEmpty()) {
-            sb.append("\\n<<").append(e.getTableName()).append(">>");
+            sb.append("\\n<<").append(escape(e.getTableName())).append(">>");
         }
         sb.append("\" as ").append(alias(e)).append(" {\n");
         for (RoomEntity.Column col : e.getColumns()) {
@@ -98,7 +98,7 @@ public final class PlantUmlErDiagram {
             sb.append(escape(col.getName())).append(" : ")
                     .append(escape(simpleType(col.getType())));
             if (!col.getColumnAlias().isEmpty()) {
-                sb.append(" (").append(col.getColumnAlias()).append(")");
+                sb.append(" (").append(escape(col.getColumnAlias())).append(")");
             }
             sb.append('\n');
         }
