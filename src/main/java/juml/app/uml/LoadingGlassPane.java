@@ -5,41 +5,46 @@ package juml.app.uml;
 
 import juml.util.Messages;
 
-import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.Timer;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
-import java.awt.Image;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.event.KeyAdapter;
 import java.awt.event.MouseAdapter;
-import java.net.URL;
 
 /**
  * プロジェクト解析中に {@link UmlMainFrame} の glass pane として全面に被せる
  * ローディングオーバーレイ。
  *
  * <p>stock_controller の {@code layer: overlay} 中央配置に相当する。半透明の暗幕を
- * 全面に描き、中央に動く GIF + ステータス文言を載せる。解析中は背後の UI を誤操作
- * させないよう、マウス/キーイベントを自身で消費する。</p>
+ * 全面に描き、中央にブランドロゴ ({@link JumlLogo}) の回転アニメーションとステータス
+ * 文言を載せる。解析中は背後の UI を誤操作させないよう、マウス/キーイベントを自身で
+ * 消費する。</p>
  *
- * <p>GIF は子コンポーネント (JLabel) ではなく {@code paintComponent} 内で直接描画する。
- * アニメ GIF を子ラベルで再生すると、フレーム更新時の部分再描画が非不透明 glass pane の
- * 暗幕を消してしまう Swing の挙動があるため。{@link ImageIcon#paintIcon} の
- * {@code ImageObserver} に自身を渡すことで、フレーム進行が glass pane の再描画を駆動し、
- * 暗幕とアニメを両立させる。</p>
+ * <p>アニメーションは GIF ではなく Java2D 描画を {@link Timer} で駆動する。フレーム
+ * 更新のたびに glass pane 全体を {@code repaint()} するため、暗幕 (scrim) が部分再描画で
+ * 消える従来の GIF 特有の問題は起きない。表示中だけタイマーを回し、非表示化で止める。</p>
  */
 final class LoadingGlassPane extends JComponent {
 
     /** 背後 UI を覆う半透明の暗幕色。 */
-    private static final Color SCRIM = new Color(0, 0, 0, 140);
+    private static final Color SCRIM = new Color(0, 0, 0, 150);
+    /** ロゴマークの一辺 (px)。 */
+    private static final int MARK_SIZE = 72;
+    /** アニメーションのフレーム間隔 (ms)。約 30fps。 */
+    private static final int FRAME_MILLIS = 33;
+    /** 1 回転にかけるフレーム数。 */
+    private static final double ROTATION_FRAMES = 60.0;
 
-    /** アニメ GIF。リソースが無ければ null (ステータスのみ表示)。 */
-    private final ImageIcon icon;
     private final JButton cancelButton;
+    private final Timer timer;
+    private long tick;
     private Runnable cancelAction;
     private String status = Messages.get("loading.initial");
 
@@ -47,8 +52,11 @@ final class LoadingGlassPane extends JComponent {
         setOpaque(false);
         setVisible(false);
         setLayout(null);
-        URL gifUrl = LoadingGlassPane.class.getResource(LoadingGifs.pickResource());
-        icon = gifUrl != null ? new ImageIcon(gifUrl) : null;
+        timer = new Timer(FRAME_MILLIS, e -> {
+            tick++;
+            repaint();
+        });
+        timer.setCoalesce(true);
         cancelButton = new JButton(Messages.get("loading.cancel"));
         cancelButton.setVisible(false);
         cancelButton.addActionListener(e -> {
@@ -79,29 +87,16 @@ final class LoadingGlassPane extends JComponent {
         setVisible(true);
         setFocusable(true);
         requestFocusInWindow();
+        timer.start();
     }
 
     /** オーバーレイを隠す。 */
     void hideOverlay() {
+        timer.stop();
         cancelAction = null;
         cancelButton.setVisible(false);
         setFocusable(false);
         setVisible(false);
-    }
-
-    /**
-     * GIF のフレーム進行ごとに glass pane 全体を再描画する。
-     *
-     * <p>既定の {@link java.awt.Component#imageUpdate} は画像の矩形だけを再描画するため、
-     * 部分再描画では暗幕 (scrim) が画像領域の外で更新されず消えて見える。全体を repaint
-     * することで暗幕とアニメ GIF を確実に両立させる。</p>
-     */
-    @Override
-    public boolean imageUpdate(Image img, int infoflags, int x, int y, int w, int h) {
-        if (isShowing()) {
-            repaint();
-        }
-        return isVisible();
     }
 
     @Override
@@ -109,7 +104,7 @@ final class LoadingGlassPane extends JComponent {
         if (cancelButton.isVisible()) {
             Dimension pref = cancelButton.getPreferredSize();
             int bx = (getWidth() - pref.width) / 2;
-            int by = getHeight() / 2 + 60;
+            int by = getHeight() / 2 + 70;
             cancelButton.setBounds(bx, by, pref.width, pref.height);
         }
     }
@@ -118,24 +113,28 @@ final class LoadingGlassPane extends JComponent {
     protected void paintComponent(Graphics g) {
         int w = getWidth();
         int h = getHeight();
-        g.setColor(SCRIM);
-        g.fillRect(0, 0, w, h);
+        Graphics2D g2 = (Graphics2D) g.create();
+        try {
+            g2.setColor(SCRIM);
+            g2.fillRect(0, 0, w, h);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        int textBaselineY = h / 2;
-        if (icon != null) {
-            int iw = icon.getIconWidth();
-            int ih = icon.getIconHeight();
-            int ix = (w - iw) / 2;
-            int iy = h / 2 - ih / 2 - 16;
-            // observer=this: GIF のフレーム進行が glass pane の再描画を駆動する。
-            icon.paintIcon(this, g, ix, iy);
-            textBaselineY = iy + ih + 24;
+            int cx = w / 2;
+            int cy = h / 2 - 16;
+            double phase = (tick % ROTATION_FRAMES) / ROTATION_FRAMES;
+            double breath = 1.0 + 0.035 * Math.sin(tick * (2 * Math.PI / (ROTATION_FRAMES * 1.5)));
+            JumlLogo.paintSpinner(g2, cx, cy, MARK_SIZE * 0.72, phase);
+            JumlLogo.paintMark(g2, cx, cy, MARK_SIZE, breath);
+
+            g2.setColor(Color.WHITE);
+            g2.setFont(getFont().deriveFont(Font.BOLD, 14f));
+            FontMetrics fm = g2.getFontMetrics();
+            int textBaselineY = cy + (int) (MARK_SIZE * 0.72) + 24;
+            g2.drawString(status, (w - fm.stringWidth(status)) / 2, textBaselineY + fm.getAscent());
+        } finally {
+            g2.dispose();
         }
-
-        g.setColor(Color.WHITE);
-        g.setFont(getFont().deriveFont(Font.BOLD, 14f));
-        FontMetrics fm = g.getFontMetrics();
-        int sw = fm.stringWidth(status);
-        g.drawString(status, (w - sw) / 2, textBaselineY + fm.getAscent());
     }
 }

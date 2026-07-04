@@ -14,17 +14,21 @@ import java.awt.Color;
 /**
  * アプリ起動直後に画面中央へ短時間だけ表示する、枠なしのブランド用スプラッシュ。
  *
- * <p>{@link LoadingGifView} を載せて起動オーバーレイと同じ GIF・中央レイアウトに
- * そろえる。juml の起動 UI 構築は軽いので、{@link UmlApp} 側で最低表示時間を
- * 確保してから {@link #close()} する。</p>
+ * <p>{@link JumlLoadingView} を載せ、ブランドロゴ ({@link JumlLogo}) の回転アニメーションと
+ * ワードマーク "Juml" を表示する。juml の起動 UI 構築は軽いので、{@link UmlApp} 側で
+ * 最低表示時間を確保してから {@link #close()} する。</p>
  */
 final class SplashWindow extends JWindow {
 
+    /** スプラッシュ背景の暗色。ロゴのブランド青が映えるよう深いネイビーにする。 */
+    private static final Color BG = new Color(0x1E1E2A);
+
     private SplashWindow() {
         JPanel content = new JPanel(new BorderLayout());
-        content.setBackground(new Color(32, 32, 44)); // stock_controller のローダ背景に合わせた暗色
-        content.setBorder(BorderFactory.createEmptyBorder(24, 32, 24, 32));
-        content.add(new LoadingGifView(Messages.get("splash.loading")), BorderLayout.CENTER);
+        content.setBackground(BG);
+        content.setBorder(BorderFactory.createEmptyBorder(28, 40, 28, 40));
+        JumlLoadingView view = new JumlLoadingView(Messages.get("splash.loading"), 96, true);
+        content.add(view, BorderLayout.CENTER);
         setContentPane(content);
         pack();
         setLocationRelativeTo(null); // 画面中央
