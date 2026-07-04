@@ -226,6 +226,16 @@ public final class GitPanel extends JPanel {
                     }
                     reloadAll();
                 } catch (Exception ex) {
+                    // 新リポジトリのブランチ列挙に失敗しても、旧リポジトリのデータを
+                    // 残さない。コンボを空にし各ペインを新サービスで再読込して、
+                    // 古いコミット/ブランチが見えたまま操作できる不整合を防ぐ。
+                    updatingBranches = true;
+                    try {
+                        branchCombo.removeAllItems();
+                    } finally {
+                        updatingBranches = false;
+                    }
+                    reloadAll();
                     reportStatusSafe(Messages.get("git.status.failed") + ex.getMessage());
                 }
             }

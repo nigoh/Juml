@@ -163,11 +163,26 @@ final class OpenProjectDialog extends JDialog {
             buttons.add(browse);
             buttons.add(remove);
             buttons.add(cancel);
-            // 先頭を初期選択して Enter で開けるようにし、Esc/Enter を統一設定する。
-            if (list.getModel().getSize() > 0) {
-                list.setSelectedIndex(0);
+            // 「存在する」プロジェクトを優先して初期選択する。先頭が移動/削除済みだと
+            // Open (既定ボタン) が無効化され、Enter が無反応の死にキーになるため。
+            int firstExisting = -1;
+            for (int i = 0; i < list.getModel().getSize(); i++) {
+                if (list.getModel().getElementAt(i).root().isDirectory()) {
+                    firstExisting = i;
+                    break;
+                }
             }
-            DialogUtils.installEscapeAndDefault(this, openSelected);
+            if (firstExisting >= 0) {
+                list.setSelectedIndex(firstExisting);
+                DialogUtils.installEscapeAndDefault(this, openSelected);
+            } else {
+                if (list.getModel().getSize() > 0) {
+                    list.setSelectedIndex(0);
+                }
+                // 開けるプロジェクトが 1 件も無い → Enter は Browse に割り当てる
+                // (Open は無効のままなので、Enter が何もしない状態を避ける)。
+                DialogUtils.installEscapeAndDefault(this, browse);
+            }
             center.add(buttons, gbc);
         }
 
