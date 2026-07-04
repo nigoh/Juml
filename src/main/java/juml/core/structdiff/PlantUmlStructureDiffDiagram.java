@@ -128,12 +128,19 @@ public final class PlantUmlStructureDiffDiagram {
             }
             out.append("  ..\n");
         }
-        int hidden = 0;
-        hidden += appendMembers(out, d, d.fields, opt);
-        if (!d.fields.isEmpty() && !d.methods.isEmpty()) {
+        // フィールド区画とメソッド区画を別々に組み立て、両区画とも実際に行を
+        // 出力したときだけ区切り線 "--" を挟む。showUnchangedMembers=false で
+        // フィールドが全て不変 (= 1 行も出ない) のにメソッドがある場合に、空区画の
+        // 直後へ孤立した "--" が残るのを防ぐ。
+        StringBuilder fieldBuf = new StringBuilder();
+        int hidden = appendMembers(fieldBuf, d, d.fields, opt);
+        StringBuilder methodBuf = new StringBuilder();
+        hidden += appendMembers(methodBuf, d, d.methods, opt);
+        out.append(fieldBuf);
+        if (fieldBuf.length() > 0 && methodBuf.length() > 0) {
             out.append("  --\n");
         }
-        hidden += appendMembers(out, d, d.methods, opt);
+        out.append(methodBuf);
         if (hidden > 0) {
             out.append("  .. ").append(hidden).append(" unchanged ..\n");
         }

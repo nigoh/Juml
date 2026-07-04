@@ -112,11 +112,36 @@ public class MethodDiffAnalyzerTest {
 
     @Test
     public void parseSpec_multipleDotsInMethodPart() {
-        // "Outer.Inner.method" → className=Outer.Inner, methodName=method
+        // "Outer.Inner.method" → className=Inner (単純名), methodName=method。
+        // findMethod は className を getSimpleName() と厳密一致で照合するため、
+        // ネストクラスの単純名 "Inner" に畳まないと (旧挙動の "Outer.Inner" では)
+        // メソッドが永久に見つからない。
         MethodDiffAnalyzer.MethodSpec s =
                 MethodDiffAnalyzer.parseSpec("Foo.java::Outer.Inner.method");
-        assertEquals("Outer.Inner", s.className);
+        assertEquals("Inner", s.className);
         assertEquals("method", s.methodName);
+    }
+
+    @Test
+    public void parseSpec_fullyQualifiedClass_reducesToSimpleName() {
+        // "com.example.Foo.bar" → className=Foo (単純名), methodName=bar。
+        MethodDiffAnalyzer.MethodSpec s =
+                MethodDiffAnalyzer.parseSpec("Foo.java::com.example.Foo.bar");
+        assertEquals("Foo", s.className);
+        assertEquals("bar", s.methodName);
+    }
+
+    @Test
+    public void findMethod_locatesMethodWhenSpecUsesQualifiedClassName() {
+        // 修飾名 "com.example.Calc.add" でも、単純名 Calc に畳まれるので発見できる。
+        List<JavaClassInfo> classes = JavaStructureExtractor.extract(
+                "package com.example;\n"
+                        + "public class Calc { int add(int a){ return helper(a); }\n"
+                        + "  int helper(int a){ return a; } }\n");
+        MethodDiffAnalyzer.MethodSpec spec =
+                MethodDiffAnalyzer.parseSpec("Calc.java::com.example.Calc.add");
+        JavaMethodInfo m = MethodDiffAnalyzer.findMethod(classes, spec);
+        assertEquals("add", m == null ? "(not found)" : m.getName());
     }
 
     @Test

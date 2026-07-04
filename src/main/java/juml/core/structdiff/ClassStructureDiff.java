@@ -211,7 +211,11 @@ public final class ClassStructureDiff {
     private static Map<String, String> methodLabels(JavaClassInfo c) {
         Map<String, String> map = new LinkedHashMap<>();
         for (JavaMethodInfo m : c.getMethods()) {
-            String key = m.getName() + "(" + String.join(",", m.getParameterTypes()) + ")";
+            // コンストラクタ名はクラス単純名なので、同名メソッド (合法だが稀な
+            // class Foo { Foo(int){} void Foo(int){} }) とキーが衝突して片方が
+            // putIfAbsent で脱落するのを防ぐため種別で名前空間を分ける。
+            String key = (m.isConstructor() ? "ctor:" : "method:") + m.getName()
+                    + "(" + String.join(",", m.getParameterTypes()) + ")";
             map.putIfAbsent(key, methodLabel(m));
         }
         return map;

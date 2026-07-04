@@ -77,6 +77,27 @@ public class ClassStructureDiffTest {
     }
 
     @Test
+    public void constructorAndSameNamedMethod_areTrackedSeparately() {
+        // class Foo に「コンストラクタ Foo(int)」と「同名メソッド void Foo(int)」が
+        // 併存 (合法だが稀)。両者の照合キーは種別で名前空間を分けるため衝突せず、
+        // メソッドだけを削除するとその削除が検出される (旧実装ではキー衝突で
+        // メソッド側が脱落し、削除が UNCHANGED に化けていた)。
+        List<ClassDiff> diffs = diff(
+                "class Foo { Foo(int x){} void Foo(int x){} }",
+                "class Foo { Foo(int x){} }");
+        ClassDiff foo = byName(diffs, "Foo");
+        assertEquals(ChangeKind.MODIFIED, foo.kind);
+        // コンストラクタは両側にあるので UNCHANGED、void メソッドは REMOVED。
+        boolean methodRemoved = foo.methods.stream()
+                .anyMatch(m -> m.kind == ChangeKind.REMOVED
+                        && m.oldLabel != null && m.oldLabel.contains(": void"));
+        assertTrue("同名メソッド void Foo(int) の削除が検出されるはず", methodRemoved);
+        boolean ctorKept = foo.methods.stream()
+                .anyMatch(m -> m.kind == ChangeKind.UNCHANGED);
+        assertTrue("コンストラクタ Foo(int) は不変として残るはず", ctorKept);
+    }
+
+    @Test
     public void identicalSource_isUnchanged() {
         String src = "class A { int x; void run(String s) {} }";
         List<ClassDiff> diffs = diff(src, src);

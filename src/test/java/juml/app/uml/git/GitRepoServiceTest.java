@@ -150,6 +150,33 @@ public class GitRepoServiceTest {
         assertTrue(diff.contains("a.txt"));
     }
 
+    /**
+     * {@code changesOf} の内部 (diffEntries) は rename 検出 (setDetectRenames(true)) を
+     * 有効にしているため、内容そのままの移動は ADD+DELETE でなく RENAME として 1 件に
+     * まとまるはず。diffEntries は共有 ObjectReader を try-with-resources で閉じるように
+     * したので、rename 検出パスが従来どおり機能することを併せて回帰確認する。
+     */
+    @Test
+    public void changesOf_detectsRenameAsSingleEntry() throws Exception {
+        // a.txt (line1\nline2\n) を内容そのまま renamed.txt へ移動する。
+        Files.delete(new File(root, "a.txt").toPath());
+        writeFile("renamed.txt", "line1\nline2\n");
+        git.add().addFilepattern("renamed.txt").call();
+        git.rm().setCached(true).addFilepattern("a.txt").call();
+        RevCommit renamed = git.commit().setMessage("rename a.txt to renamed.txt")
+                .setAuthor("Dave", "dave@example.com")
+                .setCommitter("Dave", "dave@example.com").call();
+
+        List<GitRepoService.FileChange> changes = service.changesOf(renamed.getName());
+        assertEquals("内容そのままの移動は RENAME 1 件にまとまるはず", 1, changes.size());
+        GitRepoService.FileChange fc = changes.get(0);
+        assertEquals("RENAME", fc.changeType);
+        assertEquals("a.txt", fc.oldPath);
+        assertEquals("renamed.txt", fc.path);
+        assertTrue("display() は old -> new 形式のはず: " + fc.display(),
+                fc.display().contains("a.txt -> renamed.txt"));
+    }
+
     @Test
     public void blame_attributesLinesToAuthors() throws Exception {
         List<GitRepoService.BlameLine> blame =

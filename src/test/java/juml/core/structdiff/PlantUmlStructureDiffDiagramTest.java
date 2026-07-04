@@ -90,6 +90,21 @@ public class PlantUmlStructureDiffDiagramTest {
     }
 
     @Test
+    public void collapsedFields_doNotLeaveStraySeparator() {
+        // フィールドは全て不変 (非表示) だがメソッドは変更あり。フィールド区画は
+        // 1 行も出ないので、区切り線 "--" を孤立させてはいけない。
+        Options opt = new Options();
+        opt.showUnchangedMembers = false;
+        String puml = generate(
+                "class A { int a; int b; void keep() {} }",
+                "class A { int a; int b; void keep() {} void added() {} }", opt);
+        assertTrue("追加メソッドは出るはず", puml.contains("added()"));
+        assertFalse("空フィールド区画の直後に孤立した -- を出さない",
+                puml.contains("{\n  --"));
+        assertFalse("不変メンバー非表示なので keep は本体に出ない", puml.contains("~ keep()"));
+    }
+
+    @Test
     public void genericTypes_areTildeEscaped() {
         String puml = generate(
                 "import java.util.*;\nclass A { }",
