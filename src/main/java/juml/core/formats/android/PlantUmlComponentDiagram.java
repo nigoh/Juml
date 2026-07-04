@@ -3,6 +3,8 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,7 +45,7 @@ public final class PlantUmlComponentDiagram {
         out.append("@startuml\n");
         out.append("top to bottom direction\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         Map<String, String> aliasByFqn = new LinkedHashMap<>();
         // モジュール順と各モジュールの最初のエイリアスを追跡（縦積み用）

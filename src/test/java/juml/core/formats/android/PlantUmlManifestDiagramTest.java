@@ -249,4 +249,26 @@ public class PlantUmlManifestDiagramTest {
         int appCount = puml.split("rectangle \"Application").length - 1;
         assertEquals(2, appCount);
     }
+
+    /**
+     * applicationLabel 等の引用ラベルは共通エスケーパで無害化する。同梱 PlantUML は
+     * {@code <} を creole タグとして解釈しテキストが欠落し、ラベル内の改行は引用文字列を
+     * 途中で閉じて構文エラーになるため、{@code <}→{@code ~<}・改行→空白へ変換する。
+     */
+    @Test
+    public void quotedLabelWithAngleBracketAndNewlineIsEscaped() {
+        AndroidProjectAnalysis a = new AndroidProjectAnalysis();
+        AndroidManifestInfo m = new AndroidManifestInfo();
+        m.setPackageName("com.x");
+        m.setApplicationLabel("My<App>\nLabel");
+        List<AndroidManifestInfo> list = new ArrayList<>();
+        list.add(m);
+        a.getManifestsByModule().put("app", list);
+
+        String puml = PlantUmlManifestDiagram.generate(a);
+        // "<" はチルダエスケープされ、改行は空白に畳まれる。
+        assertTrue(puml, puml.contains("label: My~<App> Label"));
+        // 未エスケープの "<App>" や生の改行が残ってはならない。
+        assertFalse(puml, puml.contains("My<App>"));
+    }
 }

@@ -8,8 +8,12 @@ package juml.core.formats.uml;
  *
  * <p>クラス図・シーケンス図など複数の生成器で重複していたインラインコメントの無害化・
  * 単語境界での折り返し・note 本文の整形を 1 箇所に集約する。状態を持たない純粋関数のみ。</p>
+ *
+ * <p>{@link #escapeLabel(String)} / {@link #escapeText(String)} は android/aosp など
+ * 別パッケージの生成器からも title・ラベルの正規エスケープとして利用するため public。
+ * それ以外の整形ヘルパはパッケージ内専用。</p>
  */
-final class PlantUmlCommentFormatter {
+public final class PlantUmlCommentFormatter {
 
     private PlantUmlCommentFormatter() {
     }
@@ -96,7 +100,7 @@ final class PlantUmlCommentFormatter {
      * 元の文字どおり表示される (実測確認済み)。{@code >} と {@code &} は生のままで
      * 安全に表示されるため変換しない。</p>
      */
-    static String escapeText(String s) {
+    public static String escapeText(String s) {
         if (s == null || s.isEmpty()) {
             return s == null ? "" : s;
         }
@@ -127,7 +131,7 @@ final class PlantUmlCommentFormatter {
      * 改行を畳み、{@code <} をチルダエスケープしてタグ誤認を防ぐ。
      * 既定では切り詰めない (全文表示)。
      */
-    static String escapeLabel(String s) {
+    public static String escapeLabel(String s) {
         return escapeLabel(s, 0);
     }
 

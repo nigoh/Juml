@@ -3,6 +3,8 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +52,7 @@ public final class PlantUmlManifestDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         // 全体の見た目を整える skinparam。文字数が多い Application ノードを
         // 読みやすく保つために幅指定と縦並べを優先する。
@@ -319,8 +321,13 @@ public final class PlantUmlManifestDiagram {
         if (s == null) {
             return "";
         }
-        // PlantUML のラベルで問題になりやすい文字を最小限置換。
-        return s.replace("\"", "'");
+        // 引用符付きラベル ("...") へ埋め込むため、まずダブルクォートをアポストロフィに、
+        // 改行・タブを空白に畳んでラベル文字列が途中で閉じないようにする。そのうえで
+        // 共通エスケーパ (制御文字除去・"<" のチルダエスケープ・"[[" の無害化・図境界
+        // ディレクティブの分断) に通し、applicationLabel 等に "<" や改行が入っても
+        // creole 解釈やハードエラーにならないようにする。
+        String t = s.replace('"', '\'').replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
+        return PlantUmlCommentFormatter.escapeText(t);
     }
 
     private static void emitLegend(StringBuilder out, Options o) {

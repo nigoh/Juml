@@ -3,6 +3,8 @@
 
 package juml.core.formats.android.apk;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,7 +69,7 @@ public final class PlantUmlSmaliClassDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         out.append("skinparam class {\n");
         out.append("  BackgroundColor<<external>> #F2F2F2\n");

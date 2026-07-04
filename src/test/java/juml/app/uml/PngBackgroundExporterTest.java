@@ -103,8 +103,11 @@ public class PngBackgroundExporterTest {
 
         // done() の完了後のステータスはファイルパスを含む。
         // doInBackground が PNG を生成するまで待ち、done() が保存パスを設定するまでポーリング。
+        // 多数のテストを並列実行して負荷が高いと PlantUML の初回描画 (コールドスタート) が
+        // 遅れるため、単独実行では十分な 20s だと稀にタイムアウトしていた。フルスイート
+        // 実行での安定性を優先し、成功待ちの猶予を広く取る (失敗時は結局アサートで落ちる)。
         String absPath = outFile.getAbsolutePath();
-        long deadline = System.currentTimeMillis() + 20_000;
+        long deadline = System.currentTimeMillis() + 60_000;
         while (System.currentTimeMillis() < deadline) {
             if (status.get().contains(absPath)) {
                 break;

@@ -89,7 +89,8 @@ final class NoteExport {
             double h = n.getHeight();
             f.append("<rect x=\"").append(num(x)).append("\" y=\"").append(num(y))
                     .append("\" width=\"").append(num(w)).append("\" height=\"").append(num(h))
-                    .append("\" rx=\"8\" ry=\"8\" fill=\"").append(attr(n.getColor()))
+                    .append("\" rx=\"8\" ry=\"8\" fill=\"")
+                    .append(attr(NoteRenderer.normalizeColorHex(n.getColor())))
                     .append("\" stroke=\"").append(BORDER).append("\" stroke-width=\"1\"/>");
             f.append("<foreignObject x=\"").append(num(x + 6)).append("\" y=\"").append(num(y + 6))
                     .append("\" width=\"").append(num(Math.max(1, w - 12)))

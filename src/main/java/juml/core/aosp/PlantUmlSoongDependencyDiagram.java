@@ -3,6 +3,8 @@
 
 package juml.core.aosp;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -37,7 +39,7 @@ public final class PlantUmlSoongDependencyDiagram {
     public static String render(List<AndroidBpModule> modules, String title) {
         StringBuilder sb = new StringBuilder();
         sb.append("@startuml\n");
-        sb.append("title ").append(title).append('\n');
+        sb.append("title ").append(PlantUmlCommentFormatter.escapeLabel(title)).append('\n');
         sb.append("skinparam componentStyle rectangle\n");
         sb.append("skinparam shadowing false\n");
 

@@ -143,4 +143,31 @@ public class AppCommandsTest {
         assertTrue("CUSTOM は preset コマンド化されない", expected.containsAll(received));
         assertTrue("非 CUSTOM の全 preset が網羅されるはず", received.containsAll(expected));
     }
+
+    /**
+     * 図種切替 Consumer は「メニューのラジオに出る図種」の数だけコマンドに展開され、
+     * 正しい {@link DiagramKind} が渡る。メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) は
+     * メニューのラジオから外れているため、パレットにも出さない。
+     */
+    @Test
+    public void diagramKindConsumerExpandsToOneCommandPerMenuKind() {
+        List<DiagramKind> received = new ArrayList<>();
+        Callbacks cb = new Callbacks();
+        cb.selectDiagramKindFromMenu = received::add;
+
+        List<CommandPalette.Command> cmds = AppCommands.from(cb);
+
+        Set<DiagramKind> expected = EnumSet.allOf(DiagramKind.class);
+        expected.removeAll(ToolBarBuilder.DIAGRAMS_METHOD);
+
+        assertEquals("メニューに出る図種の数だけコマンドが並ぶ", expected.size(), cmds.size());
+
+        for (CommandPalette.Command c : cmds) {
+            c.action.run();
+        }
+        assertEquals("全図種コマンドが accept を呼ぶはず", expected.size(), received.size());
+        assertTrue("メソッド系図種はコマンド化されない",
+                java.util.Collections.disjoint(received, ToolBarBuilder.DIAGRAMS_METHOD));
+        assertTrue("メニュー掲載の全図種が網羅されるはず", received.containsAll(expected));
+    }
 }

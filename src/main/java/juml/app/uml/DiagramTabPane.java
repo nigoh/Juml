@@ -849,19 +849,6 @@ public final class DiagramTabPane {
         }
     }
 
-    private static int countNewlines(String s) {
-        if (s == null) {
-            return 0;
-        }
-        int n = 0;
-        for (int i = 0; i < s.length(); i++) {
-            if (s.charAt(i) == '\n') {
-                n++;
-            }
-        }
-        return n;
-    }
-
     /** アクティブタブを現在のリクエストで再描画する (F5 / Refresh)。 */
     public void rerenderActiveTab() {
         DiagramTab t = activeTab();
@@ -1796,11 +1783,13 @@ public final class DiagramTabPane {
                             int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
                                     .getErrorLine();
                             if (genLine > 0) {
-                                int injected = countNewlines(
-                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml))
-                                        - countNewlines(editorPuml);
+                                // 生成テキストとエディタテキストを直接付き合わせ、prelude 挿入・
+                                // direction 行除去に関わらず正確な行へ写像する (#42)。
+                                String generated =
+                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
                                 sourcePanel.highlightErrorLine(
-                                        PumlSourcePanel.editorLineForError(genLine, injected));
+                                        PumlSourcePanel.editorLineForError(
+                                                editorPuml, generated, genLine));
                             }
                         }
                         previewPanel.setSvgGraphicsNode(null, 0, 0);

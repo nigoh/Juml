@@ -129,13 +129,16 @@ public final class DiagramController {
                 TreeNodeOpenRequest.method(sel.getOwner(), sel.getMethod(), DiagramKind.ACTIVITY));
     }
 
+    // ツリー選択で汎用 Manifest 図を開きつつ、選択名をステータスバーへ出す (#37, 整形は
+    // TreeSelectionStatus)。
     public void onTreeManifestSelected(juml.core.formats.android.AndroidManifestInfo m) {
         openManifestDiagram();
+        TreeSelectionStatus.show(statusLabel, TreeSelectionStatus.forManifest(m));
     }
 
-    public void onTreeComponentSelected(
-            juml.core.formats.android.AndroidComponentInfo c) {
+    public void onTreeComponentSelected(juml.core.formats.android.AndroidComponentInfo c) {
         openManifestDiagram();
+        TreeSelectionStatus.show(statusLabel, TreeSelectionStatus.forComponent(c));
     }
 
     /** 3 エントリを同じメソッドに揃える (DiagramState のヘルパへ委譲)。 */

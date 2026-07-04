@@ -3,6 +3,8 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,7 +39,7 @@ public final class PlantUmlGradleDependencyGraph {
         out.append("@startuml\n");
         out.append("top to bottom direction\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         // 同梱 PlantUML の Smetana レイアウトは孤立ノード (in/out エッジを 1 本も
         // 持たないコンポーネント) を含むグラフで qsort 内 IllegalStateException を
