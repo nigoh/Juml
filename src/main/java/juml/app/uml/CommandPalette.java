@@ -210,7 +210,10 @@ final class CommandPalette {
             return;
         }
         int i = list.getSelectedIndex();
-        list.setSelectedIndex(Math.floorMod((i < 0 ? 0 : i) + delta, n));
+        // 選択が無い (クリアされた) 状態からは、下移動で先頭・上移動で末尾を選ぶ。
+        // 「無選択を 0 とみなして delta を足す」と下移動で先頭を飛ばして 2 番目になる。
+        int next = (i < 0) ? (delta > 0 ? 0 : n - 1) : Math.floorMod(i + delta, n);
+        list.setSelectedIndex(next);
         list.ensureIndexIsVisible(list.getSelectedIndex());
     }
 

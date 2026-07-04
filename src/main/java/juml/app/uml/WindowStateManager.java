@@ -29,7 +29,9 @@ final class WindowStateManager {
         } else {
             frame.setLocationRelativeTo(null);
         }
-        if (split != null && setting.getMainSplitLocation() > 0) {
+        // 0 は「サイドバーを畳んだ」正当な分割位置。未保存の sentinel は -1 なので、
+        // >= 0 で判定する (> 0 だと畳んだ状態が復元されず毎回開いた状態に戻ってしまう)。
+        if (split != null && setting.getMainSplitLocation() >= 0) {
             split.setDividerLocation(setting.getMainSplitLocation());
         }
         if (setting.isWindowMaximized()) {

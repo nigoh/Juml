@@ -791,7 +791,11 @@ public class SvgPreviewPanel extends JPanel {
                 g2.setTransform(baseTransform);
                 Color fc = UIManager.getColor("Component.focusColor");
                 g2.setColor(fc != null ? fc : new Color(30, 100, 255, 120));
-                g2.drawRect(1, 1, getWidth() - 3, getHeight() - 3);
+                // フォーカスリングは可視領域 (ビューポート) の縁に描く。パネル全体の
+                // getWidth()/getHeight() だと、図がビューポートより大きいとき縁が画面外に
+                // 出てフォーカス表示が全く見えなくなる。
+                java.awt.Rectangle vis = getVisibleRect();
+                g2.drawRect(vis.x + 1, vis.y + 1, vis.width - 3, vis.height - 3);
             }
         } finally {
             g2.dispose();
