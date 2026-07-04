@@ -124,4 +124,39 @@ public class ErrorListenerTest {
         ErrorListener.collecting(sink).onError(ErrorCode.NONE, "A.java", 1, "note");
         assertEquals("A.java:1: note", sink.get(0));
     }
+
+    @Test
+    public void testCountingCountsOnlyIdBearingErrors() {
+        ErrorListener.Counting c = ErrorListener.counting();
+        c.onError(ErrorCode.PRJ_004, "A.java", 1, "read fail");
+        c.onError(ErrorCode.PRJ_005, "B.java", 2, "parse fail");
+        c.onError(ErrorCode.NONE, "C.java", 3, "info only"); // not counted
+        c.onError("D.java", 4, "info via 3-arg overload"); // NONE, not counted
+        assertEquals(2, c.getErrorCount());
+    }
+
+    @Test
+    public void testCountingStartsAtZero() {
+        assertEquals(0, ErrorListener.counting().getErrorCount());
+    }
+
+    @Test
+    public void testCountingForwardsToDelegate() {
+        List<String> sink = new ArrayList<>();
+        ErrorListener.Counting c = ErrorListener.counting(ErrorListener.collecting(sink));
+        c.onError(ErrorCode.PRJ_006, "IFoo.aidl", 3, "bad aidl");
+        c.onError(ErrorCode.NONE, null, -1, "just info");
+        assertEquals(1, c.getErrorCount());
+        // delegate receives every event, including the non-counted info notification
+        assertEquals(2, sink.size());
+        assertEquals("[PRJ-006] IFoo.aidl:3: bad aidl", sink.get(0));
+        assertEquals("just info", sink.get(1));
+    }
+
+    @Test
+    public void testCountingNullDelegateDoesNotThrow() {
+        ErrorListener.Counting c = ErrorListener.counting();
+        c.onError(ErrorCode.PRJ_005, "A.java", 1, "boom");
+        assertEquals(1, c.getErrorCount());
+    }
 }
