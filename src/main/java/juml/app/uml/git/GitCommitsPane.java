@@ -31,6 +31,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Window;
 import java.awt.geom.CubicCurve2D;
 import java.util.Collections;
 import java.util.List;
@@ -446,6 +447,11 @@ final class GitCommitsPane extends JPanel {
         actItem.setToolTipText(Messages.get("git.file.actCompareTip"));
         actItem.addActionListener(e -> openActivityCompareForSelectedFile());
         menu.add(actItem);
+        javax.swing.JMenuItem seqItem =
+                new javax.swing.JMenuItem(Messages.get("git.file.seqCompare"));
+        seqItem.setToolTipText(Messages.get("git.file.seqCompareTip"));
+        seqItem.addActionListener(e -> openSequenceCompareForSelectedFile());
+        menu.add(seqItem);
         filesList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mousePressed(java.awt.event.MouseEvent e) {
                 maybeShow(e);
@@ -468,6 +474,7 @@ final class GitCommitsPane extends JPanel {
                 umlItem.setEnabled(java);
                 cmpItem.setEnabled(java);
                 actItem.setEnabled(java);
+                seqItem.setEnabled(java);
                 menu.show(filesList, e.getX(), e.getY());
             }
         });
@@ -478,33 +485,14 @@ final class GitCommitsPane extends JPanel {
         return path != null && path.endsWith(".java");
     }
 
-    /**
-     * 選択中の変更ファイル (.java) をクラス構造 UML 差分表示する。比較の 2 時点は現在の
-     * 比較コンテキスト（1 コミット選択なら vs 親、2 コミット選択なら選択同士）に従う。
-     * グラフ (Commits) から UML 比較画面へ直接つなぐ統合ポイント。
-     */
-    private void openUmlDiffForSelectedFile() {
-        FileChange f = filesList.getSelectedValue();
-        final GitRepoService svc = ctx.service();
-        if (f == null || svc == null || cmpNewRev == null) {
-            return;
-        }
-        if (!isJavaChange(f)) {
-            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
-            return;
-        }
-        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
-        GitUmlDiffDialog dialog = new GitUmlDiffDialog(
-                javax.swing.SwingUtilities.getWindowAncestor(this),
-                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
-        dialog.setVisible(true);
+    /** 選択中の .java 変更ファイルへ何かする各コンパレータ (dialog 生成) の共通型。 */
+    private interface CompareLauncher {
+        JDialogLike open(Window owner, GitRepoService svc, String path,
+                         String oldRev, String newRev, String newLabel);
     }
 
-    /**
-     * 選択中の変更ファイル (.java) の旧・新クラス図を左右に並べて比較する
-     * (変更ノードを図中で色付き表示)。比較の 2 時点は現在の比較コンテキストに従う。
-     */
-    private void openDiagramCompareForSelectedFile() {
+    /** 比較ダイアログ生成関数を、共通の前提チェック付きで起動する。 */
+    private void openCompareForSelectedFile(CompareLauncher launcher) {
         FileChange f = filesList.getSelectedValue();
         final GitRepoService svc = ctx.service();
         if (f == null || svc == null || cmpNewRev == null) {
@@ -515,10 +503,37 @@ final class GitCommitsPane extends JPanel {
             return;
         }
         String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
-        GitDiagramCompareDialog dialog = new GitDiagramCompareDialog(
-                javax.swing.SwingUtilities.getWindowAncestor(this),
-                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
-        dialog.setVisible(true);
+        Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
+        launcher.open(owner, svc, path, cmpOldRev, cmpNewRev, cmpNewLabel).show();
+    }
+
+    /** クラス構造 UML 差分 (統合 1 枚) をグラフから起動する。 */
+    private void openUmlDiffForSelectedFile() {
+        openCompareForSelectedFile((o, s, p, or, nr, nl) ->
+                () -> new GitUmlDiffDialog(o, s, p, or, nr, nl).setVisible(true));
+    }
+
+    /** クラス図を旧/新で左右に並べて比較する (変更ノードを図中で色付き)。 */
+    private void openDiagramCompareForSelectedFile() {
+        openCompareForSelectedFile((o, s, p, or, nr, nl) ->
+                () -> new GitDiagramCompareDialog(o, s, p, or, nr, nl).setVisible(true));
+    }
+
+    /** メソッドのアクティビティ図 (制御フロー) を旧/新で左右に並べて比較する。 */
+    private void openActivityCompareForSelectedFile() {
+        openCompareForSelectedFile((o, s, p, or, nr, nl) ->
+                () -> new GitActivityCompareDialog(o, s, p, or, nr, nl).setVisible(true));
+    }
+
+    /** メソッドのシーケンス図 (呼び出しトレース) を旧/新で左右に並べて比較する。 */
+    private void openSequenceCompareForSelectedFile() {
+        openCompareForSelectedFile((o, s, p, or, nr, nl) ->
+                () -> new GitSequenceCompareDialog(o, s, p, or, nr, nl).setVisible(true));
+    }
+
+    /** ダイアログを表示するだけの関数型 (ラムダで各 setVisible を包む)。 */
+    private interface JDialogLike {
+        void show();
     }
 
     /** テスト用: 図の左右比較ダイアログを直接開く (右クリックメニュー相当)。 */
@@ -526,30 +541,14 @@ final class GitCommitsPane extends JPanel {
         openDiagramCompareForSelectedFile();
     }
 
-    /**
-     * 選択中の変更ファイル (.java) のメソッドを、旧・新のアクティビティ図で左右比較する
-     * (関数の中身＝制御フローの変化を図中で色付き表示)。
-     */
-    private void openActivityCompareForSelectedFile() {
-        FileChange f = filesList.getSelectedValue();
-        final GitRepoService svc = ctx.service();
-        if (f == null || svc == null || cmpNewRev == null) {
-            return;
-        }
-        if (!isJavaChange(f)) {
-            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
-            return;
-        }
-        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
-        GitActivityCompareDialog dialog = new GitActivityCompareDialog(
-                javax.swing.SwingUtilities.getWindowAncestor(this),
-                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
-        dialog.setVisible(true);
-    }
-
     /** テスト用: アクティビティ図の左右比較ダイアログを直接開く。 */
     void openActivityCompareForTest() {
         openActivityCompareForSelectedFile();
+    }
+
+    /** テスト用: シーケンス図の左右比較ダイアログを直接開く。 */
+    void openSequenceCompareForTest() {
+        openSequenceCompareForSelectedFile();
     }
 
     /** Unified / Side-by-side を切り替えるトグルバーを作る。 */

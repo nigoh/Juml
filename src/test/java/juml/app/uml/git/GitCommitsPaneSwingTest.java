@@ -345,6 +345,30 @@ public class GitCommitsPaneSwingTest {
     }
 
     // -------------------------------------------------------------------------
+    // ハッピーパス: .java の変更ファイルで「メソッドを左右比較 (シーケンス)」を開く
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void openSequenceCompare_javaFile_opensSideBySideDialog() throws Exception {
+        load();
+
+        final boolean[] found = new boolean[1];
+        SwingUtilities.invokeAndWait(() -> found[0] = pane.selectFileForTest(JAVA_PATH));
+        assertTrue(".java の変更ファイルが見つかるはず", found[0]);
+
+        List<Window> before = currentWindows();
+        SwingUtilities.invokeAndWait(pane::openSequenceCompareForTest);
+
+        Window opened = awaitNewWindow(before);
+        assertNotNull("シーケンス図の左右比較ダイアログが開かれるはず", opened);
+        assertTrue("開いたウィンドウは JDialog のはず", opened instanceof javax.swing.JDialog);
+        toDispose.add(opened);
+        final String title = titleOf((javax.swing.JDialog) opened);
+        assertTrue("ダイアログタイトルに対象パスが含まれるはず: " + title,
+                title.contains(JAVA_PATH));
+    }
+
+    // -------------------------------------------------------------------------
     // 2 コミット選択で「選択同士」の比較コンテキストが組まれる (vs 親でなく)
     // -------------------------------------------------------------------------
 
