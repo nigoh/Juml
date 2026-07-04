@@ -24,7 +24,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Swing GUI テスト (AssertJ-Swing) は DISPLAY が必要なため仮想ディスプレイでラップする。
       # DISPLAY 未設定でも該当テストは Assume で skip されるが、CI では実行できるようにする。
