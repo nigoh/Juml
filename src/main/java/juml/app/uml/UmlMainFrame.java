@@ -120,6 +120,10 @@ public class UmlMainFrame extends JFrame {
 
     public UmlMainFrame(File initialProject) {
         super(WINDOW_TITLE);
+        // ブランドロゴをウィンドウ/タスクバーアイコンに使う (ベクター描画なので複数解像度を用意)。
+        setIconImages(java.util.List.of(
+                JumlLogo.renderMarkImage(16), JumlLogo.renderMarkImage(32),
+                JumlLogo.renderMarkImage(64), JumlLogo.renderMarkImage(128)));
         setLayout(new BorderLayout());
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
