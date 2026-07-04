@@ -241,6 +241,36 @@ public class DiskAnalysisCacheTest {
                 cache.load(projectRoot, ProgressListener.silent(), current).isPresent());
     }
 
+    /**
+     * 陳腐化チェック: {@code .aidl} 由来のクラスも KIND_JAVA で永続化されるため、
+     * currentFiles に {@code .aidl} を含めればヒットし、含め忘れると (旧挙動)
+     * DB 行が「削除された」と誤判定されて毎回ミスすることを示す回帰テスト。
+     */
+    @Test
+    public void aidlSourceMatchesOnlyWhenIncludedInCurrentFiles() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "aidl/p");
+        assertTrue(srcDir.mkdirs());
+        File aidl = new File(srcDir, "IFoo.aidl");
+        try (FileWriter w = new FileWriter(aidl)) {
+            w.write("package p; interface IFoo {}");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "IFoo"), aidl, null);
+        cache.save(projectRoot, idx.headers(), idx);
+
+        // .aidl を含めればヒット
+        assertTrue(".aidl を含めればキャッシュヒット",
+                cache.load(projectRoot, ProgressListener.silent(),
+                        new ArrayList<>(Arrays.asList(aidl))).isPresent());
+        // .aidl を含め忘れると DB 行が deleted 扱いになりミス (回帰の再現)
+        assertFalse(".aidl を含め忘れると毎回ミス",
+                cache.load(projectRoot, ProgressListener.silent(),
+                        new ArrayList<>()).isPresent());
+    }
+
     /** currentJavaFiles を渡さない従来 API は陳腐化チェックせず常にヒット。 */
     @Test
     public void nullCurrentFilesSkipsStalenessCheck() throws Exception {

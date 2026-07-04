@@ -27,8 +27,15 @@ public final class CliDispatcher {
         if (o.functionList.isSet()) {
             String fmt = o.functionListFormat.getArguments().isEmpty()
                     ? null : o.functionListFormat.getArguments().getLast();
-            UmlCommands.handleFunctionList(ctx,
-                    juml.core.formats.uml.MethodUsageReport.Format.fromString(fmt));
+            juml.core.formats.uml.MethodUsageReport.Format format =
+                    juml.core.formats.uml.MethodUsageReport.Format.fromStringStrict(fmt);
+            if (format == null) {
+                System.err.println("--function-list-format must be 'table' or 'csv' (got: "
+                        + fmt + ")");
+                System.exit(1);
+                return true;
+            }
+            UmlCommands.handleFunctionList(ctx, format);
             return true;
         }
         if (o.sequenceDiagrams.isSet()) {

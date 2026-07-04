@@ -215,6 +215,22 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
+        // SVG 出力時は同梱 PlantUML が先頭の @startuml しかレンダリングしないため、
+        // 複数グラフはグラフごとに別ファイル (<base>-<name>.svg) へ分割して書き出す。
+        // .puml/.md/標準出力は連結のままでよい (PlantUML ツールが複数図を扱えるため)。
+        if (graphs.size() > 1 && CliOutput.isSvgTarget(fileOut)) {
+            for (int i = 0; i < graphs.size(); i++) {
+                AndroidNavigationGraphInfo g = graphs.get(i);
+                String label = navGraphLabel(g);
+                File target = CliOutput.perDiagramSvgTarget(fileOut, label, i, "nav-graph");
+                CliOutput.writeUmlOutput(target,
+                        PlantUmlNavigationGraphDiagram.generate(g, o));
+            }
+            System.err.println("[juml] Wrote " + graphs.size()
+                    + " navigation graphs as separate SVG files"
+                    + " (PlantUML SVG output renders one diagram per file).");
+            return;
+        }
         // 複数グラフは個別の @startuml ブロックとして連結 (PlantUML は複数図を扱える)
         StringBuilder sb = new StringBuilder();
         for (AndroidNavigationGraphInfo g : graphs) {
@@ -224,6 +240,16 @@ public final class AndroidCommands {
             sb.append(PlantUmlNavigationGraphDiagram.generate(g, o));
         }
         CliOutput.writeUmlOutput(fileOut, sb.toString(), "nav-graph");
+    }
+
+    /** nav-graph の per-file SVG ファイル名に使うラベル (fileName 優先、無ければ graphId)。 */
+    private static String navGraphLabel(AndroidNavigationGraphInfo g) {
+        String name = g.getFileName();
+        if (name != null && !name.isEmpty()) {
+            int dot = name.lastIndexOf('.');
+            return dot > 0 ? name.substring(0, dot) : name;
+        }
+        return g.getGraphId();
     }
 
     /** {@code --dependency-graph}: Gradle 依存グラフ PlantUML を生成。 */

@@ -107,19 +107,23 @@ public final class ProjectAnalysisCache {
     }
 
     /**
-     * ディスクキャッシュの陳腐化チェック用に現在の Java ソース一覧だけを走査する
-     * (パースはしない)。DB の {@code KIND_JAVA} 行と突き合わせるため {@code .java} に絞る。
+     * ディスクキャッシュの陳腐化チェック用に、現在のパース対象ソース一覧を走査する
+     * (パースはしない)。save は {@code .java} だけでなく {@code .kt} / {@code .aidl}
+     * から生成したクラスも {@code KIND_JAVA} で永続化するため、突き合わせる現在側も
+     * 同じ拡張子を含める。{@code .java} だけに絞ると DB の {@code .kt} / {@code .aidl}
+     * 行が毎回「削除された」と誤判定され、キャッシュが常にヒットしなくなる。
      */
-    private static List<File> scanJavaFiles(File root,
+    private static List<File> scanSourceFiles(File root,
             juml.core.formats.java.AndroidProjectScanner.Options scanOpts) {
         List<File> all = juml.core.formats.java.AndroidProjectScanner.scan(root, scanOpts);
-        List<File> java = new java.util.ArrayList<>();
+        List<File> sources = new java.util.ArrayList<>();
         for (File f : all) {
-            if (f.getName().endsWith(".java")) {
-                java.add(f);
+            String name = f.getName();
+            if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".aidl")) {
+                sources.add(f);
             }
         }
-        return java;
+        return sources;
     }
 
     /** 現在の世代を返す (ロード開始時に捕捉し、発行時に照合する)。 */
@@ -193,7 +197,7 @@ public final class ProjectAnalysisCache {
         // (陳腐化検出のための走査は full parse より十分軽い)。
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                List<File> currentJava = scanJavaFiles(root, scanOpts);
+                List<File> currentJava = scanSourceFiles(root, scanOpts);
                 if (c.isCancelled()) {
                     return;
                 }

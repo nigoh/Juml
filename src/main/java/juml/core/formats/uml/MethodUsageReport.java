@@ -42,6 +42,25 @@ public final class MethodUsageReport {
         public static Format fromString(String s) {
             return s != null && "csv".equalsIgnoreCase(s.trim()) ? CSV : TABLE;
         }
+
+        /**
+         * 厳密解決。null / 空 / "table" は TABLE、"csv" は CSV、それ以外 (typo や
+         * 未対応の "json" 等) は {@code null} を返す。呼び出し側は null を不正入力として
+         * 扱い、黙って TABLE にフォールバックせずエラー終了できる。
+         */
+        public static Format fromStringStrict(String s) {
+            if (s == null) {
+                return TABLE;
+            }
+            String t = s.trim().toLowerCase(java.util.Locale.ROOT);
+            if (t.isEmpty() || "table".equals(t)) {
+                return TABLE;
+            }
+            if ("csv".equals(t)) {
+                return CSV;
+            }
+            return null;
+        }
     }
 
     /** 利用側・実行条件をどう導出したか（＝空欄理由）の分類。 */
