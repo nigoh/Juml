@@ -30,7 +30,7 @@ public final class VehiclePropertyCatalog {
 
     private static final Pattern CONST_PATTERN = Pattern.compile(
             "public\\s+static\\s+final\\s+int\\s+"
-                    + "([A-Z][A-Z0-9_]+)\\s*=\\s*(0x[0-9A-Fa-f_]+|-?\\d[\\d_]*)\\s*;");
+                    + "([A-Z][A-Z0-9_]+)\\s*=\\s*(0[xX][0-9A-Fa-f_]+|-?\\d[\\d_]*)\\s*;");
 
     /** Property 名 → ID (10進)。 */
     private final Map<String, Long> nameToId = new LinkedHashMap<>();

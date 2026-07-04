@@ -181,6 +181,29 @@ public class AndroidBpParserTest {
     }
 
     @Test
+    public void chainedDefaultsDoNotCreateSpuriousDefaultsEdge() {
+        // a_def が b_def を継承する場合、libc には b_def への "defaults" 種別の
+        // 直接辺が生えないこと (継承は再帰で辿るので、defaults ポインタは辺にしない)。
+        String src = "cc_defaults { name: \"a_def\", defaults: [\"b_def\"], shared_libs: [\"liba\"] }\n"
+                + "cc_defaults { name: \"b_def\", shared_libs: [\"libb\"] }\n"
+                + "cc_library { name: \"libc\", defaults: [\"a_def\"] }\n";
+        List<AndroidBpModule> mods = new AndroidBpParser().parseSource(src, "Android.bp");
+        AndroidBpParser.resolveDefaults(mods);
+        AndroidBpModule libc = mods.stream()
+                .filter(m -> m.getName().equals("libc")).findFirst().orElse(null);
+        assertNotNull(libc);
+        // 実 lib は継承する
+        assertTrue(libc.getDeps().contains("liba"));
+        assertTrue(libc.getDeps().contains("libb"));
+        // "defaults" 種別には自身の直接参照 a_def のみ。b_def は含めない。
+        java.util.List<String> defaultsKind = libc.getDepsByKind()
+                .getOrDefault("defaults", java.util.Collections.emptyList());
+        assertTrue("直接の defaults 参照 a_def は残る", defaultsKind.contains("a_def"));
+        assertTrue("継承経由の b_def を defaults 辺にしないこと",
+                !defaultsKind.contains("b_def"));
+    }
+
+    @Test
     public void diagramOutputContainsModuleAndEdge() {
         String src = "cc_library { name: \"libfoo\", shared_libs: [\"libbar\"] }\n"
                 + "cc_library { name: \"libbar\" }\n";
