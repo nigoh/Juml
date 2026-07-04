@@ -111,25 +111,32 @@ public final class DoxygenRunner {
             throw new IOException("failed to start doxygen: " + ex.getMessage(), ex);
         }
         // doxygen の標準出力/エラーを読み捨てつつ、致命的行だけ通知する。
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("error:") || line.contains(": error:")) {
-                    log.onError("doxygen", -1, line);
+        // 読み取り/待機のどの段階で例外が飛んでも子プロセスを孤児にしないよう、
+        // finally で生存していれば強制終了する (成功時は既に終了済みなので no-op)。
+        try {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("error:") || line.contains(": error:")) {
+                        log.onError("doxygen", -1, line);
+                    }
                 }
             }
-        }
-        int exit;
-        try {
-            exit = process.waitFor();
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            process.destroy();
-            throw new IOException("doxygen run interrupted", ex);
-        }
-        if (exit != 0) {
-            throw new IOException("doxygen exited with code " + exit);
+            int exit;
+            try {
+                exit = process.waitFor();
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IOException("doxygen run interrupted", ex);
+            }
+            if (exit != 0) {
+                throw new IOException("doxygen exited with code " + exit);
+            }
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
         File xmlDir = new File(outDir, "xml");
         if (!new File(xmlDir, "index.xml").isFile()) {

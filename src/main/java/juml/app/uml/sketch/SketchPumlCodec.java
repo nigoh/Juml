@@ -89,6 +89,12 @@ public final class SketchPumlCodec {
                 SketchClass.Kind kind = kindOf(decl.group(1), decl.group(2));
                 SketchClass c = obtainClass(model, decl.group(3));
                 c.setKind(kind);
+                if (decl.group(1) != null && !"class".equals(decl.group(2))) {
+                    // 'abstract interface' / 'abstract enum' はモデルの種別 (INTERFACE/ENUM)
+                    // で表現できず、GUI 再生成すると abstract 修飾子が黙って失われる。
+                    // 未対応行として積み、デザイナー編集を無効化してテキストを保全する。
+                    unsupported.add(line);
+                }
                 if (decl.group(4) != null) {
                     i = readMembers(lines, i, c);
                 }

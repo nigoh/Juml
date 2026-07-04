@@ -539,9 +539,24 @@ public final class DiagramController {
         JRadioButtonMenuItem item = diagramItems.get(kind);
         if (item != null) {
             item.setSelected(true);
+        } else {
+            // メソッド系図種はメニューラジオを持たない。直前の構造図種の選択表示が残るので解除。
+            clearButtonGroupOf(diagramItems.values());
         }
         syncDiagramToggle(kind);
         updateContextualMenuItems(kind);
+    }
+
+    /** ボタン群が属する {@link javax.swing.ButtonGroup} の選択を解除する。 */
+    private static void clearButtonGroupOf(
+            java.util.Collection<? extends javax.swing.AbstractButton> buttons) {
+        for (javax.swing.AbstractButton b : buttons) {
+            if (b.getModel() instanceof javax.swing.DefaultButtonModel dm
+                    && dm.getGroup() != null) {
+                dm.getGroup().clearSelection();
+                return;
+            }
+        }
     }
 
     /**
@@ -701,8 +716,12 @@ public final class DiagramController {
      */
     public void syncDiagramToggle(DiagramKind kind) {
         JToggleButton b = diagramToggles.get(kind);
-        if (b != null && !b.isSelected()) {
-            b.setSelected(true);
+        if (b != null) {
+            if (!b.isSelected()) {
+                b.setSelected(true);
+            }
+        } else {
+            clearButtonGroupOf(diagramToggles.values()); // トグルなし図種: stale 選択を解除
         }
     }
 

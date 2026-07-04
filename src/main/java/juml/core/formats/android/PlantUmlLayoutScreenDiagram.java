@@ -252,7 +252,11 @@ public final class PlantUmlLayoutScreenDiagram {
         if (orient == null) {
             orient = node.getExtraAttributes().get("orientation");
         }
-        return "horizontal".equals(orient);
+        // orientation 省略時、LinearLayout の Android 既定は horizontal。
+        if (orient == null) {
+            return true;
+        }
+        return "horizontal".equals(orient.trim().toLowerCase(java.util.Locale.ROOT));
     }
 
     private static String buildDefaultTitle(AndroidLayoutInfo layout) {
@@ -288,6 +292,10 @@ public final class PlantUmlLayoutScreenDiagram {
                 .replace(']', ')')
                 .replace('"', '\'')
                 .replace('^', '\'')
+                // Salt/creole は <b> <i> <&icon> <color:..> を書式として解釈するため、
+                // android:text 内の < > を無害化してユーザーのテキストをそのまま見せる。
+                .replace('<', '‹')
+                .replace('>', '›')
                 .replace('\n', ' ')
                 .replace('\t', ' ')
                 .replaceAll("\\s+", " ")

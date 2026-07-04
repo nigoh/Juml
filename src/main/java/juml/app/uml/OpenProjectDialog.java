@@ -163,11 +163,7 @@ final class OpenProjectDialog extends JDialog {
             buttons.add(browse);
             buttons.add(remove);
             buttons.add(cancel);
-            // 先頭を初期選択して Enter で開けるようにし、Esc/Enter を統一設定する。
-            if (list.getModel().getSize() > 0) {
-                list.setSelectedIndex(0);
-            }
-            DialogUtils.installEscapeAndDefault(this, openSelected);
+            installInitialSelectionAndDefault(list, openSelected, browse);
             center.add(buttons, gbc);
         }
 
@@ -203,6 +199,31 @@ final class OpenProjectDialog extends JDialog {
      * 確認のうえ、リストモデルと永続化リポジトリ ({@code onDelete}) の両方から取り除く。
      * ディスク上のプロジェクト本体には触れない。
      */
+    /**
+     * 初期選択と既定ボタン (Enter) を決める。「存在する」プロジェクトを優先選択し、
+     * 開けるものが 1 件も無ければ Enter を Browse に割り当てる (Open は無効のため、
+     * Enter が無反応の死にキーになるのを避ける)。
+     */
+    private void installInitialSelectionAndDefault(
+            JList<ProjectRecord> list, JButton openSelected, JButton browse) {
+        int firstExisting = -1;
+        for (int i = 0; i < list.getModel().getSize(); i++) {
+            if (list.getModel().getElementAt(i).root().isDirectory()) {
+                firstExisting = i;
+                break;
+            }
+        }
+        if (firstExisting >= 0) {
+            list.setSelectedIndex(firstExisting);
+            DialogUtils.installEscapeAndDefault(this, openSelected);
+        } else {
+            if (list.getModel().getSize() > 0) {
+                list.setSelectedIndex(0);
+            }
+            DialogUtils.installEscapeAndDefault(this, browse);
+        }
+    }
+
     private void removeSelected(JList<ProjectRecord> list,
                                 DefaultListModel<ProjectRecord> model,
                                 Consumer<ProjectRecord> onDelete) {

@@ -56,7 +56,17 @@ final class NoteExport {
         if (notes != null && !notes.isEmpty()) {
             svg = injectIntoSvg(svg, notes);
         }
-        Files.write(target.toPath(), svg.getBytes(StandardCharsets.UTF_8));
+        // 一時ファイルへ書いてから原子的に置換する。既存ファイルへ直接書いて途中で失敗
+        // (ディスク満杯/権限変化) すると、直前の正しい SVG が破損した状態で残るため。
+        java.nio.file.Path targetPath = target.toPath();
+        java.nio.file.Path tmp = targetPath.resolveSibling(targetPath.getFileName() + ".tmp");
+        Files.write(tmp, svg.getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(tmp, targetPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+            Files.move(tmp, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /**

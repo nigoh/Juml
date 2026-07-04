@@ -100,7 +100,11 @@ final class DiagramSearchLayer {
         }
         // 呼び出し元 (SvgPreviewPanel) が設定したパネル基準変換 (スクロール込み) のまま描く。
         // identity へ戻すとスクロール時にヒット枠が図とずれてしまう。
+        // 呼び出し元 (SvgPreviewPanel) は同一フレームで scratch g2 を複数レイヤに
+        // 使い回すため、stroke だけでなく color も元へ戻す。戻し忘れるとヒットの
+        // 塗り色が後続レイヤ (minimap 等) に漏れる。
         Stroke oldStroke = g2.getStroke();
+        java.awt.Color oldColor = g2.getColor();
         for (int i = 0; i < hits.size(); i++) {
             Rectangle2D r = hits.get(i);
             int x = (int) Math.round(r.getX() * zoom);
@@ -115,5 +119,6 @@ final class DiagramSearchLayer {
             g2.drawRect(x, y, w, h);
         }
         g2.setStroke(oldStroke);
+        g2.setColor(oldColor);
     }
 }

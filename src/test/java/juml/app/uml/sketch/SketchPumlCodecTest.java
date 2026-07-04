@@ -153,6 +153,31 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void parse_abstractInterface_isReportedNotSilentlyDowngraded() {
+        // 'abstract interface' はモデル種別 (INTERFACE) では abstract を表現できず、
+        // GUI 再生成で 'interface' に化けて abstract が黙って失われる。編集を無効化して
+        // テキストを保護するため、未対応として報告されるべき。
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(
+                "@startuml\nabstract interface Foo\n@enduml\n");
+        assertFalse("abstract interface は未対応として保護されるはず",
+                r.isFullySupported());
+        assertTrue("abstract interface 行が未対応として報告されるはず",
+                r.unsupportedLines.contains("abstract interface Foo"));
+
+        // 'abstract enum' も同様に保護する。
+        SketchPumlCodec.ParseResult en = SketchPumlCodec.parse(
+                "@startuml\nabstract enum Bar\n@enduml\n");
+        assertFalse("abstract enum も未対応として保護されるはず", en.isFullySupported());
+
+        // 対照: 素の 'abstract class' は ABSTRACT 種別で表現でき、編集可能なまま。
+        SketchPumlCodec.ParseResult ac = SketchPumlCodec.parse(
+                "@startuml\nabstract class Baz\n@enduml\n");
+        assertTrue("abstract class は編集可能のまま: " + ac.unsupportedLines,
+                ac.isFullySupported());
+        assertEquals(SketchClass.Kind.ABSTRACT, ac.model.findClass("Baz").getKind());
+    }
+
+    @Test
     public void toPuml_emptyModel_producesMinimalDocument() {
         String puml = SketchPumlCodec.toPuml(new SketchModel());
         assertEquals("@startuml\n@enduml\n", puml);

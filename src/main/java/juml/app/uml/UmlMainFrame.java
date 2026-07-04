@@ -262,7 +262,8 @@ public class UmlMainFrame extends JFrame {
             if (!state.sequenceHiddenParticipants.isEmpty()) {
                 state.sequenceHiddenParticipants.clear();
                 status.setText(Messages.get("status.clearedSeqFilter"));
-                refreshDiagram();
+                // 変更したグローバル状態を種にシーケンス図を作り直す (F5 とは異なる経路)。
+                controller.applyStateToActiveTab();
             }
         };
         mcb.pickActivityEntry = () -> controller.pickActivityEntry();
@@ -270,7 +271,10 @@ public class UmlMainFrame extends JFrame {
         mcb.pickNavigationGraph = () -> controller.pickNavigationGraph();
         mcb.applyPreset = this::applyPreset;
         mcb.openScopeDialog = () -> controller.openScopeDialog();
-        mcb.clearScope = () -> { state.currentScope = null; refreshDiagram(); };
+        mcb.clearScope = () -> {
+            state.currentScope = null;
+            controller.applyStateToActiveTab();
+        };
         mcb.enableGraphviz = this::enableGraphviz;
         mcb.selectDiagramKindFromMenu = k -> controller.selectDiagramKind(k);
         mcb.syncDiagramToggle = k -> controller.syncDiagramToggle(k);
@@ -701,11 +705,8 @@ public class UmlMainFrame extends JFrame {
                     title, JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        int choice = JOptionPane.showConfirmDialog(this,
-                Messages.get("dlg.clearCache.confirm"),
-                title,
-                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (choice != JOptionPane.YES_OPTION) {
+        if (!DialogUtils.confirmDestructive(this,
+                Messages.get("dlg.clearCache.confirm"), title)) {
             return;
         }
         cache.invalidate();
@@ -940,16 +941,19 @@ public class UmlMainFrame extends JFrame {
                         detailed, Messages.get("dlg.saveMembers.title")));
     }
 
-    /** F5 / Refresh / フィルタ変更後にアクティブタブを再描画する。 */
+    /**
+     * F5 / Refresh: アクティブタブを「今の内容そのまま」で再描画する。
+     *
+     * <p>図タブはタブ自身の spec (seed/focus/includePackage 等の題材) を種に再レンダリングし、
+     * エディタタブはテキストを種に再描画する ({@code startRender} が両方を扱う)。
+     * 以前はグローバル {@link DiagramState} から spec を作り直していたため、クラス/パッケージ/
+     * モジュールタブで F5 を押すと題材を失ってプロジェクト全体図に化けていた。スコープや
+     * 参加者フィルタの変更でグローバル状態から作り直したいケースは、各呼び出し側が
+     * {@code controller.applyStateToActiveTab()} を直接呼ぶ。</p>
+     */
     private void refreshDiagram() {
-        // エディタタブは spec を持たず applyStateToActiveTab では再描画されないため、
-        // テキストを真実源として直接再描画する (F5 が無反応にならないように)。
-        if (tabPane != null && tabPane.activeTabIsPumlEditor()) {
+        if (tabPane != null) {
             tabPane.rerenderActiveTab();
-            return;
-        }
-        if (controller != null) {
-            controller.applyStateToActiveTab();
         }
     }
 
@@ -1125,12 +1129,11 @@ public class UmlMainFrame extends JFrame {
 
     /** Close All Tabs の確認ダイアログを表示し、YES が選ばれたら true。 */
     private boolean showCloseAllTabsConfirm(int count) {
-        return JOptionPane.showConfirmDialog(this,
+        // 破壊的操作なので既定ボタンは「No」側 (誤って Enter で全タブを閉じない)。
+        return DialogUtils.confirmDestructive(this,
                 java.text.MessageFormat.format(
                         Messages.get("tab.closeAllConfirm"), count),
-                Messages.get("menubar.file.closeAllTabs"),
-                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)
-                == JOptionPane.YES_OPTION;
+                Messages.get("menubar.file.closeAllTabs"));
     }
 
     /**

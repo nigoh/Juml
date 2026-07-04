@@ -70,7 +70,10 @@ public final class PlantUmlStructureDiffDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (opt.title != null && !opt.title.isEmpty()) {
-            out.append("title ").append(escape(opt.title)).append('\n');
+            // title は改行を含むと描画がハードエラーになるため、空白を 1 個に畳んでから
+            // < をエスケープする (escape() は本文ラベル用で空白畳み込みをしない)。
+            out.append("title ")
+                    .append(escape(opt.title.replaceAll("\\s+", " ").trim())).append('\n');
         }
         out.append("skinparam classAttributeIconSize 0\n");
         out.append("hide empty members\n");

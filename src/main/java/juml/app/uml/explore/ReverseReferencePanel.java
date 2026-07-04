@@ -47,6 +47,8 @@ public final class ReverseReferencePanel extends JPanel {
     private final JLabel statusLabel;
     /** 表示中の検索結果 (テーブル行のモデル添字と対応)。 */
     private List<ReferenceSite> currentSites = java.util.Collections.emptyList();
+    /** 検索の世代。再入時に古い worker の結果/UI 更新を破棄するために使う。 */
+    private int findGen;
     /** 行ダブルクリックで参照箇所のソースを開くコールバック (UmlMainFrame が配線)。 */
     private java.util.function.Consumer<ReferenceSite> onOpenSite;
 
@@ -139,6 +141,7 @@ public final class ReverseReferencePanel extends JPanel {
         }
         findButton.setEnabled(false);
         statusLabel.setText(Messages.get("explore.ref.building"));
+        final int myGen = ++findGen;
         SwingWorker<List<ReferenceSite>, Void> worker =
                 new SwingWorker<List<ReferenceSite>, Void>() {
             @Override
@@ -152,6 +155,12 @@ public final class ReverseReferencePanel extends JPanel {
 
             @Override
             protected void done() {
+                // 新しい検索に置き換わっていれば、この古い worker の結果は捨てる
+                // (別シンボルの結果を表示したり、実行中の新 worker の Cancel/進捗を
+                //  無効化したりしないため)。
+                if (myGen != findGen) {
+                    return;
+                }
                 findButton.setEnabled(true);
                 runControls.finished();
                 try {

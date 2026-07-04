@@ -262,19 +262,34 @@ public final class AndroidLayoutEngine {
         if (free <= 0) {
             return 0;
         }
-        boolean center = g.contains("center");
+        // gravity は '|' 区切りのトークン集合。substring で "center" を見ると
+        // center_vertical/center_horizontal まで拾ってしまい、反対軸を誤って中央寄せする。
+        // トークン単位で「両軸中央 (center)」と各軸中央を厳密に判定する。
+        boolean centerBoth = false;
+        boolean centerH = false;
+        boolean centerV = false;
+        for (String tok : g.split("\\|")) {
+            String t = tok.trim();
+            if (t.equals("center")) {
+                centerBoth = true;
+            } else if (t.equals("center_horizontal")) {
+                centerH = true;
+            } else if (t.equals("center_vertical")) {
+                centerV = true;
+            }
+        }
         if (horizontalAxis) {
             if (g.contains("right") || g.contains("end")) {
                 return free;
             }
-            if (center || g.contains("center_horizontal")) {
+            if (centerBoth || centerH) {
                 return free / 2;
             }
         } else {
             if (g.contains("bottom")) {
                 return free;
             }
-            if (center || g.contains("center_vertical")) {
+            if (centerBoth || centerV) {
                 return free / 2;
             }
         }
@@ -361,7 +376,10 @@ public final class AndroidLayoutEngine {
             }
         }
         try {
-            return Double.parseDouble(s.substring(0, end).trim());
+            double d = Double.parseDouble(s.substring(0, end).trim());
+            // 非有限値 (1e400dp → Infinity, 演算で NaN) は SVG に width="Infinity"/"NaN" を
+            // 吐いて図全体の描画を壊すため 0 に丸める。
+            return Double.isFinite(d) ? d : 0;
         } catch (NumberFormatException ignored) {
             return 0;
         }

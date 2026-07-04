@@ -93,7 +93,12 @@ public final class UmlExporter {
                 if (image == null) {
                     throw new IllegalArgumentException("image is required for PNG export");
                 }
-                ImageIO.write(image, "png", outFile);
+                // ImageIO.write は書き出せるエンコーダが無いと false を返す (例外は投げない)。
+                // 結果を無視すると 0 バイトのファイルを残したまま成功扱いになるため検査する。
+                if (!ImageIO.write(image, "png", outFile)) {
+                    java.nio.file.Files.deleteIfExists(outFile.toPath());
+                    throw new IOException("no PNG encoder available for export");
+                }
                 break;
             case PUML:
                 if (puml == null) {

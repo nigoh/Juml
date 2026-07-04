@@ -101,10 +101,18 @@ public final class WidgetCatalog {
     /** {@code LinearLayout} で {@code orientation="horizontal"} かどうか。 */
     public static boolean isHorizontalLinear(LayoutViewNode node) {
         String tag = node.shortTag().toLowerCase(java.util.Locale.ROOT);
-        if (!tag.contains("linearlayout") && !tag.contains("radiogroup")) {
+        boolean linearLayout = tag.contains("linearlayout");
+        boolean radioGroup = tag.contains("radiogroup");
+        if (!linearLayout && !radioGroup) {
             return false;
         }
-        return "horizontal".equals(orientation(node));
+        String o = orientation(node);
+        if (o != null) {
+            return "horizontal".equals(o.trim().toLowerCase(java.util.Locale.ROOT));
+        }
+        // orientation 省略時の Android 既定: LinearLayout は horizontal、RadioGroup は vertical。
+        // (以前は省略を一律 vertical 扱いしており、横並びレイアウトが縦に崩れていた。)
+        return linearLayout;
     }
 
     /** {@code LinearLayout} 系 (縦/横の線形配置) かどうか。 */

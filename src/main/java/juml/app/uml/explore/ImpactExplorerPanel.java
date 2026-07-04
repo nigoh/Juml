@@ -49,6 +49,8 @@ public final class ImpactExplorerPanel extends JPanel {
     private final JSpinner depthSpinner;
     private final JButton runButton;
     private final AnalysisRunControls runControls = new AnalysisRunControls();
+    /** 解析の世代。再入時に古い worker の結果/UI 更新を破棄するために使う。 */
+    private int runGen;
     private final JTree resultTree;
     private final DefaultTreeModel treeModel;
     private final JLabel statusLabel;
@@ -110,6 +112,7 @@ public final class ImpactExplorerPanel extends JPanel {
         final int depth = (Integer) depthSpinner.getValue();
         runButton.setEnabled(false);
         statusLabel.setText(Messages.get("impact.status.building"));
+        final int myGen = ++runGen;
 
         SwingWorker<ImpactGraph, Void> worker = new SwingWorker<ImpactGraph, Void>() {
             @Override
@@ -124,6 +127,10 @@ public final class ImpactExplorerPanel extends JPanel {
 
             @Override
             protected void done() {
+                // 新しい解析に置き換わっていれば、この古い worker の結果は捨てる。
+                if (myGen != runGen) {
+                    return;
+                }
                 runButton.setEnabled(true);
                 runControls.finished();
                 try {
