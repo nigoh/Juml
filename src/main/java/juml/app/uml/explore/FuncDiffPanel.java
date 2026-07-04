@@ -277,6 +277,16 @@ public class FuncDiffPanel extends JPanel {
         if (!chosen.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".md")) {
             chosen = new File(chosen.getAbsolutePath() + ".md");
         }
+        // JFileChooser は上書き確認をしないため、既存ファイルを黙って破棄しないよう確認する。
+        if (chosen.exists() && javax.swing.JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(
+                        Messages.get("dialog.overwrite.message"), chosen.getAbsolutePath()),
+                Messages.get("dialog.overwrite.title"),
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE)
+                != javax.swing.JOptionPane.YES_OPTION) {
+            return;
+        }
         try {
             Files.write(chosen.toPath(), content.getBytes(StandardCharsets.UTF_8));
             statusLabel.setText(Messages.get("explore.diff.savedTo")

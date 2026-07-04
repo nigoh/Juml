@@ -48,9 +48,19 @@ final class AnalysisRunControls {
 
     /** 解析開始: 進捗バーを見せ、キャンセルボタンを有効化する。 */
     void started(SwingWorker<?, ?> worker) {
+        // 直前の解析がまだ走っていれば破棄する。連続実行 (再入) で古い worker が
+        // 生き残ると、その done() が新しい実行の Cancel/進捗表示を無効化してしまう。
+        if (active != null && active != worker) {
+            active.cancel(true);
+        }
         active = worker;
         cancelButton.setEnabled(true);
         progress.setVisible(true);
+    }
+
+    /** 解析が実行中か (再入抑止・世代判定の補助用)。 */
+    boolean isBusy() {
+        return active != null;
     }
 
     /** 解析終了 (成功/失敗/キャンセル問わず): 進捗バーを隠しキャンセルを無効化する。 */

@@ -29,6 +29,12 @@ final class DoxygenResultCache {
     private boolean running;
     /** 実行中/保持中の結果がどのルートのものか。プロジェクト切替の混線防止に使う。 */
     private File modelRoot;
+    // 実行中に「別プロジェクト」の Run が来たときの保留 (1 スロット・最新のみ)。
+    // これが無いと、切替直後の Run が握りつぶされ、新プロジェクトが解析されないまま残る。
+    private File pendingRoot;
+    private Runnable pendingOnStart;
+    private Consumer<String> pendingOnError;
+    private Runnable pendingOnFinally;
 
     /**
      * 保持している結果を破棄してリスナーへ通知する (プロジェクト切替時)。
@@ -38,9 +44,22 @@ final class DoxygenResultCache {
     void clear() {
         model = null;
         modelRoot = null;
+        // 保留中の別プロジェクト解析があれば、それも破棄する (更に別プロジェクトへ
+        // 切り替わったので陳腐化している)。無効化ボタンが戻るよう後始末は呼ぶ。
+        if (pendingOnFinally != null) {
+            pendingOnFinally.run();
+        }
+        clearPending();
         for (Runnable listener : listeners) {
             listener.run();
         }
+    }
+
+    private void clearPending() {
+        pendingRoot = null;
+        pendingOnStart = null;
+        pendingOnError = null;
+        pendingOnFinally = null;
     }
 
     /** 最後に解析した結果。未実行なら null。 */
@@ -70,14 +89,29 @@ final class DoxygenResultCache {
      */
     void runAsync(File root, Runnable onStart, Consumer<String> onError, Runnable onFinally) {
         if (running) {
-            // 既に実行中でも呼び出し元へ開始通知だけは返す (2 つ目のタブから Run しても
-            // 「実行中」の表示が出ず、ボタンが無反応に見えるのを防ぐ)。
-            if (onStart != null) {
-                onStart.run();
+            if (root.equals(modelRoot)) {
+                // 同じプロジェクトの二重起動 (別タブから Run 等): 既存ランの完了通知で
+                // 結果を拾えるため、開始通知だけ返して即後始末する。
+                if (onStart != null) {
+                    onStart.run();
+                }
+                if (onFinally != null) {
+                    onFinally.run();
+                }
+                return;
             }
-            if (onFinally != null) {
-                // 完了は既存ランのリスナー通知で拾えるため、ここでは即時に後始末を返す。
-                onFinally.run();
+            // 実行中に「別プロジェクト」の Run が来た: doxygen を二重起動できないため、
+            // 実行中ランの完了後に回す (最新の 1 件のみ保持)。握りつぶすと新プロジェクトが
+            // 解析されないまま残ってしまう。
+            if (pendingOnFinally != null) {
+                pendingOnFinally.run(); // 上書きされる古い保留の後始末を先に返す
+            }
+            pendingRoot = root;
+            pendingOnStart = onStart;
+            pendingOnError = onError;
+            pendingOnFinally = onFinally;
+            if (onStart != null) {
+                onStart.run(); // 「実行中/待機中」表示は出しておく
             }
             return;
         }
@@ -119,6 +153,16 @@ final class DoxygenResultCache {
                 } finally {
                     if (onFinally != null) {
                         onFinally.run();
+                    }
+                    // 実行中にプロジェクトが切り替わって保留になっていた解析を開始する。
+                    // (running は上で false に戻しているので runAsync はそのまま走る。)
+                    if (pendingRoot != null) {
+                        File pr = pendingRoot;
+                        Runnable ps = pendingOnStart;
+                        Consumer<String> pe = pendingOnError;
+                        Runnable pf = pendingOnFinally;
+                        clearPending();
+                        runAsync(pr, ps, pe, pf);
                     }
                 }
             }
