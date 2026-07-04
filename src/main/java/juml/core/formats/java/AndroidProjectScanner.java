@@ -347,6 +347,11 @@ public final class AndroidProjectScanner {
                 sb.append(line).append('\n');
             }
         }
+        // 先頭の UTF-8 BOM (U+FEFF) を除去する。残すと Windows 保存ファイルの先頭宣言が
+        // JavaParser で解析エラー/スケルトン化しうる (BOM は空白扱いされず読み飛ばされない)。
+        if (sb.length() > 0 && sb.charAt(0) == '\uFEFF') {
+            sb.deleteCharAt(0);
+        }
         return sb.toString();
     }
 

@@ -280,4 +280,37 @@ public class PlantUmlSequenceInlineTest {
         assertTrue("callback body mService.toggle() should be expanded: \n" + diagram,
                 diagram.contains("toggle("));
     }
+
+    @Test
+    public void testCallsInsideLabeledLoopAreNotDropped() {
+        // ラベル付きループ (outer: for ...) の中の呼び出しがシーケンス図から消えないこと。
+        String src = ""
+                + "class Foo {\n"
+                + "  private Worker w;\n"
+                + "  void run() {\n"
+                + "    outer:\n"
+                + "    for (int i = 0; i < 3; i++) { w.doWork(); }\n"
+                + "  }\n"
+                + "}";
+        List<JavaClassInfo> classes = JavaStructureExtractor.extract(src);
+        String diagram = PlantUmlSequenceDiagram.generate(classes, "Foo", "run", null);
+        assertTrue("labeled-loop body call w.doWork() should appear: \n" + diagram,
+                diagram.contains("Worker.doWork("));
+    }
+
+    @Test
+    public void testForEachIterableCallIsHoisted() {
+        // for-each の対象式 (repo.findAll()) の呼び出しがシーケンス図に出ること。
+        String src = ""
+                + "class Foo {\n"
+                + "  private Repo repo;\n"
+                + "  void run() {\n"
+                + "    for (String x : repo.findAll()) { }\n"
+                + "  }\n"
+                + "}";
+        List<JavaClassInfo> classes = JavaStructureExtractor.extract(src);
+        String diagram = PlantUmlSequenceDiagram.generate(classes, "Foo", "run", null);
+        assertTrue("for-each iterable call repo.findAll() should appear: \n" + diagram,
+                diagram.contains("Repo.findAll("));
+    }
 }

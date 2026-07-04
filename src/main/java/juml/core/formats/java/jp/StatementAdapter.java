@@ -14,10 +14,12 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.BreakStmt;
 import com.github.javaparser.ast.stmt.ContinueStmt;
 import com.github.javaparser.ast.stmt.DoStmt;
+import com.github.javaparser.ast.stmt.ExplicitConstructorInvocationStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.LabeledStmt;
 import com.github.javaparser.ast.stmt.LocalClassDeclarationStmt;
 import com.github.javaparser.ast.stmt.LocalRecordDeclarationStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
@@ -121,18 +123,31 @@ final class StatementAdapter {
             emitSingle(JavaMethodInfo.Block.Kind.WHILE, "while",
                     w.getCondition(), w.getBody(), out, ctx, owner);
         } else if (s instanceof ForStmt) {
+            ForStmt f = (ForStmt) s;
+            // for ヘッダ (初期化/条件/更新) の呼び出しをループ前にホイストする。
+            // cond=null で emitSingle を呼ぶため、ここで明示的に拾わないと落ちる。
+            for (Expression e : f.getInitialization()) {
+                ExpressionAdapter.emitCalls(e, out, ctx);
+            }
+            f.getCompare().ifPresent(e -> ExpressionAdapter.emitCalls(e, out, ctx));
+            for (Expression e : f.getUpdate()) {
+                ExpressionAdapter.emitCalls(e, out, ctx);
+            }
             emitSingle(JavaMethodInfo.Block.Kind.FOR, "for",
-                    null, ((ForStmt) s).getBody(), out, ctx, owner,
-                    forHeader((ForStmt) s));
+                    null, f.getBody(), out, ctx, owner, forHeader(f));
         } else if (s instanceof ForEachStmt) {
             ForEachStmt fe = (ForEachStmt) s;
+            // for-each の対象 (iterable) 式の呼び出し (例: repository.findAll()) を拾う。
+            ExpressionAdapter.emitCalls(fe.getIterable(), out, ctx);
             emitSingle(JavaMethodInfo.Block.Kind.FOR, "for", null, fe.getBody(), out, ctx, owner,
                     fe.getVariable() + " : " + fe.getIterable());
         } else if (s instanceof DoStmt) {
             DoStmt d = (DoStmt) s;
+            // do-while は条件が本体の「後」に評価される。cond を emitSingle へ渡すと本体前に
+            // 条件の呼び出しがホイストされ順序が逆転するため、本体を出してから条件を拾う。
             emitSingle(JavaMethodInfo.Block.Kind.DO_WHILE, "do",
-                    d.getCondition(), d.getBody(), out, ctx, owner,
-                    ctx.comments.raw(d.getCondition()));
+                    null, d.getBody(), out, ctx, owner, ctx.comments.raw(d.getCondition()));
+            ExpressionAdapter.emitCalls(d.getCondition(), out, ctx);
         } else if (s instanceof SynchronizedStmt) {
             SynchronizedStmt y = (SynchronizedStmt) s;
             emitSingle(JavaMethodInfo.Block.Kind.SYNCHRONIZED, "synchronized",
@@ -166,6 +181,25 @@ final class StatementAdapter {
         } else if (s instanceof LocalRecordDeclarationStmt) {
             TypeDeclAdapter.adaptLocal(
                     ((LocalRecordDeclarationStmt) s).getRecordDeclaration(), ctx);
+        } else if (s instanceof LabeledStmt) {
+            // ラベル付き文 (outer: for(...) {...}) は内側の文へ展開する。展開しないと
+            // ラベル付きループとその中の呼び出しがまるごとシーケンス図から消える。
+            emit(((LabeledStmt) s).getStatement(), out, ctx, owner);
+        } else if (s instanceof ExplicitConstructorInvocationStmt) {
+            // this(...) / super(...) の委譲と、その引数中の呼び出しを拾う。
+            ExplicitConstructorInvocationStmt eci = (ExplicitConstructorInvocationStmt) s;
+            for (Expression arg : eci.getArguments()) {
+                ExpressionAdapter.emitCalls(arg, out, ctx);
+            }
+            out.add(new JavaMethodInfo.Call("", eci.isThis() ? "this" : "super"));
+        } else {
+            // 未対応の文タイプ (assert / 空文 / 将来の追加) でも、直接の式子ノードから
+            // 呼び出しだけは拾い、シーケンス図から静かに脱落させない。
+            for (com.github.javaparser.ast.Node child : s.getChildNodes()) {
+                if (child instanceof Expression) {
+                    ExpressionAdapter.emitCalls((Expression) child, out, ctx);
+                }
+            }
         }
     }
 
