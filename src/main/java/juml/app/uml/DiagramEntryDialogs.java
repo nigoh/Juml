@@ -3,9 +3,12 @@
 
 package juml.app.uml;
 
+import juml.core.formats.uml.JavaClassInfo;
 import juml.util.Messages;
 
 import javax.swing.JOptionPane;
+import java.util.List;
+import java.util.TreeSet;
 
 /**
  * 図のエントリ (シーケンス/アクティビティ/コールグラフ起点・レイアウト・ナビゲーション・
@@ -81,19 +84,77 @@ final class DiagramEntryDialogs {
                         JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
+            // 参加者フィルタはタブ固有。アクティブタブの spec の隠し participant を起点に開き、
+            // 結果もそのタブの spec だけへ適用する。state は新規タブ生成時の下書きとして更新 (#40)。
+            DiagramRequest activeSpec = c.activeTabSpec();
+            java.util.Set<String> seedHidden = activeSpec != null
+                    ? activeSpec.getSequenceHiddenParticipants() : c.state.sequenceHiddenParticipants;
             java.util.Set<String> picked = SequenceParticipantFilterDialog.show(
-                    c.parentFrame, c.state.sequenceEntry, all, c.state.sequenceHiddenParticipants);
+                    c.parentFrame, c.state.sequenceEntry, all, seedHidden);
             if (picked != null) {
                 c.state.sequenceHiddenParticipants.clear();
                 c.state.sequenceHiddenParticipants.addAll(picked);
                 int total = all.size();
-                int hidden = c.state.sequenceHiddenParticipants.size();
+                int hidden = picked.size();
                 c.statusLabel.setText(Messages.get("status.sequenceFilterPrefix")
                         + (total - hidden) + "/" + total
                         + Messages.get("status.sequenceFilterSuffix"));
-                c.applyStateToActiveTab();
+                c.applySpecToActiveTab(activeSpec != null
+                        ? activeSpec.withSequenceHiddenParticipants(picked) : null);
             }
         });
+    }
+
+    /**
+     * スコープ絞り込みダイアログを開き、選択結果をアクティブタブへ適用する。スコープはタブ固有
+     * 状態のため、アクティブタブの spec を起点に開き、結果もそのタブの spec だけへ適用する。
+     * {@code DiagramState.currentScope} は新規タブ生成時の下書きとしてのみ更新する (#40)。
+     */
+    public void openScopeDialog() {
+        if (!c.cache().isLoaded()) {
+            JOptionPane.showMessageDialog(c.parentFrame,
+                    Messages.get("dlg.noProject.message"),
+                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        DiagramRequest activeSpec = c.activeTabSpec();
+        DiagramScope seed = activeSpec != null ? activeSpec.getScope() : c.state.currentScope;
+        DiagramScopeDialog dlg = newScopeDialog(seed);
+        dlg.setVisible(true);
+        DiagramScope picked = dlg.getResult();
+        if (picked != null) {
+            DiagramScope newScope = picked.isEmpty() ? null : picked;
+            c.state.currentScope = newScope;
+            c.applySpecToActiveTab(activeSpec != null ? activeSpec.withScope(newScope) : null);
+        }
+    }
+
+    /**
+     * Scope ダイアログを表示し、ユーザーが選んだスコープを返す (アクティブタブには適用しない)。
+     * 大規模図ガードで新規図のスコープを選ばせるのに使う。キャンセル/空選択時は null。
+     */
+    DiagramScope promptForScope() {
+        if (!c.cache().isLoaded()) {
+            return null;
+        }
+        DiagramScopeDialog dlg = newScopeDialog(c.state.currentScope);
+        dlg.setVisible(true);
+        DiagramScope picked = dlg.getResult();
+        return (picked == null || picked.isEmpty()) ? null : picked;
+    }
+
+    /** 現在のプロジェクトのパッケージ/モジュール候補で Scope ダイアログを構築する (seed で初期化)。 */
+    private DiagramScopeDialog newScopeDialog(DiagramScope seed) {
+        TreeSet<String> packages = new TreeSet<>();
+        TreeSet<String> modules = new TreeSet<>(c.cache().getClassToModule().values());
+        for (JavaClassInfo cls : c.cache().getClasses()) {
+            String p = cls.getPackageName();
+            if (p != null && !p.isEmpty()) {
+                packages.add(p);
+            }
+        }
+        return new DiagramScopeDialog(c.parentFrame,
+                List.copyOf(packages), List.copyOf(modules), seed);
     }
 
     /**

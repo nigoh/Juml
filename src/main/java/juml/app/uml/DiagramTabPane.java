@@ -839,6 +839,12 @@ public final class DiagramTabPane {
         }
     }
 
+    /** アクティブタブの現在の描画リクエスト (自由編集エディタタブや未選択時は null)。 */
+    public DiagramRequest activeTabSpec() {
+        DiagramTab t = activeTab();
+        return t != null ? t.spec : null;
+    }
+
     /** アクティブタブの描画リクエストを差し替えて再描画する (スコープ/プリセット適用など)。 */
     public void setActiveTabSpecAndRender(DiagramRequest spec) {
         DiagramTab t = activeTab();

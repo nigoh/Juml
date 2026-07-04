@@ -166,6 +166,24 @@ public final class DiagramRequest {
     }
 
     /**
+     * スコープだけ差し替えた複製を返す (他の次元は保持)。スコープはタブ固有状態のため、
+     * アクティブタブの spec を起点に更新するのに使う (#40)。
+     */
+    public DiagramRequest withScope(DiagramScope newScope) {
+        return new DiagramRequest(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend,
+                newScope, interactiveLinks, layoutKey, sequenceHiddenParticipants);
+    }
+
+    /**
+     * 隠し participant 集合だけ差し替えた複製を返す (他の次元は保持)。参加者フィルタも
+     * タブ固有状態のため、アクティブタブの spec を起点に更新するのに使う (#40)。
+     */
+    public DiagramRequest withSequenceHiddenParticipants(Set<String> hidden) {
+        return new DiagramRequest(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend,
+                scope, interactiveLinks, layoutKey, hidden);
+    }
+
+    /**
      * クラス図の各クラスに {@code [[juml://class/<FQN>]]} を埋め込むか。
      * GUI プレビューで右クリック→メソッド一覧のヒットテストに使うときだけ true にする。
      */
