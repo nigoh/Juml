@@ -2,23 +2,64 @@ Juml 2.0 — Java + Android + Gradle UML Tool
 ================================================
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Java 17+](https://img.shields.io/badge/Java-17%2B-orange.svg)](#一目でわかる-juml)
+[![Platform](https://img.shields.io/badge/OS-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
+[![GUI + CLI](https://img.shields.io/badge/UI-GUI%20%2B%20CLI-blue.svg)](#)
 
-![Juml GUI — パッケージ依存図を表示中（プロジェクトツリー + 図種ツールバー + PlantUML ソース）](docs/assets/screenshots/gui-package-diagram.png)
+**Java / Android (Gradle) プロジェクトのソースコードを読み込み、クラス図・シーケンス図・
+パッケージ図などの UML 図を自動生成する Swing GUI + CLI ツールです。**
+追加ソフトのインストールは不要 — PlantUML (Smetana レイアウト) を同梱しているため、
+Graphviz / PlantUML / dot を別途入れなくてもそのまま図が描けます。
 
-> Juml の GUI。自分自身のソース (`juml.core.formats.uml`) を解析し、パッケージ依存図を表示している様子。
-> 左にプロジェクトツリー、上に図種切替ツールバー、右に図、下に生成 PlantUML ソースが並ぶ。
+<p align="center">
+  <img src="docs/assets/gif/juml-demo.gif" alt="Juml を実際に動かしている様子 — Java プロジェクトを解析し、図種ツールバーで UML 図を切り替えて生成するデモ" width="900">
+</p>
 
-概要
+> Juml を起動して Java のソースツリーを解析し、図種ツールバーでクラス図・パッケージ図・
+> シーケンス図などを切り替えて表示している様子（自分自身のソースを解析）。
+
+一目でわかる Juml
 ------------------------------------------------
-Juml は **Java / Android (Gradle + AndroidManifest.xml + AIDL) プロジェクトから
-UML 図を生成する Swing ベース + CLI のツール**です。同梱の PlantUML (Smetana レイアウト) で
-描画するため、Graphviz / PlantUML の追加インストールは不要です。
 
-* **生成できる図**: クラス図 / パッケージ図 / シーケンス図 / アクティビティ図 / 共通クラス図 /
-  コンポーネント図 / Manifest 図 / Gradle 依存図 / Soong 図 (Android.bp) /
-  APK (smali) クラス図・シーケンス図 (Apktool 逆コンパイル出力) など全 17 種
-* **動作環境**: Java 17 以上 (JRE / JDK)。Windows / macOS / Linux で動作確認
-* **GUI と CLI の両対応**: 対話的にプレビューする GUI と、図を一括書き出す CLI を同梱
+| | |
+|---|---|
+| **入力 (Input)** | Java / Kotlin(一部) / AIDL / AndroidManifest.xml / Gradle (build.gradle・KTS) / APK / Android.bp |
+| **出力 (Output)** | クラス図・シーケンス図・パッケージ図・継承図・コンポーネント図ほか **20 種類以上** の UML 図（**SVG / PNG / PlantUML テキスト**で保存可） |
+| **依存 (Deps)** | **追加インストール不要** — PlantUML (Smetana) 同梱。Graphviz / PlantUML / dot の別途導入は不要（巨大図のみ任意で Graphviz を有効化可） |
+| **形態 (UI)** | 対話的にプレビューする **GUI** と、CI 等で一括書き出す **CLI** の両対応 |
+| **動作環境** | **Java 17 以上** (JRE / JDK)。Windows / macOS / Linux で動作確認 |
+
+> ひとことで言えば「**ソースを渡すと図が出てくる**」ツールです。設計の把握・コードレビュー・
+> ドキュメント化・はじめてのコードリーディングを、UML 図で加速することを狙っています。
+
+こんな図が作れます
+------------------------------------------------
+
+<table>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/assets/diagrams/class-dataflow.png" alt="クラス図の出力例">
+      <br><sub><b>クラス図</b> — メソッド・フィールドを可視性 (<code>+</code>/<code>-</code>) 付きで、JavaDoc・パッケージ階層・関連とともに描画</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/assets/screenshots/gui-package-diagram.png" alt="パッケージ依存図を表示中の GUI">
+      <br><sub><b>パッケージ依存図（GUI）</b> — パッケージ間の参照を矢印で表示。左ツリー・図種ツールバー・生成 PlantUML ソースが一望できる</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/assets/diagrams/class-easypermissions.png" alt="Android アプリのクラス図の出力例">
+      <br><sub><b>Android アプリのクラス図</b> — Activity / Parcelable / ネストクラス・<code>extends</code>/<code>implements</code> を解析（例: easypermissions）</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/assets/diagrams/seq-roomanalyzer-analyze.png" alt="シーケンス図の出力例">
+      <br><sub><b>シーケンス図</b> — 任意の <code>Class.method</code> を起点に呼び出しをトレース。<code>alt</code> / <code>loop</code> / <code>opt</code> も描画</sub>
+    </td>
+  </tr>
+</table>
+
+> 図はすべて Juml が自動生成したものです（上記は Juml 自身のソースと Android サンプルを解析した例）。
+> GUI では下ペインに生成 PlantUML ソースも表示され、ワンクリックでコピーできます。
 
 > 1.7 までは PAD (Problem Analysis Diagram) ツールでしたが、2.0 で
 > Java + Android + Gradle 特化の UML ツールに完全転換しました。旧 PAD / SPD 機能は廃止されています。
