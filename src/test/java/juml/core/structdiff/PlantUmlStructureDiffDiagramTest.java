@@ -160,6 +160,69 @@ public class PlantUmlStructureDiffDiagramTest {
         assertTrue(puml.contains("enum \"E\""));
     }
 
+    private static String generateSide(String oldSrc, String newSrc, boolean oldSide) {
+        List<ClassDiff> diffs = ClassStructureDiff.compare(
+                oldSrc != null ? JavaStructureExtractor.extract(oldSrc) : List.of(),
+                newSrc != null ? JavaStructureExtractor.extract(newSrc) : List.of());
+        return PlantUmlStructureDiffDiagram.generateSide(diffs, oldSide, null);
+    }
+
+    @Test
+    public void side_oldShowsRemovedNotAdded_newShowsAddedNotRemoved() {
+        String oldSrc = "class A { void gone() {} void keep() {} }";
+        String newSrc = "class A { void keep() {} void fresh() {} }";
+
+        String oldSide = generateSide(oldSrc, newSrc, true);
+        assertTrue("旧側に削除メンバー (打ち消し) が出る", oldSide.contains("<s>~ gone()"));
+        assertFalse("旧側に追加メンバーは出ない", oldSide.contains("fresh()"));
+        assertTrue("不変メンバーは両側に出る", oldSide.contains("~ keep()"));
+
+        String newSide = generateSide(oldSrc, newSrc, false);
+        assertTrue("新側に追加メンバー (緑) が出る",
+                newSide.contains("<color:" + PlantUmlStructureDiffDiagram.ADDED_FG
+                        + ">~ fresh()"));
+        assertFalse("新側に削除メンバーは出ない", newSide.contains("gone()"));
+    }
+
+    @Test
+    public void side_omitsClassesAbsentOnThatSide() {
+        String oldSrc = "class Gone { }";
+        String newSrc = "class Fresh { }";
+        // 旧側: Gone は出るが Fresh は出ない。
+        String oldSide = generateSide(oldSrc, newSrc, true);
+        assertTrue(oldSide.contains("Gone"));
+        assertFalse(oldSide.contains("Fresh"));
+        // 新側: Fresh は出るが Gone は出ない。
+        String newSide = generateSide(oldSrc, newSrc, false);
+        assertTrue(newSide.contains("Fresh"));
+        assertFalse(newSide.contains("Gone"));
+    }
+
+    @Test
+    public void side_modifiedMemberShowsOldLabelOnOldSideNewLabelOnNewSide() {
+        String oldSrc = "class A { int count() { return 0; } }";
+        String newSrc = "class A { long count() { return 0L; } }";
+        String oldSide = generateSide(oldSrc, newSrc, true);
+        String newSide = generateSide(oldSrc, newSrc, false);
+        assertTrue("旧側は旧宣言", oldSide.contains("count() : int"));
+        assertFalse("旧側に新宣言は出ない", oldSide.contains("count() : long"));
+        assertTrue("新側は新宣言", newSide.contains("count() : long"));
+        assertFalse("新側に旧宣言は出ない", newSide.contains("count() : int"));
+    }
+
+    @Test
+    public void side_generatedText_passesSyntaxChecker() {
+        String oldSrc = "class A extends Base { int gone() { return 1; } }\nclass Removed { }";
+        String newSrc = "class A extends Base { long added() { return 1L; } }\n"
+                + "class Fresh { void hi() {} }";
+        for (boolean oldSide : new boolean[]{true, false}) {
+            String puml = generateSide(oldSrc, newSrc, oldSide);
+            assertTrue("片側 PlantUML も構文チェックを通るはず (oldSide=" + oldSide + "): "
+                            + PlantUmlSyntaxChecker.summarize(puml),
+                    PlantUmlSyntaxChecker.check(puml).isEmpty());
+        }
+    }
+
     @Test
     public void generatedText_passesSyntaxChecker() {
         String puml = generate(

@@ -436,6 +436,11 @@ final class GitCommitsPane extends JPanel {
         umlItem.setToolTipText(Messages.get("git.file.umlDiffTip"));
         umlItem.addActionListener(e -> openUmlDiffForSelectedFile());
         menu.add(umlItem);
+        javax.swing.JMenuItem cmpItem =
+                new javax.swing.JMenuItem(Messages.get("git.file.diagCompare"));
+        cmpItem.setToolTipText(Messages.get("git.file.diagCompareTip"));
+        cmpItem.addActionListener(e -> openDiagramCompareForSelectedFile());
+        menu.add(cmpItem);
         filesList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mousePressed(java.awt.event.MouseEvent e) {
                 maybeShow(e);
@@ -454,7 +459,9 @@ final class GitCommitsPane extends JPanel {
                     filesList.setSelectedIndex(idx);
                 }
                 FileChange f = filesList.getSelectedValue();
-                umlItem.setEnabled(f != null && isJavaChange(f));
+                boolean java = f != null && isJavaChange(f);
+                umlItem.setEnabled(java);
+                cmpItem.setEnabled(java);
                 menu.show(filesList, e.getX(), e.getY());
             }
         });
@@ -485,6 +492,32 @@ final class GitCommitsPane extends JPanel {
                 javax.swing.SwingUtilities.getWindowAncestor(this),
                 svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
         dialog.setVisible(true);
+    }
+
+    /**
+     * 選択中の変更ファイル (.java) の旧・新クラス図を左右に並べて比較する
+     * (変更ノードを図中で色付き表示)。比較の 2 時点は現在の比較コンテキストに従う。
+     */
+    private void openDiagramCompareForSelectedFile() {
+        FileChange f = filesList.getSelectedValue();
+        final GitRepoService svc = ctx.service();
+        if (f == null || svc == null || cmpNewRev == null) {
+            return;
+        }
+        if (!isJavaChange(f)) {
+            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
+            return;
+        }
+        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        GitDiagramCompareDialog dialog = new GitDiagramCompareDialog(
+                javax.swing.SwingUtilities.getWindowAncestor(this),
+                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
+        dialog.setVisible(true);
+    }
+
+    /** テスト用: 図の左右比較ダイアログを直接開く (右クリックメニュー相当)。 */
+    void openDiagramCompareForTest() {
+        openDiagramCompareForSelectedFile();
     }
 
     /** Unified / Side-by-side を切り替えるトグルバーを作る。 */
@@ -810,76 +843,6 @@ final class GitCommitsPane extends JPanel {
                 setToolTipText(value == null ? null : value.toString());
             }
             return this;
-        }
-    }
-
-    /** 変更ファイル列: 状態レター (A/M/D/R/C) の色付きバッジ + パス (GitKraken 風)。 */
-    private static final class FileChangeCellRenderer extends javax.swing.DefaultListCellRenderer {
-        private final StatusBadgeIcon badge = new StatusBadgeIcon();
-
-        @Override public Component getListCellRendererComponent(
-                JList<?> list, Object value, int index,
-                boolean isSelected, boolean cellHasFocus) {
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            if (!(value instanceof FileChange)) {
-                return this;
-            }
-            FileChange fc = (FileChange) value;
-            String path;
-            if ("RENAME".equals(fc.changeType) || "COPY".equals(fc.changeType)) {
-                path = fc.oldPath + "  →  " + fc.path;
-            } else {
-                path = "DELETE".equals(fc.changeType) ? fc.oldPath : fc.path;
-            }
-            setText(path);
-            badge.letter = fc.changeType.isEmpty() ? "?" : fc.changeType.substring(0, 1);
-            badge.color = statusColor(fc.changeType);
-            setIcon(badge);
-            setIconTextGap(8);
-            setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 4, 0, 4));
-            return this;
-        }
-
-        private static Color statusColor(String changeType) {
-            switch (changeType) {
-                case "ADD":    return new Color(0x00A36B);
-                case "MODIFY": return new Color(0x2E9BFF);
-                case "DELETE": return new Color(0xE0518A);
-                case "RENAME": return new Color(0x9B59F0);
-                case "COPY":   return new Color(0x18C0C4);
-                default:       return Color.GRAY;
-            }
-        }
-    }
-
-    /** 変更種別レターの角丸バッジ。 */
-    private static final class StatusBadgeIcon implements javax.swing.Icon {
-        private static final int SIZE = 16;
-        private String letter = "?";
-        private Color color = Color.GRAY;
-
-        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
-            g2.fillRoundRect(x, y, SIZE, SIZE, 5, 5);
-            Font f = c.getFont().deriveFont(Font.BOLD, SIZE - 5f);
-            g2.setFont(f);
-            FontMetrics fm = g2.getFontMetrics();
-            int tw = fm.stringWidth(letter);
-            g2.setColor(Color.WHITE);
-            g2.drawString(letter, x + (SIZE - tw) / 2,
-                    y + (SIZE + fm.getAscent() - fm.getDescent()) / 2);
-            g2.dispose();
-        }
-
-        @Override public int getIconWidth() {
-            return SIZE;
-        }
-
-        @Override public int getIconHeight() {
-            return SIZE;
         }
     }
 

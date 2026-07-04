@@ -92,6 +92,121 @@ public final class PlantUmlStructureDiffDiagram {
         return out.toString();
     }
 
+    /**
+     * 片側 (旧 or 新) のクラス図テキストを生成する。左右 (side-by-side) 比較用。
+     *
+     * <p>旧側は削除メンバーを赤打ち消し・変更メンバーを旧宣言 (黄) で示し、追加メンバーは
+     * 出さない。新側は追加を緑・変更を新宣言 (黄) で示し、削除は出さない。変更のあるノード
+     * だけが図中で色付くため、旧図・新図を並べると「どこが変わったか」が図の中で分かる。</p>
+     *
+     * @param oldSide true なら旧 (比較元) 側、false なら新 (比較先) 側
+     */
+    public static String generateSide(List<ClassDiff> diffs, boolean oldSide, Options opt) {
+        if (opt == null) {
+            opt = new Options();
+        }
+        List<ClassDiff> shown = new ArrayList<>();
+        if (diffs != null) {
+            for (ClassDiff d : diffs) {
+                // その側に存在するクラスだけを出す (旧側に ADDED は無い / 新側に REMOVED は無い)。
+                boolean existsHere = oldSide
+                        ? d.kind != ChangeKind.ADDED
+                        : d.kind != ChangeKind.REMOVED;
+                if (!existsHere) {
+                    continue;
+                }
+                if (d.kind != ChangeKind.UNCHANGED || opt.includeUnchangedClasses) {
+                    shown.add(d);
+                }
+            }
+        }
+
+        StringBuilder out = new StringBuilder();
+        out.append("@startuml\n");
+        if (opt.title != null && !opt.title.isEmpty()) {
+            out.append("title ").append(escape(opt.title)).append('\n');
+        }
+        out.append("skinparam classAttributeIconSize 0\n");
+        out.append("hide empty members\n");
+        if (shown.isEmpty()) {
+            out.append("note \"").append(escape(opt.emptyMessage))
+                    .append("\" as EMPTY\n");
+        } else {
+            Map<ClassDiff, String> aliases = assignAliases(shown);
+            for (ClassDiff d : shown) {
+                appendClassSide(out, d, aliases.get(d), oldSide, opt);
+            }
+            appendInheritance(out, shown, aliases);
+        }
+        out.append("@enduml\n");
+        return out.toString();
+    }
+
+    /** 片側のクラス宣言ブロックを出力する。 */
+    private static void appendClassSide(StringBuilder out, ClassDiff d, String alias,
+                                        boolean oldSide, Options opt) {
+        out.append(keyword(d.anySide()))
+                .append(" \"").append(escape(d.displayName())).append("\" as ")
+                .append(alias);
+        // その側で「変わる/変わった」クラスだけ背景を付ける。
+        if (d.kind == ChangeKind.MODIFIED) {
+            out.append(" <<modified>> ").append(MODIFIED_BG);
+        } else if (oldSide && d.kind == ChangeKind.REMOVED) {
+            out.append(" <<removed>> ").append(REMOVED_BG);
+        } else if (!oldSide && d.kind == ChangeKind.ADDED) {
+            out.append(" <<added>> ").append(ADDED_BG);
+        }
+        out.append(" {\n");
+
+        StringBuilder fieldBuf = new StringBuilder();
+        int hidden = appendMembersSide(fieldBuf, d.fields, oldSide, opt);
+        StringBuilder methodBuf = new StringBuilder();
+        hidden += appendMembersSide(methodBuf, d.methods, oldSide, opt);
+        out.append(fieldBuf);
+        if (fieldBuf.length() > 0 && methodBuf.length() > 0) {
+            out.append("  --\n");
+        }
+        out.append(methodBuf);
+        if (hidden > 0) {
+            out.append("  .. ").append(hidden).append(" unchanged ..\n");
+        }
+        out.append("}\n");
+    }
+
+    /** 片側のメンバー行を出力する。表示省略した UNCHANGED 件数を返す。 */
+    private static int appendMembersSide(StringBuilder out, List<MemberDiff> members,
+                                         boolean oldSide, Options opt) {
+        int hidden = 0;
+        for (MemberDiff m : members) {
+            switch (m.kind) {
+                case ADDED:
+                    if (!oldSide) {
+                        out.append("  ").append(colored(ADDED_FG, escape(m.newLabel)))
+                                .append('\n');
+                    }
+                    break;
+                case REMOVED:
+                    if (oldSide) {
+                        out.append("  ").append(struck(REMOVED_FG, escape(m.oldLabel)))
+                                .append('\n');
+                    }
+                    break;
+                case MODIFIED:
+                    out.append("  ").append(colored(MODIFIED_FG,
+                            escape(oldSide ? m.oldLabel : m.newLabel))).append('\n');
+                    break;
+                default:
+                    if (opt.showUnchangedMembers) {
+                        out.append("  ").append(escape(m.label())).append('\n');
+                    } else {
+                        hidden++;
+                    }
+                    break;
+            }
+        }
+        return hidden;
+    }
+
     private static Map<ClassDiff, String> assignAliases(List<ClassDiff> shown) {
         Map<ClassDiff, String> aliases = new LinkedHashMap<>();
         int seq = 0;
