@@ -59,7 +59,7 @@ dependencies {
     // Apache POI (Apache 2.0). メンバー解析結果を .xlsx ワークブックとして書き出す。
     // 複数シート・オートフィルタ・見出し固定に対応。fat jar に同梱される
     // (poi / poi-ooxml / xmlbeans / commons-compress 等を推移取得)。
-    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    implementation 'org.apache.poi:poi-ooxml:5.5.1'
     // JGit (EDL/BSD-3-Clause)。開いているプロジェクトの git リポジトリを「閲覧のみ」で
     // 参照する (コミット履歴 / diff / ブランチ・タグ / ファイル履歴 / blame)。
     // 純 Java 実装のため git コマンド未インストール環境でも動作し、fat jar に同梱される。
