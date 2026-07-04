@@ -58,12 +58,24 @@ public final class GradleScriptParser {
             info.setModuleType(fileName.endsWith(".kts") ? "kotlin" : "groovy");
         }
         String cleaned = stripCommentsAndMaskStrings(script);
-        Impl impl = new Impl(cleaned, info, l, catalog);
+        boolean settingsFile = isSettingsFile(fileName);
+        Impl impl = new Impl(cleaned, info, l, catalog, settingsFile);
         impl.parse();
         return info;
     }
 
     private GradleScriptParser() {
+    }
+
+    /** {@code settings.gradle(.kts)} かどうか (パス区切りを正規化して basename で判定)。 */
+    private static boolean isSettingsFile(String fileName) {
+        if (fileName == null) {
+            return false;
+        }
+        String norm = fileName.replace('\\', '/');
+        int slash = norm.lastIndexOf('/');
+        String base = slash >= 0 ? norm.substring(slash + 1) : norm;
+        return base.equals("settings.gradle") || base.equals("settings.gradle.kts");
     }
 
     /**
@@ -200,8 +212,13 @@ public final class GradleScriptParser {
                 "(?:[\"']dir[\"']\\s*to|\\bdir\\s*[:=])\\s*[\"']([^\"']+)[\"']");
         private static final Pattern INCLUDE_PROJECT = Pattern.compile(
                 "\\binclude\\s*[(]?\\s*[\"']([^\"']+)[\"']");
+        // flavorDimensions を method-call 形式 (flavorDimensions "a", "b" /
+        // flavorDimensions("a")) と assignment 形式 (= / += に listOf/arrayOf/setOf を
+        // 伴う Kotlin DSL: flavorDimensions += listOf("a", "b")) の両方で拾う。
         private static final Pattern FLAVOR_DIMENSIONS = Pattern.compile(
-                "\\bflavorDimensions\\s*[(]?\\s*((?:[\"'][^\"']+[\"'](?:\\s*,\\s*)?)+)");
+                "\\bflavorDimensions\\s*(?:\\+?=)?\\s*"
+                        + "(?:(?:mutableListOf|listOf|arrayOf|setOf)\\s*)?[(]?\\s*"
+                        + "((?:[\"'][^\"']+[\"'](?:\\s*,\\s*)?)+)");
         private static final Pattern STRING_LIST_ITEM = Pattern.compile(
                 "[\"']([^\"']+)[\"']");
 
@@ -209,13 +226,15 @@ public final class GradleScriptParser {
         private final GradleProjectInfo info;
         private final ErrorListener listener;
         private final VersionCatalog catalog;
+        private final boolean settingsFile;
 
         Impl(String src, GradleProjectInfo info, ErrorListener listener,
-             VersionCatalog catalog) {
+             VersionCatalog catalog, boolean settingsFile) {
             this.src = src;
             this.info = info;
             this.listener = listener;
             this.catalog = catalog;
+            this.settingsFile = settingsFile;
         }
 
         void parse() {
@@ -229,6 +248,12 @@ public final class GradleScriptParser {
                 Matcher items = Pattern.compile("[\"']([^\"']+)[\"']").matcher(tail);
                 while (items.find()) {
                     String mod = items.group(1).trim();
+                    // settings.gradle 以外のスクリプトでは、sourceSets の
+                    // include '**/*.java' 等が偽のサブプロジェクトになるのを防ぐため、
+                    // Gradle プロジェクトパス (":app") 形式のみ受け付ける。
+                    if (!settingsFile && !mod.startsWith(":")) {
+                        continue;
+                    }
                     if (mod.startsWith(":")) {
                         mod = mod.substring(1);
                     }
@@ -464,16 +489,20 @@ public final class GradleScriptParser {
         }
 
         private void parseDependenciesBlock(String body) {
+            // 既存の登録済み依存を先に seen へ入れ、以降の全形式で重複を弾く。
+            // seen を後から作ると project(':x') の重複が素通りしていた。
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (GradleDependency d : info.getDependencies()) {
+                seen.add(d.getScope() + " " + d.getNotation());
+            }
             Matcher mp = DEP_PROJECT.matcher(body);
             while (mp.find()) {
                 String scope = mp.group(1);
                 String ref = mp.group(2);
-                info.getDependencies().add(new GradleDependency(scope,
-                        "project('" + ref + "')"));
-            }
-            java.util.Set<String> seen = new java.util.HashSet<>();
-            for (GradleDependency d : info.getDependencies()) {
-                seen.add(d.getScope() + " " + d.getNotation());
+                String notation = "project('" + ref + "')";
+                if (seen.add(scope + " " + notation)) {
+                    info.getDependencies().add(new GradleDependency(scope, notation));
+                }
             }
             // platform()/enforcedPlatform() でラップされた BOM 依存
             Matcher mpf = DEP_PLATFORM.matcher(body);
