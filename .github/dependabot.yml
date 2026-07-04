@@ -1,0 +1,28 @@
+# Dependabot 設定
+# 目的: fat jar に同梱する多数の依存ライブラリと GitHub Actions を自動追跡し、
+#       更新・脆弱性 (CVE) の修正 PR を自動作成する。README のセキュリティ節が
+#       「同梱ライブラリに CVE が公開されたら最新 fat jar を再ビルドする」と
+#       案内している運用を、手動監視ではなく自動 PR で回せるようにする。
+version: 2
+updates:
+  # Gradle 依存 (build.gradle) — 直接依存の更新と security alert を追跡
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+
+  # GitHub Actions (.github/workflows/*) の更新
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"

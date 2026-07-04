@@ -2,6 +2,7 @@ Juml 2.0 — Java + Android + Gradle UML Tool
 ================================================
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nigoh/juml/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nigoh/juml)
 [![Java 17+](https://img.shields.io/badge/Java-17%2B-orange.svg)](#一目でわかる-juml)
 [![Platform](https://img.shields.io/badge/OS-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
 [![GUI + CLI](https://img.shields.io/badge/UI-GUI%20%2B%20CLI-blue.svg)](#)
