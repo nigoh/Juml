@@ -3,6 +3,8 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,7 +48,7 @@ public final class PlantUmlDeepLinkDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         out.append("skinparam componentStyle uml2\n");
         // App Links 候補は緑、通常 Deep Link は青、MIME only は灰色で塗り分け。

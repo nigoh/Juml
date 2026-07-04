@@ -3,6 +3,8 @@
 
 package juml.core.formats.android.apk;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -69,7 +71,7 @@ public final class PlantUmlSmaliSequenceDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         out.append("skinparam participant {\n");
         out.append("  BackgroundColor<<external>> #F2F2F2\n");

@@ -230,4 +230,22 @@ public class PlantUmlComponentDiagramTest {
         String puml = PlantUmlComponentDiagram.generate(a);
         assertFalse(puml, puml.contains("<<src:main>>"));
     }
+
+    /**
+     * title は共通エスケーパ ({@link juml.core.formats.uml.PlantUmlCommentFormatter}) に
+     * 通し、改行を畳んで {@code <} をチルダエスケープする。改行が残ると同梱 PlantUML が
+     * ハードエラーになり、{@code <} は creole タグとして消えるため。
+     */
+    @Test
+    public void titleWithNewlineAndAngleBracketIsEscaped() {
+        PlantUmlComponentDiagram.Options opts = new PlantUmlComponentDiagram.Options();
+        opts.title = "Comp\n<b>Diagram";
+        String puml = PlantUmlComponentDiagram.generate(buildAnalysis(), opts);
+
+        // title 行は 1 行に畳まれ、"<" はチルダエスケープされる。
+        assertTrue(puml, puml.contains("title Comp ~<b>Diagram\n"));
+        // 生の改行や未エスケープの "<b>" が title に残ってはならない。
+        assertFalse(puml, puml.contains("title Comp\n"));
+        assertFalse(puml, puml.contains("title Comp <b>"));
+    }
 }
