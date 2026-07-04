@@ -102,7 +102,7 @@ test {
     // 開発用スクリーンショットユーティリティ (GitCommitsPaneScreenshot 等) 向けに、
     // 指定された -Djuml.screenshot* をフォークした test JVM へ受け渡す。CI では未指定。
     ['juml.screenshot', 'juml.screenshot.out', 'juml.screenshot.w', 'juml.screenshot.h',
-     'juml.screenshot.laf']
+     'juml.screenshot.laf', 'juml.screenshot.diff']
             .each { k ->
                 if (System.getProperty(k) != null) {
                     systemProperty k, System.getProperty(k)

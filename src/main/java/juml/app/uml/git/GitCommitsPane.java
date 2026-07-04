@@ -25,6 +25,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -76,6 +77,14 @@ final class GitCommitsPane extends JPanel {
     private final DefaultListModel<FileChange> filesModel = new DefaultListModel<>();
     private final JList<FileChange> filesList = new JList<>(filesModel);
     private final GitDiffView diffArea = new GitDiffView();
+    private final SideBySideDiffView splitDiff = new SideBySideDiffView();
+    private final java.awt.CardLayout diffCards = new java.awt.CardLayout();
+    private final JPanel diffHost = new JPanel(diffCards);
+    /** diff 表示モード: {@code "unified"} または {@code "split"}。 */
+    private String diffMode = "unified";
+    /** 現在 diff 表示中のコミット・ファイル (モード切替時の再描画用)。 */
+    private CommitInfo diffCommit;
+    private FileChange diffFile;
 
     /** 表示中の履歴 (テーブル行 → コミット対応)。 */
     private List<CommitInfo> commits = List.of();
@@ -126,6 +135,8 @@ final class GitCommitsPane extends JPanel {
             }
         });
         diffArea.setText(Messages.get("git.diff.hint"));
+        diffHost.add(new JScrollPane(diffArea), "unified");
+        diffHost.add(splitDiff, "split");
 
         JPanel detailTop = new JPanel(new BorderLayout(0, 2));
         detailTop.add(header, BorderLayout.NORTH);
@@ -136,8 +147,10 @@ final class GitCommitsPane extends JPanel {
         detail.add(detailTop, BorderLayout.NORTH);
         detail.add(new JScrollPane(filesList), BorderLayout.CENTER);
 
-        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                detail, new JScrollPane(diffArea));
+        JPanel diffPanel = new JPanel(new BorderLayout());
+        diffPanel.add(buildDiffToolbar(), BorderLayout.NORTH);
+        diffPanel.add(diffHost, BorderLayout.CENTER);
+        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, detail, diffPanel);
         right.setResizeWeight(0.4);
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                 new JScrollPane(table), right);
@@ -193,7 +206,10 @@ final class GitCommitsPane extends JPanel {
         header.setCommit(null);
         messageArea.setText("");
         filesModel.clear();
+        diffCommit = null;
+        diffFile = null;
         diffArea.setText(Messages.get("git.diff.hint"));
+        splitDiff.setEmptyText(Messages.get("git.diff.hint"));
     }
 
     /**
@@ -220,9 +236,23 @@ final class GitCommitsPane extends JPanel {
         }
         if (!changes.isEmpty()) {
             FileChange f = changes.get(0);
-            String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
-            diffArea.setDiff(svc.diffOf(c.sha, path));
+            diffCommit = c;
+            diffFile = f;
+            filesList.setSelectedIndex(0);
+            if ("split".equals(diffMode)) {
+                splitDiff.setRows(computeSplitRows(svc, c, f));
+                diffCards.show(diffHost, "split");
+            } else {
+                String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+                diffArea.setDiff(svc.diffOf(c.sha, path));
+            }
         }
+    }
+
+    /** テスト用に diff 表示モードを切り替える。 */
+    void setDiffModeForTest(String mode) {
+        this.diffMode = mode;
+        diffCards.show(diffHost, mode);
     }
 
     /** 選択コミットのメッセージと変更ファイル一覧を読み込む。 */
@@ -235,7 +265,10 @@ final class GitCommitsPane extends JPanel {
         messageArea.setText(c.fullMessage);
         messageArea.setCaretPosition(0);
         filesModel.clear();
+        diffCommit = null;
+        diffFile = null;
         diffArea.setText(Messages.get("git.diff.fileHint"));
+        splitDiff.setEmptyText(Messages.get("git.diff.fileHint"));
         final GitRepoService svc = ctx.service();
         if (svc == null) {
             return;
@@ -261,32 +294,91 @@ final class GitCommitsPane extends JPanel {
         }.execute();
     }
 
-    /** 選択ファイルの unified diff を読み込む。 */
+    /** Unified / Side-by-side を切り替えるトグルバーを作る。 */
+    private JPanel buildDiffToolbar() {
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+        javax.swing.JToggleButton unified =
+                new javax.swing.JToggleButton(Messages.get("git.diff.unified"), true);
+        javax.swing.JToggleButton split =
+                new javax.swing.JToggleButton(Messages.get("git.diff.split"));
+        javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
+        group.add(unified);
+        group.add(split);
+        unified.addActionListener(e -> setDiffMode("unified"));
+        split.addActionListener(e -> setDiffMode("split"));
+        bar.add(unified);
+        bar.add(split);
+        return bar;
+    }
+
+    /** diff モードを切り替え、現在のファイルを新モードで描き直す。 */
+    private void setDiffMode(String mode) {
+        if (mode.equals(diffMode)) {
+            return;
+        }
+        diffMode = mode;
+        diffCards.show(diffHost, mode);
+        if (diffCommit != null && diffFile != null) {
+            renderDiff(diffCommit, diffFile);
+        }
+    }
+
+    /** 選択ファイルの diff を現在のモードで読み込む。 */
     private void showSelectedFileDiff() {
         CommitInfo c = selectedCommit();
         FileChange f = filesList.getSelectedValue();
-        final GitRepoService svc = ctx.service();
-        if (c == null || f == null || svc == null) {
+        if (c == null || f == null) {
             return;
         }
-        final String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        renderDiff(c, f);
+    }
+
+    /** 指定コミット・ファイルの diff を、現在のモード (unified/split) で背景描画する。 */
+    private void renderDiff(CommitInfo c, FileChange f) {
+        this.diffCommit = c;
+        this.diffFile = f;
+        final GitRepoService svc = ctx.service();
+        if (svc == null) {
+            return;
+        }
+        final boolean split = "split".equals(diffMode);
         final int gen = ++diffGen;
-        new SwingWorker<String, Void>() {
-            @Override protected String doInBackground() throws Exception {
-                return svc.diffOf(c.sha, path);
+        new SwingWorker<Object, Void>() {
+            @Override protected Object doInBackground() throws Exception {
+                return split ? computeSplitRows(svc, c, f)
+                        : svc.diffOf(c.sha, "DELETE".equals(f.changeType) ? f.oldPath : f.path);
             }
 
-            @Override protected void done() {
+            @Override @SuppressWarnings("unchecked") protected void done() {
                 if (gen != diffGen) {
                     return;
                 }
                 try {
-                    diffArea.setDiff(get());
+                    Object result = get();
+                    if (split) {
+                        splitDiff.setRows((List<LineDiff.Row>) result);
+                    } else {
+                        diffArea.setDiff((String) result);
+                    }
                 } catch (Exception ex) {
                     ctx.reportStatus(Messages.get("git.status.failed") + ex.getMessage());
                 }
             }
         }.execute();
+    }
+
+    /** side-by-side 用に、指定コミットでのファイルの旧/新内容を取得して整列する。 */
+    static List<LineDiff.Row> computeSplitRows(
+            GitRepoService svc, CommitInfo c, FileChange f) throws java.io.IOException {
+        String newPath = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        String oldPath = "RENAME".equals(f.changeType) || "COPY".equals(f.changeType)
+                ? f.oldPath : newPath;
+        String parent = svc.parentOf(c.sha);
+        String oldSrc = parent != null && !"ADD".equals(f.changeType)
+                ? svc.fileContentAt(parent, oldPath) : null;
+        String newSrc = "DELETE".equals(f.changeType)
+                ? null : svc.fileContentAt(c.sha, newPath);
+        return LineDiff.compute(oldSrc, newSrc);
     }
 
     private CommitInfo selectedCommit() {

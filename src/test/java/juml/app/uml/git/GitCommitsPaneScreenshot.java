@@ -42,6 +42,7 @@ public class GitCommitsPaneScreenshot {
         SwingUtilities.invokeAndWait(() -> {
             applyLaf(System.getProperty("juml.screenshot.laf", "dark"));
             GitCommitsPane pane = new GitCommitsPane(new StubContext(svc));
+            pane.setDiffModeForTest(System.getProperty("juml.screenshot.diff", "unified"));
             try {
                 pane.loadForTest(svc, "HEAD");
             } catch (Exception ex) {
