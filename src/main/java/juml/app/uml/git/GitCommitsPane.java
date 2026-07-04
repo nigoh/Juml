@@ -441,6 +441,11 @@ final class GitCommitsPane extends JPanel {
         cmpItem.setToolTipText(Messages.get("git.file.diagCompareTip"));
         cmpItem.addActionListener(e -> openDiagramCompareForSelectedFile());
         menu.add(cmpItem);
+        javax.swing.JMenuItem actItem =
+                new javax.swing.JMenuItem(Messages.get("git.file.actCompare"));
+        actItem.setToolTipText(Messages.get("git.file.actCompareTip"));
+        actItem.addActionListener(e -> openActivityCompareForSelectedFile());
+        menu.add(actItem);
         filesList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mousePressed(java.awt.event.MouseEvent e) {
                 maybeShow(e);
@@ -462,6 +467,7 @@ final class GitCommitsPane extends JPanel {
                 boolean java = f != null && isJavaChange(f);
                 umlItem.setEnabled(java);
                 cmpItem.setEnabled(java);
+                actItem.setEnabled(java);
                 menu.show(filesList, e.getX(), e.getY());
             }
         });
@@ -518,6 +524,32 @@ final class GitCommitsPane extends JPanel {
     /** テスト用: 図の左右比較ダイアログを直接開く (右クリックメニュー相当)。 */
     void openDiagramCompareForTest() {
         openDiagramCompareForSelectedFile();
+    }
+
+    /**
+     * 選択中の変更ファイル (.java) のメソッドを、旧・新のアクティビティ図で左右比較する
+     * (関数の中身＝制御フローの変化を図中で色付き表示)。
+     */
+    private void openActivityCompareForSelectedFile() {
+        FileChange f = filesList.getSelectedValue();
+        final GitRepoService svc = ctx.service();
+        if (f == null || svc == null || cmpNewRev == null) {
+            return;
+        }
+        if (!isJavaChange(f)) {
+            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
+            return;
+        }
+        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        GitActivityCompareDialog dialog = new GitActivityCompareDialog(
+                javax.swing.SwingUtilities.getWindowAncestor(this),
+                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
+        dialog.setVisible(true);
+    }
+
+    /** テスト用: アクティビティ図の左右比較ダイアログを直接開く。 */
+    void openActivityCompareForTest() {
+        openActivityCompareForSelectedFile();
     }
 
     /** Unified / Side-by-side を切り替えるトグルバーを作る。 */
