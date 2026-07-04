@@ -64,12 +64,23 @@ public final class NameResolver {
         if (name.isEmpty()) {
             return simpleOrFqn;
         }
-        // 既に FQN らしい (ドット区切りで先頭セグメントが小文字始まり、かつ ClassIndex に存在)
         if (name.indexOf('.') >= 0) {
             if (classIndex != null && classIndex.header(name).isPresent()) {
                 return name;
             }
-            // ドット入り文字列はおおむね FQN とみなす
+            // 部分修飾のネスト型名 (Outer.Inner / Config.Item) を解決する。先頭セグメントを
+            // 単純名として解決できたら、残りのネスト部を付け直す。これをしないと同パッケージの
+            // ネスト型参照が FQN 化されず、参照インデックスに載らずに fan-in ゼロ (誤 dead-code)
+            // になる。java.util.List のような真の FQN は head("java") が解決できず素通しする。
+            int dot = name.indexOf('.');
+            String head = name.substring(0, dot);
+            if (!head.isEmpty() && head.indexOf('[') < 0) {
+                String resolvedHead = resolveSimple(head, owner);
+                if (!resolvedHead.equals(head) && resolvedHead.indexOf('.') >= 0) {
+                    return resolvedHead + name.substring(dot);
+                }
+            }
+            // 解決できなければおおむね FQN とみなしてそのまま返す。
             return name;
         }
         return resolveSimple(name, owner);
