@@ -69,7 +69,7 @@ dependencies {
     // Playwright (ブラウザ自動化) で生成 SVG をレンダリング・スナップショット検証する。
     // 初回テスト実行時に `playwright install chromium` がトリガーされ Chromium が
     // ~/.cache/ms-playwright 配下にダウンロードされる (~150MB)。
-    testImplementation 'com.microsoft.playwright:playwright:1.49.0'
+    testImplementation 'com.microsoft.playwright:playwright:1.61.0'
     // AssertJ-Swing で UmlMainFrame の Swing UI を Robot 経由でテストする。
     testImplementation 'org.assertj:assertj-swing-junit:3.17.1'
 }
