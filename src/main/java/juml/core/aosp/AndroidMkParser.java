@@ -76,7 +76,7 @@ public final class AndroidMkParser {
             return Collections.emptyList();
         }
         List<File> mkFiles = new ArrayList<>();
-        collectMkFiles(projectRoot, mkFiles);
+        collectMkFiles(projectRoot, mkFiles, 0);
         List<AndroidBpModule> all = new ArrayList<>();
         for (File mk : mkFiles) {
             try {
@@ -375,7 +375,11 @@ public final class AndroidMkParser {
     }
 
     /** プロジェクト下を再帰走査して {@code Android.mk} を集める。 */
-    private static void collectMkFiles(File dir, List<File> out) {
+    private static void collectMkFiles(File dir, List<File> out, int depth) {
+        // シンボリックリンク循環による無限再帰 (StackOverflow) を防ぐ深さ制限。
+        if (depth > 64) {
+            return;
+        }
         File[] children = dir.listFiles();
         if (children == null) {
             return;
@@ -386,7 +390,7 @@ public final class AndroidMkParser {
                 if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
-                collectMkFiles(c, out);
+                collectMkFiles(c, out, depth + 1);
             } else if (c.isFile() && c.getName().equals("Android.mk")) {
                 out.add(c);
             }
