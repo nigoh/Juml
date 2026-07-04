@@ -211,6 +211,27 @@ public class GitRepoServiceTest {
     }
 
     @Test
+    public void changesBetween_reportsDiffAcrossArbitraryRevs() throws Exception {
+        List<GitRepoService.FileChange> ch =
+                service.changesBetween(first.getName(), second.getName());
+        assertEquals(1, ch.size());
+        assertEquals("MODIFY", ch.get(0).changeType);
+        assertEquals("a.txt", ch.get(0).path);
+
+        // 比較元 null は空ツリー基準 = 全追加扱い。
+        List<GitRepoService.FileChange> fromEmpty =
+                service.changesBetween(null, second.getName());
+        assertEquals("ADD", fromEmpty.get(0).changeType);
+    }
+
+    @Test
+    public void diffOf_twoRevs_containsAddedLine() throws Exception {
+        String diff = service.diffOf(first.getName(), second.getName(), "a.txt");
+        assertTrue("2 rev 間の unified diff に追加行が含まれるはず", diff.contains("+line2"));
+        assertTrue(diff.contains("a.txt"));
+    }
+
+    @Test
     public void parentOf_returnsFirstParentOrNull() throws Exception {
         assertEquals(first.getName(), service.parentOf(second.getName()));
         assertNull("初回コミットの親は null", service.parentOf(first.getName()));

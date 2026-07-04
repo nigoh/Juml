@@ -264,6 +264,74 @@ public final class GitRepoService implements AutoCloseable {
         return buf.toString(StandardCharsets.UTF_8);
     }
 
+    /**
+     * 任意の 2 リビジョン間で変更されたファイル一覧を返す。
+     *
+     * @param oldRev 比較元 (null なら空ツリー = 全ファイル追加扱い)
+     * @param newRev 比較先
+     */
+    public List<FileChange> changesBetween(String oldRev, String newRev) throws IOException {
+        List<FileChange> out = new ArrayList<>();
+        for (DiffEntry e : diffEntriesBetween(oldRev, newRev, null)) {
+            out.add(new FileChange(e.getChangeType().name(),
+                    e.getNewPath(), e.getOldPath()));
+        }
+        return out;
+    }
+
+    /**
+     * 任意の 2 リビジョン間の unified diff テキストを返す。
+     *
+     * @param oldRev 比較元 (null なら空ツリー)
+     * @param newRev 比較先
+     * @param path   リポジトリ相対パス (null なら全ファイル)
+     */
+    public String diffOf(String oldRev, String newRev, String path) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        try (DiffFormatter fmt = new DiffFormatter(buf)) {
+            fmt.setRepository(repo);
+            if (path != null && !path.isEmpty()) {
+                fmt.setPathFilter(PathFilter.create(path));
+            }
+            fmt.format(diffEntriesBetween(oldRev, newRev, path));
+        }
+        return buf.toString(StandardCharsets.UTF_8);
+    }
+
+    /** 任意 2 リビジョン間の DiffEntry を計算する (oldRev が null/未解決なら空ツリー基準)。 */
+    private List<DiffEntry> diffEntriesBetween(String oldRev, String newRev, String path)
+            throws IOException {
+        ObjectId newId = repo.resolve(newRev);
+        if (newId == null) {
+            return List.of();
+        }
+        try (RevWalk walk = new RevWalk(repo);
+             org.eclipse.jgit.lib.ObjectReader reader = repo.newObjectReader()) {
+            RevCommit newCommit = walk.parseCommit(newId);
+            AbstractTreeIterator oldTree;
+            ObjectId oldId = oldRev != null ? repo.resolve(oldRev) : null;
+            if (oldId != null) {
+                RevCommit oldCommit = walk.parseCommit(oldId);
+                CanonicalTreeParser p = new CanonicalTreeParser();
+                p.reset(reader, oldCommit.getTree());
+                oldTree = p;
+            } else {
+                oldTree = new EmptyTreeIterator();
+            }
+            CanonicalTreeParser newTree = new CanonicalTreeParser();
+            newTree.reset(reader, newCommit.getTree());
+            try (DiffFormatter fmt = new DiffFormatter(
+                    java.io.OutputStream.nullOutputStream())) {
+                fmt.setRepository(repo);
+                fmt.setDetectRenames(true);
+                if (path != null && !path.isEmpty()) {
+                    fmt.setPathFilter(PathFilter.create(path));
+                }
+                return fmt.scan(oldTree, newTree);
+            }
+        }
+    }
+
     private List<DiffEntry> diffEntries(String sha, String path) throws IOException {
         ObjectId id = repo.resolve(sha);
         if (id == null) {

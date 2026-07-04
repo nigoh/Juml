@@ -44,7 +44,11 @@ public class GitCommitsPaneScreenshot {
             GitCommitsPane pane = new GitCommitsPane(new StubContext(svc));
             pane.setDiffModeForTest(System.getProperty("juml.screenshot.diff", "unified"));
             try {
-                pane.loadForTest(svc, "HEAD");
+                if ("two".equals(System.getProperty("juml.screenshot.select"))) {
+                    pane.loadCompareForTest(svc, "HEAD", 0, 3);
+                } else {
+                    pane.loadForTest(svc, "HEAD");
+                }
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }

@@ -136,6 +136,36 @@ public class GitCommitsPaneSplitDiffTest {
     }
 
     @Test
+    public void twoArbitraryCommits_alignsBetweenThem() throws Exception {
+        write("a.txt", "l1\nl2\n");
+        commit("A");
+        write("a.txt", "l1\nX\n");
+        commit("B");
+        write("a.txt", "l1\nY\nZ\n");
+        commit("C");
+
+        List<CommitInfo> log = svc.log("HEAD", 10);
+        CommitInfo cC = log.get(0);
+        CommitInfo cA = log.get(2);
+        // A→C (Bを飛ばして選択同士): a.txt は l2 が消え Y,Z が入る。
+        FileChange f = null;
+        for (FileChange fc : svc.changesBetween(cA.sha, cC.sha)) {
+            if ("a.txt".equals(fc.path)) {
+                f = fc;
+            }
+        }
+        assertTrue("A→C で a.txt の変更が検出されるはず", f != null);
+
+        List<Row> rows = GitCommitsPane.computeSplitRows(svc, cA.sha, cC.sha, f);
+        assertEquals(Type.EQUAL, rows.get(0).type);            // l1
+        assertEquals(Type.MODIFIED, rows.get(1).type);         // l2 -> Y
+        assertEquals("l2", rows.get(1).oldText);
+        assertEquals("Y", rows.get(1).newText);
+        assertEquals(Type.ADDED, rows.get(2).type);            // + Z
+        assertEquals("Z", rows.get(2).newText);
+    }
+
+    @Test
     public void firstCommitFile_isAllAdded() throws Exception {
         write("a.txt", "only\nlines\nhere\n");
         commit("initial");

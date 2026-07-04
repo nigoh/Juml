@@ -12,6 +12,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import juml.app.uml.git.GitRepoService.CommitInfo;
 import juml.util.Messages;
 
 import javax.swing.JToggleButton;
@@ -293,6 +294,30 @@ public class GitCommitsPaneSwingTest {
                 before.size(), currentWindows().size());
         assertTrue("javaOnly のステータス通知が出るはず",
                 statusMessages.contains(Messages.get("git.umldiff.javaOnly")));
+    }
+
+    // -------------------------------------------------------------------------
+    // 2 コミット選択で「選択同士」の比較コンテキストが組まれる (vs 親でなく)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void twoCommitSelection_buildsPairCompareContext() throws Exception {
+        load();
+        List<CommitInfo> log = service.log(service.currentBranch(), 10);
+        assertTrue("2 コミット以上あるはず", log.size() >= 2);
+        final String newerSha = log.get(0).sha;   // 行 0 = 最新
+        final String olderSha = log.get(1).sha;   // 行 1 = 1 つ前
+
+        SwingUtilities.invokeAndWait(() -> pane.selectCommitRowsForTest(0, 1));
+
+        final String[] oldRev = new String[1];
+        final String[] newRev = new String[1];
+        SwingUtilities.invokeAndWait(() -> {
+            oldRev[0] = pane.cmpOldRevForTest();
+            newRev[0] = pane.cmpNewRevForTest();
+        });
+        assertEquals("比較元は古い方のコミット (親ではなく選択同士)", olderSha, oldRev[0]);
+        assertEquals("比較先は新しい方のコミット", newerSha, newRev[0]);
     }
 
     private static List<Window> currentWindows() throws Exception {

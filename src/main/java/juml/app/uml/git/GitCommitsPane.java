@@ -82,8 +82,14 @@ final class GitCommitsPane extends JPanel {
     private final JPanel diffHost = new JPanel(diffCards);
     /** diff 表示モード: {@code "unified"} または {@code "split"}。 */
     private String diffMode = "unified";
-    /** 現在 diff 表示中のコミット・ファイル (モード切替時の再描画用)。 */
-    private CommitInfo diffCommit;
+    /**
+     * 現在の比較コンテキスト。1 コミット選択時は {@code cmpOldRev=null}（= その親と比較）、
+     * 2 コミット以上選択時は古い方の SHA を {@code cmpOldRev} に置く（選択同士で比較）。
+     */
+    private String cmpOldRev;
+    private String cmpNewRev;
+    private String cmpNewLabel;
+    /** モード切替時の再描画用に、現在 diff 表示中のファイルを保持する。 */
     private FileChange diffFile;
 
     /** 表示中の履歴 (テーブル行 → コミット対応)。 */
@@ -101,7 +107,8 @@ final class GitCommitsPane extends JPanel {
         super(new BorderLayout());
         this.ctx = ctx;
 
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        // 2 コミット選択で「選択同士」の比較を可能にする (1 選択時は親と比較)。
+        table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         table.setRowHeight(ROW_H);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
@@ -120,7 +127,7 @@ final class GitCommitsPane extends JPanel {
         table.getColumnModel().getColumn(4).setCellRenderer(sha);
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                showSelectedCommit();
+                onSelectionChanged();
             }
         });
 
@@ -207,7 +214,8 @@ final class GitCommitsPane extends JPanel {
         header.setCommit(null);
         messageArea.setText("");
         filesModel.clear();
-        diffCommit = null;
+        cmpOldRev = null;
+        cmpNewRev = null;
         diffFile = null;
         diffArea.setText(Messages.get("git.diff.hint"));
         splitDiff.setEmptyText(Messages.get("git.diff.hint"));
@@ -237,7 +245,6 @@ final class GitCommitsPane extends JPanel {
         }
         if (!changes.isEmpty()) {
             FileChange f = changes.get(0);
-            diffCommit = c;
             diffFile = f;
             filesList.setSelectedIndex(0);
             if ("split".equals(diffMode)) {
@@ -246,6 +253,46 @@ final class GitCommitsPane extends JPanel {
             } else {
                 String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
                 diffArea.setDiff(svc.diffOf(c.sha, path));
+            }
+        }
+    }
+
+    /**
+     * テスト・スクリーンショット用に、2 コミット (newerRow 新 / olderRow 旧) を選択した
+     * 「選択同士」比較を同期でロードする。EDT 上から呼ぶこと。本番コードからは使わない。
+     */
+    void loadCompareForTest(GitRepoService svc, String ref, int newerRow, int olderRow)
+            throws Exception {
+        List<CommitInfo> log = svc.log(ref, GitRepoService.DEFAULT_LOG_LIMIT);
+        Map<String, List<RefLabel>> decorations = svc.refDecorations();
+        applyResult(new LogResult(log, GitGraphLayout.compute(log), decorations));
+        if (commits.size() <= Math.max(newerRow, olderRow)) {
+            return;
+        }
+        CommitInfo newer = commits.get(newerRow);
+        CommitInfo older = commits.get(olderRow);
+        selectCommitRowsForTest(newerRow, olderRow);
+        cmpNewRev = newer.sha;
+        cmpNewLabel = newer.shortSha;
+        cmpOldRev = older.sha;
+        header.setCompare(older, newer);
+        messageArea.setText(older.shortSha + " → " + newer.shortSha + "\n\n" + newer.fullMessage);
+        messageArea.setCaretPosition(0);
+        filesModel.clear();
+        List<FileChange> changes = svc.changesBetween(older.sha, newer.sha);
+        for (FileChange f : changes) {
+            filesModel.addElement(f);
+        }
+        if (!changes.isEmpty()) {
+            FileChange f = changes.get(0);
+            diffFile = f;
+            filesList.setSelectedIndex(0);
+            if ("split".equals(diffMode)) {
+                splitDiff.setRows(computeSplitRows(svc, older.sha, newer.sha, f));
+                diffCards.show(diffHost, "split");
+            } else {
+                String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+                diffArea.setDiff(svc.diffOf(older.sha, newer.sha, path));
             }
         }
     }
@@ -294,28 +341,71 @@ final class GitCommitsPane extends JPanel {
         openUmlDiffForSelectedFile();
     }
 
-    /** 選択コミットのメッセージと変更ファイル一覧を読み込む。 */
-    private void showSelectedCommit() {
-        CommitInfo c = selectedCommit();
-        if (c == null) {
+    /** テスト用: 指定した複数行を選択する (2 コミット比較の検証用)。 */
+    void selectCommitRowsForTest(int... rows) {
+        table.clearSelection();
+        for (int r : rows) {
+            table.addRowSelectionInterval(r, r);
+        }
+    }
+
+    /** テスト用: 現在の比較コンテキスト (1 選択時 old は null = 親)。 */
+    String cmpOldRevForTest() {
+        return cmpOldRev;
+    }
+
+    String cmpNewRevForTest() {
+        return cmpNewRev;
+    }
+
+    /**
+     * コミット選択の変化に応じて比較コンテキストを組み立て、詳細と変更ファイルを更新する。
+     * 1 コミット選択 = そのコミット vs 親、2 コミット以上選択 = 選択の最古 vs 最新で比較する。
+     */
+    private void onSelectionChanged() {
+        List<CommitInfo> sel = selectedCommits();
+        if (sel.isEmpty()) {
+            header.setCommit(null);
+            messageArea.setText("");
+            filesModel.clear();
+            resetDiff(Messages.get("git.diff.hint"));
+            cmpNewRev = null;
             return;
         }
-        header.setCommit(c);
-        messageArea.setText(c.fullMessage);
+        // 履歴は新しい順。sel は行昇順なので先頭が最新、末尾が最古。
+        CommitInfo newer = sel.get(0);
+        CommitInfo older = sel.size() >= 2 ? sel.get(sel.size() - 1) : null;
+        cmpNewRev = newer.sha;
+        cmpNewLabel = newer.shortSha;
+        cmpOldRev = older != null ? older.sha : null; // null なら親と比較
+        if (older != null) {
+            header.setCompare(older, newer);
+            messageArea.setText(older.shortSha + " → " + newer.shortSha + "\n\n"
+                    + newer.fullMessage);
+        } else {
+            header.setCommit(newer);
+            messageArea.setText(newer.fullMessage);
+        }
         messageArea.setCaretPosition(0);
         filesModel.clear();
-        diffCommit = null;
         diffFile = null;
-        diffArea.setText(Messages.get("git.diff.fileHint"));
-        splitDiff.setEmptyText(Messages.get("git.diff.fileHint"));
+        resetDiff(Messages.get("git.diff.fileHint"));
+        loadChangedFiles();
+    }
+
+    /** 現在の比較コンテキストで変更ファイル一覧を背景読み込みする。 */
+    private void loadChangedFiles() {
         final GitRepoService svc = ctx.service();
-        if (svc == null) {
+        if (svc == null || cmpNewRev == null) {
             return;
         }
+        final String oldRev = cmpOldRev;
+        final String newRev = cmpNewRev;
         final int gen = ++detailGen;
         new SwingWorker<List<FileChange>, Void>() {
             @Override protected List<FileChange> doInBackground() throws Exception {
-                return svc.changesOf(c.sha);
+                String base = oldRev != null ? oldRev : svc.parentOf(newRev);
+                return svc.changesBetween(base, newRev);
             }
 
             @Override protected void done() {
@@ -331,6 +421,11 @@ final class GitCommitsPane extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    private void resetDiff(String hint) {
+        diffArea.setText(hint);
+        splitDiff.setEmptyText(hint);
     }
 
     /** 変更ファイル一覧の右クリックメニュー (UML 構造 Diff 起動) を組み込む。 */
@@ -371,14 +466,14 @@ final class GitCommitsPane extends JPanel {
     }
 
     /**
-     * 選択中の変更ファイル (.java) を、選択コミット vs その親でクラス構造 UML 差分表示する。
+     * 選択中の変更ファイル (.java) をクラス構造 UML 差分表示する。比較の 2 時点は現在の
+     * 比較コンテキスト（1 コミット選択なら vs 親、2 コミット選択なら選択同士）に従う。
      * グラフ (Commits) から UML 比較画面へ直接つなぐ統合ポイント。
      */
     private void openUmlDiffForSelectedFile() {
-        CommitInfo c = selectedCommit();
         FileChange f = filesList.getSelectedValue();
         final GitRepoService svc = ctx.service();
-        if (c == null || f == null || svc == null) {
+        if (f == null || svc == null || cmpNewRev == null) {
             return;
         }
         if (!isJavaChange(f)) {
@@ -388,7 +483,7 @@ final class GitCommitsPane extends JPanel {
         String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
         GitUmlDiffDialog dialog = new GitUmlDiffDialog(
                 javax.swing.SwingUtilities.getWindowAncestor(this),
-                svc, path, null, c.sha, c.shortSha);
+                svc, path, cmpOldRev, cmpNewRev, cmpNewLabel);
         dialog.setVisible(true);
     }
 
@@ -416,35 +511,37 @@ final class GitCommitsPane extends JPanel {
         }
         diffMode = mode;
         diffCards.show(diffHost, mode);
-        if (diffCommit != null && diffFile != null) {
-            renderDiff(diffCommit, diffFile);
+        if (diffFile != null) {
+            renderDiff(diffFile);
         }
     }
 
     /** 選択ファイルの diff を現在のモードで読み込む。 */
     private void showSelectedFileDiff() {
-        CommitInfo c = selectedCommit();
         FileChange f = filesList.getSelectedValue();
-        if (c == null || f == null) {
+        if (f == null) {
             return;
         }
-        renderDiff(c, f);
+        renderDiff(f);
     }
 
-    /** 指定コミット・ファイルの diff を、現在のモード (unified/split) で背景描画する。 */
-    private void renderDiff(CommitInfo c, FileChange f) {
-        this.diffCommit = c;
+    /** 選択ファイルの diff を、現在の比較コンテキスト・モード (unified/split) で背景描画する。 */
+    private void renderDiff(FileChange f) {
         this.diffFile = f;
         final GitRepoService svc = ctx.service();
-        if (svc == null) {
+        if (svc == null || cmpNewRev == null) {
             return;
         }
+        final String oldRev = cmpOldRev;
+        final String newRev = cmpNewRev;
         final boolean split = "split".equals(diffMode);
         final int gen = ++diffGen;
         new SwingWorker<Object, Void>() {
             @Override protected Object doInBackground() throws Exception {
-                return split ? computeSplitRows(svc, c, f)
-                        : svc.diffOf(c.sha, "DELETE".equals(f.changeType) ? f.oldPath : f.path);
+                String base = oldRev != null ? oldRev : svc.parentOf(newRev);
+                return split ? computeSplitRows(svc, base, newRev, f)
+                        : svc.diffOf(base, newRev,
+                                "DELETE".equals(f.changeType) ? f.oldPath : f.path);
             }
 
             @Override @SuppressWarnings("unchecked") protected void done() {
@@ -465,51 +562,37 @@ final class GitCommitsPane extends JPanel {
         }.execute();
     }
 
-    /** side-by-side 用に、指定コミットでのファイルの旧/新内容を取得して整列する。 */
+    /** side-by-side 用に、1 コミット選択 (vs 親) のファイルの旧/新内容を整列する。 */
     static List<LineDiff.Row> computeSplitRows(
             GitRepoService svc, CommitInfo c, FileChange f) throws java.io.IOException {
+        return computeSplitRows(svc, svc.parentOf(c.sha), c.sha, f);
+    }
+
+    /** side-by-side 用に、任意 2 リビジョン間でのファイルの旧/新内容を取得して整列する。 */
+    static List<LineDiff.Row> computeSplitRows(GitRepoService svc, String oldRev,
+            String newRev, FileChange f) throws java.io.IOException {
         String newPath = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
         String oldPath = "RENAME".equals(f.changeType) || "COPY".equals(f.changeType)
                 ? f.oldPath : newPath;
-        String parent = svc.parentOf(c.sha);
-        String oldSrc = parent != null && !"ADD".equals(f.changeType)
-                ? svc.fileContentAt(parent, oldPath) : null;
-        String newSrc = "DELETE".equals(f.changeType)
-                ? null : svc.fileContentAt(c.sha, newPath);
+        String oldSrc = oldRev != null ? svc.fileContentAt(oldRev, oldPath) : null;
+        String newSrc = svc.fileContentAt(newRev, newPath);
         return LineDiff.compute(oldSrc, newSrc);
     }
 
-    private CommitInfo selectedCommit() {
-        int row = table.getSelectedRow();
-        if (row < 0 || row >= commits.size()) {
-            return null;
+    /** 選択中のコミットを行昇順 (= 新しい順) で返す。 */
+    private List<CommitInfo> selectedCommits() {
+        List<CommitInfo> out = new java.util.ArrayList<>();
+        for (int row : table.getSelectedRows()) {
+            int m = table.convertRowIndexToModel(row);
+            if (m >= 0 && m < commits.size()) {
+                out.add(commits.get(m));
+            }
         }
-        return commits.get(table.convertRowIndexToModel(row));
+        return out;
     }
 
     private static Color laneColor(int colorIndex) {
         return LANE_COLORS[Math.floorMod(colorIndex, LANE_COLORS.length)];
-    }
-
-    /** 「3 days ago」風の相対日時。近すぎる/未来は "just now"。 */
-    private static String relativeTime(java.util.Date when) {
-        if (when == null) {
-            return "";
-        }
-        long secs = (System.currentTimeMillis() - when.getTime()) / 1000L;
-        if (secs < 60) {
-            return "just now";
-        }
-        long[] steps = {60, 3600, 86400, 604800, 2629746, 31556952};
-        String[] unit = {"minute", "hour", "day", "week", "month", "year"};
-        int i = 0;
-        for (; i < steps.length - 1; i++) {
-            if (secs < steps[i + 1]) {
-                break;
-            }
-        }
-        long n = secs / steps[i];
-        return n + " " + unit[i] + (n == 1 ? "" : "s") + " ago";
     }
 
     /** 履歴・レイアウト・ref をまとめて EDT へ渡す背景処理の戻り値。 */
@@ -723,7 +806,7 @@ final class GitCommitsPane extends JPanel {
             super.getTableCellRendererComponent(t, value, isSelected, hasFocus, r, column);
             int modelRow = t.convertRowIndexToModel(r);
             if (modelRow >= 0 && modelRow < commits.size()) {
-                setText(relativeTime(commits.get(modelRow).when));
+                setText(GitTimes.relative(commits.get(modelRow).when));
                 setToolTipText(value == null ? null : value.toString());
             }
             return this;
@@ -800,56 +883,4 @@ final class GitCommitsPane extends JPanel {
         }
     }
 
-    /** 選択コミットのヘッダ: アバター + 作者、SHA・相対日時を強調表示する。 */
-    private static final class CommitHeaderPanel extends JPanel {
-        private CommitInfo commit;
-
-        CommitHeaderPanel() {
-            setOpaque(false);
-            setPreferredSize(new Dimension(10, 46));
-        }
-
-        void setCommit(CommitInfo c) {
-            this.commit = c;
-            repaint();
-        }
-
-        @Override protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            if (commit == null) {
-                return;
-            }
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            int h = getHeight();
-            int r = 16;
-            int cx = 6 + r;
-            int cy = h / 2;
-            GitAvatars.paint(g2, cx, cy, r, commit.author, commit.authorEmail);
-
-            Color fg = javax.swing.UIManager.getColor("Label.foreground");
-            Color muted = javax.swing.UIManager.getColor("Label.disabledForeground");
-            if (fg == null) {
-                fg = Color.DARK_GRAY;
-            }
-            if (muted == null) {
-                muted = Color.GRAY;
-            }
-            int tx = cx + r + 10;
-            Font bold = getFont().deriveFont(Font.BOLD);
-            g2.setFont(bold);
-            FontMetrics bfm = g2.getFontMetrics();
-            g2.setColor(fg);
-            g2.drawString(commit.author, tx, cy - 2);
-            Font small = getFont().deriveFont(getFont().getSize2D() - 1f);
-            g2.setFont(small);
-            g2.setColor(muted);
-            String line2 = commit.shortSha + "   ·   " + relativeTime(commit.when);
-            g2.drawString(line2, tx, cy + bfm.getHeight() - 2);
-            g2.dispose();
-        }
-    }
 }
