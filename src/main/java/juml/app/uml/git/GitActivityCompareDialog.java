@@ -50,6 +50,9 @@ final class GitActivityCompareDialog extends JDialog {
 
     private List<JavaClassInfo> oldClasses = List.of();
     private List<JavaClassInfo> newClasses = List.of();
+    /** 書き出し用に保持する直近の描画結果 (片側 null 可)。 */
+    private RenderedSvg lastOldSvg;
+    private RenderedSvg lastNewSvg;
     /** 古いワーカー結果で新しい選択を上書きしないための世代。 */
     private int renderGen;
 
@@ -89,6 +92,12 @@ final class GitActivityCompareDialog extends JDialog {
                 titled(newHost, Messages.get("git.diagcmp.new")));
         split.setResizeWeight(0.5);
         add(split, BorderLayout.CENTER);
+        add(DiagramExport.toolbar(this, DiagramExport.baseName(relPath),
+                () -> lastOldSvg == null && lastNewSvg == null ? null
+                        : DiagramExport.composite(lastOldSvg, lastNewSvg,
+                                Messages.get("git.diagcmp.old"),
+                                Messages.get("git.diagcmp.new"))),
+                BorderLayout.SOUTH);
         setSize(1100, 720);
         setLocationRelativeTo(owner);
 
@@ -168,6 +177,8 @@ final class GitActivityCompareDialog extends JDialog {
                 }
                 try {
                     RenderedSvg[] svg = get();
+                    lastOldSvg = svg[0];
+                    lastNewSvg = svg[1];
                     showSvg(oldHost, oldPanel, svg[0]);
                     showSvg(newHost, newPanel, svg[1]);
                 } catch (Exception ex) {

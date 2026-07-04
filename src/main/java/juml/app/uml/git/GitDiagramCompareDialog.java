@@ -37,6 +37,9 @@ final class GitDiagramCompareDialog extends JDialog {
     private final SvgPreviewPanel newPanel = new SvgPreviewPanel();
     private final JPanel oldHost = new JPanel(new BorderLayout());
     private final JPanel newHost = new JPanel(new BorderLayout());
+    /** 書き出し用に保持する描画結果 (片側 null 可)。 */
+    private RenderedSvg lastOldSvg;
+    private RenderedSvg lastNewSvg;
 
     private static final class Result {
         final RenderedSvg oldSvg;
@@ -70,6 +73,12 @@ final class GitDiagramCompareDialog extends JDialog {
                 titled(newHost, Messages.get("git.diagcmp.new")));
         split.setResizeWeight(0.5);
         add(split, BorderLayout.CENTER);
+        add(DiagramExport.toolbar(this, DiagramExport.baseName(relPath),
+                () -> lastOldSvg == null && lastNewSvg == null ? null
+                        : DiagramExport.composite(lastOldSvg, lastNewSvg,
+                                Messages.get("git.diagcmp.old"),
+                                Messages.get("git.diagcmp.new"))),
+                BorderLayout.SOUTH);
         setSize(1100, 720);
         setLocationRelativeTo(owner);
 
@@ -134,6 +143,8 @@ final class GitDiagramCompareDialog extends JDialog {
             @Override protected void done() {
                 try {
                     Result r = get();
+                    lastOldSvg = r.oldSvg;
+                    lastNewSvg = r.newSvg;
                     show(oldHost, oldPanel, r.oldSvg, r.oldError);
                     show(newHost, newPanel, r.newSvg, r.newError);
                 } catch (Exception ex) {
