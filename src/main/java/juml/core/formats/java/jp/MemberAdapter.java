@@ -5,6 +5,7 @@ package juml.core.formats.java.jp;
 
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.AnnotationMemberDeclaration;
+import com.github.javaparser.ast.body.CompactConstructorDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
@@ -33,6 +34,15 @@ final class MemberAdapter {
         Visibility vis = JpText.visibility(fd);
         boolean isStatic = fd.isStatic();
         boolean isFinal = fd.isFinal();
+        // interface / @interface のフィールドは暗黙に public static final。JavaParser は
+        // 明示修飾子しか報告しないため、所有型が interface 系なら補う。補わないと
+        // visibility=PACKAGE となり publicOnly のクラス図から interface 定数が丸ごと消える。
+        if (owner != null && (owner.getKind() == JavaClassInfo.Kind.INTERFACE
+                || owner.getKind() == JavaClassInfo.Kind.ANNOTATION)) {
+            vis = Visibility.PUBLIC;
+            isStatic = true;
+            isFinal = true;
+        }
         java.util.List<String> anns = JpText.annotations(fd);
         String comment = ctx.comments.before(fd);
         for (VariableDeclarator v : fd.getVariables()) {
@@ -91,6 +101,14 @@ final class MemberAdapter {
         m.setTypeParameters(typeParametersOf(md.getTypeParameters()));
         addParams(m, md.getParameters());
         m.setVisibility(JpText.visibility(md));
+        // interface / @interface のメソッドは (private 明示でない限り) 暗黙に public。
+        // PACKAGE は interface では書けないので「修飾子なし = 暗黙 public」を表す。
+        if (owner != null
+                && (owner.getKind() == JavaClassInfo.Kind.INTERFACE
+                    || owner.getKind() == JavaClassInfo.Kind.ANNOTATION)
+                && m.getVisibility() == Visibility.PACKAGE) {
+            m.setVisibility(Visibility.PUBLIC);
+        }
         m.setStatic(md.isStatic());
         boolean interfaceImplicitAbstract = !md.getBody().isPresent()
                 && !md.isDefault() && !md.isStatic() && md.findCompilationUnit().isPresent()
@@ -130,6 +148,31 @@ final class MemberAdapter {
         // default 値 (int timeout() default 30;) を保持し、クラス図に併記する
         amd.getDefaultValue().ifPresent(v -> m.setDefaultValue(v.toString()));
         m.setComment(ctx.comments.before(amd));
+        owner.getMethods().add(m);
+    }
+
+    /**
+     * record の compact (正準) コンストラクタ {@code Range { ... }} を取り込む。
+     * {@code CompactConstructorDeclaration} は Method/ConstructorDeclaration のどちらでもないため
+     * 個別処理しないと本体 (検証・呼び出し) がまるごと図から欠落する。引数は record
+     * コンポーネント ({@code recordParams}) で補う。
+     */
+    static void addCompactConstructor(JavaClassInfo owner, CompactConstructorDeclaration ccd,
+                                      NodeList<Parameter> recordParams, JpContext ctx) {
+        JavaMethodInfo m = new JavaMethodInfo();
+        m.setName(ccd.getNameAsString());
+        ccd.getBegin().ifPresent(p -> m.setStartLine(p.line));
+        m.setConstructor(true);
+        if (recordParams != null) {
+            addParams(m, recordParams);
+        }
+        m.setVisibility(JpText.visibility(ccd));
+        m.getAnnotations().addAll(JpText.annotations(ccd));
+        m.setComment(ctx.comments.before(ccd));
+        if (!ctx.headersOnly) {
+            StatementAdapter.emitBody(ccd.getBody(), m.getStatements(), ctx, owner);
+            m.getBodyComments().addAll(ctx.comments.within(ccd.getBody()));
+        }
         owner.getMethods().add(m);
     }
 

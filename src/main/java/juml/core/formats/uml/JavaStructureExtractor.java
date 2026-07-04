@@ -77,6 +77,9 @@ public final class JavaStructureExtractor {
             // 「誰を許可するか」を参照する用途があるため漏らさない)。
             h.getPermittedTypes().addAll(c.getPermittedTypes());
             h.setEnclosingClass(c.getEnclosingClass());
+            // 宣言開始行は Stage A でも保持する。落とすと未昇格クラスのソースジャンプが
+            // 行 0 (ファイル先頭) に着地してしまう (DiagramTabSupport.classStartLine)。
+            h.setStartLine(c.getStartLine());
             h.setAaosCategory(c.getAaosCategory());
             h.setAndroidComponentType(c.getAndroidComponentType());
             // 型パラメータ宣言 ("T extends Entity" など) は header-only でも保持する
