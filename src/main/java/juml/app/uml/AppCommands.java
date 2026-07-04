@@ -90,9 +90,23 @@ final class AppCommands {
             for (DiagramPreset p : DiagramPreset.values()) {
                 if (p != DiagramPreset.CUSTOM) {
                     list.add(new CommandPalette.Command(
-                            Messages.get("cmd.diagram.preset") + p.getDisplayName(),
+                            Messages.get("cmd.diagram.preset") + " " + p.getDisplayName(),
                             () -> cb.applyPreset.accept(p)));
                 }
+            }
+        }
+        // 図種切替をコマンド化する (メニューの図種ラジオと対応)。メソッド系図種
+        // (SEQUENCE/ACTIVITY/CALLGRAPH) はメソッド図タブ上部の切替バーへ一本化されており
+        // メニューのラジオからも外れているため、パレットからも除外して挙動を揃える。
+        if (cb.selectDiagramKindFromMenu != null) {
+            for (DiagramKind k : DiagramKind.values()) {
+                if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+                    continue;
+                }
+                final DiagramKind kind = k;
+                list.add(new CommandPalette.Command(
+                        Messages.get("cmd.diagram.switchTo") + " " + k.getDisplayName(),
+                        () -> cb.selectDiagramKindFromMenu.accept(kind)));
             }
         }
         return list;
