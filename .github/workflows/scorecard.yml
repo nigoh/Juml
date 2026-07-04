@@ -1,0 +1,55 @@
+# OpenSSF Scorecard — サプライチェーン/セキュリティ体制を自動採点する。
+# 目的: 依存固定・ブランチ保護・危険な workflow 権限などのベストプラクティス
+#       準拠度を継続的に採点し、結果を GitHub の Code scanning と
+#       securityscorecards.dev に公開する (README のバッジがこの結果を参照する)。
+name: Scorecard supply-chain security
+
+on:
+  # ブランチ保護ルールの変更を検知して再採点する
+  branch_protection_rule:
+  # 週次の定期採点 (毎週月曜 00:00 UTC)
+  schedule:
+    - cron: '0 0 * * 1'
+  push:
+    branches:
+      - main
+
+# 既定は最小権限。個別 job で必要な権限だけ引き上げる。
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Code scanning へ SARIF を書き込むため
+      security-events: write
+      # 採点結果を securityscorecards.dev に公開するため (publish_results: true)
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      # 採点の生データ (SARIF) をワークフロー成果物として保持する
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      # GitHub の Code scanning アラートに取り込む
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

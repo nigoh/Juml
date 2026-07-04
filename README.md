@@ -2,6 +2,7 @@ Juml 2.0 — Java + Android + Gradle UML Tool
 ================================================
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nigoh/juml/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nigoh/juml)
 
 ![Juml GUI — パッケージ依存図を表示中（プロジェクトツリー + 図種ツールバー + PlantUML ソース）](docs/assets/screenshots/gui-package-diagram.png)
 

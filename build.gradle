@@ -117,7 +117,8 @@ jar {
                 'Main-Class': 'juml.Main',
                 'Implementation-Title': 'Juml',
                 'Implementation-Version': version,
-                'License': 'MIT'
+                'License': 'MIT',
+                'SPDX-License-Identifier': 'MIT'
         )
     }
 

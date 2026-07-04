@@ -1,0 +1,26 @@
+# このファイルは Citation File Format (CFF) です。
+# GitHub リポジトリ右側の "Cite this repository" から BibTeX / APA 形式で
+# 引用メタデータを取得できます。https://citation-file-format.github.io/
+cff-version: 1.2.0
+message: "If you use Juml, please cite it using the metadata below."
+title: "Juml"
+abstract: >-
+  Java / Android (Gradle + AndroidManifest.xml + AIDL) プロジェクトから
+  UML 図 (クラス図 / シーケンス図 / パッケージ図など) を生成する
+  Swing ベース + CLI のツール。
+type: software
+authors:
+  - name: "naou"
+  - name: "Juml contributors"
+url: "https://github.com/nigoh/juml"
+repository-code: "https://github.com/nigoh/juml"
+license: MIT
+version: "2.1"
+date-released: "2026-07-04"
+keywords:
+  - UML
+  - PlantUML
+  - Java
+  - Android
+  - Gradle
+  - reverse-engineering
