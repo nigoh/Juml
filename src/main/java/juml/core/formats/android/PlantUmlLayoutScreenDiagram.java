@@ -120,23 +120,34 @@ public final class PlantUmlLayoutScreenDiagram {
             }
             first = false;
             counter.emitted++;
-            if (child.getChildren().isEmpty() || depth + 1 >= o.maxDepth) {
-                out.append(leafWidget(child, o));
-            } else {
-                // 横並びセル内のネストはそのまま枠付きグリッドを埋め込む
-                out.append("{+ ").append("<i>").append(groupCaption(child, o)).append(" | ");
-                boolean inner = true;
-                for (LayoutViewNode gc : child.getChildren()) {
-                    if (!inner) {
-                        out.append(" | ");
-                    }
-                    inner = false;
-                    out.append(leafWidget(gc, o));
-                }
-                out.append(" }");
-            }
+            emitInlineCell(out, child, depth + 1, o, counter);
         }
         out.append('\n');
+    }
+
+    /**
+     * 横並びセル 1 マスを出力する。子を持つコンテナなら {@code maxDepth} の範囲で入れ子の
+     * グリッドとして再帰的に描き、末端なら 1 ウィジェットにする。以前は孫を常に
+     * {@code leafWidget} 化していたため、孫がさらに子を持つコンテナだと中身が消えていた
+     * (Salt スクリーンプレビューでサブツリー欠落) (#44)。
+     */
+    private static void emitInlineCell(StringBuilder out, LayoutViewNode node, int depth,
+                                       Options o, Counter counter) {
+        if (node.getChildren().isEmpty() || depth >= o.maxDepth) {
+            out.append(leafWidget(node, o));
+            return;
+        }
+        out.append("{+ ").append("<i>").append(groupCaption(node, o));
+        for (LayoutViewNode gc : node.getChildren()) {
+            if (counter.emitted >= counter.limit) {
+                counter.truncated++;
+                break;
+            }
+            counter.emitted++;
+            out.append(" | ");
+            emitInlineCell(out, gc, depth + 1, o, counter);
+        }
+        out.append(" }");
     }
 
     /** 末端 View 1 つを Salt ウィジェット表記へ変換する。 */

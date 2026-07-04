@@ -47,6 +47,32 @@ public class PlantUmlLayoutScreenDiagramTest {
         assertTrue("横並び結合", salt.contains("[ OK ] | [ Cancel ]"));
     }
 
+    /**
+     * 横並び LinearLayout のセル内で、孫がさらに子を持つコンテナでも中身が欠落しない (#44)。
+     * 以前は横セルの孫を常に leafWidget 化していたため、深いサブツリーが消えていた。
+     */
+    @Test
+    public void horizontalCellPreservesDeepNesting() {
+        // horizontal LinearLayout > cell(vertical LinearLayout) > inner(vertical) > TextView("DeepLeaf")
+        LayoutViewNode root = new LayoutViewNode("LinearLayout");
+        root.getExtraAttributes().put("android:orientation", "horizontal");
+        LayoutViewNode cell = new LayoutViewNode("LinearLayout");
+        cell.getExtraAttributes().put("android:orientation", "vertical");
+        LayoutViewNode inner = new LayoutViewNode("LinearLayout");
+        inner.getExtraAttributes().put("android:orientation", "vertical");
+        LayoutViewNode deep = new LayoutViewNode("TextView");
+        deep.setText("DeepLeaf");
+        inner.getChildren().add(deep);
+        cell.getChildren().add(inner);
+        root.getChildren().add(cell);
+
+        AndroidLayoutInfo info = new AndroidLayoutInfo();
+        info.setRoot(root);
+        info.setFileName("deep.xml");
+        String salt = PlantUmlLayoutScreenDiagram.generate(info);
+        assertTrue("深いサブツリーの葉テキストが残る: " + salt, salt.contains("DeepLeaf"));
+    }
+
     @Test
     public void testEditTextRendersAsField() {
         LayoutViewNode root = new LayoutViewNode("LinearLayout");

@@ -321,25 +321,29 @@ public final class AndroidLayoutEngine {
         return parseDp(attr(node, "android:layout_weight"));
     }
 
+    // 各辺は「値が > 0 か」ではなく「属性が存在するか」で解決する。以前は firstPositive で
+    // 最初の正値を採っていたため、より具体的な明示 0dp (例: paddingLeft="0dp") が
+    // android:padding に負け、負のマージン (重ね合わせ用途) も 0/all 値へ化けていた。
+    // また Start/End は API17+ で Left/Right より優先されるべきなので先に見る (#44)。
     private static Box margins(LayoutViewNode node) {
-        double all = parseDp(attr(node, "android:layout_margin"));
-        double l = firstPositive(parseDp(attr(node, "android:layout_marginLeft")),
-                parseDp(attr(node, "android:layout_marginStart")), all);
-        double t = firstPositive(parseDp(attr(node, "android:layout_marginTop")), all);
-        double r = firstPositive(parseDp(attr(node, "android:layout_marginRight")),
-                parseDp(attr(node, "android:layout_marginEnd")), all);
-        double b = firstPositive(parseDp(attr(node, "android:layout_marginBottom")), all);
+        Double all = parseDpOrNull(attr(node, "android:layout_margin"));
+        double l = firstPresent(parseDpOrNull(attr(node, "android:layout_marginStart")),
+                parseDpOrNull(attr(node, "android:layout_marginLeft")), all);
+        double t = firstPresent(parseDpOrNull(attr(node, "android:layout_marginTop")), all);
+        double r = firstPresent(parseDpOrNull(attr(node, "android:layout_marginEnd")),
+                parseDpOrNull(attr(node, "android:layout_marginRight")), all);
+        double b = firstPresent(parseDpOrNull(attr(node, "android:layout_marginBottom")), all);
         return new Box(l, t, r, b);
     }
 
     private static Box padding(LayoutViewNode node) {
-        double all = parseDp(attr(node, "android:padding"));
-        double l = firstPositive(parseDp(attr(node, "android:paddingLeft")),
-                parseDp(attr(node, "android:paddingStart")), all);
-        double t = firstPositive(parseDp(attr(node, "android:paddingTop")), all);
-        double r = firstPositive(parseDp(attr(node, "android:paddingRight")),
-                parseDp(attr(node, "android:paddingEnd")), all);
-        double b = firstPositive(parseDp(attr(node, "android:paddingBottom")), all);
+        Double all = parseDpOrNull(attr(node, "android:padding"));
+        double l = firstPresent(parseDpOrNull(attr(node, "android:paddingStart")),
+                parseDpOrNull(attr(node, "android:paddingLeft")), all);
+        double t = firstPresent(parseDpOrNull(attr(node, "android:paddingTop")), all);
+        double r = firstPresent(parseDpOrNull(attr(node, "android:paddingEnd")),
+                parseDpOrNull(attr(node, "android:paddingRight")), all);
+        double b = firstPresent(parseDpOrNull(attr(node, "android:paddingBottom")), all);
         return new Box(l, t, r, b);
     }
 
@@ -364,8 +368,19 @@ public final class AndroidLayoutEngine {
 
     /** {@code "16dp"} / {@code "16dip"} / {@code "16px"} / {@code "16sp"} / {@code "16"} → 数値。 */
     static double parseDp(String value) {
+        Double d = parseDpOrNull(value);
+        return d != null ? d : 0;
+    }
+
+    /**
+     * {@link #parseDp} の nullable 版。属性が無い/空/数値でない場合は {@code null} を返し、
+     * 「明示的な 0」と「未指定」を呼び出し側が区別できるようにする。符号は保持する
+     * (負のマージンは重ね合わせ用途で使われる)。非有限値 (1e400dp → Infinity, 演算で NaN)
+     * は SVG に {@code width="Infinity"/"NaN"} を吐いて図全体を壊すため {@code null} 扱いにする。
+     */
+    static Double parseDpOrNull(String value) {
         if (value == null || value.isEmpty()) {
-            return 0;
+            return null;
         }
         String s = value.trim().toLowerCase(Locale.ROOT);
         int end = s.length();
@@ -377,17 +392,16 @@ public final class AndroidLayoutEngine {
         }
         try {
             double d = Double.parseDouble(s.substring(0, end).trim());
-            // 非有限値 (1e400dp → Infinity, 演算で NaN) は SVG に width="Infinity"/"NaN" を
-            // 吐いて図全体の描画を壊すため 0 に丸める。
-            return Double.isFinite(d) ? d : 0;
+            return Double.isFinite(d) ? d : null;
         } catch (NumberFormatException ignored) {
-            return 0;
+            return null;
         }
     }
 
-    private static double firstPositive(double... vals) {
-        for (double v : vals) {
-            if (v > 0) {
+    /** 最初に存在する (非 null の) 値を符号込みで返す。すべて未指定なら 0。 */
+    private static double firstPresent(Double... vals) {
+        for (Double v : vals) {
+            if (v != null) {
                 return v;
             }
         }
