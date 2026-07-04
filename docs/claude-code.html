@@ -62,7 +62,7 @@
       <div class="note">
         ここで扱うのは <b>Claude Code（Anthropic の CLI / エージェント）向けの定義ファイル</b>であり、Juml 本体（Java/Swing アプリ）の機能ではありません。
         Juml 本体の機能は <a href="./developer-reference.html">開発者リファレンス</a>、操作は <a href="./gui-manual.html">GUI マニュアル</a> を参照してください。
-        導入手順の原典はリポジトリの <code>.claude/SETUP_CLAUDE_AGENTS_SKILLS.md</code> です。
+        仕組みの使い分けの原典はリポジトリの <code>.claude/STEERING.md</code>（ステアリングマップ）です。<code>.claude/</code> は Claude Code が自動検出するため手動の導入作業は不要です。
       </div>
     </header>
 
@@ -85,7 +85,7 @@
     <section id="layout">
       <h2>.claude/ ディレクトリ構成</h2>
       <pre><code>.claude/
-├── SETUP_CLAUDE_AGENTS_SKILLS.md     導入手順（原典）
+├── STEERING.md                       ステアリングマップ（仕組みの使い分け）
 ├── agents/                           サブエージェント定義
 │   ├── aosp-juml-explorer.md         汎用 AOSP 解析戦略
 │   ├── aaos-juml-explorer.md         AAOS（自動車）専門解析戦略
@@ -251,7 +251,7 @@ cp -r .claude/skills/aaos-juml-analyzer ~/.claude/skills/
 ls ~/.claude/agents/ ~/.claude/skills/</code></pre>
       <p>AOSP のパスが既定（<code>~/AOSP/</code>）でない場合は環境変数で指定できます。</p>
       <pre><code>export AOSP_PATH="/mnt/custom/aosp"</code></pre>
-      <p class="src">詳細・トラブルシューティングは <code>.claude/SETUP_CLAUDE_AGENTS_SKILLS.md</code> を参照してください。</p>
+      <p class="src">各仕組みの使い分けは <code>.claude/STEERING.md</code>（ステアリングマップ）を参照してください。</p>
     </section>
 
     <section id="workflow">

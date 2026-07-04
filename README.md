@@ -143,7 +143,7 @@ exe を作る（jpackage で自己完結ネイティブイメージ）
 * [GUI 操作マニュアル](docs/gui-manual.html) — 起動・ツールバー・各図種の操作・スタイル設定・ショートカット・**巨大な図が描画できないときの対処**
 * [開発者リファレンス](docs/developer-reference.html) — CLI 全フラグ・図種カタログ・GUI 内部・解析エンジン・**解析対象と既知の制約**
 * [Claude Code 連携](docs/claude-code.html) — `.claude/` 配下のエージェント・スキル・スラッシュコマンド (AOSP / AAOS 解析・Java 解析エンジン) のカタログと使い方
-* [Claude エージェント / スキル導入手順](.claude/SETUP_CLAUDE_AGENTS_SKILLS.md) — 上記の Claude Code エージェント・スキルをユーザホーム `~/.claude/` に配置する手順
+* [Claude ステアリングマップ](.claude/STEERING.md) — Rules / Skills / Subagents / Slash Commands / Hooks の使い分け。`.claude/` は Claude Code が自動検出するため `~/.claude/` への手動コピーは不要
 
 オープンソースについて
 ------------------------------------------------
