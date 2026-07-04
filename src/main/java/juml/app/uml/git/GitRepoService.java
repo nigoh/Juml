@@ -27,7 +27,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 開いているプロジェクトの git リポジトリを<b>閲覧のみ</b>で参照する JGit ラッパー。
@@ -151,13 +153,87 @@ public final class GitRepoService implements AutoCloseable {
 
     private static CommitInfo toInfo(RevCommit c) {
         PersonIdent author = c.getAuthorIdent();
+        List<String> parents = new ArrayList<>(c.getParentCount());
+        for (int i = 0; i < c.getParentCount(); i++) {
+            parents.add(c.getParent(i).getId().getName());
+        }
         return new CommitInfo(
                 c.getName(),
                 c.abbreviate(7).name(),
                 c.getShortMessage(),
                 c.getFullMessage(),
                 author != null ? author.getName() : "?",
-                author != null ? author.getWhen() : new Date(c.getCommitTime() * 1000L));
+                author != null ? author.getEmailAddress() : "",
+                author != null ? author.getWhen() : new Date(c.getCommitTime() * 1000L),
+                parents);
+    }
+
+    /**
+     * ブランチ・タグ・HEAD がどのコミット (完全 SHA) を指しているかを返す。
+     *
+     * <p>グラフ描画の ref ラベル用。キーは完全 SHA、値はその位置に付く ref ラベル。
+     * タグは軽量/注釈付きどちらもコミットまで peel した上で対応付ける。</p>
+     */
+    public Map<String, List<RefLabel>> refDecorations() throws IOException {
+        Map<String, List<RefLabel>> map = new HashMap<>();
+        org.eclipse.jgit.lib.RefDatabase rdb = repo.getRefDatabase();
+        List<Ref> refs = rdb.getRefs();
+        for (Ref ref : refs) {
+            String name = ref.getName();
+            RefLabel.Type type;
+            String shortName;
+            ObjectId oid;
+            if (name.startsWith(Constants.R_HEADS)) {
+                type = RefLabel.Type.LOCAL;
+                shortName = name.substring(Constants.R_HEADS.length());
+                oid = ref.getObjectId();
+            } else if (name.startsWith(Constants.R_REMOTES)) {
+                if (name.endsWith("/HEAD")) {
+                    continue; // origin/HEAD などのシンボリック参照は表示しない
+                }
+                type = RefLabel.Type.REMOTE;
+                shortName = name.substring(Constants.R_REMOTES.length());
+                oid = ref.getObjectId();
+            } else if (name.startsWith(Constants.R_TAGS)) {
+                type = RefLabel.Type.TAG;
+                shortName = name.substring(Constants.R_TAGS.length());
+                Ref peeled = rdb.peel(ref);
+                oid = peeled.getPeeledObjectId() != null
+                        ? peeled.getPeeledObjectId() : ref.getObjectId();
+            } else {
+                continue;
+            }
+            if (oid != null) {
+                map.computeIfAbsent(oid.getName(), k -> new ArrayList<>())
+                        .add(new RefLabel(shortName, type));
+            }
+        }
+        // HEAD (現在のブランチ) を強調表示する。同名のローカルブランチが既にあれば
+        // 二重ピルを避けるため、そのラベルを HEAD 種別へ昇格させる。
+        String branch = repo.getBranch();
+        ObjectId head = repo.resolve(Constants.HEAD);
+        if (head != null) {
+            List<RefLabel> at = map.computeIfAbsent(head.getName(), k -> new ArrayList<>());
+            RefLabel existingLocal = null;
+            if (branch != null) {
+                for (RefLabel label : at) {
+                    if (label.type == RefLabel.Type.LOCAL && branch.equals(label.name)) {
+                        existingLocal = label;
+                        break;
+                    }
+                }
+            }
+            if (existingLocal != null) {
+                at.remove(existingLocal);
+                at.add(new RefLabel(existingLocal.name, RefLabel.Type.HEAD));
+            } else {
+                at.add(new RefLabel(branch != null ? branch : "HEAD", RefLabel.Type.HEAD));
+            }
+        }
+        for (List<RefLabel> list : map.values()) {
+            list.sort((a, b) -> Integer.compare(a.type.ordinal(), b.type.ordinal()));
+        }
+        return map;
     }
 
     /** 指定コミットの変更ファイル一覧 (第 1 親との差分。初回コミットは空ツリーと比較)。 */
@@ -317,16 +393,36 @@ public final class GitRepoService implements AutoCloseable {
         public final String shortMessage;
         public final String fullMessage;
         public final String author;
+        public final String authorEmail;
         public final Date when;
+        /** 親コミットの完全 SHA (第 1 親が先頭)。マージは 2 件以上、初回コミットは空。 */
+        public final List<String> parents;
 
         CommitInfo(String sha, String shortSha, String shortMessage,
-                   String fullMessage, String author, Date when) {
+                   String fullMessage, String author, String authorEmail,
+                   Date when, List<String> parents) {
             this.sha = sha;
             this.shortSha = shortSha;
             this.shortMessage = shortMessage;
             this.fullMessage = fullMessage;
             this.author = author;
+            this.authorEmail = authorEmail;
             this.when = when;
+            this.parents = parents;
+        }
+    }
+
+    /** グラフに重ねる ref ラベル 1 件 (不変)。 */
+    public static final class RefLabel {
+        /** 表示優先順 (HEAD を先頭に描く)。 */
+        public enum Type { HEAD, LOCAL, REMOTE, TAG }
+
+        public final String name;
+        public final Type type;
+
+        public RefLabel(String name, Type type) {
+            this.name = name;
+            this.type = type;
         }
     }
 
