@@ -71,10 +71,11 @@ final class GitCommitsPane extends JPanel {
         }
     };
     private final JTable table = new JTable(model);
-    private final JTextArea messageArea = new JTextArea(4, 40);
+    private final CommitHeaderPanel header = new CommitHeaderPanel();
+    private final JTextArea messageArea = new JTextArea(3, 40);
     private final DefaultListModel<FileChange> filesModel = new DefaultListModel<>();
     private final JList<FileChange> filesList = new JList<>(filesModel);
-    private final JTextArea diffArea = new JTextArea();
+    private final GitDiffView diffArea = new GitDiffView();
 
     /** 表示中の履歴 (テーブル行 → コミット対応)。 */
     private List<CommitInfo> commits = List.of();
@@ -103,6 +104,8 @@ final class GitCommitsPane extends JPanel {
         table.getColumnModel().getColumn(4).setPreferredWidth(70);
         table.getColumnModel().getColumn(0).setCellRenderer(new GraphCellRenderer());
         table.getColumnModel().getColumn(1).setCellRenderer(new MessageCellRenderer());
+        table.getColumnModel().getColumn(2).setCellRenderer(new AuthorCellRenderer());
+        table.getColumnModel().getColumn(3).setCellRenderer(new RelativeDateRenderer());
         DefaultTableCellRenderer sha = new DefaultTableCellRenderer();
         sha.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         table.getColumnModel().getColumn(4).setCellRenderer(sha);
@@ -130,12 +133,15 @@ final class GitCommitsPane extends JPanel {
                 showSelectedFileDiff();
             }
         });
-        diffArea.setEditable(false);
-        diffArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         diffArea.setText(Messages.get("git.diff.hint"));
 
+        JPanel detailTop = new JPanel(new BorderLayout(0, 2));
+        detailTop.add(header, BorderLayout.NORTH);
+        JScrollPane msgScroll = new JScrollPane(messageArea);
+        msgScroll.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+        detailTop.add(msgScroll, BorderLayout.CENTER);
         JPanel detail = new JPanel(new BorderLayout(0, 4));
-        detail.add(new JScrollPane(messageArea), BorderLayout.NORTH);
+        detail.add(detailTop, BorderLayout.NORTH);
         detail.add(new JScrollPane(filesList), BorderLayout.CENTER);
 
         JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
@@ -169,21 +175,7 @@ final class GitCommitsPane extends JPanel {
                     return;
                 }
                 try {
-                    LogResult result = get();
-                    commits = result.commits;
-                    graphRows = result.layout.rows();
-                    refs = result.refs;
-                    int graphW = result.layout.laneCount() * LANE_W + GRAPH_PAD * 2;
-                    table.getColumnModel().getColumn(0).setPreferredWidth(graphW);
-                    table.getColumnModel().getColumn(0).setMinWidth(graphW);
-                    model.setRowCount(0);
-                    for (CommitInfo c : commits) {
-                        model.addRow(new Object[]{"", c.shortMessage,
-                                c.author, GitPanel.formatDate(c.when), c.shortSha});
-                    }
-                    messageArea.setText("");
-                    filesModel.clear();
-                    diffArea.setText(Messages.get("git.diff.hint"));
+                    applyResult(get());
                     ctx.reportStatus(java.text.MessageFormat.format(
                             Messages.get("git.status.commitsLoaded"), commits.size(), ref));
                 } catch (Exception ex) {
@@ -193,12 +185,61 @@ final class GitCommitsPane extends JPanel {
         }.execute();
     }
 
+    /** 背景で読み込んだ履歴・レイアウト・ref をテーブルへ反映する (EDT で呼ぶ)。 */
+    private void applyResult(LogResult result) {
+        commits = result.commits;
+        graphRows = result.layout.rows();
+        refs = result.refs;
+        int graphW = result.layout.laneCount() * LANE_W + GRAPH_PAD * 2;
+        table.getColumnModel().getColumn(0).setPreferredWidth(graphW);
+        table.getColumnModel().getColumn(0).setMinWidth(graphW);
+        model.setRowCount(0);
+        for (CommitInfo c : commits) {
+            model.addRow(new Object[]{"", c.shortMessage,
+                    c.author, GitPanel.formatDate(c.when), c.shortSha});
+        }
+        header.setCommit(null);
+        messageArea.setText("");
+        filesModel.clear();
+        diffArea.setText(Messages.get("git.diff.hint"));
+    }
+
+    /**
+     * テスト・スクリーンショット用に、SwingWorker を介さず同期でロードして先頭コミットを
+     * 選択状態にする。EDT 上から呼ぶこと。本番コードからは使わない。
+     */
+    void loadForTest(GitRepoService svc, String ref) throws Exception {
+        List<CommitInfo> log = svc.log(ref, GitRepoService.DEFAULT_LOG_LIMIT);
+        Map<String, List<RefLabel>> decorations = svc.refDecorations();
+        applyResult(new LogResult(log, GitGraphLayout.compute(log), decorations));
+        if (commits.isEmpty()) {
+            return;
+        }
+        CommitInfo c = commits.get(0);
+        // 先に行選択して選択リスナー (detail 初期化) を走らせ、その後に中身を上書きする。
+        table.setRowSelectionInterval(0, 0);
+        header.setCommit(c);
+        messageArea.setText(c.fullMessage);
+        messageArea.setCaretPosition(0);
+        filesModel.clear();
+        List<FileChange> changes = svc.changesOf(c.sha);
+        for (FileChange f : changes) {
+            filesModel.addElement(f);
+        }
+        if (!changes.isEmpty()) {
+            FileChange f = changes.get(0);
+            String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+            diffArea.setDiff(svc.diffOf(c.sha, path));
+        }
+    }
+
     /** 選択コミットのメッセージと変更ファイル一覧を読み込む。 */
     private void showSelectedCommit() {
         CommitInfo c = selectedCommit();
         if (c == null) {
             return;
         }
+        header.setCommit(c);
         messageArea.setText(c.fullMessage);
         messageArea.setCaretPosition(0);
         filesModel.clear();
@@ -248,8 +289,7 @@ final class GitCommitsPane extends JPanel {
                     return;
                 }
                 try {
-                    diffArea.setText(get());
-                    diffArea.setCaretPosition(0);
+                    diffArea.setDiff(get());
                 } catch (Exception ex) {
                     ctx.reportStatus(Messages.get("git.status.failed") + ex.getMessage());
                 }
@@ -267,6 +307,27 @@ final class GitCommitsPane extends JPanel {
 
     private static Color laneColor(int colorIndex) {
         return LANE_COLORS[Math.floorMod(colorIndex, LANE_COLORS.length)];
+    }
+
+    /** 「3 days ago」風の相対日時。近すぎる/未来は "just now"。 */
+    private static String relativeTime(java.util.Date when) {
+        if (when == null) {
+            return "";
+        }
+        long secs = (System.currentTimeMillis() - when.getTime()) / 1000L;
+        if (secs < 60) {
+            return "just now";
+        }
+        long[] steps = {60, 3600, 86400, 604800, 2629746, 31556952};
+        String[] unit = {"minute", "hour", "day", "week", "month", "year"};
+        int i = 0;
+        for (; i < steps.length - 1; i++) {
+            if (secs < steps[i + 1]) {
+                break;
+            }
+        }
+        long n = secs / steps[i];
+        return n + " " + unit[i] + (n == 1 ? "" : "s") + " ago";
     }
 
     /** 履歴・レイアウト・ref をまとめて EDT へ渡す背景処理の戻り値。 */
@@ -427,6 +488,116 @@ final class GitCommitsPane extends JPanel {
                 case TAG:    return new Color(0xE08A00);
                 default:     return Color.GRAY;
             }
+        }
+    }
+
+    /** 作者列: 色付きイニシャル丸アバター + 名前 (GitKraken 風)。 */
+    private final class AuthorCellRenderer extends DefaultTableCellRenderer {
+        private final AvatarIcon icon = new AvatarIcon();
+
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object value, boolean isSelected, boolean hasFocus,
+                int r, int column) {
+            super.getTableCellRendererComponent(t, value, isSelected, hasFocus, r, column);
+            int modelRow = t.convertRowIndexToModel(r);
+            if (modelRow >= 0 && modelRow < commits.size()) {
+                CommitInfo c = commits.get(modelRow);
+                icon.name = c.author;
+                icon.email = c.authorEmail;
+                setIcon(icon);
+                setIconTextGap(6);
+            } else {
+                setIcon(null);
+            }
+            return this;
+        }
+    }
+
+    /** 丸アバターを描く Icon。行レンダラで使い回す (状態は描画直前に差し替え)。 */
+    private static final class AvatarIcon implements javax.swing.Icon {
+        private static final int SIZE = 16;
+        private String name = "";
+        private String email = "";
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            GitAvatars.paint((Graphics2D) g, x + SIZE / 2, y + SIZE / 2, SIZE / 2,
+                    name, email);
+        }
+
+        @Override public int getIconWidth() {
+            return SIZE;
+        }
+
+        @Override public int getIconHeight() {
+            return SIZE;
+        }
+    }
+
+    /** 日時列: 「3 days ago」風の相対表記 (絶対時刻はツールチップ)。 */
+    private final class RelativeDateRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object value, boolean isSelected, boolean hasFocus,
+                int r, int column) {
+            super.getTableCellRendererComponent(t, value, isSelected, hasFocus, r, column);
+            int modelRow = t.convertRowIndexToModel(r);
+            if (modelRow >= 0 && modelRow < commits.size()) {
+                setText(relativeTime(commits.get(modelRow).when));
+                setToolTipText(value == null ? null : value.toString());
+            }
+            return this;
+        }
+    }
+
+    /** 選択コミットのヘッダ: アバター + 作者、SHA・相対日時を強調表示する。 */
+    private static final class CommitHeaderPanel extends JPanel {
+        private CommitInfo commit;
+
+        CommitHeaderPanel() {
+            setOpaque(false);
+            setPreferredSize(new Dimension(10, 46));
+        }
+
+        void setCommit(CommitInfo c) {
+            this.commit = c;
+            repaint();
+        }
+
+        @Override protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (commit == null) {
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            int h = getHeight();
+            int r = 16;
+            int cx = 6 + r;
+            int cy = h / 2;
+            GitAvatars.paint(g2, cx, cy, r, commit.author, commit.authorEmail);
+
+            Color fg = javax.swing.UIManager.getColor("Label.foreground");
+            Color muted = javax.swing.UIManager.getColor("Label.disabledForeground");
+            if (fg == null) {
+                fg = Color.DARK_GRAY;
+            }
+            if (muted == null) {
+                muted = Color.GRAY;
+            }
+            int tx = cx + r + 10;
+            Font bold = getFont().deriveFont(Font.BOLD);
+            g2.setFont(bold);
+            FontMetrics bfm = g2.getFontMetrics();
+            g2.setColor(fg);
+            g2.drawString(commit.author, tx, cy - 2);
+            Font small = getFont().deriveFont(getFont().getSize2D() - 1f);
+            g2.setFont(small);
+            g2.setColor(muted);
+            String line2 = commit.shortSha + "   ·   " + relativeTime(commit.when);
+            g2.drawString(line2, tx, cy + bfm.getHeight() - 2);
+            g2.dispose();
         }
     }
 }
