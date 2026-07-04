@@ -443,33 +443,10 @@ public final class KotlinLightScanner {
         int n = body.length();
         int depth = 0;
         int braceDepth = 0;
-        boolean inString = false;
-        boolean inLineComment = false;
-        boolean inBlockComment = false;
-        int lastNewline = -1;
         for (int i = from; i < n; i++) {
+            int e = skipNonCode(body, i);
+            if (e > i) { i = e - 1; continue; }
             char c = body.charAt(i);
-            if (inLineComment) {
-                if (c == '\n') { inLineComment = false; lastNewline = i; }
-                continue;
-            }
-            if (inBlockComment) {
-                if (c == '*' && i + 1 < n && body.charAt(i + 1) == '/') {
-                    inBlockComment = false;
-                    i++;
-                }
-                continue;
-            }
-            if (inString) {
-                if (c == '\\' && i + 1 < n) { i++; continue; }
-                if (c == '"') inString = false;
-                continue;
-            }
-            if (c == '/' && i + 1 < n) {
-                if (body.charAt(i + 1) == '/') { inLineComment = true; i++; continue; }
-                if (body.charAt(i + 1) == '*') { inBlockComment = true; i++; continue; }
-            }
-            if (c == '"') { inString = true; continue; }
             if (c == '(' || c == '[') depth++;
             else if (c == ')' || c == ']') { if (depth > 0) depth--; }
             else if (c == '{') braceDepth++;
@@ -482,7 +459,6 @@ public final class KotlinLightScanner {
                 int j = nextNonSpaceChar(body, i + 1);
                 if (j < 0) return i;
                 if (looksLikeDeclarationStart(body, j)) return i;
-                lastNewline = i;
             }
         }
         return n;
@@ -602,44 +578,12 @@ public final class KotlinLightScanner {
     private static void extractCallsFromBody(String body, JavaMethodInfo mth) {
         if (body == null || body.isEmpty()) return;
         int n = body.length();
-        boolean inString = false;
-        boolean inLineComment = false;
-        boolean inBlockComment = false;
-        char prev = 0;
         int i = 0;
         while (i < n) {
+            // 文字列・コメント・文字リテラルをスキップ (中の '(' を呼び出しと誤認しない)。
+            int e = skipNonCode(body, i);
+            if (e > i) { i = e; continue; }
             char c = body.charAt(i);
-            // 文字列とコメントをスキップ
-            if (inLineComment) {
-                if (c == '\n') inLineComment = false;
-                i++;
-                prev = c;
-                continue;
-            }
-            if (inBlockComment) {
-                if (c == '*' && i + 1 < n && body.charAt(i + 1) == '/') {
-                    inBlockComment = false;
-                    i += 2;
-                    prev = '/';
-                    continue;
-                }
-                i++;
-                prev = c;
-                continue;
-            }
-            if (inString) {
-                if (c == '\\' && i + 1 < n) { i += 2; prev = body.charAt(i - 1); continue; }
-                if (c == '"') inString = false;
-                i++;
-                prev = c;
-                continue;
-            }
-            if (c == '/' && i + 1 < n) {
-                char d = body.charAt(i + 1);
-                if (d == '/') { inLineComment = true; i += 2; prev = '/'; continue; }
-                if (d == '*') { inBlockComment = true; i += 2; prev = '*'; continue; }
-            }
-            if (c == '"') { inString = true; i++; prev = c; continue; }
 
             // 識別子の開始?
             if (isIdentStart(c)) {
@@ -654,10 +598,8 @@ public final class KotlinLightScanner {
                     String receiver = extractReceiverBackward(body, idStart);
                     mth.getStatements().add(new JavaMethodInfo.Call(receiver, ident));
                 }
-                prev = body.charAt(i - 1);
                 continue;
             }
-            prev = c;
             i++;
         }
     }
@@ -726,8 +668,11 @@ public final class KotlinLightScanner {
 
     private static int findNextChar(String src, int from, char target) {
         for (int i = from; i < src.length(); i++) {
-            char c = src.charAt(i);
-            if (c == target) return i;
+            // 文字列/コメント/文字リテラル内の target (例: 一次コンストラクタ既定値
+            // "{" の中の '{') を本体開始と誤検出しないようスキップする。
+            int e = skipNonCode(src, i);
+            if (e > i) { i = e - 1; continue; }
+            if (src.charAt(i) == target) return i;
             // クラスヘッダ末尾と本体開始の間に出てくる文字: '<' (generics),
             // ':' (継承), 'where' などを想定して途中で他の不正な文字に遭遇しても続行
         }
@@ -758,15 +703,10 @@ public final class KotlinLightScanner {
     private static boolean[] codeBlockMask(String body) {
         int n = body.length();
         boolean[] mask = new boolean[n];
-        boolean inString = false;
         for (int i = 0; i < n; i++) {
+            int e = skipNonCode(body, i);
+            if (e > i) { i = e - 1; continue; }
             char c = body.charAt(i);
-            if (inString) {
-                if (c == '\\' && i + 1 < n) { i++; continue; }
-                if (c == '"') inString = false;
-                continue;
-            }
-            if (c == '"') { inString = true; continue; }
             if (c != '{') { continue; }
             int p = i - 1;
             while (p >= 0 && Character.isWhitespace(body.charAt(p))) p--;
@@ -796,24 +736,78 @@ public final class KotlinLightScanner {
         return mask;
     }
 
+    /**
+     * {@code src[i]} が「コードでない範囲」の開始なら、その範囲全体を読み飛ばして
+     * 「次の」インデックスを返す。開始でなければ {@code i} をそのまま返す。
+     *
+     * <p>対象: 行コメント {@code //}、ブロックコメント (ネスト可)、通常文字列 {@code "…"}、
+     * 生文字列 {@code """…"""} (エスケープなし)、文字リテラル {@code '…'} (エスケープ考慮)。
+     * これを各走査ループで使うことで、文字列/コメント/文字リテラル内の {@code {} } {@code "}
+     * などをコードのブレース/引用符と取り違えてクラス本体を途中で切ってしまうのを防ぐ。
+     * 未終端は末尾 (通常文字列/文字リテラル/行コメントは改行) で打ち切る。</p>
+     */
+    private static int skipNonCode(String src, int i) {
+        int n = src.length();
+        char c = src.charAt(i);
+        if (c == '/' && i + 1 < n) {
+            char d = src.charAt(i + 1);
+            if (d == '/') {
+                int j = i + 2;
+                while (j < n && src.charAt(j) != '\n') j++;
+                return j;
+            }
+            if (d == '*') {
+                int j = i + 2;
+                int depth = 1;
+                while (j < n) {
+                    if (j + 1 < n && src.charAt(j) == '/' && src.charAt(j + 1) == '*') {
+                        depth++; j += 2;
+                    } else if (j + 1 < n && src.charAt(j) == '*' && src.charAt(j + 1) == '/') {
+                        depth--; j += 2;
+                        if (depth == 0) return j;
+                    } else {
+                        j++;
+                    }
+                }
+                return n;
+            }
+        }
+        if (c == '"' && i + 2 < n && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"') {
+            int j = i + 3;
+            while (j <= n - 3) {
+                if (src.charAt(j) == '"' && src.charAt(j + 1) == '"' && src.charAt(j + 2) == '"') {
+                    return j + 3;
+                }
+                j++;
+            }
+            return n;
+        }
+        if (c == '"' || c == '\'') {
+            for (int j = i + 1; j < n; j++) {
+                char d = src.charAt(j);
+                if (d == '\\' && j + 1 < n) { j++; continue; }
+                if (d == c) return j + 1;
+                if (d == '\n') return j; // 未終端 (通常文字列/文字リテラルは行をまたがない)
+            }
+            return n;
+        }
+        return i;
+    }
+
     private static int matchBalance(String src, int open, char openCh, char closeCh) {
         int depth = 1;
-        boolean inString = false;
-        for (int i = open + 1; i < src.length(); i++) {
+        int n = src.length();
+        for (int i = open + 1; i < n; i++) {
+            int e = skipNonCode(src, i);
+            if (e > i) { i = e - 1; continue; }
             char c = src.charAt(i);
-            if (inString) {
-                if (c == '\\' && i + 1 < src.length()) { i++; continue; }
-                if (c == '"') inString = false;
-                continue;
-            }
-            if (c == '"') inString = true;
-            else if (c == openCh) depth++;
+            if (c == openCh) depth++;
             else if (c == closeCh) {
                 depth--;
                 if (depth == 0) return i;
             }
         }
-        return src.length();
+        return n;
     }
 
     private KotlinLightScanner() {
