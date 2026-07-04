@@ -185,6 +185,48 @@ public class PumlSourcePanel extends JPanel {
         return Math.max(1, errorLine - injectedLines);
     }
 
+    /**
+     * PlantUML が報告した「生成ソースの行番号」を、エディタ上の行番号へ写像する (純関数)。
+     *
+     * <p>{@link juml.core.formats.uml.PlantUmlRenderer#injectLayout} は
+     * {@code @startuml} 直後に prelude を<em>挿入</em>するだけでなく、スタイルで向きを明示した
+     * 場合に本文の {@code ... direction} 行を任意位置から<em>除去</em>する。挿入と除去の
+     * 「純差分」を一律に引く旧実装は、除去行がエラーより下にある場合や {@code @startuml} が
+     * 1 行目でない場合に 1 行ずれていた。ここでは生成行の内容をエディタ側から探して
+     * (期待位置に最も近いものを採用) 正確に対応付ける。一致が無い prelude 由来の行などは
+     * 行数差による数値補正へフォールバックする。</p>
+     */
+    public static int editorLineForError(String editorPuml, String generatedPuml, int errorLine) {
+        if (editorPuml == null || generatedPuml == null || errorLine <= 0) {
+            return Math.max(1, errorLine);
+        }
+        String[] gen = generatedPuml.split("\n", -1);
+        String[] edit = editorPuml.split("\n", -1);
+        if (errorLine > gen.length) {
+            return Math.min(Math.max(1, errorLine), edit.length);
+        }
+        String target = gen[errorLine - 1].trim();
+        if (!target.isEmpty()) {
+            int best = -1;
+            int bestDist = Integer.MAX_VALUE;
+            for (int i = 0; i < edit.length; i++) {
+                if (edit[i].trim().equals(target)) {
+                    int dist = Math.abs((i + 1) - errorLine);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = i + 1;
+                    }
+                }
+            }
+            if (best > 0) {
+                return best;
+            }
+        }
+        // 内容一致なし (prelude 由来の行や空行): 挿入行数を行数差で推定して数値補正する。
+        int injected = Math.max(0, gen.length - edit.length);
+        return editorLineForError(errorLine, injected);
+    }
+
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
         textArea.setEditable(editable);

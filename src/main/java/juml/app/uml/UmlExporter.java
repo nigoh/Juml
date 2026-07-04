@@ -91,7 +91,10 @@ public final class UmlExporter {
                 break;
             case PNG:
                 if (image == null) {
-                    throw new IllegalArgumentException("image is required for PNG export");
+                    // レンダラは空の図 (0 バイト出力) で null を返す。以前は
+                    // "image is required for PNG export" という開発者向けの分かりにくい
+                    // 文言をそのままダイアログに出していた。空図/出力なしを明示する。
+                    throw new IllegalArgumentException(juml.util.Messages.get("export.emptyDiagram"));
                 }
                 // ImageIO.write は書き出せるエンコーダが無いと false を返す (例外は投げない)。
                 // 結果を無視すると 0 バイトのファイルを残したまま成功扱いになるため検査する。

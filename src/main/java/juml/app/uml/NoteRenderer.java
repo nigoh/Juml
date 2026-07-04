@@ -361,4 +361,14 @@ final class NoteRenderer {
             return Color.decode(DiagramNote.DEFAULT_COLOR);
         }
     }
+
+    /**
+     * 付箋色を常に {@code #RRGGBB} 形式へ正規化する。画面描画は {@link Color#decode} を使う
+     * のに対し SVG エクスポートは色文字列を CSS として解釈するため、{@code #FFF} や 10 進値
+     * などで画面 (例: {@code Color.decode("#FFF")} → (0,15,255)) と SVG ({@code fill="#FFF"}
+     * → 白) が食い違っていた。両者を {@link #parseColor} の解釈へ揃えることで一致させる。
+     */
+    static String normalizeColorHex(String hex) {
+        return String.format("#%06X", parseColor(hex).getRGB() & 0xFFFFFF);
+    }
 }
