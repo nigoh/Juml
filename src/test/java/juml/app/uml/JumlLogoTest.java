@@ -28,19 +28,33 @@ public class JumlLogoTest {
         assertTrue("中央付近にブランド色が塗られている", hasOpaquePixel(img));
     }
 
-    /** スピナー描画は位相を変えても例外を出さない (全周を回してもクラッシュしない)。 */
+    /** パルス描画は位相を変えても例外を出さない (子→親を流れきってもクラッシュしない)。 */
     @Test
-    public void paintSpinner_acrossFullRotation_doesNotThrow() {
+    public void paintPulse_acrossFullTravel_doesNotThrow() {
         BufferedImage img = new BufferedImage(120, 120, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         try {
-            for (int i = 0; i <= 60; i++) {
-                JumlLogo.paintSpinner(g, 60, 60, 40, i / 60.0);
+            for (int i = 0; i <= 40; i++) {
+                JumlLogo.paintPulse(g, 60, 60, 100, i / 40.0);
             }
         } finally {
             g.dispose();
         }
-        assertTrue("回転アークが描画されている", hasOpaquePixel(img));
+        assertTrue("パルスが描画されている", hasOpaquePixel(img));
+    }
+
+    /** 位相が範囲外 (負 / 1 超) でもクランプされて例外を出さない。 */
+    @Test
+    public void paintPulse_outOfRangePhase_isClamped() {
+        BufferedImage img = new BufferedImage(120, 120, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        try {
+            JumlLogo.paintPulse(g, 60, 60, 100, -0.5);
+            JumlLogo.paintPulse(g, 60, 60, 100, 1.5);
+        } finally {
+            g.dispose();
+        }
+        assertTrue(hasOpaquePixel(img));
     }
 
     /** 呼吸スケール係数を変えてもマーク描画は破綻しない。 */

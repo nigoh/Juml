@@ -26,8 +26,10 @@ final class JumlLoadingView extends JComponent {
 
     /** アニメーションのフレーム間隔 (ms)。約 30fps。 */
     private static final int FRAME_MILLIS = 33;
-    /** 1 回転にかけるフレーム数 (小さいほど速い)。 */
-    private static final double ROTATION_FRAMES = 60.0;
+    /** 継承パルスが子→親を 1 往きするフレーム数 (小さいほど速い)。 */
+    private static final double PULSE_FRAMES = 40.0;
+    /** 呼吸スケール 1 周期のフレーム数。 */
+    private static final double BREATH_FRAMES = 90.0;
     /** ロゴマークの一辺 (px)。 */
     private final int markSize;
     /** ワードマーク "Juml" を描くか (スプラッシュでは true)。 */
@@ -89,23 +91,23 @@ final class JumlLoadingView extends JComponent {
         }
     }
 
-    /** ロゴ + スピナー + (任意で) ワードマーク + ステータスを描く共通ルーチン。 */
+    /** ロゴ + 継承パルス + (任意で) ワードマーク + ステータスを描く共通ルーチン。 */
     void paintAnimation(Graphics2D g2, int w, int h) {
-        double phase = (tick % ROTATION_FRAMES) / ROTATION_FRAMES;
-        double breath = 1.0 + 0.035 * Math.sin(tick * (2 * Math.PI / (ROTATION_FRAMES * 1.5)));
+        double phase = (tick % PULSE_FRAMES) / PULSE_FRAMES;
+        double breath = 1.0 + 0.03 * Math.sin(tick * (2 * Math.PI / BREATH_FRAMES));
 
         int cx = w / 2;
         int markCy = showWordmark ? h / 2 - 34 : h / 2 - 12;
 
-        JumlLogo.paintSpinner(g2, cx, markCy, markSize * 0.72, phase);
         JumlLogo.paintMark(g2, cx, markCy, markSize, breath);
+        JumlLogo.paintPulse(g2, cx, markCy, markSize, phase);
 
         // 親未装着時は getFont() が null になり得るためフォールバックする。
         Font base = getFont();
         if (base == null) {
             base = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
         }
-        int textY = markCy + (int) (markSize * 0.72) + 14;
+        int textY = markCy + (int) (markSize * 0.55) + 14;
         Color fg = new Color(0xF5FAFF);
         if (showWordmark) {
             g2.setColor(fg);

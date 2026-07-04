@@ -39,8 +39,10 @@ final class LoadingGlassPane extends JComponent {
     private static final int MARK_SIZE = 72;
     /** アニメーションのフレーム間隔 (ms)。約 30fps。 */
     private static final int FRAME_MILLIS = 33;
-    /** 1 回転にかけるフレーム数。 */
-    private static final double ROTATION_FRAMES = 60.0;
+    /** 継承パルスが子→親を 1 往きするフレーム数。 */
+    private static final double PULSE_FRAMES = 40.0;
+    /** 呼吸スケール 1 周期のフレーム数。 */
+    private static final double BREATH_FRAMES = 90.0;
 
     private final JButton cancelButton;
     private final Timer timer;
@@ -123,15 +125,15 @@ final class LoadingGlassPane extends JComponent {
 
             int cx = w / 2;
             int cy = h / 2 - 16;
-            double phase = (tick % ROTATION_FRAMES) / ROTATION_FRAMES;
-            double breath = 1.0 + 0.035 * Math.sin(tick * (2 * Math.PI / (ROTATION_FRAMES * 1.5)));
-            JumlLogo.paintSpinner(g2, cx, cy, MARK_SIZE * 0.72, phase);
+            double phase = (tick % PULSE_FRAMES) / PULSE_FRAMES;
+            double breath = 1.0 + 0.03 * Math.sin(tick * (2 * Math.PI / BREATH_FRAMES));
             JumlLogo.paintMark(g2, cx, cy, MARK_SIZE, breath);
+            JumlLogo.paintPulse(g2, cx, cy, MARK_SIZE, phase);
 
             g2.setColor(Color.WHITE);
             g2.setFont(getFont().deriveFont(Font.BOLD, 14f));
             FontMetrics fm = g2.getFontMetrics();
-            int textBaselineY = cy + (int) (MARK_SIZE * 0.72) + 24;
+            int textBaselineY = cy + (int) (MARK_SIZE * 0.55) + 24;
             g2.drawString(status, (w - fm.stringWidth(status)) / 2, textBaselineY + fm.getAscent());
         } finally {
             g2.dispose();
