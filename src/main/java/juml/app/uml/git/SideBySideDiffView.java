@@ -43,6 +43,8 @@ final class SideBySideDiffView extends JPanel {
     private final SidePane right = new SidePane(false);
     private final JScrollPane leftScroll = new JScrollPane(left);
     private final JScrollPane rightScroll = new JScrollPane(right);
+    /** テスト用に直近の行数を参照できるよう保持する (描画ロジック自体には無関係)。 */
+    private List<Row> lastRows = List.of();
 
     SideBySideDiffView() {
         setLayout(cards);
@@ -62,9 +64,15 @@ final class SideBySideDiffView extends JPanel {
     /** 整列済みの行を差し込む。 */
     void setRows(List<Row> rows) {
         List<Row> r = rows != null ? rows : List.of();
+        lastRows = r;
         left.setRows(r);
         right.setRows(r);
         cards.show(this, CARD_DIFF);
+    }
+
+    /** テスト用: 直近に {@link #setRows} で渡された行数を返す。 */
+    int rowCountForTest() {
+        return lastRows.size();
     }
 
     /** diff が無いときのヒント文言を表示する。 */

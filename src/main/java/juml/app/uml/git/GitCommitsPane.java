@@ -134,6 +134,7 @@ final class GitCommitsPane extends JPanel {
                 showSelectedFileDiff();
             }
         });
+        installFilesContextMenu();
         diffArea.setText(Messages.get("git.diff.hint"));
         diffHost.add(new JScrollPane(diffArea), "unified");
         diffHost.add(splitDiff, "split");
@@ -255,6 +256,44 @@ final class GitCommitsPane extends JPanel {
         diffCards.show(diffHost, mode);
     }
 
+    /**
+     * テスト用: {@code diffCards} (CardLayout) のうち split カードが表示されているかを返す。
+     * unified/split はこの 2 枚しか無いため、split の可視状態だけで判定できる。
+     * 本番ロジック (renderDiff/setDiffMode) には触れない、可視性の窓のみのシーム。
+     */
+    boolean isSplitVisibleForTest() {
+        return splitDiff.isVisible();
+    }
+
+    /** テスト用: 現在 {@link SideBySideDiffView} に入っている行数を返す。 */
+    int splitRowCountForTest() {
+        return splitDiff.rowCountForTest();
+    }
+
+    /**
+     * テスト用: 変更ファイル一覧から指定パスの要素を選択する (見つかれば true)。
+     * filesList は private フィールドなので、内部走査だけをここに閉じ込める。
+     */
+    boolean selectFileForTest(String path) {
+        for (int i = 0; i < filesModel.size(); i++) {
+            FileChange f = filesModel.get(i);
+            String p = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+            if (path.equals(p)) {
+                filesList.setSelectedIndex(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * テスト用: 右クリックメニューの「UML Diff」項目相当を、Robot によるポップアップ操作
+     * を介さず直接呼び出す。ロジックは {@link #openUmlDiffForSelectedFile()} と同一。
+     */
+    void openUmlDiffForTest() {
+        openUmlDiffForSelectedFile();
+    }
+
     /** 選択コミットのメッセージと変更ファイル一覧を読み込む。 */
     private void showSelectedCommit() {
         CommitInfo c = selectedCommit();
@@ -292,6 +331,65 @@ final class GitCommitsPane extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    /** 変更ファイル一覧の右クリックメニュー (UML 構造 Diff 起動) を組み込む。 */
+    private void installFilesContextMenu() {
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+        javax.swing.JMenuItem umlItem =
+                new javax.swing.JMenuItem(Messages.get("git.file.umlDiff"));
+        umlItem.setToolTipText(Messages.get("git.file.umlDiffTip"));
+        umlItem.addActionListener(e -> openUmlDiffForSelectedFile());
+        menu.add(umlItem);
+        filesList.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mousePressed(java.awt.event.MouseEvent e) {
+                maybeShow(e);
+            }
+
+            @Override public void mouseReleased(java.awt.event.MouseEvent e) {
+                maybeShow(e);
+            }
+
+            private void maybeShow(java.awt.event.MouseEvent e) {
+                if (!e.isPopupTrigger()) {
+                    return;
+                }
+                int idx = filesList.locationToIndex(e.getPoint());
+                if (idx >= 0) {
+                    filesList.setSelectedIndex(idx);
+                }
+                FileChange f = filesList.getSelectedValue();
+                umlItem.setEnabled(f != null && isJavaChange(f));
+                menu.show(filesList, e.getX(), e.getY());
+            }
+        });
+    }
+
+    private static boolean isJavaChange(FileChange f) {
+        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        return path != null && path.endsWith(".java");
+    }
+
+    /**
+     * 選択中の変更ファイル (.java) を、選択コミット vs その親でクラス構造 UML 差分表示する。
+     * グラフ (Commits) から UML 比較画面へ直接つなぐ統合ポイント。
+     */
+    private void openUmlDiffForSelectedFile() {
+        CommitInfo c = selectedCommit();
+        FileChange f = filesList.getSelectedValue();
+        final GitRepoService svc = ctx.service();
+        if (c == null || f == null || svc == null) {
+            return;
+        }
+        if (!isJavaChange(f)) {
+            ctx.reportStatus(Messages.get("git.umldiff.javaOnly"));
+            return;
+        }
+        String path = "DELETE".equals(f.changeType) ? f.oldPath : f.path;
+        GitUmlDiffDialog dialog = new GitUmlDiffDialog(
+                javax.swing.SwingUtilities.getWindowAncestor(this),
+                svc, path, null, c.sha, c.shortSha);
+        dialog.setVisible(true);
     }
 
     /** Unified / Side-by-side を切り替えるトグルバーを作る。 */

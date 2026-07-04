@@ -225,4 +225,58 @@ public class GitRepoServiceTest {
         assertNull("作業ツリー外のパスは null",
                 service.relativize(tmp.newFile("outside.txt")));
     }
+
+    @Test
+    public void toInfo_capturesParentShas() throws Exception {
+        List<GitRepoService.CommitInfo> log = service.log(service.currentBranch(), 10);
+        GitRepoService.CommitInfo head = log.get(0);   // second
+        GitRepoService.CommitInfo base = log.get(1);   // first
+        assertEquals("2 番目のコミットの第 1 親は最初のコミット",
+                List.of(first.getName()), head.parents);
+        assertTrue("初回コミットは親を持たない", base.parents.isEmpty());
+        assertEquals("bob@example.com", head.authorEmail);
+    }
+
+    @Test
+    public void refDecorations_mapsBranchesTagsAndHead() throws Exception {
+        java.util.Map<String, java.util.List<GitRepoService.RefLabel>> map =
+                service.refDecorations();
+        java.util.List<GitRepoService.RefLabel> atHead = map.get(second.getName());
+        assertNotNull("second には feature/v1.0/HEAD が付くはず", atHead);
+
+        boolean hasFeature = false;
+        boolean hasTag = false;
+        int headCount = 0;
+        for (GitRepoService.RefLabel r : atHead) {
+            if (r.type == GitRepoService.RefLabel.Type.LOCAL && "feature".equals(r.name)) {
+                hasFeature = true;
+            }
+            if (r.type == GitRepoService.RefLabel.Type.TAG && "v1.0".equals(r.name)) {
+                hasTag = true;
+            }
+            if (r.type == GitRepoService.RefLabel.Type.HEAD) {
+                headCount++;
+            }
+        }
+        assertTrue("feature ローカルブランチのピル", hasFeature);
+        assertTrue("v1.0 タグのピル", hasTag);
+        assertEquals("HEAD は 1 個だけ (現在ブランチ)", 1, headCount);
+        assertEquals("first には ref が付かない", null, map.get(first.getName()));
+    }
+
+    @Test
+    public void refDecorations_promotesCurrentBranchToHeadWithoutDuplicate() throws Exception {
+        String current = service.currentBranch();
+        java.util.List<GitRepoService.RefLabel> atHead =
+                service.refDecorations().get(second.getName());
+        long sameNameCount = atHead.stream()
+                .filter(r -> current.equals(r.name)).count();
+        assertEquals("現在ブランチ名のラベルは重複せず 1 個", 1, sameNameCount);
+        GitRepoService.RefLabel currentLabel = atHead.stream()
+                .filter(r -> current.equals(r.name)).findFirst().orElseThrow();
+        assertEquals("現在ブランチは HEAD 種別へ昇格している",
+                GitRepoService.RefLabel.Type.HEAD, currentLabel.type);
+        // HEAD が先頭 (ソート順 ordinal 0)。
+        assertEquals(GitRepoService.RefLabel.Type.HEAD, atHead.get(0).type);
+    }
 }
