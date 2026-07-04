@@ -46,7 +46,7 @@ dependencies {
     // ためのライブラリ。Juml は brut.androlib.ApkDecoder を JVM 内で直接呼び出し、
     // 外部プロセス (aapt 等) の起動やネットワークアクセスは行わない (decode は純 Java)。
     // smali/baksmali/dexlib2 (com.android.tools.smali, Apache-2.0) と guava を推移取得する。
-    implementation 'org.apktool:apktool-lib:2.9.3'
+    implementation 'org.apktool:apktool-lib:3.0.2'
     // SQLite (Apache 2.0). 解析結果の永続インデックス (~/.juml/cache/<hash>/index.db)
     // の格納先。fat jar に同梱され、JDBC 経由で参照関係・外部境界・コンポーネント集約を
     // 横断クエリ可能にする。native lib は jar 内の META-INF から自動展開される。
