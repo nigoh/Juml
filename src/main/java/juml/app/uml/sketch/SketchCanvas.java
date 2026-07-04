@@ -382,7 +382,10 @@ final class SketchCanvas extends JPanel {
         Font base = g2.getFont();
         if (!stereo.isEmpty()) {
             g2.setFont(base.deriveFont(Font.PLAIN, base.getSize2D() - 2f));
-            g2.drawString(stereo, r.x + (r.width - fm.stringWidth(stereo)) / 2, r.y + 11);
+            // 中央寄せ幅は縮小後フォントのメトリクスで測る。base の fm で測ると
+            // 実際の描画幅より広く見積もられ、ステレオタイプが左へずれる。
+            int stereoW = g2.getFontMetrics().stringWidth(stereo);
+            g2.drawString(stereo, r.x + (r.width - stereoW) / 2, r.y + 11);
             g2.setFont(base);
             y += 4;
         }
@@ -426,6 +429,12 @@ final class SketchCanvas extends JPanel {
         }
         Rectangle rl = boundsOf(left);
         Rectangle rr = boundsOf(right);
+        if (left == right) {
+            // 自己関連 (A --> A) は始点=終点となり通常の線分では点に潰れる。
+            // ボックス右上から外へ回り込むループとして専用描画する。
+            paintSelfRelation(g2, rl, rel);
+            return;
+        }
         Point pl = edgePoint(rl, center(rr));
         Point pr = edgePoint(rr, center(rl));
         // PlantUML 表記の意味に合わせ、線は right(子/利用側) → left(親/対象) へ向かう。
@@ -460,6 +469,53 @@ final class SketchCanvas extends JPanel {
         if (rel.getLabel() != null && !rel.getLabel().isEmpty()) {
             g2.setColor(new Color(0x555555));
             g2.drawString(rel.getLabel(), (pl.x + pr.x) / 2 + 4, (pl.y + pr.y) / 2 - 4);
+        }
+    }
+
+    /** 自己関連 (始点=終点) をボックス右上のループ線として描く。 */
+    private void paintSelfRelation(Graphics2D g2, Rectangle r, SketchRelation rel) {
+        int exitX = r.x + r.width - 20;      // 上辺から出る点
+        int topY = r.y - 18;                 // ループの上端
+        int rightX = r.x + r.width + 18;     // ループの右端
+        Point ret = new Point(r.x + r.width, r.y + 14); // 右辺へ戻る (矢印先)
+        Point from = new Point(rightX, ret.y);
+        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS
+                || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
+        Stroke old = g2.getStroke();
+        g2.setColor(new Color(0x37474F));
+        g2.setStroke(dashed
+                ? new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                        10f, new float[]{6f, 5f}, 0f)
+                : new BasicStroke(1.2f));
+        Path2D loop = new Path2D.Double();
+        loop.moveTo(exitX, r.y);
+        loop.lineTo(exitX, topY);
+        loop.lineTo(rightX, topY);
+        loop.lineTo(rightX, ret.y);
+        loop.lineTo(ret.x, ret.y);
+        g2.draw(loop);
+        g2.setStroke(old);
+        switch (rel.getKind()) {
+            case EXTENDS:
+            case IMPLEMENTS:
+                paintTriangle(g2, ret, from, false);
+                break;
+            case AGGREGATION:
+                paintDiamond(g2, ret, from, false);
+                break;
+            case COMPOSITION:
+                paintDiamond(g2, ret, from, true);
+                break;
+            case ASSOCIATION:
+            case DEPENDENCY:
+                paintOpenArrow(g2, ret, from);
+                break;
+            default:
+                break;
+        }
+        if (rel.getLabel() != null && !rel.getLabel().isEmpty()) {
+            g2.setColor(new Color(0x555555));
+            g2.drawString(rel.getLabel(), rightX + 4, topY + 4);
         }
     }
 

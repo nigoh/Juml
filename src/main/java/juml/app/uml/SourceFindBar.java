@@ -46,6 +46,12 @@ final class SourceFindBar extends JPanel {
     private final List<int[]> hits = new ArrayList<>(); // {start, end}
     private final List<Object> tags = new ArrayList<>();
     private int index = -1;
+    /**
+     * インクリメンタル検索の起点となるキャレット位置 (バー起動時に固定)。
+     * showCurrent() がヒット末尾へキャレットを動かすため、run() で live キャレットを
+     * 読むと入力の 1 文字ごとに「現在ヒット」が次の出現へ進んでしまう。起点を固定して防ぐ。
+     */
+    private int searchAnchor = -1;
 
     SourceFindBar(JTextComponent target, Runnable onLayoutChange) {
         super(new FlowLayout(FlowLayout.LEFT, 4, 2));
@@ -98,6 +104,9 @@ final class SourceFindBar extends JPanel {
     void activate() {
         setVisible(true);
         layoutChanged();
+        // 検索の起点を今のキャレット位置に固定する (以降のインクリメンタル入力で
+        // showCurrent がキャレットを動かしても、初期ヒット選択はここを基準に保つ)。
+        searchAnchor = target.getCaretPosition();
         String sel = target.getSelectedText();
         if (sel != null && !sel.isEmpty() && !sel.contains("\n")) {
             field.setText(sel);
@@ -185,7 +194,7 @@ final class SourceFindBar extends JPanel {
             info.setText(Messages.get("source.find.none"));
             return;
         }
-        int caret = target.getCaretPosition();
+        int caret = searchAnchor >= 0 ? searchAnchor : target.getCaretPosition();
         index = 0;
         for (int i = 0; i < hits.size(); i++) {
             if (hits.get(i)[0] >= caret) {

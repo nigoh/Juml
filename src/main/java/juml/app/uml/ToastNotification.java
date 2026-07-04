@@ -57,14 +57,19 @@ final class ToastNotification {
         layered.revalidate();
         layered.repaint();
 
-        layered.addComponentListener(new ComponentAdapter() {
+        ComponentAdapter reposition = new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 positionToast(toast, layered, pref);
             }
-        });
+        };
+        layered.addComponentListener(reposition);
 
         Timer hide = new Timer(DISPLAY_MS, e -> {
+            // トーストを消すときはリスナーも必ず外す。外し忘れると、消えた
+            // トーストを参照する ComponentListener が共有 JLayeredPane に溜まり続け、
+            // 長時間セッションでウィンドウリサイズが徐々に重くなる (リスナーリーク)。
+            layered.removeComponentListener(reposition);
             layered.remove(toast);
             layered.revalidate();
             layered.repaint();

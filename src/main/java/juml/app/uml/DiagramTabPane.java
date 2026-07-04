@@ -260,6 +260,7 @@ public final class DiagramTabPane {
                 state.callGraphEntry = null;
                 state.currentLayoutKey = null;
                 state.currentNavigationKey = null;
+                state.sequenceHiddenParticipants.clear();
             }
             if (onTabFocused != null) {
                 onTabFocused.accept(null);
@@ -929,7 +930,11 @@ public final class DiagramTabPane {
     void closeOtherTabs(String keepKey) {
         for (Map.Entry<String, DiagramTab> en : new ArrayList<>(openTabs.entrySet())) {
             if (!en.getKey().equals(keepKey)) {
-                closeTab(en.getValue(), en.getKey());
+                // 未保存タブの確認でキャンセルされたら一括クローズ全体を中止する。
+                // (残りを閉じ続けると「キャンセル」が部分クローズになってしまう。)
+                if (!closeTab(en.getValue(), en.getKey())) {
+                    return;
+                }
             }
         }
     }
@@ -1025,7 +1030,10 @@ public final class DiagramTabPane {
         }
         for (int i = victims.size() - 1; i >= 0; i--) {
             DiagramTab t = victims.get(i);
-            closeTab(t, t.key);
+            // 未保存タブの確認でキャンセルされたら残りのクローズも中止する。
+            if (!closeTab(t, t.key)) {
+                return;
+            }
         }
     }
 
@@ -1065,18 +1073,20 @@ public final class DiagramTabPane {
         }
     }
 
-    private void closeTab(DiagramTab tab, String key) {
-        closeTab(tab, key, true);
+    private boolean closeTab(DiagramTab tab, String key) {
+        return closeTab(tab, key, true);
     }
 
     /**
      * タブを閉じる。{@code recordForReopen} が true のときだけ再オープン履歴に積む。
      * メモリ上限による自動クローズ (LRU) は履歴を汚さないよう false で呼ぶ。
+     *
+     * @return 実際に閉じたら true、未保存確認でキャンセルされ閉じなかったら false
      */
-    private void closeTab(DiagramTab tab, String key, boolean recordForReopen) {
+    private boolean closeTab(DiagramTab tab, String key, boolean recordForReopen) {
         // ユーザー操作で未保存のエディタタブを閉じるときは保存/破棄/キャンセルを確認する。
         if (recordForReopen && !confirmDiscardEdits(tab)) {
-            return;
+            return false;
         }
         if (recordForReopen) {
             pushClosedTab(tab);
@@ -1100,6 +1110,7 @@ public final class DiagramTabPane {
         navHistory.remove(key);
         refreshTabLabels();
         tabMemory.onClose(key);
+        return true;
     }
 
     /**
@@ -1642,7 +1653,12 @@ public final class DiagramTabPane {
 
         private void setStatus(String msg) {
             lastStatus = msg;
-            reportStatus(msg);
+            // 共有ステータスバーへの反映はアクティブタブのときだけ行う。非アクティブタブの
+            // 背景描画完了が、別タブに切替済みのステータスバーを上書きするのを防ぐ。
+            // (lastStatus は常に保持するので、後でこのタブへ戻れば reportFocusStatus で出る。)
+            if (isActive()) {
+                reportStatus(msg);
+            }
         }
 
         void reportFocusStatus() {
@@ -1664,6 +1680,9 @@ public final class DiagramTabPane {
             state.callGraphEntry = null;
             state.currentLayoutKey = null;
             state.currentNavigationKey = null;
+            // 隠しシーケンス参加者もリセットする。クリアしないと、あるシーケンス図で
+            // 隠した参加者が、別の題材で新規生成したシーケンス図にも漏れて適用される。
+            state.sequenceHiddenParticipants.clear();
             if (spec == null) {
                 // 自由編集エディタタブ: 図種依存のパラメータは持たない。
                 state.currentScope = null;
