@@ -202,9 +202,15 @@ final class GitCommitsPane extends JPanel {
 
     private CommitInfo selectedCommit() {
         int row = table.getSelectedRow();
-        if (row < 0 || row >= commits.size()) {
+        if (row < 0) {
             return null;
         }
-        return commits.get(table.convertRowIndexToModel(row));
+        // モデル行へ変換してから境界検査する。ビュー行で検査してモデル行で参照すると、
+        // 行ソータを有効にした瞬間に別コミットを返す/IndexOutOfBounds になる。
+        int model = table.convertRowIndexToModel(row);
+        if (model < 0 || model >= commits.size()) {
+            return null;
+        }
+        return commits.get(model);
     }
 }

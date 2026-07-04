@@ -701,11 +701,8 @@ public class UmlMainFrame extends JFrame {
                     title, JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        int choice = JOptionPane.showConfirmDialog(this,
-                Messages.get("dlg.clearCache.confirm"),
-                title,
-                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (choice != JOptionPane.YES_OPTION) {
+        if (!DialogUtils.confirmDestructive(this,
+                Messages.get("dlg.clearCache.confirm"), title)) {
             return;
         }
         cache.invalidate();
@@ -1125,12 +1122,11 @@ public class UmlMainFrame extends JFrame {
 
     /** Close All Tabs の確認ダイアログを表示し、YES が選ばれたら true。 */
     private boolean showCloseAllTabsConfirm(int count) {
-        return JOptionPane.showConfirmDialog(this,
+        // 破壊的操作なので既定ボタンは「No」側 (誤って Enter で全タブを閉じない)。
+        return DialogUtils.confirmDestructive(this,
                 java.text.MessageFormat.format(
                         Messages.get("tab.closeAllConfirm"), count),
-                Messages.get("menubar.file.closeAllTabs"),
-                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)
-                == JOptionPane.YES_OPTION;
+                Messages.get("menubar.file.closeAllTabs"));
     }
 
     /**

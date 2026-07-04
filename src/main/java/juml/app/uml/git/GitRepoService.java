@@ -214,10 +214,21 @@ public final class GitRepoService implements AutoCloseable {
                     java.io.OutputStream.nullOutputStream())) {
                 fmt.setRepository(repo);
                 fmt.setDetectRenames(true);
-                if (path != null && !path.isEmpty()) {
-                    fmt.setPathFilter(PathFilter.create(path));
+                List<DiffEntry> all = fmt.scan(oldTree, newTree);
+                if (path == null || path.isEmpty()) {
+                    return all;
                 }
-                return fmt.scan(oldTree, newTree);
+                // 単一ファイル diff でも PathFilter を scan に渡すと、リネーム検出の前に
+                // 旧パスの DELETE が除外され、リネームが「ファイル全追加」に化ける。
+                // フィルタはリネーム検出後に、新旧いずれかのパスが一致するエントリだけ
+                // 残す形で適用する。
+                List<DiffEntry> filtered = new ArrayList<>();
+                for (DiffEntry e : all) {
+                    if (path.equals(e.getNewPath()) || path.equals(e.getOldPath())) {
+                        filtered.add(e);
+                    }
+                }
+                return filtered;
             }
         }
     }
@@ -243,6 +254,24 @@ public final class GitRepoService implements AutoCloseable {
                 return new String(repo.open(blob).getBytes(), StandardCharsets.UTF_8);
             }
         }
+    }
+
+    /**
+     * {@code newRev} とその第 1 親の diff で {@code newPath} がリネームされていれば、
+     * その旧パスを返す。リネームでない/解決できないときは null。
+     * UML 差分などでリネーム前の内容を「正しい旧パス」から取得するために使う。
+     */
+    public String renamedFromPath(String newRev, String newPath) throws IOException {
+        if (newPath == null || newPath.isEmpty()) {
+            return null;
+        }
+        for (DiffEntry e : diffEntries(newRev, newPath)) {
+            if (e.getChangeType() == DiffEntry.ChangeType.RENAME
+                    && newPath.equals(e.getNewPath())) {
+                return e.getOldPath();
+            }
+        }
+        return null;
     }
 
     /** 指定コミットの第 1 親の SHA を返す。親がなければ (初回コミット等) null。 */
@@ -297,8 +326,19 @@ public final class GitRepoService implements AutoCloseable {
         if (tree == null || file == null) {
             return null;
         }
-        String base = tree.getAbsolutePath();
-        String target = file.getAbsolutePath();
+        // getAbsolutePath はシンボリックリンクや '..' を解決しないため、AOSP ツリー
+        // (シンボリックリンク多用) や macOS の /tmp→/private/tmp のように base と target が
+        // 別々に正規化されると、リポジトリ内の正当なファイルを「外」と誤判定してしまう。
+        // 正規化パスで比較し、正規化に失敗したときだけ絶対パスへフォールバックする。
+        String base;
+        String target;
+        try {
+            base = tree.getCanonicalPath();
+            target = file.getCanonicalPath();
+        } catch (IOException ex) {
+            base = tree.getAbsolutePath();
+            target = file.getAbsolutePath();
+        }
         if (!target.startsWith(base + File.separator)) {
             return null;
         }

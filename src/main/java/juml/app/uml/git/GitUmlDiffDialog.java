@@ -41,6 +41,8 @@ final class GitUmlDiffDialog extends JDialog {
     private final JPanel diagramHost = new JPanel(new BorderLayout());
     private final JLabel loadingLabel =
             new JLabel(Messages.get("git.umldiff.rendering"), SwingConstants.CENTER);
+    /** dispose 済みフラグ (EDT のみで参照)。閉じた後の背景結果適用を無視するため。 */
+    private boolean disposed;
 
     /** 背景処理の結果 (PlantUML テキストは常にあり、SVG は失敗時 null)。 */
     private static final class Result {
@@ -88,7 +90,17 @@ final class GitUmlDiffDialog extends JDialog {
                 String base = oldRev != null ? oldRev : svc.parentOf(newRev);
                 String baseLabel = base != null
                         ? shortSha(base) : Messages.get("git.umldiff.emptyBase");
-                String oldSrc = base != null ? svc.fileContentAt(base, relPath) : null;
+                // 親コミットとの比較でファイルがリネームされている場合、旧内容は「旧パス」
+                // から読む必要がある。新パスのまま読むと base 側に存在せず null (= 全追加)
+                // となり、リネームが「まるごと新規」と誤表示される。
+                String oldPath = relPath;
+                if (oldRev == null && base != null) {
+                    String renamedFrom = svc.renamedFromPath(newRev, relPath);
+                    if (renamedFrom != null) {
+                        oldPath = renamedFrom;
+                    }
+                }
+                String oldSrc = base != null ? svc.fileContentAt(base, oldPath) : null;
                 String newSrc = svc.fileContentAt(newRev, relPath);
 
                 List<ClassStructureDiff.ClassDiff> diff = ClassStructureDiff.compare(
@@ -112,6 +124,13 @@ final class GitUmlDiffDialog extends JDialog {
             }
 
             @Override protected void done() {
+                // ダイアログが既に閉じられていれば、破棄済みウィンドウの svgPanel/
+                // diagramHost を更新しても無駄なので何もしない。
+                // (未表示のまま生きているダイアログもあり得るため isDisplayable ではなく
+                //  明示的な dispose フラグで判定する。)
+                if (disposed) {
+                    return;
+                }
                 try {
                     showResult(get());
                 } catch (Exception ex) {
@@ -120,6 +139,12 @@ final class GitUmlDiffDialog extends JDialog {
                 }
             }
         }.execute();
+    }
+
+    @Override
+    public void dispose() {
+        disposed = true;
+        super.dispose();
     }
 
     private void showResult(Result r) {

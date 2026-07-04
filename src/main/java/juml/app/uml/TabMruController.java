@@ -51,6 +51,16 @@ final class TabMruController {
     /** 巡回確定のトリガとなる修飾キー。Ctrl+Tab で束縛するため常に Ctrl。 */
     private static final int MODIFIER_KEY = KeyEvent.VK_CONTROL;
 
+    /**
+     * MRU 巡回中であることを示すクライアントプロパティのキー。巡回中は各中間タブへ
+     * {@code setSelectedComponent} で立ち寄るため、選択変更リスナー側がこれを見て、
+     * ナビ履歴の push や LRU 予算適用といった副作用をスキップできるようにする。
+     */
+    static final String CLIENT_PROP_TRAVERSING = "juml.mru.traversing";
+
+    /** 巡回確定時に「最終的に選ばれたタブ」を 1 回だけ本活性化するためのコールバック。 */
+    private Runnable onCommit;
+
     // ── 巡回中の状態 ──
     private boolean traversing;
     private List<Component> snapshot;
@@ -63,6 +73,15 @@ final class TabMruController {
     TabMruController(JTabbedPane tabs, IntSupplier dynamicCount) {
         this.tabs = tabs;
         this.dynamicCount = dynamicCount;
+    }
+
+    /**
+     * 巡回確定時に「最終的に選ばれたタブ」を本活性化する処理を登録する。
+     * 巡回中は選択変更の副作用 (履歴 push / LRU 予算) を抑止するため、確定した
+     * タブだけをここで 1 回活性化させる。
+     */
+    void setOnCommit(Runnable r) {
+        this.onCommit = r;
     }
 
     /**
@@ -137,6 +156,8 @@ final class TabMruController {
                 return;
             }
             traversing = true;
+            // 巡回中の中間選択で履歴/LRU を汚さないよう、選択変更リスナーへ合図する。
+            tabs.putClientProperty(CLIENT_PROP_TRAVERSING, Boolean.TRUE);
             cursor = 0;
             showOverlay();
             installReleaseDispatcher();
@@ -202,6 +223,7 @@ final class TabMruController {
 
     private void endTraversal() {
         traversing = false;
+        tabs.putClientProperty(CLIENT_PROP_TRAVERSING, null);
         snapshot = null;
         if (focusManager != null && releaseDispatcher != null) {
             focusManager.removeKeyEventDispatcher(releaseDispatcher);
@@ -218,6 +240,11 @@ final class TabMruController {
         if (chosen != null) {
             mru.remove(chosen);
             mru.add(0, chosen);
+        }
+        // 巡回中は選択変更の副作用を抑止したので、確定タブだけをここで本活性化する
+        // (ナビ履歴 push・LRU 予算適用などを最終タブ 1 回分だけ反映する)。
+        if (onCommit != null) {
+            onCommit.run();
         }
     }
 

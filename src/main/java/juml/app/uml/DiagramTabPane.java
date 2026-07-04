@@ -121,6 +121,8 @@ public final class DiagramTabPane {
         this.zoomReporter = zoomReporter;
         tabs.addChangeListener(e -> handleTabSelectionChanged());
         this.mru = new TabMruController(tabs, () -> tabs.getTabCount() - fixedSuffix);
+        // 巡回確定時、最終的に選ばれたタブだけを本活性化する (巡回中は履歴/LRU を抑止)。
+        this.mru.setOnCommit(this::handleTabSelectionChanged);
         this.mru.install();
     }
 
@@ -243,6 +245,11 @@ public final class DiagramTabPane {
         // ドラッグ並び替えの remove→insert 過渡で発火する一時的な選択変更は無視する
         // (並び替え完了時に必要なら TabReorderHandler が 1 回だけ再通知する)。
         if (Boolean.TRUE.equals(tabs.getClientProperty(TabReorderHandler.CLIENT_PROP_REORDERING))) {
+            return;
+        }
+        // Ctrl+Tab の MRU 巡回中は、通過しただけの中間タブでナビ履歴/LRU 予算を汚さない。
+        // 確定時に TabMruController の onCommit がこのメソッドを 1 回だけ呼び直す。
+        if (Boolean.TRUE.equals(tabs.getClientProperty(TabMruController.CLIENT_PROP_TRAVERSING))) {
             return;
         }
         DiagramTab tab = activeTab();

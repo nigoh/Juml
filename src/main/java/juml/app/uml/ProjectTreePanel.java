@@ -739,7 +739,15 @@ public class ProjectTreePanel extends JPanel {
             menu.add(openSource);
         }
         if (menu.getComponentCount() > 0) {
-            tree.setSelectionPath(path);
+            // 右クリックはノードをハイライトするだけにとどめ、選択変更コールバック
+            // (プレビュー表示 / パッケージのドリルダウン等) は発火させない。抑止しないと
+            // メニューを出しただけでワークスペースが変わり、項目選択前に副作用が起きる。
+            suppressNotify = true;
+            try {
+                tree.setSelectionPath(path);
+            } finally {
+                suppressNotify = false;
+            }
             menu.show(e.getComponent(), e.getX(), e.getY());
         }
     }

@@ -26,14 +26,34 @@ final class DialogUtils {
         if (target == null || !target.exists()) {
             return true;
         }
-        int r = javax.swing.JOptionPane.showConfirmDialog(parent,
+        return confirmDestructive(parent,
                 java.text.MessageFormat.format(
                         juml.util.Messages.get("dialog.overwrite.message"),
                         target.getAbsolutePath()),
-                juml.util.Messages.get("dialog.overwrite.title"),
+                juml.util.Messages.get("dialog.overwrite.title"));
+    }
+
+    /**
+     * 破壊的操作 (上書き / 全消去 / 全タブクローズ 等) の Yes/No 確認ダイアログ。
+     * 既定ボタン・初期フォーカスを「No」側に置き、うっかり Enter を押しただけで
+     * 破壊操作が実行されるのを防ぐ (非破壊の確認は従来どおり Yes 既定でよい)。
+     *
+     * @return ユーザーが Yes を選んだら true
+     */
+    static boolean confirmDestructive(java.awt.Component parent, String message, String title) {
+        String yes = uiText("OptionPane.yesButtonText", "Yes");
+        String no = uiText("OptionPane.noButtonText", "No");
+        Object[] options = {yes, no};
+        int r = javax.swing.JOptionPane.showOptionDialog(parent, message, title,
                 javax.swing.JOptionPane.YES_NO_OPTION,
-                javax.swing.JOptionPane.WARNING_MESSAGE);
-        return r == javax.swing.JOptionPane.YES_OPTION;
+                javax.swing.JOptionPane.WARNING_MESSAGE,
+                null, options, no);
+        return r == 0; // options[0] == Yes
+    }
+
+    private static String uiText(String key, String fallback) {
+        String s = javax.swing.UIManager.getString(key);
+        return s != null ? s : fallback;
     }
 
     /**
