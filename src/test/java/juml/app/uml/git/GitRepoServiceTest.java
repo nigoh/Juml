@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -208,6 +209,35 @@ public class GitRepoServiceTest {
         assertNull("解決できない rev は null",
                 service.fileContentAt("no-such-ref", "a.txt"));
         assertNull(service.fileContentAt(second.getName(), ""));
+    }
+
+    @Test
+    public void localBranchRows_markCurrentAndCarryTipCommit() throws Exception {
+        List<GitRepoService.RefRow> rows = service.localBranchRows();
+        assertTrue("既定ブランチと feature の 2 本以上あるはず", rows.size() >= 2);
+        GitRepoService.RefRow current = rows.stream().filter(r -> r.current)
+                .findFirst().orElse(null);
+        assertNotNull("現在ブランチが 1 本ある", current);
+        assertNotNull("先頭コミット情報が付く", current.tip);
+        assertEquals("先頭コミットは 2 番目 (Bob)", "Bob", current.tip.author);
+        assertFalse(current.tip.shortSha.isEmpty());
+        for (GitRepoService.RefRow r : rows) {
+            assertEquals(GitRepoService.RefLabel.Type.LOCAL, r.type);
+        }
+    }
+
+    @Test
+    public void tagRows_pointToTaggedCommit() throws Exception {
+        List<GitRepoService.RefRow> tags = service.tagRows();
+        assertEquals(1, tags.size());
+        assertEquals("v1.0", tags.get(0).name);
+        assertEquals(GitRepoService.RefLabel.Type.TAG, tags.get(0).type);
+        assertNotNull(tags.get(0).tip);
+    }
+
+    @Test
+    public void remoteBranchRows_isEmptyWithoutRemotes() throws Exception {
+        assertTrue("リモート未設定なら空", service.remoteBranchRows().isEmpty());
     }
 
     @Test

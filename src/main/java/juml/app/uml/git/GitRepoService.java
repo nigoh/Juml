@@ -121,6 +121,81 @@ public final class GitRepoService implements AutoCloseable {
         return out;
     }
 
+    /** ローカルブランチを、先頭コミット情報・現在ブランチ判定・ahead/behind 付きで返す。 */
+    public List<RefRow> localBranchRows() throws GitAPIException, IOException {
+        List<RefRow> out = new ArrayList<>();
+        String current = repo.getBranch();
+        try (Git git = new Git(repo);
+             RevWalk walk = new RevWalk(repo)) {
+            for (Ref ref : git.branchList().call()) {
+                String name = Repository.shortenRefName(ref.getName());
+                int ahead = -1;
+                int behind = -1;
+                org.eclipse.jgit.lib.BranchTrackingStatus st =
+                        org.eclipse.jgit.lib.BranchTrackingStatus.of(repo, name);
+                if (st != null) {
+                    ahead = st.getAheadCount();
+                    behind = st.getBehindCount();
+                }
+                out.add(rowFor(walk, ref.getObjectId(), name, RefLabel.Type.LOCAL,
+                        name.equals(current), ahead, behind));
+            }
+        }
+        return out;
+    }
+
+    /** リモート追跡ブランチを、先頭コミット情報付きで返す (ahead/behind は算出しない)。 */
+    public List<RefRow> remoteBranchRows() throws GitAPIException, IOException {
+        List<RefRow> out = new ArrayList<>();
+        try (Git git = new Git(repo);
+             RevWalk walk = new RevWalk(repo)) {
+            org.eclipse.jgit.api.ListBranchCommand cmd = git.branchList();
+            cmd.setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE);
+            for (Ref ref : cmd.call()) {
+                if (ref.getName().endsWith("/HEAD")) {
+                    continue;
+                }
+                String name = Repository.shortenRefName(ref.getName());
+                out.add(rowFor(walk, ref.getObjectId(), name, RefLabel.Type.REMOTE,
+                        false, -1, -1));
+            }
+        }
+        return out;
+    }
+
+    /** タグを、指すコミット情報付きで返す (注釈付きタグはコミットまで peel する)。 */
+    public List<RefRow> tagRows() throws GitAPIException, IOException {
+        List<RefRow> out = new ArrayList<>();
+        org.eclipse.jgit.lib.RefDatabase rdb = repo.getRefDatabase();
+        try (Git git = new Git(repo);
+             RevWalk walk = new RevWalk(repo)) {
+            for (Ref ref : git.tagList().call()) {
+                String name = Repository.shortenRefName(ref.getName());
+                Ref peeled = rdb.peel(ref);
+                ObjectId id = peeled.getPeeledObjectId() != null
+                        ? peeled.getPeeledObjectId() : ref.getObjectId();
+                out.add(rowFor(walk, id, name, RefLabel.Type.TAG, false, -1, -1));
+            }
+        }
+        return out;
+    }
+
+    /** 指定 ObjectId のコミットを解決して {@link RefRow} を組み立てる。 */
+    private RefRow rowFor(RevWalk walk, ObjectId id, String name, RefLabel.Type type,
+                          boolean current, int ahead, int behind) throws IOException {
+        RefRow.Tip tip = null;
+        if (id != null) {
+            RevCommit c = walk.parseCommit(id);
+            PersonIdent who = c.getAuthorIdent();
+            tip = new RefRow.Tip(
+                    c.abbreviate(7).name(),
+                    who != null ? who.getWhen() : new Date(c.getCommitTime() * 1000L),
+                    who != null ? who.getName() : "",
+                    c.getShortMessage());
+        }
+        return new RefRow(name, type, current, ahead, behind, tip);
+    }
+
     /** 指定 ref (ブランチ/タグ/SHA) のコミット履歴を新しい順に最大 {@code limit} 件返す。 */
     public List<CommitInfo> log(String ref, int limit) throws GitAPIException, IOException {
         return logInternal(ref, null, limit);
@@ -491,6 +566,44 @@ public final class GitRepoService implements AutoCloseable {
         public RefLabel(String name, Type type) {
             this.name = name;
             this.type = type;
+        }
+    }
+
+    /** Branches &amp; Tags ペイン 1 行分: ref と、その指す先頭コミットの要約 (不変)。 */
+    public static final class RefRow {
+        public final String name;
+        public final RefLabel.Type type;
+        /** 現在チェックアウト中のローカルブランチか。 */
+        public final boolean current;
+        /** 上流に対する ahead/behind 件数 (算出不可なら -1)。 */
+        public final int ahead;
+        public final int behind;
+        /** 指す先頭コミットの要約 (未解決なら null)。 */
+        public final Tip tip;
+
+        RefRow(String name, RefLabel.Type type, boolean current, int ahead, int behind,
+               Tip tip) {
+            this.name = name;
+            this.type = type;
+            this.current = current;
+            this.ahead = ahead;
+            this.behind = behind;
+            this.tip = tip;
+        }
+
+        /** ref が指すコミットの表示用要約 (不変)。 */
+        public static final class Tip {
+            public final String shortSha;
+            public final Date when;
+            public final String author;
+            public final String message;
+
+            Tip(String shortSha, Date when, String author, String message) {
+                this.shortSha = shortSha;
+                this.when = when;
+                this.author = author;
+                this.message = message;
+            }
         }
     }
 
