@@ -131,11 +131,36 @@ public final class DiagramController {
 
     public void onTreeManifestSelected(juml.core.formats.android.AndroidManifestInfo m) {
         openManifestDiagram();
+        // 選択された Manifest を手掛かりとしてステータスバーへ表示する。図は汎用 Manifest 図
+        // だが、どのパッケージ/モジュールを選んだのかが分かるようにする (#37)。
+        if (m != null && statusLabel != null) {
+            String pkg = m.getPackageName();
+            if (pkg != null && !pkg.isEmpty()) {
+                statusLabel.setText(java.text.MessageFormat.format(
+                        Messages.get("status.manifestSelected"), pkg));
+            }
+        }
     }
 
     public void onTreeComponentSelected(
             juml.core.formats.android.AndroidComponentInfo c) {
         openManifestDiagram();
+        // 選択されたコンポーネント (Activity/Service/Receiver/Provider) 名をステータスバーへ
+        // 表示し、図中のどのノードを探せばよいかの手掛かりを与える (#37)。
+        if (c != null && statusLabel != null && c.getName() != null && !c.getName().isEmpty()) {
+            String kind = c.getKind() != null
+                    ? c.getKind().name().charAt(0) + c.getKind().name().substring(1).toLowerCase(
+                            java.util.Locale.ROOT)
+                    : "Component";
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("status.componentSelected"), kind, shortComponentName(c.getName())));
+        }
+    }
+
+    /** FQN の末尾の単純名を返す (ステータス表示用)。 */
+    private static String shortComponentName(String fqn) {
+        int dot = fqn.lastIndexOf('.');
+        return dot >= 0 && dot + 1 < fqn.length() ? fqn.substring(dot + 1) : fqn;
     }
 
     /** 3 エントリを同じメソッドに揃える (DiagramState のヘルパへ委譲)。 */

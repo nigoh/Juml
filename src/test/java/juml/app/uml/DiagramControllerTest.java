@@ -100,6 +100,38 @@ public class DiagramControllerTest {
         assertEquals(0, refreshCount.get());
     }
 
+    /** コンポーネント選択で、種別と単純名がステータスバーに表示される (#37)。 */
+    @Test
+    public void onTreeComponentSelected_showsNameInStatusBar() {
+        juml.core.formats.android.AndroidComponentInfo c =
+                new juml.core.formats.android.AndroidComponentInfo(
+                        juml.core.formats.android.AndroidComponentInfo.Kind.SERVICE,
+                        "com.x.PushService");
+        controller.onTreeComponentSelected(c);
+        String text = controller.statusLabel.getText();
+        assertTrue(text, text.contains("PushService"));
+        assertTrue("種別 Service を含むはず: " + text, text.contains("Service"));
+    }
+
+    /** Manifest 選択で、パッケージ名がステータスバーに表示される (#37)。 */
+    @Test
+    public void onTreeManifestSelected_showsPackageInStatusBar() {
+        juml.core.formats.android.AndroidManifestInfo m =
+                new juml.core.formats.android.AndroidManifestInfo();
+        m.setPackageName("com.example.app");
+        controller.onTreeManifestSelected(m);
+        assertTrue(controller.statusLabel.getText(),
+                controller.statusLabel.getText().contains("com.example.app"));
+    }
+
+    /** null 選択でも例外なく no-op (ステータス更新なし)。 */
+    @Test
+    public void onTreeComponentSelected_null_isSafeNoOp() {
+        controller.statusLabel.setText("unchanged");
+        controller.onTreeComponentSelected(null);
+        assertEquals("unchanged", controller.statusLabel.getText());
+    }
+
     @Test
     public void buildSequenceRequest_requiresDotSeparatedEntry() {
         DiagramRequest req = controller.buildSequenceRequest("Foo.bar");
