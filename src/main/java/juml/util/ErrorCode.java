@@ -148,7 +148,9 @@ public enum ErrorCode {
     /** 外部アプリケーションの起動に失敗しました。 */
     SYS_003(Area.SYS, "SYS-003"),
     /** 不明なコマンドラインオプションです。 */
-    SYS_004(Area.SYS, "SYS-004");
+    SYS_004(Area.SYS, "SYS-004"),
+    /** コマンドラインオプションに必要な値が指定されていません。 */
+    SYS_005(Area.SYS, "SYS-005");
 
     /** エラーの発生領域。ID のプレフィックスに対応する。 */
     public enum Area {

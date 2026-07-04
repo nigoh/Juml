@@ -117,7 +117,7 @@ public final class CliOptions {
             apkSummary, apkClassDiagram, apk, apkPackage, apkDecode, apkSmali,
             apkSequence});
 
-    /** 引数をパースする。未知オプションは stderr に出して {@code System.exit(1)}。 */
+    /** 引数をパースする。未知オプション/値欠落は stderr に出して {@code System.exit(1)}。 */
     public void parse(String[] args) {
         try {
             parser.parse(args);
@@ -126,6 +126,12 @@ public final class CliOptions {
             // GUI のエラーコード一覧) を辿れるようにする。
             System.err.println(ex.getErrorCode().tag()
                     + " Unknown option: " + ex.getOption());
+            System.exit(1);
+        } catch (juml.util.MissingArgumentException ex) {
+            // 値必須オプションに値がない (末尾の -o、次が別フラグ 等)。以前は無言で
+            // 握り潰され標準出力へダンプしていたのを、明示エラーにする。
+            System.err.println(ex.getErrorCode().tag()
+                    + " Missing value for option: " + ex.getOption());
             System.exit(1);
         }
     }

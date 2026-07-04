@@ -67,6 +67,34 @@ public class NameResolverTest {
     }
 
     @Test
+    public void nestedTypeSamePackageResolvesHeadToFqn() {
+        // 同パッケージのネスト型参照 Config.Item は com.foo.Config.Item へ解決される
+        // (以前は "Config.Item" のまま返り、参照インデックスに載らなかった)。
+        ClassIndex idx = new ClassIndex();
+        idx.put(cls("com.foo", "Config"), null, null);
+        NameResolver r = new NameResolver(idx, null);
+        JavaClassInfo owner = cls("com.foo", "Owner");
+        assertEquals("com.foo.Config.Item", r.resolve("Config.Item", owner));
+    }
+
+    @Test
+    public void nestedTypeViaImportResolvesHead() {
+        ClassIndex idx = new ClassIndex();
+        NameResolver r = new NameResolver(idx, null);
+        JavaClassInfo owner = cls("com.foo", "Owner", "com.bar.Config");
+        assertEquals("com.bar.Config.Item", r.resolve("Config.Item", owner));
+    }
+
+    @Test
+    public void unresolvableDottedHeadIsPassedThrough() {
+        // 先頭セグメントが解決できないドット名 (真の FQN 等) はそのまま返す。
+        ClassIndex idx = new ClassIndex();
+        NameResolver r = new NameResolver(idx, null);
+        JavaClassInfo owner = cls("com.foo", "Owner");
+        assertEquals("java.util.List", r.resolve("java.util.List", owner));
+    }
+
+    @Test
     public void fqnPassthrough() {
         ClassIndex idx = new ClassIndex();
         NameResolver r = new NameResolver(idx, null);

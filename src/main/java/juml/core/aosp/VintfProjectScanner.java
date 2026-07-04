@@ -51,7 +51,7 @@ public final class VintfProjectScanner {
             return Collections.emptyList();
         }
         List<File> candidates = new ArrayList<>();
-        collectCandidates(projectRoot, candidates);
+        collectCandidates(projectRoot, candidates, 0);
         List<Entry> out = new ArrayList<>();
         for (File f : candidates) {
             try {
@@ -80,7 +80,11 @@ public final class VintfProjectScanner {
     }
 
     /** プロジェクト下を再帰走査して候補 XML を集める (AOSP 級除外を適用)。 */
-    private static void collectCandidates(File dir, List<File> out) {
+    private static void collectCandidates(File dir, List<File> out, int depth) {
+        // シンボリックリンク循環による無限再帰 (StackOverflow) を防ぐ深さ制限。
+        if (depth > 64) {
+            return;
+        }
         File[] children = dir.listFiles();
         if (children == null) {
             return;
@@ -90,7 +94,7 @@ public final class VintfProjectScanner {
                 if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
-                collectCandidates(c, out);
+                collectCandidates(c, out, depth + 1);
             } else if (c.isFile() && isVintfCandidateName(c.getName())) {
                 out.add(c);
             }

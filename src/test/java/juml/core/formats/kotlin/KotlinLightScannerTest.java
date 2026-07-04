@@ -365,4 +365,71 @@ public class KotlinLightScannerTest {
         }
         assertTrue("companion fun preserved", hasCreate);
     }
+
+    private static juml.core.formats.uml.JavaClassInfo scanOne(String src) {
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        return infos.stream().filter(c -> "Foo".equals(c.getSimpleName()))
+                .findFirst().orElse(infos.isEmpty() ? null : infos.get(0));
+    }
+
+    private static boolean hasField(JavaClassInfo c, String name) {
+        return c.getFields().stream().anyMatch(f -> name.equals(f.getName()));
+    }
+
+    private static boolean hasMethod(JavaClassInfo c, String name) {
+        return c.getMethods().stream().anyMatch(m -> name.equals(m.getName()));
+    }
+
+    @Test
+    public void charLiteralClosingBrace_doesNotTruncateClassBody() {
+        // '}' の文字リテラルを本体の閉じブレースと取り違えて、後続メンバを落とさないこと。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  val close: Char = '}'\n"
+                + "  val after: Int = 1\n"
+                + "  fun bar(): Int = 2\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("'}' の後の field 'after' が残るはず", hasField(c, "after"));
+        assertTrue("'}' の後の method 'bar' が残るはず", hasMethod(c, "bar"));
+    }
+
+    @Test
+    public void charLiteralQuote_doesNotSwallowRestOfBody() {
+        // '"' の文字リテラルを文字列開始と取り違えて以降を飲み込まないこと。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  val q: Char = '\"'\n"
+                + "  val after: Int = 1\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("'\"' の後の field 'after' が残るはず", hasField(c, "after"));
+    }
+
+    @Test
+    public void rawStringWithBrace_doesNotTruncateClassBody() {
+        // 生文字列 \"\"\"...}...\"\"\" 内の } を本体の閉じと取り違えないこと。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  val sql: String = \"\"\"SELECT } FROM t WHERE x = \\\"y\\\"\"\"\"\n"
+                + "  val after: Int = 1\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("生文字列の後の field 'after' が残るはず", hasField(c, "after"));
+    }
+
+    @Test
+    public void primaryCtorDefaultStringWithBrace_doesNotMisplaceBody() {
+        // 一次コンストラクタ既定値 "{" 内の { を本体開始と取り違えないこと。
+        String src = "package com.x\n"
+                + "class Foo(val x: String = \"{\") {\n"
+                + "  val y: Int = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("本体 field 'y' が抽出されるはず", hasField(c, "y"));
+    }
 }

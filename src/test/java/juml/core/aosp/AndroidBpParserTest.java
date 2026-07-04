@@ -266,6 +266,22 @@ public class AndroidBpParserTest {
     }
 
     @Test
+    public void versionsWithInfoCountsOnlyVersionScalarsNotNestedImports() {
+        // versions_with_info の要素マップの version だけを数える。imports の要素まで
+        // 拾うと versions_count / latest_version が誤る (以前は 3 / "…bar-V1" になっていた)。
+        String src = "aidl_interface {\n"
+                + "    name: \"android.hardware.foo\",\n"
+                + "    versions_with_info: [\n"
+                + "        { version: \"1\", imports: [] },\n"
+                + "        { version: \"2\", imports: [\"android.hardware.bar-V1\"] },\n"
+                + "    ],\n"
+                + "}\n";
+        AndroidBpModule m = new AndroidBpParser().parseSource(src, "Android.bp").get(0);
+        assertEquals("2", m.scalar("versions_count"));
+        assertEquals("2", m.scalar("latest_version"));
+    }
+
+    @Test
     public void aidlBackendDefaultsWhenNoBackendBlock() {
         String src = "aidl_interface { name: \"x\", unstable: true }\n";
         AndroidBpModule m = new AndroidBpParser().parseSource(src, "Android.bp").get(0);

@@ -42,8 +42,29 @@ public final class ApktoolDecoder {
      */
     public static File decodeToTempDir(File apk, ErrorListener listener) throws IOException {
         File outDir = Files.createTempDirectory("juml-apk-").toFile();
+        // 実行中は解析に使うため即削除できない。JVM 終了時に再帰削除して /tmp に
+        // juml-apk-* を溜めない (deleteOnExit は中身の詰まったディレクトリを消せない)。
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> deleteRecursively(outDir)));
         decode(apk, outDir, listener);
         return outDir;
+    }
+
+    /** ディレクトリを再帰削除する (ベストエフォート)。 */
+    private static void deleteRecursively(File dir) {
+        if (dir == null || !dir.exists()) {
+            return;
+        }
+        try (java.util.stream.Stream<java.nio.file.Path> walk = Files.walk(dir.toPath())) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                    // ベストエフォート
+                }
+            });
+        } catch (IOException ignored) {
+            // ベストエフォート (既に削除済み等)
+        }
     }
 
     /**

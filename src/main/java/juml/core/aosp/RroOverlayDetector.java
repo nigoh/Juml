@@ -39,7 +39,7 @@ public final class RroOverlayDetector {
             return Collections.emptyList();
         }
         List<File> manifests = new ArrayList<>();
-        collectManifests(projectRoot, manifests);
+        collectManifests(projectRoot, manifests, 0);
         List<RroOverlay> out = new ArrayList<>();
         for (File m : manifests) {
             try {
@@ -102,7 +102,11 @@ public final class RroOverlayDetector {
     }
 
     /** プロジェクト下から AndroidManifest.xml を集める。 */
-    private static void collectManifests(File dir, List<File> out) {
+    private static void collectManifests(File dir, List<File> out, int depth) {
+        // シンボリックリンク循環による無限再帰 (StackOverflow) を防ぐ深さ制限。
+        if (depth > 64) {
+            return;
+        }
         File[] children = dir.listFiles();
         if (children == null) return;
         for (File c : children) {
@@ -113,7 +117,7 @@ public final class RroOverlayDetector {
                         || name.equals("node_modules")) {
                     continue;
                 }
-                collectManifests(c, out);
+                collectManifests(c, out, depth + 1);
             } else if (c.isFile() && c.getName().equals("AndroidManifest.xml")) {
                 out.add(c);
             }

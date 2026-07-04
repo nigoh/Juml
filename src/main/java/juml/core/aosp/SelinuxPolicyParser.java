@@ -52,7 +52,7 @@ public final class SelinuxPolicyParser {
             return Collections.emptyList();
         }
         List<File> teFiles = new ArrayList<>();
-        collectTeFiles(projectRoot, teFiles);
+        collectTeFiles(projectRoot, teFiles, 0);
         List<SelinuxRule> all = new ArrayList<>();
         for (File f : teFiles) {
             try {
@@ -141,7 +141,11 @@ public final class SelinuxPolicyParser {
     }
 
     /** プロジェクト下を再帰走査して {@code *.te} を集める。 */
-    private static void collectTeFiles(File dir, List<File> out) {
+    private static void collectTeFiles(File dir, List<File> out, int depth) {
+        // シンボリックリンク循環による無限再帰 (StackOverflow) を防ぐ深さ制限。
+        if (depth > 64) {
+            return;
+        }
         File[] children = dir.listFiles();
         if (children == null) return;
         for (File c : children) {
@@ -151,7 +155,7 @@ public final class SelinuxPolicyParser {
                         || name.equals("build") || name.equals("out")) {
                     continue;
                 }
-                collectTeFiles(c, out);
+                collectTeFiles(c, out, depth + 1);
             } else if (c.isFile()) {
                 String name = c.getName();
                 if (name.endsWith(".te")) {

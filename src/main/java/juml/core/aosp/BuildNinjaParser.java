@@ -130,7 +130,10 @@ public final class BuildNinjaParser {
         if (colon < 0) {
             return;
         }
-        String outputsPart = body.substring(0, colon);
+        // 出力側の暗黙出力区切り `|` (build explicit | implicit: ...) を除去する。
+        // 除かないと "|" 自体がパスとして splitPaths に拾われ、groupOf("|") の擬似ノードが
+        // 生成される (入力側は下で同様に除去済み)。
+        String outputsPart = body.substring(0, colon).replace("|", " ");
         String rest = body.substring(colon + 1).trim();
         List<String> outputs = splitPaths(outputsPart);
         if (outputs.isEmpty()) {

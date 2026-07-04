@@ -64,7 +64,7 @@ public final class AndroidBpParser {
             return Collections.emptyList();
         }
         List<File> bpFiles = new ArrayList<>();
-        collectBpFiles(projectRoot, bpFiles);
+        collectBpFiles(projectRoot, bpFiles, 0);
         List<AndroidBpModule> all = new ArrayList<>();
         for (File bp : bpFiles) {
             try {
@@ -240,7 +240,10 @@ public final class AndroidBpParser {
         if (type.contains("aidl")) {
             List<String> versions = new ArrayList<>();
             extractListProperty(topLevel, "versions", versions, vars);
-            extractListProperty(topLevel, "versions_with_info", versions, vars);
+            // versions_with_info: [{version:"1", imports:[...]}, ...] は要素マップの
+            // version スカラだけを拾う。全文字列を拾うと imports の要素まで混入する。
+            // 要素マップ {} は topLevel ではマスクされるため、未マスクの body から拾う。
+            extractVersionsWithInfo(body, versions);
             if (!versions.isEmpty()) {
                 m.putScalar("versions_count", String.valueOf(versions.size()));
                 m.putScalar("latest_version", versions.get(versions.size() - 1));
@@ -268,6 +271,29 @@ public final class AndroidBpParser {
      *
      * <p>nested ブロック (target/arch 等) 内の同名キーも従来どおり拾う (srcs 集約のため)。</p>
      */
+    private static final Pattern VERSIONS_WITH_INFO =
+            Pattern.compile("\\bversions_with_info\\s*:\\s*\\[");
+    private static final Pattern INNER_VERSION =
+            Pattern.compile("\\bversion\\s*:\\s*\"([^\"]*)\"");
+
+    /**
+     * {@code versions_with_info: [{version:"1", ...}, {version:"2", ...}]} から、各要素マップの
+     * {@code version} スカラだけを {@code into} に追加する。{@code imports:} 等の他の文字列は拾わない。
+     */
+    private static void extractVersionsWithInfo(String body, List<String> into) {
+        Matcher key = VERSIONS_WITH_INFO.matcher(body);
+        if (!key.find()) {
+            return;
+        }
+        int open = key.end() - 1; // '[' の位置
+        int close = findMatchingBracket(body, open);
+        String block = body.substring(open + 1, close < 0 ? body.length() : close);
+        Matcher vm = INNER_VERSION.matcher(block);
+        while (vm.find()) {
+            into.add(vm.group(1));
+        }
+    }
+
     private static void extractListProperty(String body, String key,
                                             List<String> into,
                                             Map<String, List<String>> vars) {
@@ -463,7 +489,12 @@ public final class AndroidBpParser {
     }
 
     /** プロジェクト下を再帰走査して Android.bp を集める。 */
-    private static void collectBpFiles(File dir, List<File> out) {
+    private static void collectBpFiles(File dir, List<File> out, int depth) {
+        // シンボリックリンク循環 (AOSP/.repo/prebuilts に実在しうる) での無限再帰による
+        // StackOverflow を防ぐ深さ制限。実ツリーは 64 段より浅い。
+        if (depth > 64) {
+            return;
+        }
         File[] children = dir.listFiles();
         if (children == null) return;
         for (File c : children) {
@@ -473,7 +504,7 @@ public final class AndroidBpParser {
                 if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
-                collectBpFiles(c, out);
+                collectBpFiles(c, out, depth + 1);
             } else if (c.isFile() && c.getName().equals("Android.bp")) {
                 out.add(c);
             }
