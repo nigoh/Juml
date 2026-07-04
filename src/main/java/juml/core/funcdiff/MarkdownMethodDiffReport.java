@@ -96,8 +96,10 @@ public final class MarkdownMethodDiffReport {
 
         int seq = 1;
         for (MethodDiffAnalyzer.DiffRow row : r.rows) {
-            String callAStr = row.callA != null ? callLabel(row.callA) : "—";
-            String callBStr = row.callB != null ? callLabel(row.callB) : "—";
+            // コード span 内でも GFM は素の | を列区切りとして解釈するため、呼び出し
+            // ラベル (例: setFlags(A | B)) の | もエスケープして列崩れを防ぐ。
+            String callAStr = row.callA != null ? escapePipe(callLabel(row.callA)) : "—";
+            String callBStr = row.callB != null ? escapePipe(callLabel(row.callB)) : "—";
             String confStr = row.confidence >= 0 ? fmt2(row.confidence) : "—";
             String notes = row.detail != null ? escapePipe(row.detail) : "";
 

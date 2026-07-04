@@ -113,7 +113,9 @@ public final class PlantUmlCommonClassesDiagram {
         StringBuilder out = new StringBuilder();
         out.append("@startuml\n");
         if (o.title != null && !o.title.isEmpty()) {
-            out.append("title ").append(o.title).append('\n');
+            // title も他の生成器と同様にエスケープする。生のままだと改行で描画が
+            // ハードエラーになり、< が creole 記法として解釈されて消える。
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         } else {
             out.append("title Common Classes (top ").append(hot.size()).append(")\n");
         }
