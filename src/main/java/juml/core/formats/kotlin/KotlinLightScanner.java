@@ -735,6 +735,13 @@ public final class KotlinLightScanner {
                     }
                 }
             }
+            // 名前付きネスト型 (class / interface / object / enum) の本体はマスクする。
+            // これらは独立した JavaClassInfo エントリとして別途出力されるため、囲む型へ
+            // ホイストするとメンバが重複・誤付与される。ただし companion object だけは
+            // 従来どおり外側へホイストする (Outer.CONST のように静的的に参照されるため)。
+            if (!codeBlock && isNestedTypeHeader(body, i)) {
+                codeBlock = true;
+            }
             if (codeBlock) {
                 int close = matchBrace(body, i);
                 if (close > i) {
@@ -746,6 +753,29 @@ public final class KotlinLightScanner {
             }
         }
         return mask;
+    }
+
+    /**
+     * {@code body} の位置 {@code bracePos} の {@code &#123;} が、名前付きネスト型
+     * (class / interface / object / enum) の本体開始かどうかを判定する。直前の文
+     * 境界 ({@code ;} / {@code &#125;} / {@code &#123;}) までのヘッダに型宣言キーワードが
+     * 含まれ、かつ {@code companion object} でなければ true。companion object は
+     * 外側へホイストしたいので false を返す (従来どおり降りて抽出する)。
+     */
+    private static boolean isNestedTypeHeader(String body, int bracePos) {
+        int hs = bracePos - 1;
+        while (hs >= 0) {
+            char ch = body.charAt(hs);
+            if (ch == ';' || ch == '}' || ch == '{') {
+                break;
+            }
+            hs--;
+        }
+        String header = body.substring(hs + 1, bracePos);
+        if (header.matches("(?s).*\\bcompanion\\s+object\\b.*")) {
+            return false;
+        }
+        return header.matches("(?s).*\\b(class|interface|object|enum)\\b.*");
     }
 
     /**

@@ -124,6 +124,24 @@ public class PlantUmlNavigationGraphDiagramTest {
     }
 
     @Test
+    public void testDeepLinkDiagramActuallyRenders() throws IOException {
+        // 添付ノートに別名を付けると PlantUML 構文エラーで図全体が失敗する回帰。
+        // deep link を持つ実サンプルを同梱 PlantUML で SVG レンダリングし、例外が
+        // 出ない (= 図が壊れていない) ことを確認する。
+        AndroidNavigationGraphInfo info = parseFullSample();
+        PlantUmlNavigationGraphDiagram.Options opts = new PlantUmlNavigationGraphDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlNavigationGraphDiagram.generate(info, opts);
+        assertTrue("前提: deep link ノートを含む", puml.contains("note left of"));
+        assertFalse("添付ノートに 'as' 別名を付けない", puml.contains("note left of ")
+                && puml.matches("(?s).*note left of \\S+ as \\S+.*"));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        juml.core.formats.uml.PlantUmlRenderer.renderSvg(puml, out);
+        String svg = out.toString(StandardCharsets.UTF_8.name());
+        assertTrue("SVG が生成される", svg.contains("<svg"));
+    }
+
+    @Test
     public void testDeepLinksHidden() throws IOException {
         AndroidNavigationGraphInfo info = parseFullSample();
         PlantUmlNavigationGraphDiagram.Options opts = new PlantUmlNavigationGraphDiagram.Options();

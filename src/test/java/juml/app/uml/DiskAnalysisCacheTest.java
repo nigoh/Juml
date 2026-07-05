@@ -271,6 +271,67 @@ public class DiskAnalysisCacheTest {
                         new ArrayList<>()).isPresent());
     }
 
+    /**
+     * 陳腐化チェック: クラスを生まないソース (package-info.java 等) を allSources で
+     * 登録すれば、その後の load でキャッシュヒットすること。登録しないと DB に無い
+     * ため毎回「追加」判定でミスし、ディスクキャッシュが恒久的に効かなくなる回帰。
+     */
+    @Test
+    public void zeroClassSourceDoesNotCauseAlwaysMiss() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "src");
+        assertTrue(srcDir.mkdirs());
+        File hello = new File(srcDir, "Hello.java");
+        try (FileWriter w = new FileWriter(hello)) {
+            w.write("package p; public class Hello {}");
+        }
+        // クラスを生まないソース (package-info)。解析結果 classes には現れない。
+        File pkgInfo = new File(srcDir, "package-info.java");
+        try (FileWriter w = new FileWriter(pkgInfo)) {
+            w.write("package p;");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "Hello"), hello, null);
+
+        List<File> allSources = new ArrayList<>(Arrays.asList(hello, pkgInfo));
+        // allSources 付き save で 0 クラスファイルも記録
+        cache.save(projectRoot, idx.headers(), idx, allSources);
+
+        // 変更なし → ヒットするはず (以前は package-info が毎回「追加」でミスしていた)
+        assertTrue("0 クラスファイルがあってもヒットする",
+                cache.load(projectRoot, ProgressListener.silent(), allSources).isPresent());
+    }
+
+    /**
+     * 旧 3 引数 save (allSources なし) は 0 クラスファイルを記録しないため、その
+     * ファイルを含む load はミスする — 従来挙動を固定して回帰対比を明示する。
+     */
+    @Test
+    public void legacySaveWithoutAllSourcesStillMissesOnZeroClassFile() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "src");
+        assertTrue(srcDir.mkdirs());
+        File hello = new File(srcDir, "Hello.java");
+        try (FileWriter w = new FileWriter(hello)) {
+            w.write("package p; public class Hello {}");
+        }
+        File pkgInfo = new File(srcDir, "package-info.java");
+        try (FileWriter w = new FileWriter(pkgInfo)) {
+            w.write("package p;");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "Hello"), hello, null);
+        cache.save(projectRoot, idx.headers(), idx);
+
+        List<File> allSources = new ArrayList<>(Arrays.asList(hello, pkgInfo));
+        assertFalse("allSources 未登録だと package-info が『追加』でミス",
+                cache.load(projectRoot, ProgressListener.silent(), allSources).isPresent());
+    }
+
     /** currentJavaFiles を渡さない従来 API は陳腐化チェックせず常にヒット。 */
     @Test
     public void nullCurrentFilesSkipsStalenessCheck() throws Exception {

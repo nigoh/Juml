@@ -138,6 +138,17 @@ public final class DiskAnalysisCache {
      */
     public void save(File projectRoot, List<JavaClassInfo> classes, ClassIndex index)
             throws IOException {
+        save(projectRoot, classes, index, null);
+    }
+
+    /**
+     * {@code allSources} を渡すと、クラスを 1 つも生まなかったソース
+     * ({@code package-info.java} や空ファイル等) についても空の {@code files} 行を
+     * 記録する。こうしないと陳腐化チェックで DB に無いこれらのファイルが毎回
+     * 「追加された」と判定され、ディスクキャッシュが恒久的にヒットしなくなる。
+     */
+    public void save(File projectRoot, List<JavaClassInfo> classes, ClassIndex index,
+            List<File> allSources) throws IOException {
         if (classes == null || index == null) {
             return;
         }
@@ -153,6 +164,13 @@ public final class DiskAnalysisCache {
                 dbFile, projectRoot.getAbsolutePath(), TOOL_VERSION)) {
             IndexWriter writer = new IndexWriter(db.connection());
             Map<File, List<JavaClassInfo>> byFile = groupBySourceFile(classes, index);
+            // 走査対象だがクラスを生まなかったファイルも 0 クラス行として登録し、
+            // 陳腐化チェックの「DB のファイル集合 == 走査したファイル集合」を保つ。
+            if (allSources != null) {
+                for (File src : allSources) {
+                    byFile.putIfAbsent(src, java.util.Collections.emptyList());
+                }
+            }
             for (Map.Entry<File, List<JavaClassInfo>> e : byFile.entrySet()) {
                 File source = e.getKey();
                 String relPath = relativize(projectRoot, source);

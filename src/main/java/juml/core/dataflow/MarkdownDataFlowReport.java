@@ -40,9 +40,9 @@ public final class MarkdownDataFlowReport {
                 String v = db.getVersion() >= 0 ? String.valueOf(db.getVersion()) : "—";
                 String entities = db.getEntityClasses().isEmpty() ? "—"
                         : String.join(", ", db.getEntityClasses());
-                sb.append("| `").append(db.getClassFqn()).append("` | ")
+                sb.append("| `").append(cell(db.getClassFqn())).append("` | ")
                         .append(v).append(" | ")
-                        .append(entities).append(" |\n");
+                        .append(cell(entities)).append(" |\n");
             }
             sb.append('\n');
         }
@@ -74,12 +74,12 @@ public final class MarkdownDataFlowReport {
                     sb.append("| Column | Type | PK | Alias |\n");
                     sb.append("|---|---|---|---|\n");
                     for (RoomEntity.Column col : e.getColumns()) {
-                        sb.append("| `").append(col.getName()).append("` | `")
-                                .append(col.getType()).append("` | ")
+                        sb.append("| `").append(cell(col.getName())).append("` | `")
+                                .append(cell(col.getType())).append("` | ")
                                 .append(col.isPrimaryKey() ? "✔" : "")
                                 .append(" | ")
                                 .append(col.getColumnAlias().isEmpty() ? "—"
-                                        : "`" + col.getColumnAlias() + "`")
+                                        : "`" + cell(col.getColumnAlias()) + "`")
                                 .append(" |\n");
                     }
                     sb.append('\n');
@@ -100,11 +100,11 @@ public final class MarkdownDataFlowReport {
                 sb.append("|---|---|---|---|\n");
                 for (RoomDao.Operation op : dao.getOperations()) {
                     String sql = op.getSql().isEmpty() ? "—"
-                            : "`" + truncate(op.getSql(), 80) + "`";
-                    sb.append("| `").append(op.getMethodName()).append("` | ")
+                            : "`" + cell(truncate(op.getSql(), 80)) + "`";
+                    sb.append("| `").append(cell(op.getMethodName())).append("` | ")
                             .append(op.getKind().name()).append(" | ")
                             .append(op.getReturnType().isEmpty() ? "—"
-                                    : "`" + op.getReturnType() + "`")
+                                    : "`" + cell(op.getReturnType()) + "`")
                             .append(" | ").append(sql).append(" |\n");
                 }
                 sb.append('\n');
@@ -116,5 +116,15 @@ public final class MarkdownDataFlowReport {
     private static String truncate(String s, int n) {
         if (s == null) return "";
         return s.length() <= n ? s : s.substring(0, n - 1) + "…";
+    }
+
+    /**
+     * GFM テーブルのセル値を安全化する。{@code |} は列区切りと解釈される
+     * (コードスパン内でも) ため {@code \|} にエスケープし、改行は行を壊すので空白に畳む。
+     * 例: {@code SELECT a || ' ' || b} を含む @Query が行をずらすのを防ぐ。
+     */
+    private static String cell(String s) {
+        if (s == null) return "";
+        return s.replace("|", "\\|").replaceAll("[\\r\\n]+", " ");
     }
 }

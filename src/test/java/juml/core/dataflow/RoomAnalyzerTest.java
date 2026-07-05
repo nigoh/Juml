@@ -209,6 +209,29 @@ public class RoomAnalyzerTest {
     }
 
     @Test
+    public void markdownReportEscapesPipeInSqlCell() {
+        // SQL 中の `||` (SQLite 文字列連結) がテーブルの列区切りとして解釈されて
+        // 行が壊れないよう、セル内の | をエスケープすること。
+        String src = "package com.x;\n"
+                + "@Dao public interface UserDao {\n"
+                + "  @Query(\"SELECT firstName || ' ' || lastName AS name FROM users\")\n"
+                + "  String fullName();\n"
+                + "}\n";
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(src));
+        String md = MarkdownDataFlowReport.render(r);
+        assertTrue("エスケープ済みの \\| を含む", md.contains("\\|"));
+        for (String line : md.split("\n")) {
+            if (line.contains("fullName")) {
+                // エスケープ済み \| を除いた後の生の区切り | は 5 本
+                // (Method/Kind/Return/SQL の 4 列 → 先頭・末尾含め 5 本)。
+                long separators = line.replace("\\|", "").chars()
+                        .filter(ch -> ch == '|').count();
+                assertEquals("SQL 行の列区切り | は 5 本のまま", 5, separators);
+            }
+        }
+    }
+
+    @Test
     public void emptyResultRendersPlaceholder() {
         RoomAnalyzer.Result r = new RoomAnalyzer().analyze(new ArrayList<>());
         String md = MarkdownDataFlowReport.render(r);

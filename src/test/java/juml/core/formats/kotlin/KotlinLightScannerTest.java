@@ -488,6 +488,29 @@ public class KotlinLightScannerTest {
     }
 
     @Test
+    public void nestedNamedTypeMembersAreNotHoistedOntoEnclosingClass() {
+        // 名前付きネスト型 (class/object/interface/enum) のメンバを外側クラスへ
+        // 取り込まないこと。ネスト型は独立エントリで出力されるため二重計上になる。
+        String src = "package com.x\n"
+                + "class Outer {\n"
+                + "  val a: Int = 1\n"
+                + "  class Inner { val b: String = \"\"; fun foo() {} }\n"
+                + "  object Helper { val h: Int = 0 }\n"
+                + "}\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        JavaClassInfo outer = infos.stream()
+                .filter(c -> "Outer".equals(c.getSimpleName())).findFirst().orElseThrow(AssertionError::new);
+        assertTrue("Outer は自身の a を持つ", hasField(outer, "a"));
+        assertFalse("Outer は Inner.b を吸収しない", hasField(outer, "b"));
+        assertFalse("Outer は Helper.h を吸収しない", hasField(outer, "h"));
+        assertFalse("Outer は Inner.foo を吸収しない", hasMethod(outer, "foo"));
+        JavaClassInfo inner = infos.stream()
+                .filter(c -> "Inner".equals(c.getSimpleName())).findFirst().orElseThrow(AssertionError::new);
+        assertTrue("Inner は自身の b を保持", hasField(inner, "b"));
+        assertTrue("Inner は自身の foo を保持", hasMethod(inner, "foo"));
+    }
+
+    @Test
     public void functionWithDefaultCallArgIsNotDropped() {
         // 既定引数に呼び出し listOf() を含む関数を脱落させないこと (ネスト () を許容)。
         String src = "package com.x\n"

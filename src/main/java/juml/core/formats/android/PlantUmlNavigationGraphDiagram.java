@@ -171,7 +171,6 @@ public final class PlantUmlNavigationGraphDiagram {
 
     private static void emitDeepLinkNotes(StringBuilder out, AndroidNavigationGraphInfo info,
                                            Map<String, String> aliasMap) {
-        int noteSeq = 0;
         for (NavigationDestination dest : info.getDestinations()) {
             if (dest.getDeepLinks().isEmpty()) {
                 continue;
@@ -181,9 +180,9 @@ public final class PlantUmlNavigationGraphDiagram {
             if (alias == null) {
                 continue;
             }
-            String noteAlias = "DL" + noteSeq++;
-            out.append("note left of ").append(alias).append(" as ").append(noteAlias)
-                    .append('\n');
+            // 添付ノート (note left of X) には別名 (as DLn) を付けられない。
+            // 付けると PlantUML が構文エラーで図全体の描画に失敗するため付けない。
+            out.append("note left of ").append(alias).append('\n');
             for (String uri : dest.getDeepLinks()) {
                 out.append("  ").append(escape(uri)).append('\n');
             }

@@ -70,7 +70,9 @@ final class ExpressionAdapter {
         if (ctx.resolve) {
             resolveTarget(mc, call);
         }
-        out.add(call);
+        // 実行順 (レシーバ → 引数 → 自身の呼び出し) で emit する。自身を先に足すと
+        // b.getC().hello() のような fluent chain が [hello, getC] と逆順になり、
+        // シーケンス図が実行と逆の順序で呼び出しを描いてしまう。
         mc.getScope().ifPresent(s -> walk(s, out, ctx));
         // 引数の位置に関わらず、インライン (ラムダ/匿名クラス/メソッド参照) は
         // コールバック本体として call.getInlineMethods() に取り込む。
@@ -83,6 +85,7 @@ final class ExpressionAdapter {
                 walk(arg, out, ctx);
             }
         }
+        out.add(call);
     }
 
     /** 呼び出しの receiver 文字列（{@code ""} / {@code "foo"} / {@code "a.b"} / {@code "this.x"}）。 */
