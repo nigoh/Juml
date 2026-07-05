@@ -23,6 +23,7 @@ import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -215,6 +216,40 @@ public class DiagramTabPaneStateSyncTest {
 
         assertTrue("非シーケンスの動的タブへ切替でも隠し participant はクリアされるはず",
                 GuiActionRunner.execute(() -> state.sequenceHiddenParticipants.isEmpty()));
+    }
+
+    // -------------------------------------------------------------------------
+    // (#40) スコープはタブ固有: activeTabSpec() がフォーカス中タブの scope を返す
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void activeTabSpec_reflectsFocusedTabScopeWithoutBleeding() {
+        DiagramScope scopeA = DiagramScope.builder().includePackage("com.a").build();
+        JavaClassInfo a = classInfo("com.a.Alpha");
+        JavaClassInfo b = classInfo("com.b.Beta");
+        DiagramRequest specA = new DiagramRequest(DiagramKind.CLASS, null, null, true,
+                scopeA, false);
+        DiagramRequest specB = new DiagramRequest(DiagramKind.CLASS, null, null, true,
+                null, false);
+
+        // スコープ付きタブ A を開く (A がアクティブ)。
+        TreeNodeOpenRequest reqA = TreeNodeOpenRequest.classNode(a);
+        GuiActionRunner.execute(() -> pane.openDiagram("A", "Alpha",
+                DiagramTabSupport.iconFor(reqA), specA, reqA));
+        assertEquals("アクティブタブ A の spec は scopeA を持つ", scopeA,
+                GuiActionRunner.execute(() -> pane.activeTabSpec().getScope()));
+
+        // スコープ無しタブ B を開く (B がアクティブ)。A のスコープが漏れてはならない。
+        TreeNodeOpenRequest reqB = TreeNodeOpenRequest.classNode(b);
+        GuiActionRunner.execute(() -> pane.openDiagram("B", "Beta",
+                DiagramTabSupport.iconFor(reqB), specB, reqB));
+        assertNull("別タブ B に A のスコープが漏れてはならない",
+                GuiActionRunner.execute(() -> pane.activeTabSpec().getScope()));
+
+        // A へ戻すと再び scopeA が見える (タブ固有に保持されている)。
+        GuiActionRunner.execute(() -> tabs.setSelectedIndex(0));
+        assertEquals("A へ戻すとタブ固有の scopeA が復活する", scopeA,
+                GuiActionRunner.execute(() -> pane.activeTabSpec().getScope()));
     }
 
     // -------------------------------------------------------------------------

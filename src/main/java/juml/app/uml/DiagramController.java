@@ -259,23 +259,7 @@ public final class DiagramController {
      * キャンセル / 空スコープ選択時は null。
      */
     private DiagramScope promptForScope() {
-        if (!cache().isLoaded()) {
-            return null;
-        }
-        java.util.Set<String> packages = new java.util.TreeSet<>();
-        java.util.Set<String> modules =
-                new java.util.TreeSet<>(cache().getClassToModule().values());
-        for (JavaClassInfo c : cache().getClasses()) {
-            String p = c.getPackageName();
-            if (p != null && !p.isEmpty()) {
-                packages.add(p);
-            }
-        }
-        DiagramScopeDialog dlg = new DiagramScopeDialog(parentFrame,
-                List.copyOf(packages), List.copyOf(modules), state.currentScope);
-        dlg.setVisible(true);
-        DiagramScope picked = dlg.getResult();
-        return (picked == null || picked.isEmpty()) ? null : picked;
+        return entryDialogs.promptForScope();
     }
 
     /** Manifest 図をタブで開く。 */
@@ -418,6 +402,23 @@ public final class DiagramController {
         }
     }
 
+    /** アクティブタブの現在の描画リクエスト (無ければ null)。タブ固有状態の起点に使う (#40)。 */
+    DiagramRequest activeTabSpec() {
+        return tabPane != null ? tabPane.activeTabSpec() : null;
+    }
+
+    /**
+     * アクティブタブの spec を {@code spec} へ差し替えて再描画する。null / タブ無しなら共有状態
+     * からの再構築へフォールバック。タブ固有変更を「アクティブタブ spec の更新」へ統一する (#40)。
+     */
+    void applySpecToActiveTab(DiagramRequest spec) {
+        if (spec != null && tabPane != null) {
+            tabPane.setActiveTabSpecAndRender(spec);
+        } else {
+            applyStateToActiveTab();
+        }
+    }
+
     /** アクティブタブの図種と共有状態から {@link DiagramRequest} を組み立てる。 */
     private DiagramRequest buildSpecForKind(DiagramKind k) {
         if (k == null) {
@@ -449,28 +450,7 @@ public final class DiagramController {
     }
 
     public void openScopeDialog() {
-        if (!cache().isLoaded()) {
-            JOptionPane.showMessageDialog(parentFrame,
-                    Messages.get("dlg.noProject.message"),
-                    Messages.get("dlg.noProject.title"), JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-        java.util.Set<String> packages = new java.util.TreeSet<>();
-        java.util.Set<String> modules = new java.util.TreeSet<>(cache().getClassToModule().values());
-        for (JavaClassInfo c : cache().getClasses()) {
-            String p = c.getPackageName();
-            if (p != null && !p.isEmpty()) {
-                packages.add(p);
-            }
-        }
-        DiagramScopeDialog dlg = new DiagramScopeDialog(parentFrame,
-                List.copyOf(packages), List.copyOf(modules), state.currentScope);
-        dlg.setVisible(true);
-        DiagramScope picked = dlg.getResult();
-        if (picked != null) {
-            state.currentScope = picked.isEmpty() ? null : picked;
-            applyStateToActiveTab();
-        }
+        entryDialogs.openScopeDialog();
     }
 
     // -------------------------------------------------------------------------

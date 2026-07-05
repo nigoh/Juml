@@ -210,4 +210,53 @@ public class AndroidLayoutEngineTest {
         assertEquals(0, AndroidLayoutEngine.parseDp("match_parent"), 0.001);
         assertEquals(0, AndroidLayoutEngine.parseDp(null), 0.001);
     }
+
+    /** parseDpOrNull は「未指定」と「明示的な 0」「負値」を区別し、非有限は null にする (#44)。 */
+    @Test
+    public void parseDpOrNull_distinguishesAbsentZeroAndNegative() {
+        assertNull(AndroidLayoutEngine.parseDpOrNull(null));
+        assertNull(AndroidLayoutEngine.parseDpOrNull(""));
+        assertEquals(0.0, AndroidLayoutEngine.parseDpOrNull("0dp"), 0.0001);
+        assertEquals(-8.0, AndroidLayoutEngine.parseDpOrNull("-8dp"), 0.0001);
+        assertNull(AndroidLayoutEngine.parseDpOrNull("1e400dp"));
+        assertNull(AndroidLayoutEngine.parseDpOrNull("abc"));
+    }
+
+    /** 明示的な paddingLeft=0dp は、より一般的な padding=16dp を上書きする (#44)。 */
+    @Test
+    public void explicitZeroPaddingLeftOverridesAllPadding() {
+        LayoutViewNode root = view("LinearLayout", "match_parent", "match_parent");
+        attr(root, "android:orientation", "vertical");
+        attr(root, "android:padding", "16dp");
+        attr(root, "android:paddingLeft", "0dp");
+        LayoutViewNode child = view("TextView", "wrap_content", "40dp");
+        root.getChildren().add(child);
+        MeasuredView mv = AndroidLayoutEngine.layout(wrap(root), DEV, null);
+        MeasuredView mc = mv.getChildren().get(0);
+        assertEquals("paddingLeft=0dp が padding=16dp に勝つ", 0, mc.getX(), 0.001);
+        assertEquals("top は padding=16dp のまま", 16, mc.getY(), 0.001);
+    }
+
+    /** 負のマージン (重ね合わせ用途) が 0 に化けず、そのまま位置へ反映される (#44)。 */
+    @Test
+    public void negativeMarginPullsChildPosition() {
+        LayoutViewNode root = view("FrameLayout", "match_parent", "match_parent");
+        LayoutViewNode child = view("Button", "100dp", "48dp");
+        attr(child, "android:layout_marginTop", "-8dp");
+        root.getChildren().add(child);
+        MeasuredView mv = AndroidLayoutEngine.layout(wrap(root), DEV, null);
+        assertEquals(-8, mv.getChildren().get(0).getY(), 0.001);
+    }
+
+    /** marginStart は API17+ の解決順どおり marginLeft より優先される (#44)。 */
+    @Test
+    public void marginStartWinsOverMarginLeft() {
+        LayoutViewNode root = view("FrameLayout", "match_parent", "match_parent");
+        LayoutViewNode child = view("Button", "100dp", "48dp");
+        attr(child, "android:layout_marginLeft", "10dp");
+        attr(child, "android:layout_marginStart", "30dp");
+        root.getChildren().add(child);
+        MeasuredView mv = AndroidLayoutEngine.layout(wrap(root), DEV, null);
+        assertEquals(30, mv.getChildren().get(0).getX(), 0.001);
+    }
 }

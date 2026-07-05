@@ -263,11 +263,15 @@ public class UmlMainFrame extends JFrame {
         mcb.pickSequenceEntry = () -> controller.pickSequenceEntry();
         mcb.openParticipantFilterDialog = () -> controller.openParticipantFilterDialog();
         mcb.clearSequenceParticipants = () -> {
-            if (!state.sequenceHiddenParticipants.isEmpty()) {
+            // 参加者フィルタはタブ固有。アクティブタブの spec から外し、下書きも空にする (#40)。
+            DiagramRequest active = controller.activeTabSpec();
+            boolean tabHasFilter = active != null
+                    && !active.getSequenceHiddenParticipants().isEmpty();
+            if (tabHasFilter || !state.sequenceHiddenParticipants.isEmpty()) {
                 state.sequenceHiddenParticipants.clear();
                 status.setText(Messages.get("status.clearedSeqFilter"));
-                // 変更したグローバル状態を種にシーケンス図を作り直す (F5 とは異なる経路)。
-                controller.applyStateToActiveTab();
+                controller.applySpecToActiveTab(
+                        active != null ? active.withSequenceHiddenParticipants(null) : null);
             }
         };
         mcb.pickActivityEntry = () -> controller.pickActivityEntry();
@@ -276,8 +280,10 @@ public class UmlMainFrame extends JFrame {
         mcb.applyPreset = this::applyPreset;
         mcb.openScopeDialog = () -> controller.openScopeDialog();
         mcb.clearScope = () -> {
+            // スコープはタブ固有。アクティブタブの spec から外し、下書きも空にする (#40)。
             state.currentScope = null;
-            controller.applyStateToActiveTab();
+            DiagramRequest active = controller.activeTabSpec();
+            controller.applySpecToActiveTab(active != null ? active.withScope(null) : null);
         };
         mcb.enableGraphviz = this::enableGraphviz;
         mcb.selectDiagramKindFromMenu = k -> controller.selectDiagramKind(k);

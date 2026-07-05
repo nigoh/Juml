@@ -48,6 +48,7 @@ public class WindowStateManagerTest {
         Setting setting = new Setting();
         setting.setWindowX(150);
         setting.setWindowY(200);
+        setting.setWindowLocationSaved(true);
 
         JFrame frame = GuiActionRunner.execute(() -> {
             JFrame f = new JFrame();
@@ -165,6 +166,8 @@ public class WindowStateManagerTest {
             assertEquals("windowY が Setting に保存されるべき", 60, setting.getWindowY());
             assertEquals("windowWidth が Setting に保存されるべき", 900, setting.getWindowWidth());
             assertEquals("windowHeight が Setting に保存されるべき", 700, setting.getWindowHeight());
+            assertTrue("位置を保存したら windowLocationSaved=true になるべき",
+                    setting.isWindowLocationSaved());
         } finally {
             GuiActionRunner.execute(frame::dispose);
         }
