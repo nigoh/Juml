@@ -25,12 +25,12 @@ dependencies {
     // 両テーマを同梱し、OS ネイティブ LAF より統一感のある外観とダークモードを提供する。
     // fat jar に同梱され、起動時 / Preferences から切り替える (再起動不要のライブ適用)。
     implementation 'com.formdev:flatlaf:3.5.4'
-    implementation 'org.apache.xmlgraphics:batik-svggen:1.17'
-    implementation 'org.apache.xmlgraphics:batik-dom:1.17'
+    implementation 'org.apache.xmlgraphics:batik-svggen:1.19'
+    implementation 'org.apache.xmlgraphics:batik-dom:1.19'
     // ベクター SVG プレビュー用: PlantUML が出力した SVG を GraphicsNode として
     // 直接 Swing に描画するため Batik bridge を取り込む (transitively pulls in
     // batik-anim / batik-bridge / batik-gvt / batik-css)。
-    implementation 'org.apache.xmlgraphics:batik-bridge:1.17'
+    implementation 'org.apache.xmlgraphics:batik-bridge:1.19'
     implementation 'com.rover12421.opensource:JFontChooser:1.0.5-3'
     // PlantUML (MIT 版アーティファクト plantuml-mit を使用)。UML 系出力を SVG として
     // 直接書き出すために同梱する。PlantUML は同一機能を複数ライセンスの別アーティファクト
