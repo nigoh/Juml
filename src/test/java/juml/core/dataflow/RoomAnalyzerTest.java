@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -227,6 +228,25 @@ public class RoomAnalyzerTest {
                 long separators = line.replace("\\|", "").chars()
                         .filter(ch -> ch == '|').count();
                 assertEquals("SQL 行の列区切り | は 5 本のまま", 5, separators);
+            }
+        }
+    }
+
+    @Test
+    public void markdownReportNeutralizesBacktickInSqlCell() {
+        // SQLite 識別子引用 (`order`) 内のバッククォートがコードスパンを閉じて
+        // テーブルセルを壊さないよう、バッククォートを無効化すること。
+        String src = "package com.x;\n"
+                + "@Dao public interface OrderDao {\n"
+                + "  @Query(\"SELECT * FROM `order` WHERE `group` = :g\")\n"
+                + "  String load(String g);\n"
+                + "}\n";
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(src));
+        String md = MarkdownDataFlowReport.render(r);
+        for (String line : md.split("\n")) {
+            if (line.contains("load") && line.contains("SELECT")) {
+                assertFalse("SQL セルに裸のバッククォート引用が残ってはいけない: " + line,
+                        line.contains("`order`") || line.contains("`group`"));
             }
         }
     }

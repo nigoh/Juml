@@ -121,10 +121,14 @@ public final class MarkdownDataFlowReport {
     /**
      * GFM テーブルのセル値を安全化する。{@code |} は列区切りと解釈される
      * (コードスパン内でも) ため {@code \|} にエスケープし、改行は行を壊すので空白に畳む。
-     * 例: {@code SELECT a || ' ' || b} を含む @Query が行をずらすのを防ぐ。
+     * さらにバッククォートは単一バッククォートのコードスパンを途中で閉じてしまい
+     * (GFM ではコードスパン内のバッククォートをバックスラッシュで無効化できない)、
+     * SQLite の識別子引用 {@code SELECT * FROM `order`} 等でセルが壊れるため、
+     * 見た目の近いアポストロフィ {@code '} に置換する。
+     * 例: {@code SELECT a || ' ' || b} や {@code `order`} を含む @Query が行を壊すのを防ぐ。
      */
     private static String cell(String s) {
         if (s == null) return "";
-        return s.replace("|", "\\|").replaceAll("[\\r\\n]+", " ");
+        return s.replace("|", "\\|").replace('`', '\'').replaceAll("[\\r\\n]+", " ");
     }
 }

@@ -317,20 +317,21 @@ final class StatementAdapter {
             out.add(lv);
             return;
         }
-        // switch 式初期化子の有無は AST 全走査になるため 1 度だけ実行して使い回す。
-        // ネスト switch の二重 emit を防ぐため topLevelSwitchExprs で直接子のみ取得。
-        List<SwitchExpr> switchInits = init == null
-                ? java.util.Collections.emptyList() : topLevelSwitchExprs(init);
-        if (!switchInits.isEmpty()) {
-            // switch 式初期化子: Block を out に出し、LocalVar も残す
-            for (SwitchExpr se : switchInits) {
+        // 非インライン初期化子: 初期化子内の呼び出しを兄弟 Call として持ち上げてから
+        // LocalVar を残す。これをしないと String s = svc.getName(); のような最も
+        // 一般的な形の呼び出しがシーケンス図・コールグラフから丸ごと欠落する
+        // (return / throw / フィールド代入では取りこぼさないのに不整合だった)。
+        if (init != null) {
+            // switch 式初期化子は emitSwitch で Block 化する。emitCalls の walk() は
+            // SwitchExpr で早期 return するため二重 emit にはならず、
+            // foo() + switch(...) のような兄弟呼び出しは引き続き捕捉される。
+            for (SwitchExpr se : topLevelSwitchExprs(init)) {
                 emitSwitch(se, se.getSelector(), se.getEntries(), out, ctx, null);
             }
-            lv = new JavaMethodInfo.LocalVar(type, name, ctx.comments.raw(init));
-        } else {
-            lv = new JavaMethodInfo.LocalVar(type, name,
-                    init == null ? "" : ctx.comments.raw(init));
+            ExpressionAdapter.emitCalls(init, out, ctx);
         }
+        lv = new JavaMethodInfo.LocalVar(type, name,
+                init == null ? "" : ctx.comments.raw(init));
         out.add(lv);
     }
 
