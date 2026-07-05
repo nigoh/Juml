@@ -77,7 +77,9 @@ public final class KotlinLightScanner {
                     + "((?:public\\s+|private\\s+|protected\\s+|internal\\s+"
                     + "|open\\s+|abstract\\s+|final\\s+|override\\s+|suspend\\s+|inline\\s+)*)"
                     + "fun\\s+(?:<[^>]+>\\s+)?"
-                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(([^)]*)\\)"
+                    // 引数リストは 1 レベルのネスト () を許す (既定引数 listOf() 等で
+                    // 最初の ) で切れて関数まるごと脱落するのを防ぐ)。
+                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(((?:[^()]|\\([^()]*\\))*)\\)"
                     + "(?:\\s*:\\s*([A-Za-z_$][\\w.<>?\\[\\]\\s,]*?))?(?=\\s*[={\\n])");
 
     /** Kotlin ソースから {@link JavaClassInfo} のリストを抽出する。 */
@@ -205,8 +207,9 @@ public final class KotlinLightScanner {
                     info.setSuperClass(sup);
                 }
             } else {
-                // by 委譲 ({@code B by b}) は最初のトークンのみ採用
-                String iface = e.split("\\s+", 2)[0].trim();
+                // by 委譲 ({@code B by b}) の ` by <expr>` だけを除去する。単純に空白で
+                // 切ると多引数ジェネリック (Map<String, Int>) がカンマ後の空白で切れてしまう。
+                String iface = e.replaceFirst("\\s+by\\s+.*$", "").trim();
                 if (!iface.isEmpty()) {
                     info.getInterfaces().add(iface);
                 }
@@ -287,19 +290,28 @@ public final class KotlinLightScanner {
             // Kotlin object は事実上シングルトン → CLASS として扱う
             return JavaClassInfo.Kind.CLASS;
         }
-        // class: enum / annotation / data class を分類
+        // class: enum / annotation / data class を分類。アノテーション (@Foo(...)) を除去して
+        // から修飾子トークンだけを whole-word で見る。substring 一致だと
+        // @Entity(tableName = "enum_table") の "enum" 等で誤分類する。
         if (modifiers != null) {
-            if (modifiers.contains("enum")) return JavaClassInfo.Kind.ENUM;
-            if (modifiers.contains("annotation")) return JavaClassInfo.Kind.ANNOTATION;
+            String mods = modifiers.replaceAll(
+                    "@[A-Za-z_][\\w.]*(\\((?:[^()]|\\([^()]*\\))*\\))?", " ");
+            java.util.Set<String> tokens = new java.util.HashSet<>(
+                    java.util.Arrays.asList(mods.trim().split("\\s+")));
+            if (tokens.contains("enum")) return JavaClassInfo.Kind.ENUM;
+            if (tokens.contains("annotation")) return JavaClassInfo.Kind.ANNOTATION;
         }
         return JavaClassInfo.Kind.CLASS;
     }
 
     private static void extractAnnotations(String annsAndMods, List<String> into) {
         if (annsAndMods == null) return;
-        // 引数の () は 1 レベルのネストを許容 (Kotlin の Entity(foreignKeys = [ForeignKey(...)]) 等)
+        // 引数の () は 1 レベルのネストを許容 (Kotlin の Entity(foreignKeys = [ForeignKey(...)]) 等)。
+        // 先頭の use-site target (@field: / @get: / @param: 等) は読み飛ばし、実アノテーション名を
+        // 拾う。付けないと @field:SerializedName(...) が "@field" として記録され本来の名前が落ちる。
         Pattern annPattern = Pattern.compile(
-                "@([A-Za-z_][\\w.]*)(\\((?:[^()]|\\([^()]*\\))*\\))?");
+                "@(?:(?:field|get|set|param|property|receiver|delegate|setparam|file)\\s*:\\s*)?"
+                        + "([A-Za-z_][\\w.]*)(\\((?:[^()]|\\([^()]*\\))*\\))?");
         Matcher m = annPattern.matcher(annsAndMods);
         while (m.find()) {
             String full = "@" + m.group(1) + (m.group(2) == null ? "" : m.group(2));
@@ -723,6 +735,13 @@ public final class KotlinLightScanner {
                     }
                 }
             }
+            // 名前付きネスト型 (class / interface / object / enum) の本体はマスクする。
+            // これらは独立した JavaClassInfo エントリとして別途出力されるため、囲む型へ
+            // ホイストするとメンバが重複・誤付与される。ただし companion object だけは
+            // 従来どおり外側へホイストする (Outer.CONST のように静的的に参照されるため)。
+            if (!codeBlock && isNestedTypeHeader(body, i)) {
+                codeBlock = true;
+            }
             if (codeBlock) {
                 int close = matchBrace(body, i);
                 if (close > i) {
@@ -734,6 +753,29 @@ public final class KotlinLightScanner {
             }
         }
         return mask;
+    }
+
+    /**
+     * {@code body} の位置 {@code bracePos} の {@code &#123;} が、名前付きネスト型
+     * (class / interface / object / enum) の本体開始かどうかを判定する。直前の文
+     * 境界 ({@code ;} / {@code &#125;} / {@code &#123;}) までのヘッダに型宣言キーワードが
+     * 含まれ、かつ {@code companion object} でなければ true。companion object は
+     * 外側へホイストしたいので false を返す (従来どおり降りて抽出する)。
+     */
+    private static boolean isNestedTypeHeader(String body, int bracePos) {
+        int hs = bracePos - 1;
+        while (hs >= 0) {
+            char ch = body.charAt(hs);
+            if (ch == ';' || ch == '}' || ch == '{') {
+                break;
+            }
+            hs--;
+        }
+        String header = body.substring(hs + 1, bracePos);
+        if (header.matches("(?s).*\\bcompanion\\s+object\\b.*")) {
+            return false;
+        }
+        return header.matches("(?s).*\\b(class|interface|object|enum)\\b.*");
     }
 
     /**

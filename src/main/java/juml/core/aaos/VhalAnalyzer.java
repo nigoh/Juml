@@ -245,12 +245,18 @@ public final class VhalAnalyzer {
         int areaIdx;
         switch (method) {
             case "registerCallback":
-            case "subscribePropertyEvents":
             case "unregisterCallback":
-            case "unsubscribePropertyEvents":
-                // 第 0 引数はコールバック、第 1 引数が Property
+                // registerCallback(callback, propertyId, rate): 第 1 引数が Property。
+                // 第 2 引数は rate であって Area ではないので Area は取らない。
                 propIdx = 1;
-                areaIdx = 2;
+                areaIdx = -1;
+                break;
+            case "subscribePropertyEvents":
+            case "unsubscribePropertyEvents":
+                // subscribePropertyEvents(propertyId, [rate,] callback): 第 0 引数が
+                // Property。後続は rate/callback で Area ではないので Area は取らない。
+                propIdx = 0;
+                areaIdx = -1;
                 break;
             default:
                 // getProperty / setProperty: 第 0 引数が Property、第 1 引数が Area
@@ -259,7 +265,7 @@ public final class VhalAnalyzer {
                 break;
         }
         String propertyToken = parts.length > propIdx ? parts[propIdx] : "";
-        String areaToken = parts.length > areaIdx ? parts[areaIdx] : "";
+        String areaToken = (areaIdx >= 0 && parts.length > areaIdx) ? parts[areaIdx] : "";
         return new VhalAccess(callerFqn, callerMethod, filePath, line, kind,
                 propertyToken, areaToken);
     }

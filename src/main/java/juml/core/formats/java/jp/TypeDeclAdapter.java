@@ -67,6 +67,13 @@ final class TypeDeclAdapter {
             } else if (bd instanceof ConstructorDeclaration) {
                 MemberAdapter.addConstructor(c, (ConstructorDeclaration) bd, ctx);
             } else if (bd instanceof com.github.javaparser.ast.body
+                    .CompactConstructorDeclaration) {
+                // record の正準コンストラクタ (引数は record コンポーネント)。
+                MemberAdapter.addCompactConstructor(c,
+                        (com.github.javaparser.ast.body.CompactConstructorDeclaration) bd,
+                        td instanceof RecordDeclaration
+                                ? ((RecordDeclaration) td).getParameters() : null, ctx);
+            } else if (bd instanceof com.github.javaparser.ast.body
                     .AnnotationMemberDeclaration) {
                 MemberAdapter.addAnnotationMember(c,
                         (com.github.javaparser.ast.body.AnnotationMemberDeclaration) bd, ctx);

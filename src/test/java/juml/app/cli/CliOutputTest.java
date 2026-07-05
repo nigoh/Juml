@@ -109,4 +109,37 @@ public class CliOutputTest {
         File svg = new File(tmp.getRoot(), "foo.svg");
         assertEquals("foo.puml", CliOutput.siblingPumlFor(svg).getName());
     }
+
+    @Test
+    public void isSvgTargetDetectsSvgFileAndDirectory() throws IOException {
+        assertTrue(CliOutput.isSvgTarget(new File(tmp.getRoot(), "out.svg")));
+        assertTrue(CliOutput.isSvgTarget(new File(tmp.getRoot(), "OUT.SVG")));
+        assertTrue(CliOutput.isSvgTarget(tmp.newFolder("dir")));
+        assertFalse(CliOutput.isSvgTarget(new File(tmp.getRoot(), "out.puml")));
+        assertFalse(CliOutput.isSvgTarget(null));
+    }
+
+    @Test
+    public void perDiagramSvgTargetForDirectoryUsesLabel() throws IOException {
+        File dir = tmp.newFolder("navs");
+        File t = CliOutput.perDiagramSvgTarget(dir, "main_graph", 0, "nav-graph");
+        assertEquals(dir, t.getParentFile());
+        assertEquals("main_graph.svg", t.getName());
+    }
+
+    @Test
+    public void perDiagramSvgTargetForFileAppendsLabel() {
+        File out = new File(tmp.getRoot(), "graphs.svg");
+        File t = CliOutput.perDiagramSvgTarget(out, "detail", 1, "nav-graph");
+        assertEquals("graphs-detail.svg", t.getName());
+    }
+
+    @Test
+    public void perDiagramSvgTargetSanitizesAndFallsBackOnEmptyLabel() {
+        File out = new File(tmp.getRoot(), "g.svg");
+        assertEquals("g-a_b.svg",
+                CliOutput.perDiagramSvgTarget(out, "a/b", 0, "nav-graph").getName());
+        assertEquals("g-nav-graph-2.svg",
+                CliOutput.perDiagramSvgTarget(out, "", 2, "nav-graph").getName());
+    }
 }

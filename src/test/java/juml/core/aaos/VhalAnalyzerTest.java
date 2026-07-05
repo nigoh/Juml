@@ -55,6 +55,31 @@ public class VhalAnalyzerTest {
     }
 
     @Test
+    public void subscribePropertyEventsReadsPropertyFromFirstArg() {
+        // subscribePropertyEvents(propertyId, callback) は Property が第 0 引数。
+        // registerCallback と同じ第 1 引数扱いだと callback 変数を Property と誤認する。
+        String src = "package com.x;\n"
+                + "public class HvacCtl {\n"
+                + "  private CarPropertyManager carPropertyManager;\n"
+                + "  void sub() { carPropertyManager.subscribePropertyEvents("
+                + "HVAC_TEMPERATURE_SET, cb); }\n"
+                + "  void unsub() { carPropertyManager.unsubscribePropertyEvents("
+                + "HVAC_FAN_SPEED, cb); }\n"
+                + "}\n";
+        List<VhalAccess> hits = new VhalAnalyzer().analyzeSource(src, "HvacCtl.java");
+        assertEquals(2, hits.size());
+        boolean sub = false, unsub = false;
+        for (VhalAccess a : hits) {
+            if ("HVAC_TEMPERATURE_SET".equals(a.getPropertyShortName())) sub = true;
+            if ("HVAC_FAN_SPEED".equals(a.getPropertyShortName())) unsub = true;
+            // callback 変数 cb を Property/Area トークンに取り違えていないこと
+            assertEquals("", a.getAreaToken());
+        }
+        assertTrue("subscribePropertyEvents の Property を第 0 引数から取る", sub);
+        assertTrue("unsubscribePropertyEvents の Property を第 0 引数から取る", unsub);
+    }
+
+    @Test
     public void skipsNonCarPropertyManagerReceivers() {
         String src = "package com.x;\n"
                 + "public class Other {\n"

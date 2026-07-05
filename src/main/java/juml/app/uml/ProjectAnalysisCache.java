@@ -107,19 +107,23 @@ public final class ProjectAnalysisCache {
     }
 
     /**
-     * ディスクキャッシュの陳腐化チェック用に現在の Java ソース一覧だけを走査する
-     * (パースはしない)。DB の {@code KIND_JAVA} 行と突き合わせるため {@code .java} に絞る。
+     * ディスクキャッシュの陳腐化チェック用に、現在のパース対象ソース一覧を走査する
+     * (パースはしない)。save は {@code .java} だけでなく {@code .kt} / {@code .aidl}
+     * から生成したクラスも {@code KIND_JAVA} で永続化するため、突き合わせる現在側も
+     * 同じ拡張子を含める。{@code .java} だけに絞ると DB の {@code .kt} / {@code .aidl}
+     * 行が毎回「削除された」と誤判定され、キャッシュが常にヒットしなくなる。
      */
-    private static List<File> scanJavaFiles(File root,
+    private static List<File> scanSourceFiles(File root,
             juml.core.formats.java.AndroidProjectScanner.Options scanOpts) {
         List<File> all = juml.core.formats.java.AndroidProjectScanner.scan(root, scanOpts);
-        List<File> java = new java.util.ArrayList<>();
+        List<File> sources = new java.util.ArrayList<>();
         for (File f : all) {
-            if (f.getName().endsWith(".java")) {
-                java.add(f);
+            String name = f.getName();
+            if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".aidl")) {
+                sources.add(f);
             }
         }
-        return java;
+        return sources;
     }
 
     /** 現在の世代を返す (ロード開始時に捕捉し、発行時に照合する)。 */
@@ -191,13 +195,18 @@ public final class ProjectAnalysisCache {
         // lazyDetails=true でかつ Hit したら parse をスキップ。ただし DB 記録時から
         // ソースが 1 つでも追加/変更/削除されていたらキャッシュを捨てて再解析する
         // (陳腐化検出のための走査は full parse より十分軽い)。
+        // 走査したソース一覧は陳腐化チェック (disk.load) と save の両方で使うため
+        // 一度だけ求めて共有する。save 側に渡すことで 0 クラスのファイル
+        // (package-info.java 等) も DB に記録され、毎回ミスするのを防ぐ。
+        List<File> currentSources = null;
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                List<File> currentJava = scanJavaFiles(root, scanOpts);
+                currentSources = scanSourceFiles(root, scanOpts);
                 if (c.isCancelled()) {
                     return;
                 }
-                Optional<DiskAnalysisCache.Snapshot> diskSnap = disk.load(root, p, currentJava);
+                Optional<DiskAnalysisCache.Snapshot> diskSnap =
+                        disk.load(root, p, currentSources);
                 if (diskSnap.isPresent()) {
                     // 依存 JAR インデックスは DB に持たないため、既に得ている analysis から
                     // 再構築する (parse はスキップ)。省くと 2 回目以降のロードで外部型の
@@ -233,7 +242,7 @@ public final class ProjectAnalysisCache {
         // 解析成功後にディスクキャッシュを更新 (Stage A 情報を永続化)
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                disk.save(root, classes, index);
+                disk.save(root, classes, index, currentSources);
             } catch (IOException ex) {
                 l.onError(juml.util.ErrorCode.CACHE_002, null, -1, "disk cache save failed: " + ex.getMessage());
             }

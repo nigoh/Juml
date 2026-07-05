@@ -241,6 +241,97 @@ public class DiskAnalysisCacheTest {
                 cache.load(projectRoot, ProgressListener.silent(), current).isPresent());
     }
 
+    /**
+     * 陳腐化チェック: {@code .aidl} 由来のクラスも KIND_JAVA で永続化されるため、
+     * currentFiles に {@code .aidl} を含めればヒットし、含め忘れると (旧挙動)
+     * DB 行が「削除された」と誤判定されて毎回ミスすることを示す回帰テスト。
+     */
+    @Test
+    public void aidlSourceMatchesOnlyWhenIncludedInCurrentFiles() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "aidl/p");
+        assertTrue(srcDir.mkdirs());
+        File aidl = new File(srcDir, "IFoo.aidl");
+        try (FileWriter w = new FileWriter(aidl)) {
+            w.write("package p; interface IFoo {}");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "IFoo"), aidl, null);
+        cache.save(projectRoot, idx.headers(), idx);
+
+        // .aidl を含めればヒット
+        assertTrue(".aidl を含めればキャッシュヒット",
+                cache.load(projectRoot, ProgressListener.silent(),
+                        new ArrayList<>(Arrays.asList(aidl))).isPresent());
+        // .aidl を含め忘れると DB 行が deleted 扱いになりミス (回帰の再現)
+        assertFalse(".aidl を含め忘れると毎回ミス",
+                cache.load(projectRoot, ProgressListener.silent(),
+                        new ArrayList<>()).isPresent());
+    }
+
+    /**
+     * 陳腐化チェック: クラスを生まないソース (package-info.java 等) を allSources で
+     * 登録すれば、その後の load でキャッシュヒットすること。登録しないと DB に無い
+     * ため毎回「追加」判定でミスし、ディスクキャッシュが恒久的に効かなくなる回帰。
+     */
+    @Test
+    public void zeroClassSourceDoesNotCauseAlwaysMiss() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "src");
+        assertTrue(srcDir.mkdirs());
+        File hello = new File(srcDir, "Hello.java");
+        try (FileWriter w = new FileWriter(hello)) {
+            w.write("package p; public class Hello {}");
+        }
+        // クラスを生まないソース (package-info)。解析結果 classes には現れない。
+        File pkgInfo = new File(srcDir, "package-info.java");
+        try (FileWriter w = new FileWriter(pkgInfo)) {
+            w.write("package p;");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "Hello"), hello, null);
+
+        List<File> allSources = new ArrayList<>(Arrays.asList(hello, pkgInfo));
+        // allSources 付き save で 0 クラスファイルも記録
+        cache.save(projectRoot, idx.headers(), idx, allSources);
+
+        // 変更なし → ヒットするはず (以前は package-info が毎回「追加」でミスしていた)
+        assertTrue("0 クラスファイルがあってもヒットする",
+                cache.load(projectRoot, ProgressListener.silent(), allSources).isPresent());
+    }
+
+    /**
+     * 旧 3 引数 save (allSources なし) は 0 クラスファイルを記録しないため、その
+     * ファイルを含む load はミスする — 従来挙動を固定して回帰対比を明示する。
+     */
+    @Test
+    public void legacySaveWithoutAllSourcesStillMissesOnZeroClassFile() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File srcDir = new File(projectRoot, "src");
+        assertTrue(srcDir.mkdirs());
+        File hello = new File(srcDir, "Hello.java");
+        try (FileWriter w = new FileWriter(hello)) {
+            w.write("package p; public class Hello {}");
+        }
+        File pkgInfo = new File(srcDir, "package-info.java");
+        try (FileWriter w = new FileWriter(pkgInfo)) {
+            w.write("package p;");
+        }
+        DiskAnalysisCache cache = new DiskAnalysisCache(base);
+        ClassIndex idx = new ClassIndex();
+        idx.put(makeClass("p", "Hello"), hello, null);
+        cache.save(projectRoot, idx.headers(), idx);
+
+        List<File> allSources = new ArrayList<>(Arrays.asList(hello, pkgInfo));
+        assertFalse("allSources 未登録だと package-info が『追加』でミス",
+                cache.load(projectRoot, ProgressListener.silent(), allSources).isPresent());
+    }
+
     /** currentJavaFiles を渡さない従来 API は陳腐化チェックせず常にヒット。 */
     @Test
     public void nullCurrentFilesSkipsStalenessCheck() throws Exception {

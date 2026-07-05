@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -103,7 +104,9 @@ public final class AndroidBpParser {
                 byName.put(name, m);
                 origSrcs.put(name, new ArrayList<>(m.getSrcs()));
                 origDeps.put(name, new ArrayList<>(m.getDeps()));
-                Map<String, List<String>> kindSnapshot = new HashMap<>();
+                // 宣言順を保つため LinkedHashMap でスナップショットする。HashMap だと
+                // 継承した依存の並びが実行ごとに変わり、出力が非決定的になる。
+                Map<String, List<String>> kindSnapshot = new LinkedHashMap<>();
                 for (Map.Entry<String, List<String>> e : m.getDepsByKind().entrySet()) {
                     kindSnapshot.put(e.getKey(), new ArrayList<>(e.getValue()));
                 }
@@ -147,6 +150,12 @@ public final class AndroidBpParser {
             Map<String, List<String>> dByKind =
                     origByKind.getOrDefault(name, Collections.emptyMap());
             for (Map.Entry<String, List<String>> e : dByKind.entrySet()) {
+                // "defaults" キーは「この defaults がさらに別の defaults を継承する」
+                // ポインタであり、実依存ではない。継承自体は下の再帰で辿るので、
+                // これを取り込むと継承元モジュールに偽の直接辺 (defaults 種別) が生える。
+                if ("defaults".equals(e.getKey())) {
+                    continue;
+                }
                 for (String depName : e.getValue()) {
                     addDeps.add(new String[] {e.getKey(), depName});
                 }

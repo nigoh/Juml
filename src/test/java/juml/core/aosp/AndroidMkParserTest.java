@@ -361,4 +361,35 @@ public class AndroidMkParserTest {
         assertEquals("$(callfoo,barbaz)", v.get(0).replace(" ", ""));
         assertEquals("x", v.get(1));
     }
+
+    @Test
+    public void testDepsAreClassifiedByKind() {
+        // LOCAL_*_LIBRARIES を Soong 種別付きで addDep することで depsByKind が埋まり、
+        // Soong 依存図が .mk モジュールの辺を描けること (以前は flat list だけで空だった)。
+        String src = ""
+                + "include $(CLEAR_VARS)\n"
+                + "LOCAL_MODULE := libfoo\n"
+                + "LOCAL_SHARED_LIBRARIES := libc liblog\n"
+                + "LOCAL_STATIC_LIBRARIES := libbar\n"
+                + "LOCAL_HEADER_LIBRARIES := libhdr\n"
+                + "LOCAL_REQUIRED_MODULES := sometool\n"
+                + "include $(BUILD_SHARED_LIBRARY)\n";
+        AndroidBpModule m = parser.parseSource(src, "Android.mk").get(0);
+        java.util.Map<String, java.util.List<String>> byKind = m.getDepsByKind();
+        assertTrue("shared_libs に libc/liblog",
+                byKind.getOrDefault("shared_libs", java.util.Collections.emptyList())
+                        .containsAll(java.util.Arrays.asList("libc", "liblog")));
+        assertTrue("static_libs に libbar",
+                byKind.getOrDefault("static_libs", java.util.Collections.emptyList())
+                        .contains("libbar"));
+        assertTrue("header_libs に libhdr",
+                byKind.getOrDefault("header_libs", java.util.Collections.emptyList())
+                        .contains("libhdr"));
+        assertTrue("required に sometool",
+                byKind.getOrDefault("required", java.util.Collections.emptyList())
+                        .contains("sometool"));
+        // flat list も従来通り全件保持
+        assertTrue(m.getDeps().containsAll(
+                java.util.Arrays.asList("libc", "liblog", "libbar", "libhdr", "sometool")));
+    }
 }

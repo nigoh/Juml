@@ -293,6 +293,66 @@ public class JavaStructureExtractorModernJavaTest {
         assertTrue(c.getFields().stream().anyMatch(f -> f.getName().equals("a")));
     }
 
+    @Test
+    public void recordCompactConstructorIsExtracted() {
+        // record の compact (正準) コンストラクタが抽出され、引数が record コンポーネントで
+        // 補完されること (以前は Method/ConstructorDeclaration のどちらでもなく丸ごと欠落)。
+        List<JavaClassInfo> cs = JavaStructureExtractor.extract(
+                "public record Range(int lo, int hi) {\n"
+                        + "  public Range {\n"
+                        + "    if (lo > hi) { throw new IllegalArgumentException(); }\n"
+                        + "  }\n"
+                        + "}\n");
+        JavaMethodInfo ctor = cs.get(0).getMethods().stream()
+                .filter(JavaMethodInfo::isConstructor).findFirst().orElse(null);
+        assertNotNull("compact constructor should be extracted", ctor);
+        assertEquals(java.util.Arrays.asList("lo", "hi"), ctor.getParameterNames());
+    }
+
+    // -------- interface implicit member modifiers (JLS §9.4/§9.5) --------
+
+    @Test
+    public void interfaceMembersGetImplicitPublicModifiers() {
+        // interface のフィールド/メソッドは暗黙 public (フィールドは static final)。
+        // 補わないと visibility=PACKAGE となり publicOnly のクラス図から消える。
+        List<JavaClassInfo> cs = JavaStructureExtractor.extract(
+                "public interface Api {\n"
+                        + "  int MAX = 10;\n"
+                        + "  void run();\n"
+                        + "}\n");
+        JavaClassInfo api = cs.get(0);
+        JavaFieldInfo max = api.getFields().get(0);
+        assertEquals("MAX", max.getName());
+        assertEquals(Visibility.PUBLIC, max.getVisibility());
+        assertTrue("interface const は static", max.isStatic());
+        assertTrue("interface const は final", max.isFinal());
+        JavaMethodInfo run = api.getMethods().stream()
+                .filter(m -> "run".equals(m.getName())).findFirst().orElse(null);
+        assertNotNull(run);
+        assertEquals(Visibility.PUBLIC, run.getVisibility());
+    }
+
+    @Test
+    public void privateInterfaceMethodKeepsPrivateVisibility() {
+        // Java 9+ の private interface メソッドは明示 private なので public に上書きしない。
+        List<JavaClassInfo> cs = JavaStructureExtractor.extract(
+                "public interface Api {\n"
+                        + "  private int helper() { return 1; }\n"
+                        + "}\n");
+        JavaMethodInfo helper = cs.get(0).getMethods().stream()
+                .filter(m -> "helper".equals(m.getName())).findFirst().orElse(null);
+        assertNotNull(helper);
+        assertEquals(Visibility.PRIVATE, helper.getVisibility());
+    }
+
+    @Test
+    public void extractHeadersOnlyPreservesStartLine() {
+        // Stage A (headers-only) でも宣言開始行を保持する (未昇格クラスのソースジャンプ用)。
+        List<JavaClassInfo> headers = JavaStructureExtractor.extractHeadersOnly(
+                "package x;\n\n\npublic class Foo {\n}\n", null);
+        assertEquals(4, headers.get(0).getStartLine());
+    }
+
     // -------- static / instance initializer blocks --------
 
     @Test

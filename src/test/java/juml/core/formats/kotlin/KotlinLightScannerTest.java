@@ -432,4 +432,95 @@ public class KotlinLightScannerTest {
         assertNotNull(c);
         assertTrue("本体 field 'y' が抽出されるはず", hasField(c, "y"));
     }
+
+    @Test
+    public void useSiteTargetAnnotationCapturesRealName() {
+        // @field:SerializedName(...) の実名を拾うこと ("@field" として記録して名前を落とさない)。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  @field:SerializedName(\"user_id\") val id: Long = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        JavaFieldInfo id = c.getFields().stream().filter(f -> "id".equals(f.getName()))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue("実アノテーション名 @SerializedName を拾うはず",
+                id.getAnnotations().stream().anyMatch(a -> a.startsWith("@SerializedName")));
+        assertFalse("use-site target @field を名前として記録しないこと",
+                id.getAnnotations().stream().anyMatch(a -> a.equals("@field")));
+    }
+
+    @Test
+    public void annotationArgContainingEnumWordDoesNotMisclassifyKind() {
+        // @Entity(tableName = "enum_table") の "enum" 部分一致でクラスを ENUM 扱いしないこと。
+        String src = "package com.x\n"
+                + "@Entity(tableName = \"enum_table\")\n"
+                + "data class Foo(val id: Long)\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertEquals(JavaClassInfo.Kind.CLASS, c.getKind());
+    }
+
+    @Test
+    public void multiArgGenericSupertypeIsNotTruncated() {
+        // Map<String, Int> のカンマ入りジェネリック supertype を切り詰めないこと。
+        String src = "package com.x\n"
+                + "class Foo : HashMap<String, Int>() {\n"
+                + "  val y: Int = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertEquals("HashMap<String, Int>", c.getSuperClass());
+    }
+
+    @Test
+    public void multiArgGenericInterfaceSupertypeIsNotTruncated() {
+        // interface 側 (Comparator<Map<String, Int>>) も by 委譲だけを剥がして温存する。
+        String src = "package com.x\n"
+                + "class Foo(cmp: Comparator<Map<String, Int>>) "
+                + ": Comparator<Map<String, Int>> by cmp {\n"
+                + "  val y: Int = 0\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("多引数ジェネリック interface を温存するはず",
+                c.getInterfaces().contains("Comparator<Map<String, Int>>"));
+    }
+
+    @Test
+    public void nestedNamedTypeMembersAreNotHoistedOntoEnclosingClass() {
+        // 名前付きネスト型 (class/object/interface/enum) のメンバを外側クラスへ
+        // 取り込まないこと。ネスト型は独立エントリで出力されるため二重計上になる。
+        String src = "package com.x\n"
+                + "class Outer {\n"
+                + "  val a: Int = 1\n"
+                + "  class Inner { val b: String = \"\"; fun foo() {} }\n"
+                + "  object Helper { val h: Int = 0 }\n"
+                + "}\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        JavaClassInfo outer = infos.stream()
+                .filter(c -> "Outer".equals(c.getSimpleName())).findFirst().orElseThrow(AssertionError::new);
+        assertTrue("Outer は自身の a を持つ", hasField(outer, "a"));
+        assertFalse("Outer は Inner.b を吸収しない", hasField(outer, "b"));
+        assertFalse("Outer は Helper.h を吸収しない", hasField(outer, "h"));
+        assertFalse("Outer は Inner.foo を吸収しない", hasMethod(outer, "foo"));
+        JavaClassInfo inner = infos.stream()
+                .filter(c -> "Inner".equals(c.getSimpleName())).findFirst().orElseThrow(AssertionError::new);
+        assertTrue("Inner は自身の b を保持", hasField(inner, "b"));
+        assertTrue("Inner は自身の foo を保持", hasMethod(inner, "foo"));
+    }
+
+    @Test
+    public void functionWithDefaultCallArgIsNotDropped() {
+        // 既定引数に呼び出し listOf() を含む関数を脱落させないこと (ネスト () を許容)。
+        String src = "package com.x\n"
+                + "class Foo {\n"
+                + "  fun load(items: List<String> = listOf(), n: Int = 0): Int = n\n"
+                + "  val after: Int = 1\n"
+                + "}\n";
+        JavaClassInfo c = scanOne(src);
+        assertNotNull(c);
+        assertTrue("既定引数に () を含む fun 'load' が残るはず", hasMethod(c, "load"));
+        assertTrue("その後の field 'after' も残るはず", hasField(c, "after"));
+    }
 }

@@ -52,6 +52,13 @@ public final class RoomAnalyzer {
     private static final Pattern COLUMN_NAME = Pattern.compile(
             "name\\s*=\\s*\"([^\"]+)\"");
     /**
+     * エンティティ単位の複合主キー {@code @Entity(primaryKeys = {"a", "b"})} /
+     * Kotlin {@code primaryKeys = ["a", "b"]}。フィールド単位の {@code @PrimaryKey} を
+     * 使わない複合キー宣言を拾うために別途解析する。
+     */
+    private static final Pattern ENTITY_PRIMARY_KEYS = Pattern.compile(
+            "primaryKeys\\s*=\\s*[\\[{]([^\\]}]*)[\\]}]");
+    /**
      * Java {@code entities = {Foo.class, Bar.class}} と
      * Kotlin {@code entities = [Foo::class, Bar::class]} 両形式に対応。
      */
@@ -122,14 +129,17 @@ public final class RoomAnalyzer {
         while (fk.find()) {
             entity.getForeignKeyTargets().add(fk.group(1));
         }
+        // エンティティ単位の複合主キー (primaryKeys = {"a", "b"}) を収集する。
+        java.util.Set<String> compositePk = parsePrimaryKeyNames(entityAnn);
         // フィールド = 列
         for (JavaFieldInfo f : c.getFields()) {
             // static/const フィールド (テーブル名・列名の定数など) は列ではないので除外
             if (f.isStatic()) {
                 continue;
             }
-            boolean pk = false;
+            boolean pk = compositePk.contains(f.getName());
             String columnName = "";
+            boolean skip = false;
             for (String fa : f.getAnnotations()) {
                 String body = fa.startsWith("@") ? fa.substring(1) : fa;
                 int paren = body.indexOf('(');
@@ -144,12 +154,39 @@ public final class RoomAnalyzer {
                     if (cn.find()) {
                         columnName = cn.group(1);
                     }
+                } else if ("Ignore".equals(nameOnly) || "Relation".equals(nameOnly)
+                        || "Embedded".equals(nameOnly)) {
+                    // @Ignore は非永続化、@Relation は導出プロパティ、@Embedded は
+                    // 実列ではなく子オブジェクトのサブ列に展開される。いずれもこの
+                    // フィールド自体を単一の列として出すのは誤りなので除外する。
+                    skip = true;
                 }
+            }
+            if (skip) {
+                continue;
             }
             entity.getColumns().add(new RoomEntity.Column(
                     f.getName(), f.getType(), pk, columnName));
         }
         return entity;
+    }
+
+    /**
+     * {@code @Entity(primaryKeys = {"a", "b"})} から主キー列名の集合を取り出す。
+     * 引用符と空白を除いて素の名前だけを返す。宣言が無ければ空集合。
+     */
+    private static java.util.Set<String> parsePrimaryKeyNames(String entityAnn) {
+        java.util.Set<String> names = new java.util.LinkedHashSet<>();
+        Matcher pk = ENTITY_PRIMARY_KEYS.matcher(entityAnn);
+        if (pk.find()) {
+            for (String raw : pk.group(1).split(",")) {
+                String n = raw.replace("\"", "").trim();
+                if (!n.isEmpty()) {
+                    names.add(n);
+                }
+            }
+        }
+        return names;
     }
 
     private static RoomDao buildDao(JavaClassInfo c) {

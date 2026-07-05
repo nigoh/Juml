@@ -8,9 +8,27 @@ import org.junit.Test;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class MethodUsageReportTest {
+
+    @Test
+    public void formatFromStringStrict_validAndInvalid() {
+        assertEquals(MethodUsageReport.Format.TABLE,
+                MethodUsageReport.Format.fromStringStrict(null));
+        assertEquals(MethodUsageReport.Format.TABLE,
+                MethodUsageReport.Format.fromStringStrict(""));
+        assertEquals(MethodUsageReport.Format.TABLE,
+                MethodUsageReport.Format.fromStringStrict("Table"));
+        assertEquals(MethodUsageReport.Format.CSV,
+                MethodUsageReport.Format.fromStringStrict(" CSV "));
+        // 未対応の値は null (呼び出し側でエラー終了できる)。従来の lenient 版は
+        // 黙って TABLE にフォールバックしていた。
+        assertNull(MethodUsageReport.Format.fromStringStrict("json"));
+        assertNull(MethodUsageReport.Format.fromStringStrict("tabel"));
+    }
 
     @Test
     public void render_listsClassesMethodsAndSignatures() {

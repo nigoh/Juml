@@ -120,6 +120,58 @@ public class RoomAnalyzerTest {
     }
 
     @Test
+    public void entityLevelCompositePrimaryKeyMarksColumns() {
+        // @Entity(primaryKeys = {"a", "b"}) の複合主キーを、フィールド単位の
+        // @PrimaryKey 無しでも両列に反映すること。
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"cross_ref\", primaryKeys = {\"userId\", \"tagId\"})\n"
+                + "public class UserTag {\n"
+                + "  public long userId;\n"
+                + "  public long tagId;\n"
+                + "  public String note;\n"
+                + "}\n";
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(src));
+        RoomEntity e = r.getEntities().get(0);
+        int pkCount = 0;
+        for (RoomEntity.Column c : e.getColumns()) {
+            if (c.isPrimaryKey()) {
+                pkCount++;
+                assertTrue("PK は userId/tagId のみ",
+                        "userId".equals(c.getName()) || "tagId".equals(c.getName()));
+            }
+            if ("note".equals(c.getName())) {
+                assertTrue("note は PK ではない", !c.isPrimaryKey());
+            }
+        }
+        assertEquals("複合 PK は 2 列", 2, pkCount);
+    }
+
+    @Test
+    public void ignoreAndRelationAndEmbeddedFieldsAreNotColumns() {
+        // @Ignore (非永続化) / @Relation (導出) / @Embedded (子オブジェクト展開) の
+        // フィールドは単一の列として出さないこと。
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"users\")\n"
+                + "public class User {\n"
+                + "  @PrimaryKey public long id;\n"
+                + "  public String name;\n"
+                + "  @Ignore public String transientCache;\n"
+                + "  @Relation public java.util.List<Post> posts;\n"
+                + "  @Embedded public Address address;\n"
+                + "}\n";
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(src));
+        RoomEntity e = r.getEntities().get(0);
+        for (RoomEntity.Column c : e.getColumns()) {
+            assertTrue("@Ignore/@Relation/@Embedded 列を出さない",
+                    !"transientCache".equals(c.getName())
+                            && !"posts".equals(c.getName())
+                            && !"address".equals(c.getName()));
+        }
+        // 実列 id / name は残る
+        assertEquals(2, e.getColumns().size());
+    }
+
+    @Test
     public void erDiagramContainsEntityAndForeignKey() {
         String userSrc = "package com.x;\n"
                 + "@Entity public class User {\n"
@@ -154,6 +206,29 @@ public class RoomAnalyzerTest {
         assertTrue(md.contains("User"));
         assertTrue(md.contains("users"));
         assertTrue(md.contains("Primary key"));
+    }
+
+    @Test
+    public void markdownReportEscapesPipeInSqlCell() {
+        // SQL 中の `||` (SQLite 文字列連結) がテーブルの列区切りとして解釈されて
+        // 行が壊れないよう、セル内の | をエスケープすること。
+        String src = "package com.x;\n"
+                + "@Dao public interface UserDao {\n"
+                + "  @Query(\"SELECT firstName || ' ' || lastName AS name FROM users\")\n"
+                + "  String fullName();\n"
+                + "}\n";
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(src));
+        String md = MarkdownDataFlowReport.render(r);
+        assertTrue("エスケープ済みの \\| を含む", md.contains("\\|"));
+        for (String line : md.split("\n")) {
+            if (line.contains("fullName")) {
+                // エスケープ済み \| を除いた後の生の区切り | は 5 本
+                // (Method/Kind/Return/SQL の 4 列 → 先頭・末尾含め 5 本)。
+                long separators = line.replace("\\|", "").chars()
+                        .filter(ch -> ch == '|').count();
+                assertEquals("SQL 行の列区切り | は 5 本のまま", 5, separators);
+            }
+        }
     }
 
     @Test

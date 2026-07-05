@@ -215,6 +215,59 @@ public class GradleScriptParserTest {
     }
 
     @Test
+    public void testDuplicateProjectDependencyDeduped() {
+        // 同一 project(':lib') を複数スコープや重複で書いても 1 件に畳むこと。
+        String src =
+                "dependencies {\n"
+                        + "  implementation project(':lib')\n"
+                        + "  implementation project(':lib')\n"
+                        + "  api project(':lib')\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        long libImpl = info.getDependencies().stream()
+                .filter(d -> "implementation".equals(d.getScope())
+                        && "lib".equals(d.getModuleRef()))
+                .count();
+        assertEquals("implementation project(':lib') は 1 件に重複排除", 1, libImpl);
+    }
+
+    @Test
+    public void testFlavorDimensionsAssignmentForms() {
+        // = / += / listOf() の代入形式でも flavorDimensions を拾うこと (Kotlin DSL)。
+        String src =
+                "android {\n"
+                        + "  flavorDimensions += listOf(\"tier\", \"region\")\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle.kts");
+        assertTrue(info.getFlavorDimensions().contains("tier"));
+        assertTrue(info.getFlavorDimensions().contains("region"));
+    }
+
+    @Test
+    public void testFlavorDimensionsSimpleAssignment() {
+        String src =
+                "android {\n"
+                        + "  flavorDimensions = \"env\"\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle.kts");
+        assertTrue(info.getFlavorDimensions().contains("env"));
+    }
+
+    @Test
+    public void testSourceSetsIncludeGlobIsNotSubproject() {
+        // build.gradle 内の sourceSets の include '**/*.java' 等を偽サブプロジェクト化しない。
+        String src =
+                "android {\n"
+                        + "  sourceSets {\n"
+                        + "    main { java { include '**/*.java' } }\n"
+                        + "  }\n"
+                        + "}\n";
+        GradleProjectInfo info = GradleScriptParser.parse(src, "build.gradle");
+        assertTrue("sourceSets の include グロブは subproject にしない",
+                info.getSubprojects().isEmpty());
+    }
+
+    @Test
     public void testFileDependencies() {
         // リポジトリ同梱 JAR: files('...') は 1 ファイル 1 依存として取れること
         String src =

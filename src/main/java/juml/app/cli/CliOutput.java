@@ -79,6 +79,41 @@ public final class CliOutput {
     }
 
     /**
+     * {@code fileOut} が SVG レンダリング対象か (拡張子 {@code .svg} または既存
+     * ディレクトリ) を判定する。同梱 PlantUML の SVG 出力は先頭の {@code @startuml}
+     * ブロックしかレンダリングしないため、複数図を SVG 化する呼び出し側はこれを見て
+     * 図ごとに別ファイルへ分割する必要がある。
+     */
+    public static boolean isSvgTarget(File fileOut) {
+        return fileOut != null
+                && (fileOut.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".svg")
+                    || fileOut.isDirectory());
+    }
+
+    /**
+     * 複数図を SVG へ書き出すときの、図 1 枚ぶんの出力先を決める。
+     * ディレクトリ指定なら {@code <dir>/<label>.svg}、単一 {@code .svg} ファイル指定なら
+     * その隣に {@code <base>-<label>.svg} を作る。{@code label} は使えない文字を
+     * {@code _} に落とし、空なら {@code defaultBase + index} を使う。
+     */
+    public static File perDiagramSvgTarget(File fileOut, String label, int index,
+                                           String defaultBase) {
+        String safe = label == null ? "" : label.replaceAll("[^A-Za-z0-9_.-]", "_");
+        if (safe.isEmpty()) {
+            safe = defaultBase + "-" + index;
+        }
+        if (fileOut != null && fileOut.isDirectory()) {
+            return new File(fileOut, safe + ".svg");
+        }
+        String name = fileOut == null ? defaultBase + ".svg" : fileOut.getName();
+        int dot = name.lastIndexOf('.');
+        String base = dot >= 0 ? name.substring(0, dot) : name;
+        File parent = fileOut == null ? null : fileOut.getParentFile();
+        String childName = base + "-" + safe + ".svg";
+        return parent == null ? new File(childName) : new File(parent, childName);
+    }
+
+    /**
      * PlantUML 系出力の書き出し。{@code fileOut} の拡張子が {@code .svg} なら
      * 同梱 PlantUML で SVG にレンダリングし、それ以外 (null や .puml/.txt) は
      * PlantUML テキストをそのまま書き出す (標準出力可)。

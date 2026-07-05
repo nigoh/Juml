@@ -8,7 +8,6 @@ import juml.core.formats.java.AndroidProjectScanner;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -37,17 +36,25 @@ import java.util.Map;
  */
 public final class AndroidMkParser {
 
-    /** 依存とみなす {@code LOCAL_*_LIBRARIES} / {@code LOCAL_REQUIRED_MODULES} のキー。 */
-    private static final List<String> DEP_KEYS = Collections.unmodifiableList(
-            Arrays.asList(
-                    "LOCAL_STATIC_LIBRARIES",
-                    "LOCAL_SHARED_LIBRARIES",
-                    "LOCAL_WHOLE_STATIC_LIBRARIES",
-                    "LOCAL_JAVA_LIBRARIES",
-                    "LOCAL_STATIC_JAVA_LIBRARIES",
-                    "LOCAL_HEADER_LIBRARIES",
-                    "LOCAL_REQUIRED_MODULES",
-                    "LOCAL_RUNTIME_LIBRARIES"));
+    /**
+     * 依存とみなす {@code LOCAL_*_LIBRARIES} / {@code LOCAL_REQUIRED_MODULES} を、
+     * 対応する Soong (.bp) の依存キー種別へマップする。種別を付けて {@code addDep} で
+     * 登録しないと {@code depsByKind} が空になり、それを読む
+     * {@code PlantUmlSoongDependencyDiagram} が .mk モジュールの辺を一切描けない。
+     */
+    private static final Map<String, String> DEP_KEYS;
+    static {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("LOCAL_STATIC_LIBRARIES", "static_libs");
+        m.put("LOCAL_SHARED_LIBRARIES", "shared_libs");
+        m.put("LOCAL_WHOLE_STATIC_LIBRARIES", "whole_static_libs");
+        m.put("LOCAL_JAVA_LIBRARIES", "java_libs");
+        m.put("LOCAL_STATIC_JAVA_LIBRARIES", "static_libs");
+        m.put("LOCAL_HEADER_LIBRARIES", "header_libs");
+        m.put("LOCAL_REQUIRED_MODULES", "required");
+        m.put("LOCAL_RUNTIME_LIBRARIES", "runtime_libs");
+        DEP_KEYS = Collections.unmodifiableMap(m);
+    }
 
     /** {@code BUILD_XXX} include の Soong 等価 type へのマップ。 */
     private static final Map<String, String> BUILD_TO_TYPE;
@@ -170,14 +177,16 @@ public final class AndroidMkParser {
         if (srcs != null) {
             mod.getSrcs().addAll(srcs);
         }
-        for (String depKey : DEP_KEYS) {
-            List<String> v = vars.get(depKey);
+        for (Map.Entry<String, String> depKey : DEP_KEYS.entrySet()) {
+            List<String> v = vars.get(depKey.getKey());
             if (v != null) {
                 for (String dep : v) {
                     // 未展開の Make 変数参照 ($(my_libs) / ${x} / $x) は依存名ではないので除外。
                     // SRC_FILES は原文保持だが、依存名は実モジュール名のみを採用する。
+                    // 種別 (static_libs 等) を付けて addDep することで depsByKind も埋め、
+                    // Soong 依存図が .mk モジュールの辺を描けるようにする。
                     if (!isMakeVarRef(dep)) {
-                        mod.getDeps().add(dep);
+                        mod.addDep(depKey.getValue(), dep);
                     }
                 }
             }

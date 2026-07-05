@@ -84,6 +84,29 @@ public class JavaParserResolutionTest {
     }
 
     @Test
+    public void fluentChainCallsAreInExecutionOrder() throws IOException {
+        // b.getC().hello() は実行順に getC() → hello() の順で並ぶこと
+        // (以前は外側の hello を先に emit して [hello, getC] と逆順になっていた)。
+        List<JavaClassInfo> cs = parseWithSolver("p",
+                "package p; public class A {"
+                + " private B b = new B();"
+                + " void run() { b.getC().hello(); } }");
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (JavaClassInfo c : cs) {
+            if ("A".equals(c.getSimpleName())) {
+                for (JavaMethodInfo m : c.getMethods()) {
+                    if ("run".equals(m.getName())) {
+                        for (JavaMethodInfo.Call call : m.getCalls()) {
+                            names.add(call.getMethodName());
+                        }
+                    }
+                }
+            }
+        }
+        assertEquals(java.util.Arrays.asList("getC", "hello"), names);
+    }
+
+    @Test
     public void resolvesInheritedMemberToDeclaringType() throws IOException {
         List<JavaClassInfo> cs = parseWithSolver("p",
                 "package p; public class A {"
