@@ -64,7 +64,7 @@ dependencies {
     // 参照する (コミット履歴 / diff / ブランチ・タグ / ファイル履歴 / blame)。
     // 純 Java 実装のため git コマンド未インストール環境でも動作し、fat jar に同梱される。
     // 書き込み系 API (commit/push 等) は Juml からは一切呼ばない。
-    implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r'
+    implementation 'org.eclipse.jgit:org.eclipse.jgit:7.7.0.202606012155-r'
     testImplementation 'junit:junit:4.13.2'
     // Playwright (ブラウザ自動化) で生成 SVG をレンダリング・スナップショット検証する。
     // 初回テスト実行時に `playwright install chromium` がトリガーされ Chromium が
