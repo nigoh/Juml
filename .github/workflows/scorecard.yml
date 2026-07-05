@@ -50,6 +50,6 @@ jobs:
 
       # GitHub の Code scanning アラートに取り込む
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
