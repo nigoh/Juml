@@ -50,7 +50,7 @@ dependencies {
     // SQLite (Apache 2.0). 解析結果の永続インデックス (~/.juml/cache/<hash>/index.db)
     // の格納先。fat jar に同梱され、JDBC 経由で参照関係・外部境界・コンポーネント集約を
     // 横断クエリ可能にする。native lib は jar 内の META-INF から自動展開される。
-    implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
+    implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
     // JavaParser + JavaSymbolSolver (LGPL-3.0 OR Apache-2.0 のデュアル → Apache-2.0 を選択)。
     // Java ソースの正規フロントエンド。完全な構文 AST に加え、SymbolSolver で
     // 型・オーバーロード・継承・チェーン呼び出しを解決し、逆参照/シーケンス図の精度を上げる。
