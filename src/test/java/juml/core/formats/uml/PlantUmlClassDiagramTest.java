@@ -262,12 +262,12 @@ public class PlantUmlClassDiagramTest {
         o.includeLegend = false;
         o.colorCodeRelations = true;
         String puml = PlantUmlClassDiagram.generate(infos, o);
-        // 継承 (extends): 緑の中空三角
+        // 継承 (extends): 緑の中空三角。色は矢印ヘッドと線の間に置く (PlantUML 構文)。
         assertTrue("colored inheritance expected:\n" + puml,
-                puml.contains("-[#2E7D32]<|-- "));
+                puml.contains("<|-[#2E7D32]- "));
         // 実装 (implements): 青の中空三角 (破線)
         assertTrue("colored realization expected:\n" + puml,
-                puml.contains("-[#1565C0]<|.. "));
+                puml.contains("<|.[#1565C0]. "));
         // 利用 (依存): 灰の破線矢印
         assertTrue("colored dashed usage expected:\n" + puml,
                 puml.contains("-[#9E9E9E,dashed]-> "));
@@ -286,9 +286,45 @@ public class PlantUmlClassDiagramTest {
         o.colorCodeRelations = true;
         String puml = PlantUmlClassDiagram.generate(infos, o);
         assertTrue("interface extends should use inherit color:\n" + puml,
-                puml.contains("-[#2E7D32]<|-- "));
+                puml.contains("<|-[#2E7D32]- "));
         assertFalse("interface extends must not be realization color:\n" + puml,
-                puml.contains("-[#1565C0]<|.. "));
+                puml.contains("<|.[#1565C0]. "));
+    }
+
+    /**
+     * 色分け ({@code --color-relations}) の継承/実装エッジが同梱 PlantUML で実際に
+     * レンダリングできることを保証する回帰テスト。文字列一致だけだと、色ブラケットを
+     * 矢印ヘッドの前に置く不正形 ({@code -[#color]<|--}) でも通ってしまい、実描画で
+     * 構文エラーになる不具合 (Android サンプルの全クラス図が失敗) を見逃していた。
+     */
+    @Test
+    public void testColorCodeRelationsActuallyRenders() throws Exception {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "interface I {} class B {} class A extends B implements I { B b; }");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.colorCodeRelations = true;
+        String puml = PlantUmlClassDiagram.generate(infos, o);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        // 失敗時は PlantUmlRenderFailedException を投げる (壊れた SVG は保存されない)。
+        PlantUmlRenderer.renderSvg(puml, out);
+        assertTrue("rendered SVG expected", out.size() > 0);
+    }
+
+    /**
+     * Focus モード ({@code --focus}) の淡色化エッジ (dim) も実レンダリングできること。
+     * dim も継承/実装で同じ色ブラケット配置バグを共有していた。
+     */
+    @Test
+    public void testFocusDimEdgesActuallyRender() throws Exception {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; class Base {} class Focus extends Base {} "
+                        + "class Other extends Base {}");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.focusClass = "x.Focus";
+        String puml = PlantUmlClassDiagram.generate(infos, o);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        PlantUmlRenderer.renderSvg(puml, out);
+        assertTrue("rendered SVG expected", out.size() > 0);
     }
 
     @Test

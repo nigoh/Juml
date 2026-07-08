@@ -30,10 +30,12 @@ final class PlantUmlClassRelations {
      * 形は {@code parent <|-- child}（左が親）を保つ。
      */
     private static String inheritArrow(PlantUmlClassDiagram.Options o, boolean dim) {
+        // 色/スタイルは矢印ヘッド (<|) と線の間に置く。"-[#color]<|--" のように
+        // ヘッドの前に置くと PlantUML 1.2026.x が構文エラーになる ("<|-[#color]-" が正)。
         if (dim) {
-            return " -[" + PlantUmlClassFocus.DIM_EDGE + "]<|-- ";
+            return " <|-[" + PlantUmlClassFocus.DIM_EDGE + "]- ";
         }
-        return o.colorCodeRelations ? " -[" + INHERIT_COLOR + "]<|-- " : " <|-- ";
+        return o.colorCodeRelations ? " <|-[" + INHERIT_COLOR + "]- " : " <|-- ";
     }
 
     /**
@@ -41,10 +43,12 @@ final class PlantUmlClassRelations {
      * {@code <|..} の {@code ..} が破線を表すため色のみ付与する。{@code dim} 時は焦点外として淡色化。
      */
     private static String realizeArrow(PlantUmlClassDiagram.Options o, boolean dim) {
+        // 破線・中空三角。色/スタイルは "<|.[#color]." の位置に置く (ヘッド前 "-[#color]<|.."
+        // は PlantUML 1.2026.x で構文エラー)。
         if (dim) {
-            return " -[" + PlantUmlClassFocus.DIM_EDGE + "]<|.. ";
+            return " <|.[" + PlantUmlClassFocus.DIM_EDGE + "]. ";
         }
-        return o.colorCodeRelations ? " -[" + REALIZE_COLOR + "]<|.. " : " <|.. ";
+        return o.colorCodeRelations ? " <|.[" + REALIZE_COLOR + "]. " : " <|.. ";
     }
 
     /**
