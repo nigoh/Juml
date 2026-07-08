@@ -13,11 +13,13 @@ java {
 
 repositories {
     mavenCentral()
-    // Apktool が依存する com.android.tools.smali:* (smali/baksmali/dexlib2) は
-    // Maven Central には無く Google Maven (dl.google.com/android/maven2) でのみ配布される
-    // ため、APK 逆コンパイル機能のために google() を追加する。
     google()
-    maven { url = uri('https://oss.sonatype.org/service/local/repositories/releases/content/') }
+    // Apktool 3.0.x は smali/baksmali の iBotPeaches フォークを JitPack 経由で配布する
+    // (com.github.iBotPeaches.smali:smali[-baksmali]:<commit>)。これらは Maven Central にも
+    // Google Maven にも無いため、APK 逆コンパイル機能のために JitPack を追加する。
+    // かつて使っていた oss.sonatype.org のミラーは 402 (Payment Required) を返すようになり
+    // 使用不能になったため JitPack へ切り替えた。
+    maven { url = uri('https://jitpack.io') }
 }
 
 dependencies {

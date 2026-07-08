@@ -27,6 +27,14 @@ import java.util.logging.Logger;
  */
 public final class ApktoolDecoder {
 
+    /**
+     * {@code brut.androlib.Config} に渡すバージョン文字列。{@code apktool.yml} の
+     * {@code apktoolVersion} メタとして書き出され、{@link ApkSummaryReport} が
+     * 「apktool version」として表示するだけの情報項目 (デコード挙動には影響しない)。
+     * 同梱している {@code org.apktool:apktool-lib} の version に合わせる。
+     */
+    private static final String APKTOOL_VERSION = "3.0.2";
+
     private ApktoolDecoder() {
     }
 
@@ -83,19 +91,23 @@ public final class ApktoolDecoder {
         // Apktool は java.util.logging で INFO ログを出すので、既定では抑制する。
         Logger.getLogger("brut").setLevel(Level.SEVERE);
         try {
-            Config config = Config.getDefaultConfig();
-            config.forceDelete = true; // 既存の outDir があっても上書きする
-            config.setDecodeSources(Config.DECODE_SOURCES_SMALI);
-            config.setDecodeResources(Config.DECODE_RESOURCES_NONE);
-            config.setForceDecodeManifest(Config.FORCE_DECODE_MANIFEST_FULL);
-            config.setDecodeAssets(Config.DECODE_ASSETS_NONE);
-            ApkDecoder decoder = new ApkDecoder(config, apk);
+            // Apktool 3.0.x で Config API が刷新された (定数 int → enum、
+            // getDefaultConfig() 廃止、ApkDecoder の引数順が (File, Config) に)。
+            Config config = new Config(APKTOOL_VERSION);
+            config.setForced(true); // 既存の outDir があっても上書きする (旧 forceDelete)
+            // dex を全て smali へ復号する (クラス図の入力)。旧 DECODE_SOURCES_SMALI 相当。
+            config.setDecodeSources(Config.DecodeSources.FULL);
+            // res/ のフル復号はスキップしつつ AndroidManifest.xml だけは可読 XML に復号する。
+            // 旧 (DECODE_RESOURCES_NONE + FORCE_DECODE_MANIFEST_FULL) の意図を ONLY_MANIFEST が担う
+            // (NONE だとマニフェストがバイナリのまま raw コピーされ可読化されない)。
+            config.setDecodeResources(Config.DecodeResources.ONLY_MANIFEST);
+            config.setDecodeAssets(Config.DecodeAssets.NONE);
+            ApkDecoder decoder = new ApkDecoder(apk, config);
             decoder.decode(outDir);
             log.onError(apk.getName(), -1, "decoded APK into " + outDir.getPath());
-        } catch (IOException ex) {
-            throw ex;
         } catch (Exception ex) {
             // AndrolibException / DirectoryException など Apktool 由来の検査例外を正規化する。
+            // (Apktool 3.0.x の ApkDecoder.decode は AndrolibException のみを送出する)
             throw new IOException("apktool failed to decode " + apk.getName()
                     + ": " + ex.getMessage(), ex);
         }
