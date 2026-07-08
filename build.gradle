@@ -13,11 +13,13 @@ java {
 
 repositories {
     mavenCentral()
-    // Apktool が依存する com.android.tools.smali:* (smali/baksmali/dexlib2) は
-    // Maven Central には無く Google Maven (dl.google.com/android/maven2) でのみ配布される
-    // ため、APK 逆コンパイル機能のために google() を追加する。
     google()
-    maven { url = uri('https://oss.sonatype.org/service/local/repositories/releases/content/') }
+    // Apktool 3.0.x は smali/baksmali の iBotPeaches フォークを JitPack 経由で配布する
+    // (com.github.iBotPeaches.smali:smali[-baksmali]:<commit>)。これらは Maven Central にも
+    // Google Maven にも無いため、APK 逆コンパイル機能のために JitPack を追加する。
+    // かつて使っていた oss.sonatype.org のミラーは 402 (Payment Required) を返すようになり
+    // 使用不能になったため JitPack へ切り替えた。
+    maven { url = uri('https://jitpack.io') }
 }
 
 dependencies {
@@ -25,12 +27,12 @@ dependencies {
     // 両テーマを同梱し、OS ネイティブ LAF より統一感のある外観とダークモードを提供する。
     // fat jar に同梱され、起動時 / Preferences から切り替える (再起動不要のライブ適用)。
     implementation 'com.formdev:flatlaf:3.5.4'
-    implementation 'org.apache.xmlgraphics:batik-svggen:1.17'
-    implementation 'org.apache.xmlgraphics:batik-dom:1.17'
+    implementation 'org.apache.xmlgraphics:batik-svggen:1.19'
+    implementation 'org.apache.xmlgraphics:batik-dom:1.19'
     // ベクター SVG プレビュー用: PlantUML が出力した SVG を GraphicsNode として
     // 直接 Swing に描画するため Batik bridge を取り込む (transitively pulls in
     // batik-anim / batik-bridge / batik-gvt / batik-css)。
-    implementation 'org.apache.xmlgraphics:batik-bridge:1.17'
+    implementation 'org.apache.xmlgraphics:batik-bridge:1.19'
     implementation 'com.rover12421.opensource:JFontChooser:1.0.5-3'
     // PlantUML (MIT 版アーティファクト plantuml-mit を使用)。UML 系出力を SVG として
     // 直接書き出すために同梱する。PlantUML は同一機能を複数ライセンスの別アーティファクト
@@ -41,12 +43,12 @@ dependencies {
     // ASM: 依存 JAR/AAR からクラスヘッダ (名前・superclass・interfaces・public members)
     // を読み取り、シーケンス図/クラス図に外部クラスを表示するために使用する。
     // .class バイトコードは SKIP_CODE で読み飛ばし、ヘッダ情報のみを抽出する。
-    implementation 'org.ow2.asm:asm:9.7'
+    implementation 'org.ow2.asm:asm:9.10.1'
     // Apktool (Apache-2.0). APK を逆コンパイルして smali + AndroidManifest を取り出す
     // ためのライブラリ。Juml は brut.androlib.ApkDecoder を JVM 内で直接呼び出し、
     // 外部プロセス (aapt 等) の起動やネットワークアクセスは行わない (decode は純 Java)。
     // smali/baksmali/dexlib2 (com.android.tools.smali, Apache-2.0) と guava を推移取得する。
-    implementation 'org.apktool:apktool-lib:2.9.3'
+    implementation 'org.apktool:apktool-lib:3.0.2'
     // SQLite (Apache 2.0). 解析結果の永続インデックス (~/.juml/cache/<hash>/index.db)
     // の格納先。fat jar に同梱され、JDBC 経由で参照関係・外部境界・コンポーネント集約を
     // 横断クエリ可能にする。native lib は jar 内の META-INF から自動展開される。
@@ -55,7 +57,7 @@ dependencies {
     // Java ソースの正規フロントエンド。完全な構文 AST に加え、SymbolSolver で
     // 型・オーバーロード・継承・チェーン呼び出しを解決し、逆参照/シーケンス図の精度を上げる。
     // symbol-solver-core が javaparser-core を推移取得する。native lib なし。
-    implementation 'com.github.javaparser:javaparser-symbol-solver-core:3.26.4'
+    implementation 'com.github.javaparser:javaparser-symbol-solver-core:3.28.2'
     // Apache POI (Apache 2.0). メンバー解析結果を .xlsx ワークブックとして書き出す。
     // 複数シート・オートフィルタ・見出し固定に対応。fat jar に同梱される
     // (poi / poi-ooxml / xmlbeans / commons-compress 等を推移取得)。
@@ -64,7 +66,7 @@ dependencies {
     // 参照する (コミット履歴 / diff / ブランチ・タグ / ファイル履歴 / blame)。
     // 純 Java 実装のため git コマンド未インストール環境でも動作し、fat jar に同梱される。
     // 書き込み系 API (commit/push 等) は Juml からは一切呼ばない。
-    implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r'
+    implementation 'org.eclipse.jgit:org.eclipse.jgit:7.7.0.202606012155-r'
     testImplementation 'junit:junit:4.13.2'
     // Playwright (ブラウザ自動化) で生成 SVG をレンダリング・スナップショット検証する。
     // 初回テスト実行時に `playwright install chromium` がトリガーされ Chromium が
