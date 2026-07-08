@@ -17,6 +17,10 @@ repositories {
     // Maven Central には無く Google Maven (dl.google.com/android/maven2) でのみ配布される
     // ため、APK 逆コンパイル機能のために google() を追加する。
     google()
+    // Apktool 3.0.x は smali フォークを com.github.iBotPeaches.smali:* (git-hash 版) で
+    // 参照しており、これは JitPack でのみ配布される。旧 oss.sonatype.org (OSSRH) は
+    // サンセット済みで 402 を返すため、JitPack を追加して解決させる。
+    maven { url = uri('https://jitpack.io') }
     maven { url = uri('https://oss.sonatype.org/service/local/repositories/releases/content/') }
 }
 

@@ -83,19 +83,23 @@ public final class ApktoolDecoder {
         // Apktool は java.util.logging で INFO ログを出すので、既定では抑制する。
         Logger.getLogger("brut").setLevel(Level.SEVERE);
         try {
-            Config config = Config.getDefaultConfig();
-            config.forceDelete = true; // 既存の outDir があっても上書きする
-            config.setDecodeSources(Config.DECODE_SOURCES_SMALI);
-            config.setDecodeResources(Config.DECODE_RESOURCES_NONE);
-            config.setForceDecodeManifest(Config.FORCE_DECODE_MANIFEST_FULL);
-            config.setDecodeAssets(Config.DECODE_ASSETS_NONE);
-            ApkDecoder decoder = new ApkDecoder(config, apk);
+            // Apktool 3.0.x の Config は getDefaultConfig() 廃止。コンストラクタ引数は
+            // 出力メタ (apktool.yml) 用の version 文字列で、復号動作には影響しない。
+            Config config = new Config("juml");
+            config.setForced(true); // 既存の outDir があっても上書きする (旧 forceDelete)
+            // smali (全 dex クラス) と AndroidManifest.xml だけを取り出し、その他リソース・
+            // アセットのフル復号はスキップする。3.0.x では列挙型に置き換わり、
+            // 「リソースなし + マニフェストのみ」は DecodeResources.ONLY_MANIFEST で表す
+            // (旧 DECODE_RESOURCES_NONE + setForceDecodeManifest(FULL) の統合形)。
+            config.setDecodeSources(Config.DecodeSources.FULL);
+            config.setDecodeResources(Config.DecodeResources.ONLY_MANIFEST);
+            config.setDecodeAssets(Config.DecodeAssets.NONE);
+            ApkDecoder decoder = new ApkDecoder(apk, config);
             decoder.decode(outDir);
             log.onError(apk.getName(), -1, "decoded APK into " + outDir.getPath());
-        } catch (IOException ex) {
-            throw ex;
         } catch (Exception ex) {
             // AndrolibException / DirectoryException など Apktool 由来の検査例外を正規化する。
+            // 3.0.x の decode は IOException を直接投げず AndrolibException 系のみ投げる。
             throw new IOException("apktool failed to decode " + apk.getName()
                     + ": " + ex.getMessage(), ex);
         }
