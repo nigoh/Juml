@@ -50,6 +50,29 @@ public class JavaStructureExtractorInlineTest {
     }
 
     @Test
+    public void testLocalVarInitializerCallsAreCaptured() {
+        // String s = svc.getName(); のような最も一般的なローカル変数初期化子の
+        // 呼び出しが、シーケンス図・コールグラフの元となる getCalls() に現れること。
+        String src = ""
+                + "class A {\n"
+                + "  void run() {\n"
+                + "    String s = svc.getName();\n"
+                + "    int n = a.b().c();\n"
+                + "    use(s);\n"
+                + "  }\n"
+                + "}";
+        List<JavaClassInfo> cs = JavaStructureExtractor.extract(src);
+        JavaMethodInfo run = cs.get(0).getMethods().stream()
+                .filter(m -> "run".equals(m.getName())).findFirst().orElseThrow(AssertionError::new);
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (JavaMethodInfo.Call call : run.getCalls()) {
+            names.add(call.getMethodName());
+        }
+        // 初期化子の呼び出し (getName, b, c) と通常文の use が実行順で並ぶ
+        assertEquals(java.util.Arrays.asList("getName", "b", "c", "use"), names);
+    }
+
+    @Test
     public void testLambdaRunnableResolvesToRun() {
         String src = ""
                 + "class A {\n"
