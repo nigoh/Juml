@@ -19,6 +19,12 @@ import juml.util.Messages;
  */
 final class DiagramFailureMessage {
 
+    /** カードに載せるエンジン出力 (stderr 末尾) の最大文字数。長すぎる場合は末尾のみ残す。 */
+    private static final int ENGINE_OUTPUT_CARD_MAX = 800;
+
+    /** 原因チェーンをたどる最大段数 (循環・過剰な深さでの肥大化を防ぐ)。 */
+    private static final int MAX_CAUSE_DEPTH = 5;
+
     private DiagramFailureMessage() {
     }
 
@@ -62,6 +68,17 @@ final class DiagramFailureMessage {
               .append(' ').append(esc(dumped.getAbsolutePath()));
         }
         sb.append("<br>").append(Messages.get("diag.fail.seeLog"));
+        // レンダリングエンジン (PlantUML/Smetana) が stderr へ出した生の診断を
+        // カード内にも直接見せる。これまではログファイルにしか残らず、原因
+        // (レイアウトエンジンの内部エラーやスタックトレース) が目視しづらかった。
+        String engine = engineOutput(error, ENGINE_OUTPUT_CARD_MAX);
+        if (!engine.isEmpty()) {
+            sb.append("<br><br><b>").append(Messages.get("diag.fail.detailTitle"))
+              .append("</b><br>")
+              .append("<span style='font-size:9pt;font-family:monospace'>")
+              .append(esc(engine).replace("\n", "<br>"))
+              .append("</span>");
+        }
         if (code != null && code.hasId()) {
             sb.append("<br><br><a href='juml-errcode:").append(code.getId()).append("'>")
               .append(Messages.get("diag.fail.remedyLink")).append("</a>")
@@ -74,13 +91,58 @@ final class DiagramFailureMessage {
     /**
      * 失敗原因の全文 (メッセージカード用、切り詰めなし)。ステータスバー用の
      * {@link #reason(Throwable)} と違い、原因を "…" で省略しない。
+     *
+     * <p>ラップされた例外 (例: {@code IOException} が別例外に包まれている) では、
+     * 先頭のメッセージだけだと根本原因が見えないため、原因チェーンを
+     * {@code " ← "} で連結して最後まで見せる (最大 {@link #MAX_CAUSE_DEPTH} 段)。</p>
      */
     static String fullReason(Throwable error) {
         if (error == null) {
             return "unknown";
         }
+        StringBuilder sb = new StringBuilder(describe(error));
+        Throwable cause = error.getCause();
+        int depth = 0;
+        while (cause != null && cause != error && depth++ < MAX_CAUSE_DEPTH) {
+            String c = describe(cause);
+            // 上位メッセージが原因メッセージをそのまま内包している場合は重複を避ける。
+            if (!c.isEmpty() && sb.indexOf(c) < 0) {
+                sb.append(" ← ").append(c);
+            }
+            cause = cause.getCause();
+        }
+        return sb.toString();
+    }
+
+    /** 1 例外を「メッセージ、無ければクラス単純名」の 1 行で表す。 */
+    private static String describe(Throwable error) {
         String m = error.getMessage();
         return (m == null || m.isEmpty()) ? error.getClass().getSimpleName() : m;
+    }
+
+    /**
+     * レンダリングエンジン (PlantUML / Smetana) が描画中に stderr へ出力した末尾を返す。
+     * レイアウトエンジンの内部エラーやスタックトレースを含み、原因調査の主要な手がかりになる。
+     * これまではログファイルにしか残らなかったため、カード・報告テキストへ直接出すために使う。
+     *
+     * @param error    発生した例外
+     * @param maxChars 返す最大文字数 (超過時は末尾を残し先頭を {@code "…"} で省く)。0 以下なら無制限。
+     * @return stderr 末尾。PlantUML 由来の失敗でない、または捕捉が無ければ空文字。
+     */
+    static String engineOutput(Throwable error, int maxChars) {
+        if (!(error instanceof juml.core.formats.uml.PlantUmlRenderFailedException)) {
+            return "";
+        }
+        String tail = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                .getStderrTail();
+        if (tail == null) {
+            return "";
+        }
+        tail = tail.trim();
+        if (maxChars > 0 && tail.length() > maxChars) {
+            tail = "…" + tail.substring(tail.length() - maxChars);
+        }
+        return tail;
     }
 
     /** 失敗原因の 1 行要約 (ステータスバー用)。 */

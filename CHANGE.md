@@ -4,6 +4,14 @@ Change log
 2.1
 --------
 
+* **UML 描画失敗の詳細出力を強化: レンダリングエンジンの生 stderr を画面・報告テキストへ露出** (`DiagramFailureMessage` / `DiagramTabPane` / `messages*.properties`)
+    * **背景**: `PlantUmlRenderFailedException` はレンダリング中に PlantUML/Smetana が stderr へ出した診断 (レイアウトエンジンの内部エラーやスタックトレース) を `stderrTail` として保持していたが、これは `logs/juml.log` にしか出ておらず、失敗カード・「エラー詳細をコピー」の報告テキストには失敗メッセージ 1 行しか載っていなかった。
+    * 失敗カードに **「技術的な詳細 (レンダリングエンジンの出力)」** セクションを追加し、stderr 末尾 (最大 800 文字、超過時は末尾を残す) を等幅フォントで直接表示するようにした。
+    * 「エラー詳細をコピー」で得られる報告テキストにも stderr 末尾を全文添え、ログファイルを別途添付しなくても報告が自己完結するようにした。
+    * `DiagramFailureMessage.fullReason` を原因チェーン展開に対応させ、ラップされた例外 (`A ← B ← C`) でも根本原因メッセージが見えるようにした (最大 5 段)。
+    * テスト: `DiagramFailureMessageTest` に `engineOutput` の抽出・切り詰め・非対象例外、失敗カードへの露出、原因チェーン展開の 7 ケースを追加。
+    * 目的: 図の描画に失敗したとき「なぜ失敗したか」の根本原因を、ログファイルを開かずに画面と報告テキストからそのまま把握・共有できるようにするため。
+
 * **リポジトリ同梱 JAR/AAR の読み込みに対応** (`GradleScriptParser` / `GradleDependency` / `DependencyJarIndex` / `UmlGenerator` / `SupertypeClassifier` / `PlantUmlClassDiagram` / `UmlCommands` / `DiagramService`)
     * **背景**: 依存 JAR の解決先が `~/.gradle/caches` と `~/.m2` に限られており、プロジェクト内に同梱された `libs/*.jar` (`files('...')` / `fileTree(dir: '...')` 宣言) が一切読み込まれず、継承先クラスが裸ノードのまま図に出ていた。
     * `files('libs/a.jar')` / `fileTree(dir: 'libs', include: [...])` (Groovy/kts の `mapOf("dir" to ...)` 方言含む) を依存として解析し、各モジュールの宣言パス + 慣習の `<module>/libs/` を `DependencyJarIndex` へ索引する。宣言された実体が無い場合は `<<missing>>` として記録。

@@ -1646,6 +1646,13 @@ public final class DiagramTabPane {
                 sb.append(Messages.get("diag.fail.savedTo")).append(' ')
                   .append(dumped.getAbsolutePath()).append('\n');
             }
+            // 報告テキストが自己完結するよう、レンダリングエンジンの生 stderr も全文添える
+            // (0 = 切り詰めなし)。これまではログファイルを別途添付する必要があった。
+            String engine = DiagramFailureMessage.engineOutput(error, 0);
+            if (!engine.isEmpty()) {
+                sb.append(Messages.get("diag.fail.detailTitle")).append('\n')
+                  .append(engine).append('\n');
+            }
             sb.append(Messages.get("errref.remedyLabel")).append(' ')
               .append(code.remedy());
             return sb.toString();
