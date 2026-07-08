@@ -4,6 +4,13 @@ Change log
 2.1
 --------
 
+* **クラス図レンダリング失敗を 2 件修正 (Android サンプルでの実地 e2e 検証由来)** (`KotlinLightScanner` / `PlantUmlClassRelations` / 各テスト)
+    * **背景**: `android/architecture-components-samples` の全サブプロジェクトに対して全図種を一括描画したところ、2 種類のクラス図レンダリング失敗 (UML-R001 構文エラー) を検出した。
+    * **バグ 1 — Kotlin コメント内の "class" 誤認 (`KotlinLightScanner`)**: KDoc/コメントや文字列リテラルに含まれる `class` という単語 (例: `/** This class holds the data ... : its name, a description, ... */`) を実クラス宣言と誤認し、"holds" という擬似クラスと、後続の英文をスーパータイプ名とする不正な関係行を生成していた。`skipNonCode` を使って非コード領域 (コメント/文字列/文字リテラル) をマスクし、クラスヘッダ検出から除外するよう修正。
+    * **バグ 2 — 色付き継承/実装矢印の構文誤り (`PlantUmlClassRelations`)**: `--color-relations` / `--focus` (淡色化) 時の継承・実装エッジを `-[#color]<|--` / `-[#color]<|..` と生成していたが、同梱 PlantUML 1.2026.x では矢印ヘッド前の色ブラケットは構文エラーになる。正しい `<|-[#color]-` / `<|.[#color].` (色を矢印ヘッドと線の間に置く) へ修正。これにより全サンプルの `--color-relations` / `--jetpack` 系クラス図が描画不能だった問題を解消。
+    * テスト: `KotlinLightScannerTest` にコメント/文字列内 `class` の誤認防止 2 ケース、`PlantUmlClassDiagramTest` に色付き/Focus エッジの**実レンダリング**回帰テスト 2 ケースを追加 (従来は文字列一致のみで不正構文を検出できず、既存アサートも誤形を期待していたため合わせて修正)。
+    * 目的: 実プロジェクト (Kotlin/Java 混在の Android サンプル) でクラス図が黙って壊れる回帰を塞ぎ、色分け・Focus 表示を実使用可能にするため。
+
 * **UML 描画失敗の詳細出力を強化: レンダリングエンジンの生 stderr を画面・報告テキストへ露出** (`DiagramFailureMessage` / `DiagramTabPane` / `messages*.properties`)
     * **背景**: `PlantUmlRenderFailedException` はレンダリング中に PlantUML/Smetana が stderr へ出した診断 (レイアウトエンジンの内部エラーやスタックトレース) を `stderrTail` として保持していたが、これは `logs/juml.log` にしか出ておらず、失敗カード・「エラー詳細をコピー」の報告テキストには失敗メッセージ 1 行しか載っていなかった。
     * 失敗カードに **「技術的な詳細 (レンダリングエンジンの出力)」** セクションを追加し、stderr 末尾 (最大 800 文字、超過時は末尾を残す) を等幅フォントで直接表示するようにした。

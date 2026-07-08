@@ -40,6 +40,41 @@ public class KotlinLightScannerTest {
     }
 
     @Test
+    public void kdocMentioningClassWordIsNotParsedAsDeclaration() {
+        // KDoc/コメント内の "class" という単語 (例: "This class holds ...") を実クラス宣言と
+        // 誤認しないこと。誤認すると "holds" という擬似クラスが生成され、後続の英文が
+        // スーパータイプ名として抽出されて不正な PlantUML になっていた (Android サンプルの
+        // Donut.kt でクラス図がレンダリング失敗した回帰)。
+        String src = "package com.x\n"
+                + "/**\n"
+                + " * This class holds the data we track for each donut: its name, a description, and\n"
+                + " * a rating.\n"
+                + " */\n"
+                + "data class Donut(val id: Long, val name: String)\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        assertEquals("only the real 'Donut' class should be extracted", 1, infos.size());
+        JavaClassInfo c = infos.get(0);
+        assertEquals("Donut", c.getSimpleName());
+        // コメント由来の擬似スーパータイプ ("its name" / "a description" / "*/") が無いこと。
+        assertTrue("no bogus interfaces from comment text: " + c.getInterfaces(),
+                c.getInterfaces().isEmpty());
+        assertTrue("no bogus superclass from comment text: " + c.getSuperClass(),
+                c.getSuperClass() == null || c.getSuperClass().isEmpty());
+    }
+
+    @Test
+    public void classKeywordInsideStringLiteralIsIgnored() {
+        // 文字列リテラル内の "class Foo" をクラス宣言と誤認しないこと。
+        String src = "package com.x\n"
+                + "class Real {\n"
+                + "  val msg: String = \"use class Fake for testing\"\n"
+                + "}\n";
+        List<JavaClassInfo> infos = KotlinLightScanner.scan(src, ErrorListener.silent());
+        assertEquals(1, infos.size());
+        assertEquals("Real", infos.get(0).getSimpleName());
+    }
+
+    @Test
     public void bodylessClassDoesNotAbsorbNextClassMembers() {
         // 本体 {} を持たないクラス (data class / object) が、後続クラスの本体ブレースを
         // 誤って取り込み、メンバを横取りしないこと。

@@ -100,9 +100,17 @@ public final class KotlinLightScanner {
             imports.add(im.group(1));
         }
 
+        // コメント/文字列/文字リテラルの領域マスク。KDoc やコード内文字列に現れる
+        // "class" 等 (例: "This class holds ...") を実クラス宣言と誤認しないために使う。
+        boolean[] nonCode = nonCodeMask(source);
+
         // クラスヘッダごとに本体を切り出す
         Matcher cm = CLASS_HEADER.matcher(source);
         while (cm.find()) {
+            // 種別キーワード (class/interface/object) がコメント/文字列内なら誤検出。読み飛ばす。
+            if (isMasked(nonCode, cm.start(2))) {
+                continue;
+            }
             String annsAndMods = cm.group(1);
             String kindKw = cm.group(2);
             String name = cm.group(3);
@@ -118,7 +126,7 @@ public final class KotlinLightScanner {
             // プライマリコンストラクタ引数 (class Foo(val x: Int, ...))
             // 次のクラス宣言位置を上限に探索し、本体 {} を持たないクラスが後続クラスの
             // ブレース/括弧を誤って取り込まないようにする。
-            int nextHeader = nextClassHeaderStart(source, headerEnd);
+            int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode);
             int primaryCtorParen = findNextChar(source, headerEnd, '(');
             int bodyBraceOpen = findNextChar(source, headerEnd, '{');
             if (nextHeader >= 0 && primaryCtorParen >= nextHeader) {
@@ -165,10 +173,46 @@ public final class KotlinLightScanner {
         return out;
     }
 
-    /** {@code from} 以降で次に現れるクラス/インタフェース/object 宣言の開始位置。無ければ -1。 */
-    private static int nextClassHeaderStart(String source, int from) {
+    /** {@code from} 以降で次のクラス/interface/object 宣言の開始位置 (無ければ -1)。
+     * コメント/文字列内の擬似ヘッダ ({@code nonCode} が true) は読み飛ばす。 */
+    private static int nextClassHeaderStart(String source, int from, boolean[] nonCode) {
         Matcher m = CLASS_HEADER.matcher(source);
-        return m.find(from) ? m.start() : -1;
+        int at = from;
+        while (m.find(at)) {
+            if (!isMasked(nonCode, m.start(2))) {
+                return m.start();
+            }
+            at = m.end();
+        }
+        return -1;
+    }
+
+    /**
+     * ソース全体について、コメント ({@code //} / {@code /* *}{@code /})・通常/生文字列・
+     * 文字リテラルに含まれる位置を true にしたマスクを構築する。{@link #skipNonCode} と
+     * 同じ判定を使うため、コード解釈と齟齬が出ない。
+     */
+    private static boolean[] nonCodeMask(String source) {
+        int n = source.length();
+        boolean[] mask = new boolean[n];
+        int i = 0;
+        while (i < n) {
+            int e = skipNonCode(source, i);
+            if (e > i) {
+                for (int k = i; k < e && k < n; k++) {
+                    mask[k] = true;
+                }
+                i = e;
+            } else {
+                i++;
+            }
+        }
+        return mask;
+    }
+
+    /** {@code idx} がマスク範囲内かつ非コードなら true。範囲外は false。 */
+    private static boolean isMasked(boolean[] mask, int idx) {
+        return idx >= 0 && idx < mask.length && mask[idx];
     }
 
     /**
