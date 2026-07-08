@@ -26,8 +26,13 @@ public final class PlantUmlCommentFormatter {
         String t = s.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ').trim();
         // 末尾の '..' は区切りと干渉するためスペースに置換
         t = t.replaceAll("\\.\\.+$", ".");
-        if (maxLen > 0 && t.length() > maxLen) {
-            t = t.substring(0, Math.max(1, maxLen - 1)) + "…";
+        // INLINE コメントは NOTE と違い折り返されないため、極端に長い 1 行は行幅が
+        // キャンバス上限を超えて図全体の描画失敗を招く。明示指定の maxLen を優先しつつ、
+        // 無指定 (0 以下 = 従来「全文表示」) でも描画安全上限で切り詰める。通常長の
+        // コメント文 (数十〜100 数十文字) はそのまま全文表示される。
+        int effectiveMax = maxLen > 0 ? maxLen : MEMBER_TEXT_SAFETY_LIMIT;
+        if (effectiveMax > 0 && t.length() > effectiveMax) {
+            t = t.substring(0, Math.max(1, effectiveMax - 1)) + "…";
         }
         // JavaDoc が PlantUML 図 (@startuml/@enduml 等) を例示していると、別図の開始と
         // 誤認され構文エラーになる。@ の直後にゼロ幅スペースを挟んで無害化する。
@@ -125,6 +130,33 @@ public final class PlantUmlCommentFormatter {
     /** 図テキストに埋め込まれた PlantUML ブロック境界文字列。 */
     private static final java.util.regex.Pattern BLOCK_DIRECTIVE =
             java.util.regex.Pattern.compile("(?i)@(start|end)uml");
+
+    /**
+     * メンバー行 (フィールド型・定数値・シグネチャ等) に出すテキスト断片の描画安全上限。
+     *
+     * <p>クラス図のメンバー行は note と違い折り返されないため、1 断片が極端に長いと
+     * その行だけで巨大な幅になり、PlantUML のキャンバス上限 ({@code PLANTUML_LIMIT_SIZE}
+     * ≈ 16384px ≒ 半角 2000〜2300 文字) を超えて図全体が「描画できませんでした」になる。
+     * base64 鍵・巨大 SQL・ミニファイ済みデータなどの定数値が典型。通常長の型/値
+     * (数十〜100 数十文字) は全文表示のまま、この上限を超えた断片だけ末尾を省略する。</p>
+     */
+    static final int MEMBER_TEXT_SAFETY_LIMIT = 500;
+
+    /**
+     * メンバー行に出す型/値などのテキスト断片を、描画が破綻しない長さへ切り詰めてから
+     * {@link #escapeText(String)} でエスケープする。{@code maxLen} 以下なら切り詰めない
+     * (0 以下は無制限 = 従来の全文表示)。切り詰め時は末尾に省略記号 {@code …} を付ける
+     * ({@code ...} ではなく 1 文字の U+2026 を使い、既存の「切り詰めていない」判定と衝突させない)。
+     */
+    public static String escapeMember(String s, int maxLen) {
+        if (s == null || s.isEmpty()) {
+            return s == null ? "" : s;
+        }
+        if (maxLen > 0 && s.length() > maxLen) {
+            s = s.substring(0, Math.max(1, maxLen - 1)) + "…";
+        }
+        return escapeText(s);
+    }
 
     /**
      * PlantUML の制御行 (矢印ラベル・guard・title 等) に安全に書ける形へ整形する。
