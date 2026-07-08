@@ -45,4 +45,53 @@ public class JavaCommentScannerTest {
         assertTrue(cleaned, cleaned.contains("bar(int, String[])"));
         assertTrue(cleaned, cleaned.contains("for details."));
     }
+
+    // ------------ firstSentence: 折り返し文の途中省略を防ぐ ------------
+
+    @Test
+    public void firstSentenceJoinsWrappedFirstSentence() {
+        // JavaDoc の説明文がソース上で折り返されていても、firstLine のように
+        // 途中で切らず、句点までを 1 行へ復元する
+        String cleaned = JavaCommentScanner.cleanText(javadoc(
+                " * ユーザー入力を検証して\n"
+                + " * データベースに保存する。\n"
+                + " * 2 文目は含めない。\n"));
+        assertEquals("ユーザー入力を検証して データベースに保存する。",
+                JavaCommentScanner.firstSentence(cleaned));
+        // 従来の firstLine は途中で切れてしまう (回帰の対比)
+        assertEquals("ユーザー入力を検証して", JavaCommentScanner.firstLine(cleaned));
+    }
+
+    @Test
+    public void firstSentenceStopsAtEnglishPeriod() {
+        String cleaned = JavaCommentScanner.cleanText(javadoc(
+                " * Validate the input\n"
+                + " * and persist it. Then notify.\n"));
+        assertEquals("Validate the input and persist it.",
+                JavaCommentScanner.firstSentence(cleaned));
+    }
+
+    @Test
+    public void firstSentenceKeepsDecimalPointIntact() {
+        // 小数点 (3.14) を文末と誤検出しない
+        String cleaned = JavaCommentScanner.cleanText(javadoc(
+                " * Pi is about 3.14 here.\n"));
+        assertEquals("Pi is about 3.14 here.",
+                JavaCommentScanner.firstSentence(cleaned));
+    }
+
+    @Test
+    public void firstSentenceReturnsWholeTextWhenNoTerminator() {
+        String cleaned = JavaCommentScanner.cleanText(javadoc(
+                " * 説明文に句点が無い\n"
+                + " * 折り返しコメント\n"));
+        assertEquals("説明文に句点が無い 折り返しコメント",
+                JavaCommentScanner.firstSentence(cleaned));
+    }
+
+    @Test
+    public void firstSentenceHandlesNullAndEmpty() {
+        assertEquals("", JavaCommentScanner.firstSentence(null));
+        assertEquals("", JavaCommentScanner.firstSentence(""));
+    }
 }

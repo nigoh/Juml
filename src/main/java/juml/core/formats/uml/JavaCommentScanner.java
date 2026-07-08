@@ -219,6 +219,42 @@ public final class JavaCommentScanner {
     }
 
     /**
+     * インライン表示用に整形済みコメントの「最初の 1 文」を 1 行へ畳んで返す。
+     *
+     * <p>{@link #firstLine} は物理行の 1 行目で切るため、JavaDoc の説明文が
+     * ソース上で折り返されていると <em>文の途中で欠ける</em> (= 「コメントが
+     * 省略される」体感の主因)。本メソッドは折り返しを空白で連結して 1 行へ復元し、
+     * 最初の文末 ({@code 。/./!/?/！/？}) までを 1 文として返す。文末が見つから
+     * なければ全体を 1 行で返す (長すぎる場合の切り詰めは呼び出し側の
+     * {@code commentMaxLength} / 安全上限に委ねる)。</p>
+     */
+    public static String firstSentence(String cleaned) {
+        if (cleaned == null || cleaned.isEmpty()) {
+            return "";
+        }
+        // 折り返された文を復元するため物理改行を空白へ畳んで 1 行にする
+        String oneLine = cleaned.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+        if (oneLine.isEmpty()) {
+            return "";
+        }
+        for (int i = 0; i < oneLine.length(); i++) {
+            char ch = oneLine.charAt(i);
+            // 和文の句点・感嘆・疑問符は単独で文末とみなす
+            if (ch == '。' || ch == '！' || ch == '？') {
+                return oneLine.substring(0, i + 1).trim();
+            }
+            // 欧文は略語・小数点 (e.g., 3.14) を誤検出しないよう、直後が空白/終端の
+            // ときだけ文末とみなす
+            if ((ch == '.' || ch == '!' || ch == '?')
+                    && (i + 1 >= oneLine.length()
+                        || Character.isWhitespace(oneLine.charAt(i + 1)))) {
+                return oneLine.substring(0, i + 1).trim();
+            }
+        }
+        return oneLine;
+    }
+
+    /**
      * {@code pos} の直前に隣接する (間に非空白文字を挟まない) コメントを整形して返す。
      * 連続する行コメント ({@code //}) は 1 ブロックとしてマージする。
      * 該当が無ければ null。

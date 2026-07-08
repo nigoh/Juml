@@ -389,6 +389,27 @@ public class PlantUmlActivityDiagramTest {
                 puml.contains("前処理フェーズ"));
     }
 
+    // ── メソッド JavaDoc は全文表示 (途中省略しない) ──
+
+    @Test
+    public void testMethodJavadocShowsAllLinesNotJustFirst() {
+        // 冒頭 note は JavaDoc の 1 行目だけでなく全文 (複数行) を出す。
+        // 従来は firstLine で 2 行目以降が欠落していた ("コメントが省略される")。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A {"
+                        + " /**\n"
+                        + "  * 1 行目の説明。\n"
+                        + "  * 2 行目の詳細。\n"
+                        + "  * 3 行目の補足。\n"
+                        + "  */\n"
+                        + " void run() { foo(); }"
+                        + "}");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue("1st line must appear: " + puml, puml.contains("1 行目の説明。"));
+        assertTrue("2nd line must appear: " + puml, puml.contains("2 行目の詳細。"));
+        assertTrue("3rd line must appear: " + puml, puml.contains("3 行目の補足。"));
+    }
+
     // ── メソッドシグネチャテスト ──
 
     @Test

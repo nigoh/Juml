@@ -18,6 +18,52 @@ final class SeqEmitters {
     private SeqEmitters() {
     }
 
+    /**
+     * 深さ上限で展開を打ち切った呼び出しについて、本来展開すべき本体が実際に
+     * ある場合だけ「未展開」note を出して省略を可視化する。展開対象が無い呼び出し
+     * (本体が空 等) にまで note を付けてノイズにしないためのガードを内包する。
+     */
+    static void emitDepthLimitNote(StringBuilder body, String indent, String target,
+                                   JavaMethodInfo.Call call, JavaClassInfo currentClass,
+                                   JavaClassInfo nextCls, JavaMethodInfo nextMethod,
+                                   PlantUmlSequenceDiagram.Options opts) {
+        if (!hasExpandableBody(call, currentClass, nextCls, nextMethod)) {
+            return;
+        }
+        body.append(indent).append("note over ")
+                .append(PlantUmlSequenceDiagram.quote(target)).append(" : ")
+                .append(PlantUmlCommentFormatter.escapeLabel(
+                        "⋯ " + call.getMethodName() + "() は深さ上限 (maxDepth="
+                                + opts.maxDepth + ") のため未展開"))
+                .append('\n');
+    }
+
+    /**
+     * 呼び出しが展開対象の本体 (コールバック本体・フィールド初期化子の inline
+     * メソッド・解析済み呼び出し先メソッド) を実際に持つかを判定する。
+     */
+    private static boolean hasExpandableBody(JavaMethodInfo.Call call,
+                                             JavaClassInfo currentClass,
+                                             JavaClassInfo nextCls,
+                                             JavaMethodInfo nextMethod) {
+        // Case 1/1b: ラムダ/匿名クラスのコールバック本体
+        for (JavaMethodInfo inline : call.getInlineMethods()) {
+            if (!inline.getStatements().isEmpty()) {
+                return true;
+            }
+        }
+        if (!call.getInlineMethods().isEmpty()) {
+            return false;
+        }
+        // Case 2: フィールド初期化子で定義された inline メソッド
+        if (nextCls == null) {
+            JavaMethodInfo inline = PlantUmlSequenceDiagram.findInlineMethod(currentClass, call);
+            return inline != null && !inline.getStatements().isEmpty();
+        }
+        // Case 3: 解析済みクラスの呼び出し先メソッド本体
+        return nextMethod != null && !nextMethod.getStatements().isEmpty();
+    }
+
     static void emitCallSiteComment(StringBuilder body, String indent,
                                              String target, JavaMethodInfo method,
                                              PlantUmlSequenceDiagram.Options o) {
@@ -40,7 +86,7 @@ final class SeqEmitters {
     static void emitInlineNoteAtCall(StringBuilder body, String indent,
                                               String target, JavaMethodInfo method,
                                               PlantUmlSequenceDiagram.Options o) {
-        String first = JavaCommentScanner.firstLine(method.getComment());
+        String first = JavaCommentScanner.firstSentence(method.getComment());
         if (first == null || first.isEmpty()) {
             return;
         }
