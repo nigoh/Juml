@@ -87,6 +87,14 @@ public final class PlantUmlClassDiagram {
         /** {@code static final} 定数の初期化値を {@code = 100} のように併記する。既定 true。 */
         public boolean showConstantValues = true;
         /**
+         * メンバー行に出す型/値などのテキスト断片 1 つあたりの安全上限 (文字数)。
+         * これを超えた断片 (巨大な定数値・深いジェネリクス型など) は末尾を {@code …} で省略する。
+         * メンバー行は折り返されないため、極端に長い 1 断片は行幅がキャンバス上限を超えて
+         * 図全体が描画失敗する原因になる。0 以下で無制限 (従来どおり全文表示)。
+         * 既定 {@link PlantUmlCommentFormatter#MEMBER_TEXT_SAFETY_LIMIT}。
+         */
+        public int maxMemberTextLength = PlantUmlCommentFormatter.MEMBER_TEXT_SAFETY_LIMIT;
+        /**
          * {@code static final} 定数を通常フィールドの前にまとめ、間に区切り線を挿入する。
          * 定数定義がひと目で分かるようにする。既定 true。
          */
@@ -421,7 +429,7 @@ public final class PlantUmlClassDiagram {
         String focusColor = PlantUmlClassFocus.nodeColor(c.getQualifiedName(), o);
         String bgColor = focusColor != null ? focusColor : stereoColor;
         out.append(indent).append(kw).append(' ');
-        out.append(quoteId(displayId(c)));
+        out.append(quoteId(displayId(c, o.maxMemberTextLength)));
         String alias = aliasByQn.get(c.getQualifiedName());
         if (alias != null) {
             out.append(" as ").append(alias);
@@ -451,9 +459,11 @@ public final class PlantUmlClassDiagram {
             List<String> args = c.getEnumConstantArgs();
             for (int i = 0; i < c.getEnumConstants().size(); i++) {
                 out.append(indent).append("  ").append(c.getEnumConstants().get(i));
-                // 定数引数 RED(255, 0, 0) を併記（添字対応・タグ誤認防止のため HTML エスケープ）
+                // 定数引数 RED(255, 0, 0) を併記（添字対応・タグ誤認防止のため HTML エスケープ）。
+                // 巨大な引数 (長い文字列定数など) は安全上限で切り詰めて行幅の暴走を防ぐ。
                 if (i < args.size() && !args.get(i).isEmpty()) {
-                    out.append(PlantUmlCommentFormatter.escapeText(args.get(i)));
+                    out.append(PlantUmlCommentFormatter.escapeMember(
+                            args.get(i), o.maxMemberTextLength));
                 }
                 out.append('\n');
             }
@@ -677,11 +687,13 @@ public final class PlantUmlClassDiagram {
         return sb.toString();
     }
 
-    private static String displayId(JavaClassInfo c) {
+    private static String displayId(JavaClassInfo c, int maxMemberTextLength) {
         // 表示名は装飾用 (関係はエイリアス経由)。型パラメータ Box<T> を HTML エスケープして併記。
+        // 深い型パラメータで極端に長い場合は安全上限で切り詰めてノード幅の暴走を防ぐ。
         String tp = c.getTypeParameters();
         return (tp == null || tp.isEmpty()) ? c.getQualifiedName()
-                : c.getQualifiedName() + PlantUmlCommentFormatter.escapeText(tp);
+                : c.getQualifiedName()
+                        + PlantUmlCommentFormatter.escapeMember(tp, maxMemberTextLength);
     }
 
     static String quoteId(String id) {
@@ -709,14 +721,18 @@ public final class PlantUmlClassDiagram {
         }
         if (f.getType() != null && !f.getType().isEmpty()) {
             // ジェネリクス型 (Map<String,Integer> 等) の < > を PlantUML が
-            // タグとして解釈しないよう HTML エンティティ化する。
-            out.append(": ").append(PlantUmlCommentFormatter.escapeText(f.getType()));
+            // タグとして解釈しないよう HTML エンティティ化する。深いジェネリクスで
+            // 極端に長い型は安全上限で切り詰めて行幅の暴走を防ぐ。
+            out.append(": ").append(PlantUmlCommentFormatter.escapeMember(
+                    f.getType(), o.maxMemberTextLength));
         }
-        // static final 定数の初期化値を " = 100" のように全文併記する (改行は 1 行に畳む)
+        // static final 定数の初期化値を " = 100" のように併記する (改行は 1 行に畳む)。
+        // 通常長は全文表示のまま、安全上限を超える巨大な値だけ末尾を省略する。
         if (o.showConstantValues
                 && f.getConstantValue() != null && !f.getConstantValue().isEmpty()) {
             String val = f.getConstantValue().replaceAll("\\s+", " ").trim();
-            out.append(" = ").append(PlantUmlCommentFormatter.escapeText(val));
+            out.append(" = ").append(PlantUmlCommentFormatter.escapeMember(
+                    val, o.maxMemberTextLength));
         }
         out.append('\n');
     }
@@ -772,7 +788,8 @@ public final class PlantUmlClassDiagram {
             // フィールドごとの区切り線 (PlantUML: .. text ..)
             String label = f.getName() == null ? "inline" : f.getName();
             if (f.getType() != null && !f.getType().isEmpty()) {
-                label = label + ": " + PlantUmlCommentFormatter.escapeText(f.getType());
+                label = label + ": " + PlantUmlCommentFormatter.escapeMember(
+                        f.getType(), o.maxMemberTextLength);
             }
             out.append(indent).append(".. ").append(label).append(" ..\n");
             for (JavaMethodInfo m : inlines) {
@@ -800,7 +817,8 @@ public final class PlantUmlClassDiagram {
         appendAnnotations(out, m.getAnnotations(), o);
         // メソッドレベルのジェネリック宣言 <T> を名前の前に併記する
         if (m.getTypeParameters() != null && !m.getTypeParameters().isEmpty()) {
-            out.append(PlantUmlCommentFormatter.escapeText(m.getTypeParameters())).append(' ');
+            out.append(PlantUmlCommentFormatter.escapeMember(
+                    m.getTypeParameters(), o.maxMemberTextLength)).append(' ');
         }
         // 擬似名 <clinit>/<init> は < > を含むためタグ誤認回避にエスケープする
         out.append(m.getName() == null ? "" : PlantUmlCommentFormatter.escapeText(m.getName()))
@@ -813,22 +831,26 @@ public final class PlantUmlClassDiagram {
             if (name != null && !name.isEmpty()) {
                 out.append(name).append(": ");
             }
-            out.append(type == null ? "?" : PlantUmlCommentFormatter.escapeText(type));
+            out.append(type == null ? "?"
+                    : PlantUmlCommentFormatter.escapeMember(type, o.maxMemberTextLength));
         }
         out.append(')');
         if (!m.isConstructor() && m.getReturnType() != null && !m.getReturnType().isEmpty()) {
-            out.append(": ").append(PlantUmlCommentFormatter.escapeText(m.getReturnType()));
+            out.append(": ").append(PlantUmlCommentFormatter.escapeMember(
+                    m.getReturnType(), o.maxMemberTextLength));
         }
         // アノテーション属性の default 値を " = 30" のように併記する
         if (m.getDefaultValue() != null && !m.getDefaultValue().isEmpty()) {
-            out.append(" = ").append(PlantUmlCommentFormatter.escapeText(m.getDefaultValue()));
+            out.append(" = ").append(PlantUmlCommentFormatter.escapeMember(
+                    m.getDefaultValue(), o.maxMemberTextLength));
         }
         // throws 例外を併記する (showThrows 有効時のみ)
         if (o.showThrows && !m.getThrowsTypes().isEmpty()) {
             out.append(" throws ");
             for (int i = 0; i < m.getThrowsTypes().size(); i++) {
                 out.append(i == 0 ? "" : ", ")
-                        .append(PlantUmlCommentFormatter.escapeText(m.getThrowsTypes().get(i)));
+                        .append(PlantUmlCommentFormatter.escapeMember(
+                                m.getThrowsTypes().get(i), o.maxMemberTextLength));
             }
         }
         // interactiveLinks 有効かつ通常メソッド (非コンストラクタ) にメソッドリンクを埋め込む

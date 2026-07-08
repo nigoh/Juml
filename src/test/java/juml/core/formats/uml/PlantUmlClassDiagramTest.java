@@ -1373,6 +1373,43 @@ public class PlantUmlClassDiagramTest {
     }
 
     @Test
+    public void testPathologicallyLongConstantValueTruncatedForSafety() {
+        // 巨大な定数値 (base64 鍵・ミニファイ済みデータ相当) は 1 行が折り返されず
+        // キャンバス上限を超えて図全体が描画失敗する。安全上限で切り詰めることを確認する。
+        String hugeValue = "A".repeat(5000);
+        String src = "class C { public static final String BLOB = \""
+                + hugeValue + "\"; }";
+        String puml = PlantUmlClassDiagram.generate(JavaStructureExtractor.extract(src));
+        // 5000 文字の生値がそのまま出ていないこと (行幅の暴走防止)
+        assertFalse("huge constant value must be truncated for render safety",
+                puml.contains(hugeValue));
+        // どのメンバー行も安全上限 + α に収まっていること
+        int limit = PlantUmlCommentFormatter.MEMBER_TEXT_SAFETY_LIMIT;
+        for (String line : puml.split("\n", -1)) {
+            // 修飾子/可視性/名前/型などの装飾ぶんの余裕を見て上限 + 128 で判定する。
+            assertTrue("no member line should exceed the safety limit: len="
+                    + line.length() + " >> " + line,
+                    line.length() <= limit + 128);
+        }
+        // 省略記号が付くこと
+        assertTrue("truncation marker … expected", puml.contains("…"));
+    }
+
+    @Test
+    public void testMaxMemberTextLengthZeroKeepsFullValue() {
+        // maxMemberTextLength=0 (無制限) を明示すれば従来どおり全文表示する
+        String hugeValue = "B".repeat(2000);
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.maxMemberTextLength = 0;
+        String src = "class C { public static final String BLOB = \""
+                + hugeValue + "\"; }";
+        String puml = PlantUmlClassDiagram.generate(
+                JavaStructureExtractor.extract(src), o);
+        assertTrue("with unlimited setting the full value should appear",
+                puml.contains(hugeValue));
+    }
+
+    @Test
     public void testConstantValueMultiWhitespaceCollapsed() {
         // 初期化値の連続空白が単一スペースに正規化されることを確認する。
         // "hello   world" (3 スペース) → "hello world" (1 スペース)

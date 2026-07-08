@@ -105,6 +105,60 @@ public class PlantUmlCommentFormatterTest {
     }
 
     @Test
+    public void escapeMemberKeepsShortFragmentsIntact() {
+        // 安全上限以下の通常長の型/値はそのまま (エスケープのみ) 全文表示する
+        assertEquals("Map~<String, Integer>",
+                PlantUmlCommentFormatter.escapeMember("Map<String, Integer>", 500));
+        // 60 文字程度の定数値は切り詰められない (既存の全文表示仕様と両立)
+        String sixty = repeat('A', 60);
+        assertEquals(sixty, PlantUmlCommentFormatter.escapeMember(sixty, 500));
+    }
+
+    @Test
+    public void escapeMemberTruncatesPathologicallyLongFragments() {
+        // 安全上限を超える巨大な断片 (base64 鍵・巨大 SQL 等) は末尾を … で省略し、
+        // 1 行の幅がキャンバス上限を超えて描画失敗するのを防ぐ
+        String huge = repeat('A', 5000);
+        String out = PlantUmlCommentFormatter.escapeMember(huge, 500);
+        assertTrue("should be truncated to the safety limit: len=" + out.length(),
+                out.length() <= 500);
+        assertTrue("truncation marker … should be appended", out.endsWith("…"));
+        // 3 点リーダ "..." ではなく 1 文字の U+2026 を使う (全文判定と衝突させない)
+        assertFalse("must not use ... marker: " + out, out.contains("..."));
+    }
+
+    @Test
+    public void escapeMemberZeroOrNegativeMeansUnlimited() {
+        // 0 以下は無制限 (従来どおり全文表示)
+        String huge = repeat('A', 3000);
+        assertEquals(huge, PlantUmlCommentFormatter.escapeMember(huge, 0));
+        assertEquals(huge, PlantUmlCommentFormatter.escapeMember(huge, -1));
+    }
+
+    @Test
+    public void escapeMemberHandlesNullAndEmpty() {
+        assertEquals("", PlantUmlCommentFormatter.escapeMember(null, 500));
+        assertEquals("", PlantUmlCommentFormatter.escapeMember("", 500));
+    }
+
+    @Test
+    public void sanitizeInlineCappedBySafetyLimitWhenUnbounded() {
+        // maxLen=0 (無指定) でも、INLINE コメントは折り返されないため描画安全上限で切り詰める
+        String huge = repeat('x', 4000);
+        String out = PlantUmlCommentFormatter.sanitizeInlineComment(huge, 0);
+        assertTrue("unbounded inline comment must still be capped: len=" + out.length(),
+                out.length() <= PlantUmlCommentFormatter.MEMBER_TEXT_SAFETY_LIMIT);
+        assertTrue(out.endsWith("…"));
+    }
+
+    /** {@code String.repeat} 相当 (テスト内ヘルパ、可読性のため)。 */
+    private static String repeat(char c, int n) {
+        char[] a = new char[n];
+        java.util.Arrays.fill(a, c);
+        return new String(a);
+    }
+
+    @Test
     public void sanitizeNoteLineDefusesEndNoteLines() {
         // "end note" だけの行は note ブロックを打ち切る終端注入になるため、
         // 行頭にゼロ幅スペースを挟んで無害化する
