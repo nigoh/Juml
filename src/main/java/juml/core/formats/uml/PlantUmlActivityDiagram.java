@@ -473,21 +473,32 @@ public final class PlantUmlActivityDiagram {
         if (comment == null || comment.isEmpty()) {
             return;
         }
-        String first = JavaCommentScanner.firstLine(comment);
-        if (first == null || first.isEmpty()) {
+        // note ブロックは複数行を扱えるため、JavaDoc は 1 行目に限らず全文を出す。
+        // (firstLine で 1 行に切ると折り返された説明文が途中で欠け「コメントが
+        // 省略される」ため。@param 等の構造化タグは既に cleanText で除去済み。)
+        List<String> lines = new ArrayList<>();
+        for (String raw : comment.split("\n", -1)) {
+            // コメント本文の @startuml/@enduml やタグ開始 (<) をそのまま note へ書くと
+            // PlantUML が構文エラーになる/テキストが欠落するため、必ず無害化して出す。
+            String text = noteText(raw, o.commentMaxLength);
+            if (!text.isEmpty()) {
+                lines.add(text);
+            }
+        }
+        if (lines.isEmpty()) {
             return;
         }
-        // コメント本文の @startuml/@enduml やタグ開始 (<) をそのまま note へ書くと
-        // PlantUML が構文エラーになる/テキストが欠落するため、必ず無害化して出す。
-        String text = noteText(first, o.commentMaxLength);
         out.append("note\n");
-        if (o.commentColor != null && !o.commentColor.isEmpty()) {
-            out.append("<color:").append(o.commentColor).append('>')
-                    .append(text).append("</color>");
-        } else {
-            out.append(text);
+        for (String text : lines) {
+            if (o.commentColor != null && !o.commentColor.isEmpty()) {
+                out.append("<color:").append(o.commentColor).append('>')
+                        .append(text).append("</color>");
+            } else {
+                out.append(text);
+            }
+            out.append('\n');
         }
-        out.append('\n').append("end note\n");
+        out.append("end note\n");
     }
 
     private static void emitMethodSignature(StringBuilder out, JavaMethodInfo m, Options o) {

@@ -56,7 +56,7 @@ final class PlantUmlSequenceComments {
     private static void emitInline(StringBuilder out, PlantUmlSequenceDiagram.Options o,
                                     String participant, JavaClassInfo c,
                                     LinkedHashSet<String> methodNames) {
-        String classFirst = JavaCommentScanner.firstLine(c.getComment());
+        String classFirst = JavaCommentScanner.firstSentence(c.getComment());
         if (classFirst != null && !classFirst.isEmpty()) {
             appendInlineLine(out, participant, o,
                     PlantUmlCommentFormatter.sanitizeInlineComment(classFirst, o.commentMaxLength));
@@ -66,7 +66,7 @@ final class PlantUmlSequenceComments {
             if (m == null) {
                 continue;
             }
-            String first = JavaCommentScanner.firstLine(m.getComment());
+            String first = JavaCommentScanner.firstSentence(m.getComment());
             if (first == null || first.isEmpty()) {
                 continue;
             }

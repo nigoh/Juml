@@ -546,6 +546,11 @@ public final class PlantUmlSequenceDiagram {
         // 再帰展開: 呼び出し先メソッドが解析済みクラスにあれば深掘りする
         boolean canRecurse = opts.maxDepth <= 0 || depth < opts.maxDepth;
         if (!canRecurse) {
+            // 深さ上限に達した。本来展開すべき本体/コールバックがあるのに silent に
+            // 落とすと「処理が省略される」原因が利用者に伝わらないため、
+            // 展開対象がある場合だけ「未展開」note を出して可視化する (SeqEmitters に委譲)。
+            SeqEmitters.emitDepthLimitNote(body, indent, target, call,
+                    currentClass, nextCls, nextMethod, opts);
             return;
         }
         // Case 1/1b: コールバック (ラムダ/匿名クラス) があれば、呼び出し先が解析済み
@@ -671,7 +676,7 @@ public final class PlantUmlSequenceDiagram {
      * 合致するものを返す。見つからなければ null。SAM 名が解決できなかったため
      * {@code <inline>} で保持されているケースは receiver さえ一致すれば fall through する。
      */
-    private static JavaMethodInfo findInlineMethod(JavaClassInfo currentClass,
+    static JavaMethodInfo findInlineMethod(JavaClassInfo currentClass,
                                                     JavaMethodInfo.Call call) {
         if (currentClass == null || call == null) {
             return null;

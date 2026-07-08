@@ -139,4 +139,75 @@ public class PlantUmlSequenceDiagramInlineCommentAndOverloadTest {
         // exec(String) のボディ (h.alpha()) は含まれないこと
         assertFalse("alpha() は exec(int) のボディではない:\n" + puml, puml.contains("alpha()"));
     }
+
+    // ----------------------------------------------------------------
+    // 折り返された JavaDoc の 1 文目が INLINE note で途中省略されない
+    // ----------------------------------------------------------------
+
+    @Test
+    public void testInlineCommentKeepsWrappedFirstSentence() {
+        // helper() の JavaDoc 説明文がソース上で 2 行に折り返されている。
+        // AT_CALL_SITE + INLINE (既定) では呼び出し直下に 1 行 note を出すが、
+        // 折り返された文を途中で切らず 1 文まるごと表示すること。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A {"
+                        + " void run() { helper(); }"
+                        + " /**\n"
+                        + "  * 入力を検証して\n"
+                        + "  * 保存する。\n"
+                        + "  * 2 文目は含めない。\n"
+                        + "  */\n"
+                        + " void helper() {}"
+                        + "}");
+        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", opts);
+        // 折り返された 1 文が丸ごと出ること (従来は "入力を検証して" で切れていた)
+        assertTrue("wrapped first sentence must be joined:\n" + puml,
+                puml.contains("入力を検証して 保存する。"));
+        // 2 文目までは INLINE では出さない (1 文に留める)
+        assertFalse("second sentence must not appear inline:\n" + puml,
+                puml.contains("2 文目は含めない"));
+    }
+
+    // ----------------------------------------------------------------
+    // 深さ上限で展開を打ち切った呼び出しを可視化する ("未展開" note)
+    // ----------------------------------------------------------------
+
+    @Test
+    public void testMaxDepthTruncationEmitsVisibleNote() {
+        // maxDepth=1 で helper() の本体 (inner()) は展開されないが、
+        // silent に落とさず「未展開」note を出して省略を可視化すること。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A {"
+                        + " void run() { helper(); }"
+                        + " void helper() { inner(); }"
+                        + " void inner() {}"
+                        + "}");
+        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
+        opts.includeLegend = false;
+        opts.maxDepth = 1;
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", opts);
+        // 呼び出し自体は出るが、本体は未展開
+        assertTrue("call arrow must appear:\n" + puml, puml.contains("A.helper()"));
+        assertFalse("body must not expand at maxDepth=1:\n" + puml,
+                puml.contains("A.inner()"));
+        // 省略が note で可視化されていること
+        assertTrue("truncation note must be visible:\n" + puml,
+                puml.contains("未展開") && puml.contains("maxDepth=1"));
+    }
+
+    @Test
+    public void testNoTruncationNoteWhenBodyIsEmpty() {
+        // 本体が空の呼び出しでは、深さ上限でも展開すべき中身が無いので
+        // 余計な「未展開」note を出さないこと (ノイズ抑制)。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run() { helper(); } void helper() {} }");
+        PlantUmlSequenceDiagram.Options opts = new PlantUmlSequenceDiagram.Options();
+        opts.includeLegend = false;
+        opts.maxDepth = 1;
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "run", opts);
+        assertFalse("no truncation note for empty body:\n" + puml,
+                puml.contains("未展開"));
+    }
 }
