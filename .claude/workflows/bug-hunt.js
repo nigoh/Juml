@@ -1,11 +1,15 @@
-// Juml 汎用バグハント・ワークフロー
-// 使い方 (メインループから):
+// Juml 汎用バグハント・ワークフロー（参照テンプレート）
+//
+// 【推奨: インライン方式】この環境では Workflow({name,args}) の args が届かないことが
+// あるため、本ファイルの本体 (スキーマ〜return) をコピーし、先頭の `a`(=args) 依存部を
+// 実値の定数 (TARGET / FILES / LENSES) に置き換えて Workflow({ script }) で起動するのが
+// 確実。手順は orchestrate スキル参照。
+//
+// 【args 方式 (args が届く環境のみ)】:
 //   Workflow({ name: "bug-hunt", args: {
 //     target: "UML エディタ (PlantUML 編集タブ)",        // 必須: 対象の説明
-//     files: ["src/main/java/juml/app/uml/PumlSourcePanel.java", ...], // 必須: 対象ファイル
-//     tests: ["src/test/java/juml/app/uml/PumlSourcePanelErrorLineTest.java"], // 任意
-//     lenses: ["【正確性】...", "【状態管理】..."],       // 任意: 省略時は標準 5 レンズ
-//     context: "追加の前提・ルール"                        // 任意
+//     files: ["src/main/java/juml/app/uml/PumlSourcePanel.java"], // 必須: 対象ファイル
+//     tests: ["..."], lenses: ["【正確性】...", ...], context: "..." // 任意
 //   }})
 // 返り値: { confirmed: [...], rest: [...], rejectedCount, rejectedTitles }
 //   confirmed = 敵対的検証を生き残った bug。rest = ux / test-gap (検証なし・参考)。
