@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **UML エディタ (Design タブ) をシーケンス図・アクティビティ図に対応** (`SketchPane` / `SketchDiagramType` / `SeqSketch*` / `ActivitySketch*` 新規 12 クラス)
+    * **背景**: 自由編集エディタの Design サブタブ (GUI 図形デザイナー) はクラス図専用で、シーケンス図やアクティビティ図のテンプレートを開くと全行が「未対応」となり編集ロックされていた。
+    * PlantUML テキストから図種 (クラス / シーケンス / アクティビティ) を自動判定 (`SketchDiagramType.detect`) し、対応するエディタ (ツールバー + キャンバス) へ自動で切り替える構造に再編。Undo/Redo (テキストスナップショット方式) とテキスト双方向同期は `SketchPane` で図種横断に一元管理。
+    * **シーケンス図エディタ**: `participant` / `actor` 宣言、メッセージ 4 種 (`->` `->>` `-->` `-->>`)、`activate` / `deactivate` を GUI 編集。ライフライン・活性化バー・自己メッセージを描画し、メッセージの縦ドラッグ並べ替え、参加者の横ドラッグ並べ替え、2 クリックのメッセージ追加、ダブルクリック編集 (送信元/送信先/矢印/ラベル/activate 連動) に対応。
+    * **アクティビティ図エディタ**: `start` / `stop` / `end`、1 行アクション (`:text;`)、`if/then/else/endif` (入れ子可) を GUI 編集。並び順から決定的に自動レイアウトするフローチャート描画 (分岐は左右ブランチ + 合流点)。ツールバー追加・右クリックメニュー (直後に追加 / then・else ブランチへ追加 / 上下移動 / 削除)・ダブルクリック編集に対応。
+    * 従来どおり、未対応構文 (ユースケース図、`while` / `fork`、コメント行等) を含むテキストは編集ロックしてユーザーのテキストを保全する (警告バナーは 3 図種共通の `SketchBanner` へ集約)。
+    * テスト: `SeqSketchCodecTest` (13) / `ActivitySketchCodecTest` (12) / `SketchDiagramTypeTest` (8) を新設し、テンプレートの無損失 round-trip・編集ロック条件・モデル操作を固定。`SketchPaneTest` はシーケンス/アクティビティの編集可否・テキスト同期・Undo/Redo を検証する形へ拡張 (12 ケース)。
+    * 目的: コードを読み込まなくても、動的な振る舞い (呼び出し順序・処理フロー) の図をゼロから GUI で描き起こせるようにし、UML エディタを「クラス図専用」から汎用のダイアグラムエディタへ育てるため。
+
 * **クラス図レンダリング失敗を 2 件修正 (Android サンプルでの実地 e2e 検証由来)** (`KotlinLightScanner` / `PlantUmlClassRelations` / 各テスト)
     * **背景**: `android/architecture-components-samples` の全サブプロジェクトに対して全図種を一括描画したところ、2 種類のクラス図レンダリング失敗 (UML-R001 構文エラー) を検出した。
     * **バグ 1 — Kotlin コメント内の "class" 誤認 (`KotlinLightScanner`)**: KDoc/コメントや文字列リテラルに含まれる `class` という単語 (例: `/** This class holds the data ... : its name, a description, ... */`) を実クラス宣言と誤認し、"holds" という擬似クラスと、後続の英文をスーパータイプ名とする不正な関係行を生成していた。`skipNonCode` を使って非コード領域 (コメント/文字列/文字リテラル) をマスクし、クラスヘッダ検出から除外するよう修正。

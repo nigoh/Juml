@@ -39,11 +39,78 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void loadFrom_sequenceTemplate_disablesEditing() {
+    public void loadFrom_sequenceTemplate_enablesSequenceEditing() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.SEQUENCE.body()));
+        assertEquals("シーケンス図として判定されるはず", SketchDiagramType.SEQUENCE,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("シーケンス図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.seqParticipantsForTest().size()));
+        assertEquals(4, (int) GuiActionRunner.execute(
+                () -> pane.seqItemsForTest().size()));
+    }
+
+    @Test
+    public void loadFrom_activityTemplate_enablesActivityEditing() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.ACTIVITY.body()));
+        assertEquals("アクティビティ図として判定されるはず", SketchDiagramType.ACTIVITY,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("アクティビティ図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(4, (int) GuiActionRunner.execute(
+                () -> pane.activityNodesForTest().size()));
+    }
+
+    @Test
+    public void loadFrom_usecaseTemplate_disablesEditing() {
+        // 専用エディタの無い図種 (ユースケース等) は従来どおり編集ロックで保全する。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.USECASE.body()));
         assertFalse("未対応構文では GUI 編集が無効になるはず",
                 GuiActionRunner.execute(pane::isEditable));
+    }
+
+    @Test
+    public void sequenceEdit_syncsTextAndUndoRedo() {
+        // シーケンス図エディタでも編集 → テキスト同期 → Undo/Redo が一貫して動くこと。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.SEQUENCE.body());
+        });
+        GuiActionRunner.execute(
+                () -> pane.addParticipantForTest(SeqParticipant.Kind.PARTICIPANT));
+        assertTrue("追加直後のテキストに新参加者が載る: " + lastPuml.get(),
+                lastPuml.get().contains("participant NewParticipant"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新参加者が消える: " + lastPuml.get(),
+                lastPuml.get().contains("NewParticipant"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新参加者が戻る: " + lastPuml.get(),
+                lastPuml.get().contains("participant NewParticipant"));
+    }
+
+    @Test
+    public void activityEdit_syncsTextAndUndo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.ACTIVITY.body());
+        });
+        GuiActionRunner.execute(
+                () -> pane.addActivityNodeForTest(ActivityNode.action("New step")));
+        assertTrue("追加直後のテキストに新アクションが載る: " + lastPuml.get(),
+                lastPuml.get().contains(":New step;"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新アクションが消える: " + lastPuml.get(),
+                lastPuml.get().contains(":New step;"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
     }
 
     @Test
