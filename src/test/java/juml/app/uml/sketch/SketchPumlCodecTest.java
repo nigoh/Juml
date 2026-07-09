@@ -58,6 +58,41 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void parse_outOfRangePosCoordinate_isReportedNotThrown() {
+        // int 範囲外の '@pos 座標で NumberFormatException を投げず、未対応として扱う
+        // (Design タブ切替時のクラッシュ防止 + テキスト保全)。
+        String puml = "@startuml\nclass Foo\n'@pos Foo 3000000000 0\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml); // 例外を投げないこと
+        assertFalse("範囲外座標は未対応として編集をロックするはず", r.isFullySupported());
+        assertNotNull(r.model.findClass("Foo"));
+    }
+
+    @Test
+    public void parse_interleavedMembers_isReportedNotSilentlyReordered() {
+        // メソッドの後にフィールドが来る (交互配置) 本体は再生成で並びが崩れるため、
+        // 未対応として編集をロックし原文の並びを保全する。
+        String puml = "@startuml\nclass Foo {\n  + run() : void\n  - id : int\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertFalse("交互配置は往復で崩れるため編集不可にするはず", r.isFullySupported());
+    }
+
+    @Test
+    public void parse_memberSeparatorLine_isReportedNotMisclassified() {
+        // クラス区切り線 '--' はフィールドに誤分類され、再生成で先頭へ移動してしまうため未対応。
+        String puml = "@startuml\nclass Foo {\n  - id : int\n  --\n  + run() : void\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertFalse("区切り線を含む本体は編集不可にするはず", r.isFullySupported());
+    }
+
+    @Test
+    public void parse_cleanFieldsThenMethods_staysSupported() {
+        // フィールド→メソッドの素直な並び (区切りなし) は従来どおり編集可能。
+        String puml = "@startuml\nclass Foo {\n  - id : int\n  + run() : void\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("素直な並びは編集可能なはず: " + r.unsupportedLines, r.isFullySupported());
+    }
+
+    @Test
     public void parse_readsRelationsWithKindAndLabel() {
         SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(SAMPLE);
         assertEquals(3, r.model.getRelations().size());

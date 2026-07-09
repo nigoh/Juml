@@ -72,8 +72,15 @@ public final class SketchPumlCodec {
             }
             Matcher pos = POS.matcher(line);
             if (pos.matches()) {
-                positions.put(pos.group(1), new int[]{
-                        Integer.parseInt(pos.group(2)), Integer.parseInt(pos.group(3))});
+                Integer px = parseIntSafe(pos.group(2));
+                Integer py = parseIntSafe(pos.group(3));
+                if (px == null || py == null) {
+                    // int 範囲外の座標はモデル化できない。未対応として編集をロックし、
+                    // 例外で Design タブ切替を壊さずテキストを保全する。
+                    unsupported.add(line);
+                } else {
+                    positions.put(pos.group(1), new int[]{px, py});
+                }
                 continue;
             }
             if (line.startsWith("'")) {
@@ -96,7 +103,7 @@ public final class SketchPumlCodec {
                     unsupported.add(line);
                 }
                 if (decl.group(4) != null) {
-                    i = readMembers(lines, i, c);
+                    i = readMembers(lines, i, c, unsupported);
                 }
                 continue;
             }
@@ -135,9 +142,23 @@ public final class SketchPumlCodec {
         return c;
     }
 
-    /** {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。 */
-    private static int readMembers(String[] lines, int start, SketchClass c) {
+    /** PlantUML のクラス内区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
+    private static final Pattern MEMBER_SEPARATOR = Pattern.compile("^(--|==|__|\\.\\.).*$");
+
+    /**
+     * {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。
+     *
+     * <p>{@link #toPuml} は「全フィールド → 全メソッド」の順で再生成するため、原文が
+     * メソッドとフィールドを交互に書いていたり区切り線 ({@code --} 等) を含むと、GUI 編集で
+     * 並びが崩れる。そうした<em>往復で並びが変質する本体</em>は {@code unsupported} へ積んで
+     * 編集をロックし、テキストの並びを保全する (isFullySupported()==true の「編集しても
+     * テキストを失わない」契約を守る)。区切り線はフィールドとして誤分類されるため特に危険。</p>
+     */
+    private static int readMembers(String[] lines, int start, SketchClass c,
+                                   List<String> unsupported) {
         int i = start;
+        boolean sawMethod = false;
+        boolean reorderRisk = false;
         while (i < lines.length) {
             String line = lines[i].trim();
             // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま
@@ -156,11 +177,29 @@ public final class SketchPumlCodec {
             // 括弧を含む行はメソッド、それ以外 (区切り線 -- を含む) はフィールド扱い。
             if (line.contains("(")) {
                 c.getMethods().add(line);
+                sawMethod = true;
             } else {
+                // 区切り線、またはメソッドの後に来るフィールド (交互配置) は再生成で並びが崩れる。
+                if (MEMBER_SEPARATOR.matcher(line).matches() || sawMethod) {
+                    reorderRisk = true;
+                }
                 c.getFields().add(line);
             }
         }
+        if (reorderRisk) {
+            // 並びが往復で崩れる本体を含むクラスは編集不可にして原文を保全する。
+            unsupported.add(c.getName() + " {…}");
+        }
         return i;
+    }
+
+    /** int 範囲外・不正な整数は null を返す安全パース ({@code '@pos} 座標のクラッシュ防止)。 */
+    private static Integer parseIntSafe(String s) {
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** 明示座標を反映し、座標の無いクラスは格子状に自動配置する。 */

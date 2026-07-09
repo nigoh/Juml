@@ -96,7 +96,9 @@ final class SketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable) {
+                // 関係追加モード中はクリックで端点を置く操作なので、ダブルクリック編集は無効化する
+                // (旧 selected の編集ダイアログが不意に開いて関係描画が中断するのを防ぐ)。
+                if (e.getClickCount() != 2 || !editable || relationMode != null) {
                     return;
                 }
                 if (selected != null) {
@@ -114,7 +116,9 @@ final class SketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null) {
+                // 関係追加モード中の Delete は無効 (旧 selected クラスの破壊的削除を防ぐ。中断は Esc)。
+                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null
+                        && relationMode == null) {
                     model.removeClass(selected);
                     selected = null;
                     listener.modelEdited();
@@ -162,10 +166,23 @@ final class SketchCanvas extends JPanel {
         return snap(v);
     }
 
+    /** テスト用: 現在の選択クラス。 */
+    SketchClass selectedForTest() {
+        return selected;
+    }
+
+    /** テスト用: 選択クラスを直接設定する (マウス press の代替)。 */
+    void setSelectedForTest(SketchClass c) {
+        this.selected = c;
+    }
+
     /** 関係追加モードを切り替える (null で選択/移動モードへ戻す)。 */
     void setRelationMode(SketchRelation.Kind kind) {
         this.relationMode = kind;
         this.relationSource = null;
+        // モード切替時に旧選択をクリアする。関係モード中は press で selected を更新しないため、
+        // 残すとダブルクリック編集/Delete が旧クラスへ漏れる (上のガードと二重の保険)。
+        this.selected = null;
         repaint();
     }
 

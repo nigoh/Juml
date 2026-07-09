@@ -85,6 +85,25 @@ public class SketchCanvasSelfRelationSmokeTest {
     }
 
     @Test
+    public void enteringRelationMode_clearsSelection() {
+        // 関係追加モードに入ると旧選択がクリアされること。残すとダブルクリック編集/Delete が
+        // 旧クラスへ漏れ、描画中に無関係なクラスの編集ダイアログ表示・破壊的削除が起きる。
+        SketchCanvas canvas = newCanvas();
+        SketchModel model = new SketchModel();
+        SketchClass a = new SketchClass("A", SketchClass.Kind.CLASS, 60, 60);
+        model.getClasses().add(a);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, true, Collections.emptyList());
+            canvas.setSelectedForTest(a); // press でクラス A を選択した状態を再現
+        });
+        assertTrue("前提: A が選択されている",
+                GuiActionRunner.execute(() -> canvas.selectedForTest() == a));
+        GuiActionRunner.execute(() -> canvas.setRelationMode(SketchRelation.Kind.EXTENDS));
+        assertTrue("関係モードに入ると選択はクリアされるはず",
+                GuiActionRunner.execute(() -> canvas.selectedForTest() == null));
+    }
+
+    @Test
     public void selfRelation_paintsWithoutThrowing() {
         SketchCanvas canvas = newCanvas();
         SketchModel model = new SketchModel();

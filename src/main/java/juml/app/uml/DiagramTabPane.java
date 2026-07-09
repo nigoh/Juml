@@ -467,6 +467,9 @@ public final class DiagramTabPane {
         // 閉じたタブの復元 (markDirty=true) は未保存内容なので dirty、ディスク同期
         // (markDirty=false) は編集ではないので clean。
         existing.dirty = markDirty;
+        // Design サブタブ表示中なら、差し替えたテキストでキャンバスも再読込する。しないと
+        // 古いモデルのまま次の GUI 編集が差し替え後のテキストを上書き消失させる。
+        existing.refreshDesignFromTextIfVisible();
         refreshTabLabels();
     }
 
@@ -1379,6 +1382,8 @@ public final class DiagramTabPane {
         private boolean dirty;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
+        /** 自由編集エディタ: GUI 図形デザイナー (Design サブタブ)。非エディタタブでは null。 */
+        private juml.app.uml.sketch.SketchPane sketchPane;
         /** メソッド図の SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH 切替バー (メソッド図以外では非表示)。 */
         private final JPanel kindBar;
         private final javax.swing.JToggleButton seqToggle;
@@ -1562,7 +1567,7 @@ public final class DiagramTabPane {
             // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
             // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
             // 同時に見えるのは片方だけ (JTabbedPane) なので同期ループは起きない。
-            juml.app.uml.sketch.SketchPane sketchPane = new juml.app.uml.sketch.SketchPane();
+            sketchPane = new juml.app.uml.sketch.SketchPane();
             sketchPane.setOnPumlChange(sourcePanel::setText);
             bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
             bottomTabs.addChangeListener(e -> {
@@ -1570,6 +1575,18 @@ public final class DiagramTabPane {
                     sketchPane.loadFrom(sourcePanel.getText());
                 }
             });
+        }
+
+        /**
+         * Design サブタブが表示中なら、現在のテキストからキャンバスを再読込する。
+         * 外部要因 (ディスク同期など) でソーステキストがプログラム的に差し替わったとき、
+         * Design 選択時にしか走らない {@code loadFrom} を補って、古いモデルのまま次の GUI 編集で
+         * 新テキストを上書き消失させるのを防ぐ。sketch 起点の setText では呼ばない (無限ループ回避)。
+         */
+        void refreshDesignFromTextIfVisible() {
+            if (sketchPane != null && bottomTabs.getSelectedComponent() == sketchPane) {
+                sketchPane.loadFrom(sourcePanel.getText());
+            }
         }
 
         /** 編集発生を記録し、タブヘッダに未保存マーク (●) を付ける。 */
