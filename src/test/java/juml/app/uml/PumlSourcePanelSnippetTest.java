@@ -85,6 +85,29 @@ public class PumlSourcePanelSnippetTest {
     }
 
     @Test
+    public void updateUI_reappliesErrorHighlightAfterThemeSwitch() throws Exception {
+        // Look&Feel ライブ切替 (updateUI) 後もエラー行ハイライトが残る (現テーマ色で貼り直す)。
+        // updateUI は invokeLater で貼り直すため、EDT を回してから件数を確認する。
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> {
+            panel.setText("a\nb\nc\n");
+            panel.highlightErrorLine(2);
+        });
+        assertEquals("切替前は 1 件", 1,
+                (int) GuiActionRunner.execute(panel::highlightCountForTest));
+        GuiActionRunner.execute(panel::updateUI);
+        GuiActionRunner.execute(() -> { }); // invokeLater の貼り直しを消化する
+        assertEquals("テーマ切替後もエラー行ハイライトは残る (1 件)", 1,
+                (int) GuiActionRunner.execute(panel::highlightCountForTest));
+        // クリア後の updateUI では復活しない。
+        GuiActionRunner.execute(panel::clearErrorHighlight);
+        GuiActionRunner.execute(panel::updateUI);
+        GuiActionRunner.execute(() -> { });
+        assertEquals("クリア済みなら updateUI で復活しない (0 件)", 0,
+                (int) GuiActionRunner.execute(panel::highlightCountForTest));
+    }
+
+    @Test
     public void setText_clearsPreviousErrorHighlight_indirectly() {
         // ハイライト中に setText で内容が変わっても壊れないこと (再描画経路の健全性)。
         PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);

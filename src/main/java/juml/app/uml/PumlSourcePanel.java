@@ -124,6 +124,25 @@ public class PumlSourcePanel extends JPanel {
     }
 
     private Object errorHighlightTag;
+    /** 現在強調しているエラー行 (1 始まり)。無しは 0。テーマ切替時の再着色に使う。 */
+    private int highlightedErrorLine;
+
+    /**
+     * Look&amp;Feel のライブ切替に追従して、焼き込まれた色のハイライトを現テーマで貼り直す。
+     * ハイライトのペインター色は追加時に固定されるため、{@code updateComponentTreeUI} では
+     * 更新されず旧テーマ色が残る (JavaSourcePanel と同じ対策)。エラー行の強調があれば
+     * 現在のテーマ色で再適用する。super から呼ばれるためフィールド未初期化ガードを置く。
+     */
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        if (textArea == null || highlightedErrorLine <= 0) {
+            return;
+        }
+        // ツリーの LaF 更新が済んでから貼り直す。
+        final int line = highlightedErrorLine;
+        javax.swing.SwingUtilities.invokeLater(() -> highlightErrorLine(line));
+    }
 
     /** エラー行の強調色。テーマ (ライト/ダーク) に応じて描画時に解決する。 */
     private static java.awt.Color errorHighlightColor() {
@@ -155,6 +174,7 @@ public class PumlSourcePanel extends JPanel {
             errorHighlightTag = textArea.getHighlighter().addHighlight(start, end,
                     new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
                             errorHighlightColor()));
+            highlightedErrorLine = line;
             if (!textArea.hasFocus()) {
                 java.awt.geom.Rectangle2D r = textArea.modelToView2D(start);
                 if (r != null) {
@@ -168,6 +188,7 @@ public class PumlSourcePanel extends JPanel {
 
     /** 描画失敗行の強調を消す。 */
     public void clearErrorHighlight() {
+        highlightedErrorLine = 0;
         if (errorHighlightTag != null) {
             textArea.getHighlighter().removeHighlight(errorHighlightTag);
             errorHighlightTag = null;
