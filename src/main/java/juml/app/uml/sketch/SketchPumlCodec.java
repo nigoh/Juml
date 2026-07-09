@@ -202,7 +202,14 @@ public final class SketchPumlCodec {
         }
     }
 
-    /** 明示座標を反映し、座標の無いクラスは格子状に自動配置する。 */
+    /**
+     * 明示座標を反映し、座標の無いクラスは格子状に自動配置する。
+     *
+     * <p>存在しないクラス名の {@code '@pos} (テキスト側でクラスを消したが座標コメントが残った等)
+     * は対応クラスが無いため無視され、再生成テキストから落ちる。これは Juml 生成のレイアウト
+     * メタデータの無害な掃除であり、一般コメントと違い意図的に許容する (編集はロックしない)。
+     * 挙動は {@code SketchPumlCodecTest#parse_orphanPos_isDroppedButKeepsEditingEnabled} で固定。</p>
+     */
     private static void applyPositions(SketchModel model, Map<String, int[]> positions) {
         int auto = 0;
         for (SketchClass c : model.getClasses()) {

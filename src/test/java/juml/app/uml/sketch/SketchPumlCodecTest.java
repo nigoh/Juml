@@ -85,6 +85,22 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void parse_orphanPos_isDroppedButKeepsEditingEnabled() {
+        // 存在しないクラスの '@pos (テキストでクラスを消した残骸など) は Juml 生成のレイアウト
+        // メタデータの無害な掃除として意図的に破棄する。一般コメントと違い編集はロックしない。
+        // (設計判断: won't-fix。ユーザー合意済み。)
+        String puml = "@startuml\nclass Foo\n'@pos Foo 10 20\n'@pos Bar 30 40\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("孤立 '@pos があっても編集は有効なまま (無害なメタデータのため)",
+                r.isFullySupported());
+        assertEquals(1, r.model.getClasses().size());
+        assertEquals(10, r.model.findClass("Foo").getX());
+        // 再生成すると存在しないクラスの '@pos は落ちる (意図的な掃除)。
+        assertFalse("存在しないクラスの '@pos は再生成テキストに残らない",
+                SketchPumlCodec.toPuml(r.model).contains("Bar"));
+    }
+
+    @Test
     public void parse_cleanFieldsThenMethods_staysSupported() {
         // フィールド→メソッドの素直な並び (区切りなし) は従来どおり編集可能。
         String puml = "@startuml\nclass Foo {\n  - id : int\n  + run() : void\n}\n@enduml\n";
