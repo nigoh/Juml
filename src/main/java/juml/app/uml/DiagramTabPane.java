@@ -455,7 +455,19 @@ public final class DiagramTabPane {
         }
         DiagramTab existing = openTabs.get(key);
         if (existing != null) {
+            // 未編集のタブなら、ディスクから読み直した最新内容を反映する (外部エディタでの
+            // 変更が「開き直したのに古いまま」にならないように)。未保存編集がある場合は
+            // ユーザーの編集を黙って捨てないため反映しない。
+            if (file != null && !existing.dirty && initialText != null
+                    && !initialText.equals(existing.sourcePanel.getText())) {
+                existing.sourcePanel.setText(initialText);
+                // setText はドキュメントリスナー経由で dirty を立てるが、これはユーザー編集
+                // ではなくディスク同期なので打ち消す (再描画のデバウンスは走らせたまま)。
+                existing.dirty = false;
+                refreshTabLabels();
+            }
             tabs.setSelectedComponent(existing);
+            javax.swing.SwingUtilities.invokeLater(existing.sourcePanel::focusEditor);
             return;
         }
         pinPreviewTab();
@@ -479,6 +491,9 @@ public final class DiagramTabPane {
         refreshTabLabels();
         tab.startRender();
         applyTabBudget(key);
+        // 開いた直後からすぐ入力できるよう、テキスト領域へフォーカスを移す
+        // (レイアウト確定後でないと requestFocusInWindow が効かないため遅延実行)。
+        javax.swing.SwingUtilities.invokeLater(tab.sourcePanel::focusEditor);
     }
 
     /**
@@ -602,6 +617,10 @@ public final class DiagramTabPane {
         int idx = tabs.indexOfComponent(tab);
         if (idx >= 0) {
             tabs.setToolTipTextAt(idx, target.getAbsolutePath());
+            // カスタムヘッダ (タブコンポーネント) のツールチップも保存先パスへ更新する。
+            // これをしないと「PlantUML エディタ (自由編集)」の初期文言が残り続ける。
+            DiagramTabHeader.updateTooltip(tabs.getTabComponentAt(idx),
+                    target.getAbsolutePath());
         }
         refreshTabLabels();
         reportStatus(Messages.get("status.saved") + target.getAbsolutePath());
@@ -1078,6 +1097,27 @@ public final class DiagramTabPane {
     }
 
     /**
+     * テスト用: 「dirty な Untitled タブを保存して閉じる」経路を、保存先を明示指定して
+     * 再現する ({@code JFileChooser} を回避)。実経路と同じく<em>閉じる前に評価した旧キー</em>で
+     * {@link #closeTab} を呼び、保存中の {@link #migrateEditorTabKey} 後に openTabs へ
+     * ゴーストが残らないこと (剥離コンポーネントへの再フォーカスでクラッシュしないこと) を
+     * 検証するためのシーム。
+     *
+     * @return 保存して閉じられたら true
+     */
+    boolean closeActiveTabSavingToForTest(java.io.File target) {
+        DiagramTab t = activeTab();
+        if (t == null || !t.isEditor() || target == null) {
+            return false;
+        }
+        String preDialogKey = t.key; // 実 UI が確認ダイアログ前に捕捉する旧キー
+        if (!writeEditorTo(t, target)) { // migrateEditorTabKey が t.key を新パスへ移す
+            return false;
+        }
+        return closeTab(t, preDialogKey, true);
+    }
+
+    /**
      * タブを閉じる。{@code recordForReopen} が true のときだけ再オープン履歴に積む。
      * メモリ上限による自動クローズ (LRU) は履歴を汚さないよう false で呼ぶ。
      *
@@ -1088,6 +1128,12 @@ public final class DiagramTabPane {
         if (recordForReopen && !confirmDiscardEdits(tab)) {
             return false;
         }
+        // 確認ダイアログで「保存」を選ぶと savePumlEditor → migrateEditorTabKey が走り、
+        // Untitled タブのキーが "PUML:<絶対パス>" へ移行していることがある。引数 key は
+        // ダイアログ前に評価された旧キーなので、ここで最新のキーへ読み直す。旧キーのまま
+        // 帳簿を掃除すると openTabs にゴーストが残り、保存したファイルを開き直したとき
+        // 剥離済みコンポーネントへ setSelectedComponent して IllegalArgumentException になる。
+        String liveKey = tab.key != null ? tab.key : key;
         if (recordForReopen) {
             pushClosedTab(tab);
         }
@@ -1102,14 +1148,14 @@ public final class DiagramTabPane {
         if (index >= 0) {
             tabs.remove(index);
         }
-        openTabs.remove(key);
-        if (key.equals(previewTabKey)) {
+        openTabs.remove(liveKey);
+        if (liveKey.equals(previewTabKey)) {
             previewTabKey = null;
         }
         mru.onClosed(tab);
-        navHistory.remove(key);
+        navHistory.remove(liveKey);
         refreshTabLabels();
-        tabMemory.onClose(key);
+        tabMemory.onClose(liveKey);
         return true;
     }
 
@@ -1734,6 +1780,13 @@ public final class DiagramTabPane {
             if (renderReleased) {
                 return;
             }
+            // 進行中の描画があれば止める。放置すると解放後に done() が完走して SVG を
+            // 再注入し (renderReleased=true のまま表示だけ復活)、以降の releaseRender が
+            // 冒頭ガードで no-op になってメモリ予算を恒久的にすり抜ける。
+            if (activeWorker != null) {
+                activeWorker.cancel(true);
+                activeWorker = null;
+            }
             previewPanel.setSvgGraphicsNode(null, 0, 0);
             previewPanel.setLinkAreas(null);
             previewPanel.setTextItems(java.util.Collections.emptyList());
@@ -1781,8 +1834,11 @@ public final class DiagramTabPane {
 
                 @Override
                 protected void done() {
-                    if (isCancelled() || this != activeWorker) {
-                        return; // キャンセル済み、または新しい描画に置き換わったので破棄
+                    if (isCancelled() || this != activeWorker || renderReleased) {
+                        // キャンセル済み・新しい描画に置き換え済み・解放済みタブは破棄する。
+                        // renderReleased 中に SVG を注入すると「解放済みなのに表示だけ復活」
+                        // という不整合になる (メモリ予算のすり抜け + 再フォーカス時の全再描画)。
+                        return;
                     }
                     if (error != null) {
                         // エディタタブでは編集中テキストを描画結果で上書きしない。

@@ -63,3 +63,6 @@
 `.claude/` 全体の仕組み（Rules / Skills / Subagents / Slash Commands / Hooks / settings）の
 使い分けマップは **`.claude/STEERING.md`** を参照。agents・commands・skills は Claude Code が
 自動検出するため settings.json への登録は不要。
+
+- **多エージェントで網羅調査・面の回帰検証をするとき**（明示要求時のみ）→
+  `orchestrate` スキル + `.claude/workflows/`（`/bug-hunt`・`/render-sweep`）

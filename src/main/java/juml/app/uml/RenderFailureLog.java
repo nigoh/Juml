@@ -71,15 +71,22 @@ final class RenderFailureLog {
     /**
      * 描画失敗を記録する。失敗した PlantUML をファイルへ保存し、例外を AppLog へ出力する。
      *
+     * <p>エディタタブ ({@code editor=true}) ではファイル保存を行わない。ライブプレビューは
+     * 入力ポーズ (600ms) のたびに編集途中のテキストで描画され、編集中はほぼ常に構文エラーに
+     * なるため、毎回 EDT 上で logs/ の走査+書込が走るうえ、{@link #MAX_DUMPS} の保存枠が
+     * 編集途中の一時テキストで埋まり、本来の目的である「生成図の失敗の報告用保存」が
+     * 押し出されてしまう。エディタの失敗テキストはエディタ自身に表示されているため
+     * ファイル保存は不要で、AppLog への記録だけ行う。</p>
+     *
      * @param label  図のラベル (タブ名等、ログの識別用)
      * @param puml   失敗した生成 PlantUML (null 可 = 生成前に失敗)
      * @param error  発生した例外
-     * @param editor エディタタブでの失敗なら true (エラー ID の分類に使う)
-     * @return 保存した .puml ファイル。保存できなかった (puml が null 等) 場合は null。
+     * @param editor エディタタブでの失敗なら true (エラー ID の分類とファイル保存の抑制に使う)
+     * @return 保存した .puml ファイル。保存しなかった (puml が null / エディタ) 場合は null。
      */
     static File dump(String label, String puml, Throwable error, boolean editor) {
         File saved = null;
-        if (puml != null && !puml.isEmpty()) {
+        if (!editor && puml != null && !puml.isEmpty()) {
             try {
                 File dir = new File(PathUtil.getBasePath(), "logs");
                 if (dir.isDirectory() || dir.mkdirs()) {

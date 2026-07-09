@@ -254,6 +254,38 @@ CI（`build.yml` の `check jar`）と同一。headless で skip されたテス
 
 バージョン更新・タグ付け・成果物生成などのリリース手順を実行します。
 
+### 12. `/bug-hunt` — オーケストレーション式バグハント 🎯🐛
+
+**用途**: 「この領域をバグゼロにしたい」「徹底的に洗い出したい」とき
+
+`bug-hunt` ワークフロー（`.claude/workflows/bug-hunt.js`）が観点別レンズ
+（正確性 / 状態 / EDT / I・O・i18n / UX）のファインダーを**並列**起動し、
+bug 判定は独立エージェントが**敵対的に検証**（反証を試み、生き残ったものだけ確定）。
+修正はメインループが直列に行い、**確定 0 件（枯れ）までラウンドを回します**。
+
+```
+/bug-hunt UML エディタ
+/bug-hunt src/main/java/juml/app/uml/git
+```
+
+- ⚠ 多数のエージェントを起動するためトークン消費が大きい（明示要求時のみ）
+- 📚 手順・パターンは `orchestrate` スキル
+
+### 13. `/render-sweep` — レンダリング一括回帰スイープ 🖼️
+
+**用途**: 実プロジェクト群 × 図種オプション群で「描画が面で壊れていないか」を検証したいとき
+
+`render-sweep` ワークフローが 1 プロジェクト = 1 エージェントで並列に
+`Juml.jar` を叩き、エラー SVG / UML-R エラー / 異常終了だけを構造化して返します。
+
+```
+/render-sweep /path/to/sampleA /path/to/sampleB
+/render-sweep https://github.com/android/architecture-components-samples
+```
+
+- ✅ 過去に実バグを検出した構成（`--color-relations` / `--jetpack` / preset）を標準セットに内蔵
+- 📚 手順は `orchestrate` スキル
+
 ---
 
 ## 使い分けガイド

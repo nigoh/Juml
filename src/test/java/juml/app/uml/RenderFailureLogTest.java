@@ -48,6 +48,15 @@ public class RenderFailureLogTest {
                 result);
     }
 
+    @Test
+    public void testDumpEditorTabDoesNotWriteFile() {
+        // エディタタブ (editor=true) は編集途中テキストの失敗が頻発するため、
+        // ファイル保存を抑制する (AppLog への記録のみ)。非 null の puml でも null を返す。
+        File result = RenderFailureLog.dump("editor-tab",
+                "@startuml\nclass {\n@enduml", new RuntimeException("syntax"), true);
+        assertNull("editor タブの dump はファイルを書かず null を返すべき", result);
+    }
+
     // ── classify: 失敗原因 → エラー ID の対応 ─────────────────────────
 
     @Test

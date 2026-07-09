@@ -428,6 +428,50 @@ public final class JavaSourcePanel extends JPanel {
         textPane.setCaretPosition(0);
     }
 
+    /**
+     * Look&amp;Feel のライブ切替 ({@code SwingUtilities.updateComponentTreeUI}) へ追従する。
+     *
+     * <p>本文の背景・トークン色は {@link EditorColors} 由来の非 UIResource 色を明示 set
+     * しているため {@code installColors} では置き換わらず、切替後も旧テーマ色が残る
+     * (ガターと現在行ペインターだけが描画時解決で新テーマになり、Light→Dark では
+     * キャレット行が「暗色フィル上の黒文字」で判読不能になる)。表示中の内容を
+     * 新テーマのパレットで再着色する。super コンストラクタからも呼ばれるため
+     * フィールド未初期化ガードが必要。</p>
+     */
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        if (textPane == null) {
+            return; // 構築中 (JPanel コンストラクタ経由)
+        }
+        // ツリー全体の LaF 更新が済んでから再着色する (途中で文書を触らない)。
+        SwingUtilities.invokeLater(this::reapplyThemeColors);
+    }
+
+    /** 表示中テキストを現在のテーマ ({@link EditorColors}) で再着色する。キャレット位置は保持。 */
+    private void reapplyThemeColors() {
+        String text;
+        try {
+            text = textPane.getDocument().getText(0, textPane.getDocument().getLength());
+        } catch (BadLocationException ex) {
+            return; // 取得できなければ次の再描画に任せる (致命的でない)
+        }
+        int caret = Math.min(textPane.getCaretPosition(), text.length());
+        // 検索ヒットのペインター色も旧テーマで焼き込まれているため一旦リセットする。
+        findBar.reset();
+        if (currentFile != null) {
+            boolean omit = text.length() > HIGHLIGHT_CHAR_LIMIT;
+            List<Span> spans = omit ? null
+                    : SourceHighlighter.highlight(text, isKotlin(currentFile.getName()));
+            applyHighlighted(text, spans);
+        } else {
+            setPlainText(text, EditorColors.gutterForeground());
+        }
+        textPane.setCaretPosition(caret);
+        updateCurrentLineHighlight();
+        gutter.refresh();
+    }
+
     /** キャレット行を薄く塗る現在行ハイライトを貼り替える。 */
     private void updateCurrentLineHighlight() {
         Highlighter h = textPane.getHighlighter();

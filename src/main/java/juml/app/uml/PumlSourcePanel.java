@@ -111,6 +111,12 @@ public class PumlSourcePanel extends JPanel {
         textArea.setText(puml == null ? "" : puml);
         textArea.setCaretPosition(0);
         copyButton.setEnabled(puml != null && !puml.isEmpty());
+        // プログラムによる全文差し替え (ファイル読込・Design キャンバス同期など) は
+        // undo 単位として意味を成さないため履歴を破棄する。ユーザーのキー入力・
+        // スニペット挿入だけが Ctrl+Z の対象になる。
+        if (undoManager != null) {
+            undoManager.discardAllEdits();
+        }
     }
 
     public String getText() {
@@ -205,13 +211,18 @@ public class PumlSourcePanel extends JPanel {
         if (errorLine > gen.length) {
             return Math.min(Math.max(1, errorLine), edit.length);
         }
+        // prelude 挿入分を差し引いた「エディタ上の期待位置」。距離の基準を生成行番号の
+        // ままにすると、同一内容の行 ("}" や重複する関連行など PlantUML で頻出) がある
+        // 場合に、常に正解より下の複製行が選ばれる下方バイアスが出る。
+        int injected = Math.max(0, gen.length - edit.length);
+        int expected = Math.max(1, errorLine - injected);
         String target = gen[errorLine - 1].trim();
         if (!target.isEmpty()) {
             int best = -1;
             int bestDist = Integer.MAX_VALUE;
             for (int i = 0; i < edit.length; i++) {
                 if (edit[i].trim().equals(target)) {
-                    int dist = Math.abs((i + 1) - errorLine);
+                    int dist = Math.abs((i + 1) - expected);
                     if (dist < bestDist) {
                         bestDist = dist;
                         best = i + 1;
@@ -223,9 +234,11 @@ public class PumlSourcePanel extends JPanel {
             }
         }
         // 内容一致なし (prelude 由来の行や空行): 挿入行数を行数差で推定して数値補正する。
-        int injected = Math.max(0, gen.length - edit.length);
         return editorLineForError(errorLine, injected);
     }
+
+    /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */
+    private javax.swing.undo.UndoManager undoManager;
 
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
@@ -233,10 +246,53 @@ public class PumlSourcePanel extends JPanel {
         // 編集モードでは空テキストからでもコピーできるよう常時有効にする。
         if (editable) {
             copyButton.setEnabled(true);
+            installUndoSupport();
         }
         // スニペット挿入 UI は編集モードのときだけ見せる。
         snippetLabel.setVisible(editable);
         snippetCombo.setVisible(editable);
+    }
+
+    /**
+     * Ctrl(⌘)+Z / Ctrl(⌘)+Y / Ctrl(⌘)+Shift+Z の undo/redo を編集モードに配線する。
+     * JTextArea は既定では undo を持たないため、エディタとして「まともに使える」
+     * 最低限の取り消し操作をここで足す。多重呼び出しは無視 (再インストールしない)。
+     */
+    private void installUndoSupport() {
+        if (undoManager != null) {
+            return;
+        }
+        undoManager = new javax.swing.undo.UndoManager();
+        undoManager.setLimit(500);
+        textArea.getDocument().addUndoableEditListener(undoManager);
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.InputMap im = textArea.getInputMap();
+        javax.swing.ActionMap am = textArea.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, menuMask),
+                "juml-undo");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Y, menuMask),
+                "juml-redo");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z,
+                menuMask | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-redo");
+        am.put("juml-undo", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (undoManager.canUndo()) {
+                    undoManager.undo();
+                }
+            }
+        });
+        am.put("juml-redo", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (undoManager.canRedo()) {
+                    undoManager.redo();
+                }
+            }
+        });
+    }
+
+    /** エディタのテキスト領域へ入力フォーカスを移す (タブを開いた直後に呼ぶ)。 */
+    public void focusEditor() {
+        textArea.requestFocusInWindow();
     }
 
     /**

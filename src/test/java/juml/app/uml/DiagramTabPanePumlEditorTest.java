@@ -225,6 +225,36 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void closeDirtyUntitledWithSave_leavesNoGhostAndReopenSucceeds() throws Exception {
+        // dirty な Untitled タブを「保存して閉じる」経路。保存中に tab.key が
+        // untitled-N → PUML:<path> へ移行するため、closeTab が旧キーで帳簿を掃除すると
+        // openTabs にゴーストが残り、保存ファイルを開き直すと剥離コンポーネントへの
+        // setSelectedComponent で IllegalArgumentException になる (回帰対象)。
+        File f = tmp.newFile("ghost-target.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null)); // Untitled
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(EDITED)); // dirty
+        boolean closed = GuiActionRunner.execute(
+                () -> pane.closeActiveTabSavingToForTest(f));
+        assertTrue("保存して閉じられるはず", closed);
+        assertEquals("閉じた後は動的タブが 0 (ゴーストが残らない)",
+                FIXED, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        // 保存したファイルを開き直す → 例外なくタブが 1 つ開く。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(
+                readFile(f), f));
+        assertEquals("保存ファイルを開き直すと 1 タブ増える (ゴースト衝突でクラッシュしない)",
+                FIXED + 1, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertTrue(GuiActionRunner.execute(() -> pane.activeTabIsPumlEditor()));
+    }
+
+    private static String readFile(File f) {
+        try {
+            return PumlEditorSupport.read(f);
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    @Test
     public void openPumlEditor_markDirty_showsUnsavedMark() {
         // 閉じたタブの再オープンで未保存(●)状態を復元する機構を検証する。
         GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
