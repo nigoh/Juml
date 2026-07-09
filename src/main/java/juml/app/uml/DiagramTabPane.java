@@ -442,12 +442,14 @@ public final class DiagramTabPane {
      * 既存エディタタブへ {@code initialText} を反映する (open 系が既存タブへ合流したときの処理)。
      *
      * <ul>
-     *   <li>{@code markDirty=true} (閉じたタブの再オープン): 引数テキストは<em>未保存の編集内容</em>
-     *       なので、内容を復元して {@code dirty=true} に戻す。これをしないと 2 回目のクローズで
-     *       無警告消失する (再オープンの未保存状態復元が既存タブ経路で握り潰されるバグの修正)。</li>
-     *   <li>{@code markDirty=false} かつ未編集タブ: File &gt; Open 等でのディスク同期。最新内容を
+     *   <li>既存タブに未保存編集がある ({@code existing.dirty}) 場合は、内容が違っても
+     *       <em>何もしない</em>。ユーザーが今まさに編集している内容を、閉じたタブの復元や
+     *       ディスク同期で黙って上書き・消失させないため。{@code markDirty} の真偽に依らず守る。</li>
+     *   <li>未編集タブ + {@code markDirty=true} (閉じたタブの再オープン): 引数テキストは
+     *       <em>未保存の編集内容</em>なので、内容を復元して {@code dirty=true} に戻す
+     *       (これをしないと 2 回目のクローズで無警告消失する)。</li>
+     *   <li>未編集タブ + {@code markDirty=false} (File &gt; Open 等): ディスク同期。最新内容を
      *       反映し {@code dirty=false} のまま。</li>
-     *   <li>{@code markDirty=false} かつ未保存編集あり: ユーザーの編集を黙って捨てないため何もしない。</li>
      * </ul>
      */
     private void syncExistingEditorTab(DiagramTab existing, java.io.File file,
@@ -456,17 +458,16 @@ public final class DiagramTabPane {
                 || initialText.equals(existing.sourcePanel.getText())) {
             return;
         }
-        if (markDirty) {
-            existing.sourcePanel.setText(initialText);
-            existing.dirty = true; // 復元した未保存内容は dirty のまま扱う
-            refreshTabLabels();
-        } else if (!existing.dirty) {
-            existing.sourcePanel.setText(initialText);
-            // setText はドキュメントリスナー経由で dirty を立てるが、これはユーザー編集では
-            // なくディスク同期なので打ち消す (再描画のデバウンスは走らせたまま)。
-            existing.dirty = false;
-            refreshTabLabels();
+        // 未保存編集のあるタブは、内容が違っても黙って上書きしない (markDirty に依らず)。
+        if (existing.dirty) {
+            return;
         }
+        existing.sourcePanel.setText(initialText);
+        // setText はドキュメントリスナー経由で dirty を立てるため、ここで明示的に上書きする:
+        // 閉じたタブの復元 (markDirty=true) は未保存内容なので dirty、ディスク同期
+        // (markDirty=false) は編集ではないので clean。
+        existing.dirty = markDirty;
+        refreshTabLabels();
     }
 
     /**

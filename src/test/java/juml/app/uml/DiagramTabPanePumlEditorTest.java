@@ -293,6 +293,22 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void reopenOntoExistingDirtyTab_doesNotClobberUnsavedEdits() throws Exception {
+        // 閉じたタブの再オープン (markDirty=true) が、既に未保存編集を持つ同ファイルタブへ
+        // 合流したとき、現在の編集内容を黙って上書きしないこと (markDirty=false 側の保護と対称)。
+        File f = tmp.newFile("reopen-onto-dirty.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        String current = "@startuml\nclass Current\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(current)); // 既存タブが dirty
+        // 別内容の「復元テキスト」を markDirty=true で開き直す (Ctrl+Shift+T 相当)。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(EDITED, f, true));
+        assertEquals("現在の未保存編集は保持される (復元テキストで上書きしない)",
+                current, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertTrue("未保存マークは付いたまま",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
     public void openExistingDirtyTab_doesNotClobberUnsavedEdits() throws Exception {
         // 未保存編集があるタブを開き直しても、ディスク内容でユーザーの編集を黙って上書きしない。
         File f = tmp.newFile("keep-edits.puml");
