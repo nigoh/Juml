@@ -439,6 +439,37 @@ public final class DiagramTabPane {
     }
 
     /**
+     * 既存エディタタブへ {@code initialText} を反映する (open 系が既存タブへ合流したときの処理)。
+     *
+     * <ul>
+     *   <li>{@code markDirty=true} (閉じたタブの再オープン): 引数テキストは<em>未保存の編集内容</em>
+     *       なので、内容を復元して {@code dirty=true} に戻す。これをしないと 2 回目のクローズで
+     *       無警告消失する (再オープンの未保存状態復元が既存タブ経路で握り潰されるバグの修正)。</li>
+     *   <li>{@code markDirty=false} かつ未編集タブ: File &gt; Open 等でのディスク同期。最新内容を
+     *       反映し {@code dirty=false} のまま。</li>
+     *   <li>{@code markDirty=false} かつ未保存編集あり: ユーザーの編集を黙って捨てないため何もしない。</li>
+     * </ul>
+     */
+    private void syncExistingEditorTab(DiagramTab existing, java.io.File file,
+                                       String initialText, boolean markDirty) {
+        if (file == null || initialText == null
+                || initialText.equals(existing.sourcePanel.getText())) {
+            return;
+        }
+        if (markDirty) {
+            existing.sourcePanel.setText(initialText);
+            existing.dirty = true; // 復元した未保存内容は dirty のまま扱う
+            refreshTabLabels();
+        } else if (!existing.dirty) {
+            existing.sourcePanel.setText(initialText);
+            // setText はドキュメントリスナー経由で dirty を立てるが、これはユーザー編集では
+            // なくディスク同期なので打ち消す (再描画のデバウンスは走らせたまま)。
+            existing.dirty = false;
+            refreshTabLabels();
+        }
+    }
+
+    /**
      * {@code markDirty} 版。閉じたタブの再オープン時に、未保存 (●) 状態も復元して
      * 2 回目のクローズで無警告消失しないようにするために使う。
      */
@@ -455,17 +486,7 @@ public final class DiagramTabPane {
         }
         DiagramTab existing = openTabs.get(key);
         if (existing != null) {
-            // 未編集のタブなら、ディスクから読み直した最新内容を反映する (外部エディタでの
-            // 変更が「開き直したのに古いまま」にならないように)。未保存編集がある場合は
-            // ユーザーの編集を黙って捨てないため反映しない。
-            if (file != null && !existing.dirty && initialText != null
-                    && !initialText.equals(existing.sourcePanel.getText())) {
-                existing.sourcePanel.setText(initialText);
-                // setText はドキュメントリスナー経由で dirty を立てるが、これはユーザー編集
-                // ではなくディスク同期なので打ち消す (再描画のデバウンスは走らせたまま)。
-                existing.dirty = false;
-                refreshTabLabels();
-            }
+            syncExistingEditorTab(existing, file, initialText, markDirty);
             tabs.setSelectedComponent(existing);
             javax.swing.SwingUtilities.invokeLater(existing.sourcePanel::focusEditor);
             return;
@@ -1786,6 +1807,12 @@ public final class DiagramTabPane {
             if (activeWorker != null) {
                 activeWorker.cancel(true);
                 activeWorker = null;
+            }
+            // エディタタブの 600ms ライブプレビュー デバウンスも止める。残すと解放後に発火して
+            // startRender() が renderReleased=false へ戻し、解放済みタブを裏で再描画してしまう
+            // (worker キャンセルとは別経路のメモリ予算すり抜け。closeTab と同じ対処)。
+            if (renderDebounce != null) {
+                renderDebounce.stop();
             }
             previewPanel.setSvgGraphicsNode(null, 0, 0);
             previewPanel.setLinkAreas(null);

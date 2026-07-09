@@ -218,15 +218,30 @@ public class PumlSourcePanel extends JPanel {
         int expected = Math.max(1, errorLine - injected);
         String target = gen[errorLine - 1].trim();
         if (!target.isEmpty()) {
+            // 同一内容の行が複数あるとき、数値距離 (expected) だけだと direction 行の除去などで
+            // expected がずれて隣接する誤った複製を選びうる。まず前後の行内容 (near context) が
+            // 生成側の errorLine 周辺と一致する候補を優先し、同点は expected への距離で決める。
+            String prevCtx = nonEmptyNeighbor(gen, errorLine - 1, -1);
+            String nextCtx = nonEmptyNeighbor(gen, errorLine - 1, +1);
             int best = -1;
+            int bestScore = Integer.MIN_VALUE;
             int bestDist = Integer.MAX_VALUE;
             for (int i = 0; i < edit.length; i++) {
-                if (edit[i].trim().equals(target)) {
-                    int dist = Math.abs((i + 1) - expected);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        best = i + 1;
-                    }
+                if (!edit[i].trim().equals(target)) {
+                    continue;
+                }
+                int ctx = 0;
+                if (prevCtx != null && prevCtx.equals(nonEmptyNeighbor(edit, i, -1))) {
+                    ctx++;
+                }
+                if (nextCtx != null && nextCtx.equals(nonEmptyNeighbor(edit, i, +1))) {
+                    ctx++;
+                }
+                int dist = Math.abs((i + 1) - expected);
+                if (ctx > bestScore || (ctx == bestScore && dist < bestDist)) {
+                    bestScore = ctx;
+                    bestDist = dist;
+                    best = i + 1;
                 }
             }
             if (best > 0) {
@@ -235,6 +250,20 @@ public class PumlSourcePanel extends JPanel {
         }
         // 内容一致なし (prelude 由来の行や空行): 挿入行数を行数差で推定して数値補正する。
         return editorLineForError(errorLine, injected);
+    }
+
+    /**
+     * {@code lines[from]} から {@code dir} 方向 (+1/-1) に進み、最初の非空行の trim 内容を返す。
+     * 端に達したら null。重複行のタイブレークで前後コンテキストを比較するために使う。
+     */
+    private static String nonEmptyNeighbor(String[] lines, int from, int dir) {
+        for (int i = from + dir; i >= 0 && i < lines.length; i += dir) {
+            String t = lines[i].trim();
+            if (!t.isEmpty()) {
+                return t;
+            }
+        }
+        return null;
     }
 
     /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */

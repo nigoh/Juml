@@ -102,6 +102,25 @@ public class PumlSourcePanelErrorLineTest {
                 5, PumlSourcePanel.editorLineForError(editor, generated, 7));
     }
 
+    /**
+     * direction 行がエラーより下で除去され、かつ隣接して同一内容行があるケース。
+     * 純差分 (net delta) の期待位置は下方へずれるが、前後コンテキスト一致を優先することで
+     * 正しい (上側の) 複製へ写像することを検証する。
+     * editor: 1 @startuml / 2 class A { / 3 } / 4 %%zz / 5 %%zz / 6 left to right direction / 7 @enduml
+     * gen:    1 @startuml / 2 !pragma / 3 skinparam / 4 class A { / 5 } / 6 %%zz / 7 %%zz / 8 @enduml
+     *        (prelude 2 行挿入・direction 1 行除去 → net injected = 1、エラーは上側 %%zz)
+     */
+    @Test
+    public void contentMapping_directionStripBelowWithDuplicates_usesContext() {
+        String editor = "@startuml\nclass A {\n}\n%%zz\n%%zz\nleft to right direction\n@enduml";
+        String generated = "@startuml\n!pragma layout smetana\nskinparam x y\n"
+                + "class A {\n}\n%%zz\n%%zz\n@enduml";
+        // gen 行 6 = 上側の "%%zz"。正解はエディタ行 4 (前=} / 後=%%zz)。
+        // net injected=1 → expected=5 なので数値距離だけだと下側 (行5) を選んでしまう。
+        assertEquals("前後コンテキストで上側の複製 (エディタ行4) を選ぶべき",
+                4, PumlSourcePanel.editorLineForError(editor, generated, 6));
+    }
+
     /** null 入力・範囲外でも例外を投げず安全な行番号を返す。 */
     @Test
     public void contentMapping_nullAndOutOfRangeAreSafe() {
