@@ -84,6 +84,24 @@ public class PumlSourcePanelErrorLineTest {
         assertEquals(1, mapped);
     }
 
+    /**
+     * 同一内容の行が複数あるケース (PlantUML では "}" や重複する関連行が頻出)。
+     * 距離基準を生成行番号のままにすると、常に正解より下の複製行が選ばれる下方バイアスが
+     * あった。挿入補正後の期待位置で最も近い複製を選ぶことを検証する。
+     */
+    @Test
+    public void contentMapping_duplicateLines_picksNearInjectionCorrectedPosition() {
+        String editor = "@startuml\nclass A {\n}\nclass B {\n}\n@enduml";
+        String generated = "@startuml\n!pragma layout smetana\nskinparam x y\n"
+                + "class A {\n}\nclass B {\n}\n@enduml";
+        // generated: 1:@startuml 2:!pragma 3:skinparam 4:class A { 5:} 6:class B { 7:} 8:@enduml
+        // editor:    1:@startuml 2:class A { 3:} 4:class B { 5:} 6:@enduml
+        assertEquals("最初の '}' (生成行5) はエディタ行 3 に写像されるべき (下方の行 5 でなく)",
+                3, PumlSourcePanel.editorLineForError(editor, generated, 5));
+        assertEquals("2 個目の '}' (生成行7) はエディタ行 5 に写像されるべき",
+                5, PumlSourcePanel.editorLineForError(editor, generated, 7));
+    }
+
     /** null 入力・範囲外でも例外を投げず安全な行番号を返す。 */
     @Test
     public void contentMapping_nullAndOutOfRangeAreSafe() {

@@ -63,6 +63,24 @@ final class DiagramTabHeader {
         }
     }
 
+    /**
+     * ヘッダのツールチップを更新する (Save As で保存先パスが決まったとき等)。
+     * プレビュー時のピン留めヒント追記 ({@link #applyPreviewTooltip}) と整合するよう
+     * {@link #BASE_TOOLTIP} クライアントプロパティも更新する。
+     */
+    static void updateTooltip(java.awt.Component header, String tooltip) {
+        if (header instanceof javax.swing.JComponent) {
+            javax.swing.JComponent c = (javax.swing.JComponent) header;
+            c.putClientProperty(BASE_TOOLTIP, tooltip);
+            c.setToolTipText(tooltip);
+        }
+        JLabel label = findTitle(header);
+        if (label != null) {
+            label.putClientProperty(BASE_TOOLTIP, tooltip);
+            label.setToolTipText(tooltip);
+        }
+    }
+
     private static void applyPreviewTooltip(javax.swing.JComponent c, boolean preview) {
         String base = (String) c.getClientProperty(BASE_TOOLTIP);
         if (base == null) {

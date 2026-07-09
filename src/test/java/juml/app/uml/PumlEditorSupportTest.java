@@ -59,4 +59,31 @@ public class PumlEditorSupportTest {
         PumlEditorSupport.write(f, null);
         assertEquals("", PumlEditorSupport.read(f));
     }
+
+    @Test
+    public void read_normalizesCrlfAndCrToLf() throws Exception {
+        // CRLF / 単独 CR を含むファイルを読むと LF へ正規化されること。正規化しないと
+        // JTextArea の Document に \r が残り、行追加・保存で混在 EOL ファイルになる。
+        File f = new File(tmp.getRoot(), "crlf.puml");
+        java.nio.file.Files.write(f.toPath(),
+                "@startuml\r\nclass A\r\n@enduml\r\n".getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+        String read = PumlEditorSupport.read(f);
+        assertEquals("@startuml\nclass A\n@enduml\n", read);
+        assertFalse("CR が残っていないこと", read.contains("\r"));
+    }
+
+    @Test
+    public void read_stripsBomAndNormalizesEol() throws Exception {
+        // BOM 除去と CRLF 正規化が両立すること。
+        File f = new File(tmp.getRoot(), "bom-crlf.puml");
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] body = "@startuml\r\nclass A\r\n@enduml".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8);
+        byte[] all = new byte[bom.length + body.length];
+        System.arraycopy(bom, 0, all, 0, bom.length);
+        System.arraycopy(body, 0, all, bom.length, body.length);
+        java.nio.file.Files.write(f.toPath(), all);
+        assertEquals("@startuml\nclass A\n@enduml", PumlEditorSupport.read(f));
+    }
 }

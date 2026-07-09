@@ -103,6 +103,10 @@ final class PumlEditorSupport {
      * .puml テキストを UTF-8 で読み込む。先頭の UTF-8 BOM は取り除く
      * (残すと不可視の {@code ﻿} が {@code @startuml} の前に挿入され、
      * 行 1 のキャレット挙動が狂い、保存で BOM が伝播する)。
+     *
+     * <p>改行コードは LF へ正規化する。JTextArea の Document は {@code \r} を除去せず、
+     * ユーザーが新規入力する改行は {@code \n} のみなので、CRLF ファイルをそのまま
+     * 読み込むと保存時に既存行 CRLF・追加行 LF の混在 EOL ファイルが生成される。</p>
      */
     static String read(File file) throws IOException {
         byte[] bytes = Files.readAllBytes(file.toPath());
@@ -111,7 +115,8 @@ final class PumlEditorSupport {
                 && bytes[1] == UTF8_BOM[1] && bytes[2] == UTF8_BOM[2]) {
             offset = 3;
         }
-        return new String(bytes, offset, bytes.length - offset, StandardCharsets.UTF_8);
+        return new String(bytes, offset, bytes.length - offset, StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").replace('\r', '\n');
     }
 
     /** .puml テキストを UTF-8 で書き込む (親ディレクトリが無ければ作る)。 */
