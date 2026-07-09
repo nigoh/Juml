@@ -263,6 +263,66 @@ public class DiagramTabPanePumlEditorTest {
     }
 
     @Test
+    public void reopenOntoExistingCleanTab_markDirty_restoresUnsavedContentAndMark() throws Exception {
+        // 閉じたエディタの再オープンが「同じファイルの未編集タブが既に開いている」状況へ
+        // 合流したとき、未保存の編集内容と ● を復元すること (既存タブ経路で markDirty を
+        // 握り潰し、内容が dirty=false で注入されて無警告消失していた回帰の修正)。
+        File f = tmp.newFile("reopen.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f)); // 既存のクリーンなタブ
+        // reopen クローズャ相当: 未保存の編集テキストを markDirty=true で開き直す。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(EDITED, f, true));
+        assertEquals("タブは増えず既存タブへ合流する", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("未保存の編集内容が復元される",
+                EDITED, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertTrue("未保存マーク(●)が復元される (閉じても無警告消失しない)",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void openExistingCleanTab_syncsFromDisk_butKeepsCleanState() throws Exception {
+        // File > Open 等で未編集タブを開き直すと、ディスクの最新内容へ同期しつつ dirty は付かない。
+        File f = tmp.newFile("disk-sync.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        String newDisk = "@startuml\nclass Fresh\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.openPumlEditor(newDisk, f)); // markDirty=false
+        assertEquals("ディスクの最新内容へ同期される",
+                newDisk, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertFalse("同期は編集ではないので未保存マークは付かない",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void reopenOntoExistingDirtyTab_doesNotClobberUnsavedEdits() throws Exception {
+        // 閉じたタブの再オープン (markDirty=true) が、既に未保存編集を持つ同ファイルタブへ
+        // 合流したとき、現在の編集内容を黙って上書きしないこと (markDirty=false 側の保護と対称)。
+        File f = tmp.newFile("reopen-onto-dirty.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        String current = "@startuml\nclass Current\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(current)); // 既存タブが dirty
+        // 別内容の「復元テキスト」を markDirty=true で開き直す (Ctrl+Shift+T 相当)。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(EDITED, f, true));
+        assertEquals("現在の未保存編集は保持される (復元テキストで上書きしない)",
+                current, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertTrue("未保存マークは付いたまま",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
+    public void openExistingDirtyTab_doesNotClobberUnsavedEdits() throws Exception {
+        // 未保存編集があるタブを開き直しても、ディスク内容でユーザーの編集を黙って上書きしない。
+        File f = tmp.newFile("keep-edits.puml");
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, f));
+        GuiActionRunner.execute(() -> pane.setActiveEditorText(EDITED)); // dirty
+        String newDisk = "@startuml\nclass Other\n@enduml\n";
+        GuiActionRunner.execute(() -> pane.openPumlEditor(newDisk, f)); // markDirty=false
+        assertEquals("未保存編集は保持される (ディスク内容で上書きしない)",
+                EDITED, GuiActionRunner.execute(() -> pane.activeEditorText()));
+        assertTrue("未保存マークは付いたまま",
+                GuiActionRunner.execute(() -> tabs.getTitleAt(0)).startsWith("●"));
+    }
+
+    @Test
     public void confirmDiscardAllEdits_noDirtyTabs_returnsTrueWithoutDialog() {
         // 未保存タブが無ければ確認ダイアログを出さず true (終了を許可) を返す。
         GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));

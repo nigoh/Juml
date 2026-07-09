@@ -124,6 +124,25 @@ public class PumlSourcePanel extends JPanel {
     }
 
     private Object errorHighlightTag;
+    /** 現在強調しているエラー行 (1 始まり)。無しは 0。テーマ切替時の再着色に使う。 */
+    private int highlightedErrorLine;
+
+    /**
+     * Look&amp;Feel のライブ切替に追従して、焼き込まれた色のハイライトを現テーマで貼り直す。
+     * ハイライトのペインター色は追加時に固定されるため、{@code updateComponentTreeUI} では
+     * 更新されず旧テーマ色が残る (JavaSourcePanel と同じ対策)。エラー行の強調があれば
+     * 現在のテーマ色で再適用する。super から呼ばれるためフィールド未初期化ガードを置く。
+     */
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        if (textArea == null || highlightedErrorLine <= 0) {
+            return;
+        }
+        // ツリーの LaF 更新が済んでから貼り直す。
+        final int line = highlightedErrorLine;
+        javax.swing.SwingUtilities.invokeLater(() -> highlightErrorLine(line));
+    }
 
     /** エラー行の強調色。テーマ (ライト/ダーク) に応じて描画時に解決する。 */
     private static java.awt.Color errorHighlightColor() {
@@ -155,6 +174,7 @@ public class PumlSourcePanel extends JPanel {
             errorHighlightTag = textArea.getHighlighter().addHighlight(start, end,
                     new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
                             errorHighlightColor()));
+            highlightedErrorLine = line;
             if (!textArea.hasFocus()) {
                 java.awt.geom.Rectangle2D r = textArea.modelToView2D(start);
                 if (r != null) {
@@ -168,6 +188,7 @@ public class PumlSourcePanel extends JPanel {
 
     /** 描画失敗行の強調を消す。 */
     public void clearErrorHighlight() {
+        highlightedErrorLine = 0;
         if (errorHighlightTag != null) {
             textArea.getHighlighter().removeHighlight(errorHighlightTag);
             errorHighlightTag = null;
@@ -218,15 +239,30 @@ public class PumlSourcePanel extends JPanel {
         int expected = Math.max(1, errorLine - injected);
         String target = gen[errorLine - 1].trim();
         if (!target.isEmpty()) {
+            // 同一内容の行が複数あるとき、数値距離 (expected) だけだと direction 行の除去などで
+            // expected がずれて隣接する誤った複製を選びうる。まず前後の行内容 (near context) が
+            // 生成側の errorLine 周辺と一致する候補を優先し、同点は expected への距離で決める。
+            String prevCtx = nonEmptyNeighbor(gen, errorLine - 1, -1);
+            String nextCtx = nonEmptyNeighbor(gen, errorLine - 1, +1);
             int best = -1;
+            int bestScore = Integer.MIN_VALUE;
             int bestDist = Integer.MAX_VALUE;
             for (int i = 0; i < edit.length; i++) {
-                if (edit[i].trim().equals(target)) {
-                    int dist = Math.abs((i + 1) - expected);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        best = i + 1;
-                    }
+                if (!edit[i].trim().equals(target)) {
+                    continue;
+                }
+                int ctx = 0;
+                if (prevCtx != null && prevCtx.equals(nonEmptyNeighbor(edit, i, -1))) {
+                    ctx++;
+                }
+                if (nextCtx != null && nextCtx.equals(nonEmptyNeighbor(edit, i, +1))) {
+                    ctx++;
+                }
+                int dist = Math.abs((i + 1) - expected);
+                if (ctx > bestScore || (ctx == bestScore && dist < bestDist)) {
+                    bestScore = ctx;
+                    bestDist = dist;
+                    best = i + 1;
                 }
             }
             if (best > 0) {
@@ -235,6 +271,20 @@ public class PumlSourcePanel extends JPanel {
         }
         // 内容一致なし (prelude 由来の行や空行): 挿入行数を行数差で推定して数値補正する。
         return editorLineForError(errorLine, injected);
+    }
+
+    /**
+     * {@code lines[from]} から {@code dir} 方向 (+1/-1) に進み、最初の非空行の trim 内容を返す。
+     * 端に達したら null。重複行のタイブレークで前後コンテキストを比較するために使う。
+     */
+    private static String nonEmptyNeighbor(String[] lines, int from, int dir) {
+        for (int i = from + dir; i >= 0 && i < lines.length; i += dir) {
+            String t = lines[i].trim();
+            if (!t.isEmpty()) {
+                return t;
+            }
+        }
+        return null;
     }
 
     /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */

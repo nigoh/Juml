@@ -58,6 +58,75 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void parse_outOfRangePosCoordinate_isReportedNotThrown() {
+        // int 範囲外の '@pos 座標で NumberFormatException を投げず、未対応として扱う
+        // (Design タブ切替時のクラッシュ防止 + テキスト保全)。
+        String puml = "@startuml\nclass Foo\n'@pos Foo 3000000000 0\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml); // 例外を投げないこと
+        assertFalse("範囲外座標は未対応として編集をロックするはず", r.isFullySupported());
+        assertNotNull(r.model.findClass("Foo"));
+    }
+
+    @Test
+    public void parse_interleavedMembers_isReportedNotSilentlyReordered() {
+        // メソッドの後にフィールドが来る (交互配置) 本体は再生成で並びが崩れるため、
+        // 未対応として編集をロックし原文の並びを保全する。
+        String puml = "@startuml\nclass Foo {\n  + run() : void\n  - id : int\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertFalse("交互配置は往復で崩れるため編集不可にするはず", r.isFullySupported());
+    }
+
+    @Test
+    public void parse_memberSeparatorLine_isReportedNotMisclassified() {
+        // クラス区切り線 '--' はフィールドに誤分類され、再生成で先頭へ移動してしまうため未対応。
+        String puml = "@startuml\nclass Foo {\n  - id : int\n  --\n  + run() : void\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertFalse("区切り線を含む本体は編集不可にするはず", r.isFullySupported());
+    }
+
+    @Test
+    public void namedStartuml_isPreservedThroughRoundTrip() {
+        // @startuml <name> の図名 (出力名) はユーザー内容なので、GUI 編集の再生成でも保全する。
+        String puml = "@startuml Login\nclass Foo\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("図名付きでも編集は有効", r.isFullySupported());
+        assertEquals("Login", r.model.getDiagramName());
+        assertTrue("再生成テキストに図名が残るはず: " + SketchPumlCodec.toPuml(r.model),
+                SketchPumlCodec.toPuml(r.model).startsWith("@startuml Login\n"));
+    }
+
+    @Test
+    public void unnamedStartuml_hasEmptyDiagramName() {
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse("@startuml\nclass Foo\n@enduml\n");
+        assertEquals("", r.model.getDiagramName());
+        assertTrue(SketchPumlCodec.toPuml(r.model).startsWith("@startuml\n"));
+    }
+
+    @Test
+    public void parse_orphanPos_isDroppedButKeepsEditingEnabled() {
+        // 存在しないクラスの '@pos (テキストでクラスを消した残骸など) は Juml 生成のレイアウト
+        // メタデータの無害な掃除として意図的に破棄する。一般コメントと違い編集はロックしない。
+        // (設計判断: won't-fix。ユーザー合意済み。)
+        String puml = "@startuml\nclass Foo\n'@pos Foo 10 20\n'@pos Bar 30 40\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("孤立 '@pos があっても編集は有効なまま (無害なメタデータのため)",
+                r.isFullySupported());
+        assertEquals(1, r.model.getClasses().size());
+        assertEquals(10, r.model.findClass("Foo").getX());
+        // 再生成すると存在しないクラスの '@pos は落ちる (意図的な掃除)。
+        assertFalse("存在しないクラスの '@pos は再生成テキストに残らない",
+                SketchPumlCodec.toPuml(r.model).contains("Bar"));
+    }
+
+    @Test
+    public void parse_cleanFieldsThenMethods_staysSupported() {
+        // フィールド→メソッドの素直な並び (区切りなし) は従来どおり編集可能。
+        String puml = "@startuml\nclass Foo {\n  - id : int\n  + run() : void\n}\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("素直な並びは編集可能なはず: " + r.unsupportedLines, r.isFullySupported());
+    }
+
+    @Test
     public void parse_readsRelationsWithKindAndLabel() {
         SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(SAMPLE);
         assertEquals(3, r.model.getRelations().size());

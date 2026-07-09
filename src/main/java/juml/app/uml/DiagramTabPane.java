@@ -439,6 +439,41 @@ public final class DiagramTabPane {
     }
 
     /**
+     * 既存エディタタブへ {@code initialText} を反映する (open 系が既存タブへ合流したときの処理)。
+     *
+     * <ul>
+     *   <li>既存タブに未保存編集がある ({@code existing.dirty}) 場合は、内容が違っても
+     *       <em>何もしない</em>。ユーザーが今まさに編集している内容を、閉じたタブの復元や
+     *       ディスク同期で黙って上書き・消失させないため。{@code markDirty} の真偽に依らず守る。</li>
+     *   <li>未編集タブ + {@code markDirty=true} (閉じたタブの再オープン): 引数テキストは
+     *       <em>未保存の編集内容</em>なので、内容を復元して {@code dirty=true} に戻す
+     *       (これをしないと 2 回目のクローズで無警告消失する)。</li>
+     *   <li>未編集タブ + {@code markDirty=false} (File &gt; Open 等): ディスク同期。最新内容を
+     *       反映し {@code dirty=false} のまま。</li>
+     * </ul>
+     */
+    private void syncExistingEditorTab(DiagramTab existing, java.io.File file,
+                                       String initialText, boolean markDirty) {
+        if (file == null || initialText == null
+                || initialText.equals(existing.sourcePanel.getText())) {
+            return;
+        }
+        // 未保存編集のあるタブは、内容が違っても黙って上書きしない (markDirty に依らず)。
+        if (existing.dirty) {
+            return;
+        }
+        existing.sourcePanel.setText(initialText);
+        // setText はドキュメントリスナー経由で dirty を立てるため、ここで明示的に上書きする:
+        // 閉じたタブの復元 (markDirty=true) は未保存内容なので dirty、ディスク同期
+        // (markDirty=false) は編集ではないので clean。
+        existing.dirty = markDirty;
+        // Design サブタブ表示中なら、差し替えたテキストでキャンバスも再読込する。しないと
+        // 古いモデルのまま次の GUI 編集が差し替え後のテキストを上書き消失させる。
+        existing.refreshDesignFromTextIfVisible();
+        refreshTabLabels();
+    }
+
+    /**
      * {@code markDirty} 版。閉じたタブの再オープン時に、未保存 (●) 状態も復元して
      * 2 回目のクローズで無警告消失しないようにするために使う。
      */
@@ -455,17 +490,7 @@ public final class DiagramTabPane {
         }
         DiagramTab existing = openTabs.get(key);
         if (existing != null) {
-            // 未編集のタブなら、ディスクから読み直した最新内容を反映する (外部エディタでの
-            // 変更が「開き直したのに古いまま」にならないように)。未保存編集がある場合は
-            // ユーザーの編集を黙って捨てないため反映しない。
-            if (file != null && !existing.dirty && initialText != null
-                    && !initialText.equals(existing.sourcePanel.getText())) {
-                existing.sourcePanel.setText(initialText);
-                // setText はドキュメントリスナー経由で dirty を立てるが、これはユーザー編集
-                // ではなくディスク同期なので打ち消す (再描画のデバウンスは走らせたまま)。
-                existing.dirty = false;
-                refreshTabLabels();
-            }
+            syncExistingEditorTab(existing, file, initialText, markDirty);
             tabs.setSelectedComponent(existing);
             javax.swing.SwingUtilities.invokeLater(existing.sourcePanel::focusEditor);
             return;
@@ -1357,6 +1382,8 @@ public final class DiagramTabPane {
         private boolean dirty;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
+        /** 自由編集エディタ: GUI 図形デザイナー (Design サブタブ)。非エディタタブでは null。 */
+        private juml.app.uml.sketch.SketchPane sketchPane;
         /** メソッド図の SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH 切替バー (メソッド図以外では非表示)。 */
         private final JPanel kindBar;
         private final javax.swing.JToggleButton seqToggle;
@@ -1540,7 +1567,7 @@ public final class DiagramTabPane {
             // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
             // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
             // 同時に見えるのは片方だけ (JTabbedPane) なので同期ループは起きない。
-            juml.app.uml.sketch.SketchPane sketchPane = new juml.app.uml.sketch.SketchPane();
+            sketchPane = new juml.app.uml.sketch.SketchPane();
             sketchPane.setOnPumlChange(sourcePanel::setText);
             bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
             bottomTabs.addChangeListener(e -> {
@@ -1548,6 +1575,18 @@ public final class DiagramTabPane {
                     sketchPane.loadFrom(sourcePanel.getText());
                 }
             });
+        }
+
+        /**
+         * Design サブタブが表示中なら、現在のテキストからキャンバスを再読込する。
+         * 外部要因 (ディスク同期など) でソーステキストがプログラム的に差し替わったとき、
+         * Design 選択時にしか走らない {@code loadFrom} を補って、古いモデルのまま次の GUI 編集で
+         * 新テキストを上書き消失させるのを防ぐ。sketch 起点の setText では呼ばない (無限ループ回避)。
+         */
+        void refreshDesignFromTextIfVisible() {
+            if (sketchPane != null && bottomTabs.getSelectedComponent() == sketchPane) {
+                sketchPane.loadFrom(sourcePanel.getText());
+            }
         }
 
         /** 編集発生を記録し、タブヘッダに未保存マーク (●) を付ける。 */
@@ -1786,6 +1825,12 @@ public final class DiagramTabPane {
             if (activeWorker != null) {
                 activeWorker.cancel(true);
                 activeWorker = null;
+            }
+            // エディタタブの 600ms ライブプレビュー デバウンスも止める。残すと解放後に発火して
+            // startRender() が renderReleased=false へ戻し、解放済みタブを裏で再描画してしまう
+            // (worker キャンセルとは別経路のメモリ予算すり抜け。closeTab と同じ対処)。
+            if (renderDebounce != null) {
+                renderDebounce.stop();
             }
             previewPanel.setSvgGraphicsNode(null, 0, 0);
             previewPanel.setLinkAreas(null);

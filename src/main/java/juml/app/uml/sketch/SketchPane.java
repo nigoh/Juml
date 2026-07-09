@@ -246,6 +246,11 @@ public final class SketchPane extends JPanel {
 
     private void firePumlChanged() {
         String now = SketchPumlCodec.toPuml(canvas.model());
+        // 実質変化ゼロの編集 (スナップで元位置へ戻る微小ドラッグ等) は無視する。放置すると
+        // 無変更なのに Undo 履歴が積まれ Redo が破棄され、テキスト欄が偽 dirty になる。
+        if (now.equals(baseline)) {
+            return;
+        }
         // 復元適用中でなければ、変更前状態 (baseline) を Undo に積んで現在状態を baseline に更新。
         if (!restoring) {
             undoStack.push(baseline);
@@ -269,5 +274,23 @@ public final class SketchPane extends JPanel {
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */
     void addClassForTest(SketchClass.Kind kind) {
         addClass(kind, null);
+    }
+
+    /**
+     * テスト用: モデルを変えずに編集通知だけを発火する (スナップで元位置へ戻る微小ドラッグ相当)。
+     * 実質変化ゼロなので Undo 履歴を積まず Redo も消さないことを検証するためのシーム。
+     */
+    void fireNoOpEditForTest() {
+        firePumlChanged();
+    }
+
+    /** テスト用: Undo 可能な履歴があるか。 */
+    boolean canUndoForTest() {
+        return !undoStack.isEmpty();
+    }
+
+    /** テスト用: Redo 可能な履歴があるか。 */
+    boolean canRedoForTest() {
+        return !redoStack.isEmpty();
     }
 }

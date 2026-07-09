@@ -47,6 +47,25 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void noOpEdit_doesNotCreateUndoHistoryOrClearRedo() {
+        // スナップで元位置へ戻る微小ドラッグのような「実質変化ゼロの編集」通知が来ても、
+        // Undo 履歴を積まず Redo を破棄しないこと (無変更の空 Undo / 偽 dirty の防止)。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        // 実編集 → Undo を 1 回押して Redo を有効化しておく。
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        GuiActionRunner.execute(pane::undo);
+        assertTrue("Undo 後は Redo 可能なはず", GuiActionRunner.execute(pane::canRedoForTest));
+        boolean undoBefore = GuiActionRunner.execute(pane::canUndoForTest);
+        // 変化ゼロの編集通知。
+        GuiActionRunner.execute(pane::fireNoOpEditForTest);
+        assertEquals("無変更の編集で Undo 履歴は変わらないはず",
+                undoBefore, (boolean) GuiActionRunner.execute(pane::canUndoForTest));
+        assertTrue("無変更の編集で Redo が破棄されないはず",
+                GuiActionRunner.execute(pane::canRedoForTest));
+    }
+
+    @Test
     public void undoRedo_reversesAndReappliesEdits() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));

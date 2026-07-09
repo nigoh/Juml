@@ -67,13 +67,29 @@ public final class SketchPumlCodec {
         while (i < lines.length) {
             String line = lines[i].trim();
             i++;
-            if (line.isEmpty() || line.startsWith("@startuml") || line.equals("@enduml")) {
+            if (line.startsWith("@startuml")) {
+                // @startuml に付いた図名 (出力名) を保全する。捨てると GUI 編集の再生成で
+                // ユーザーが書いた名前が黙って失われる。
+                String name = line.substring("@startuml".length()).trim();
+                if (!name.isEmpty()) {
+                    model.setDiagramName(name);
+                }
+                continue;
+            }
+            if (line.isEmpty() || line.equals("@enduml")) {
                 continue;
             }
             Matcher pos = POS.matcher(line);
             if (pos.matches()) {
-                positions.put(pos.group(1), new int[]{
-                        Integer.parseInt(pos.group(2)), Integer.parseInt(pos.group(3))});
+                Integer px = parseIntSafe(pos.group(2));
+                Integer py = parseIntSafe(pos.group(3));
+                if (px == null || py == null) {
+                    // int 範囲外の座標はモデル化できない。未対応として編集をロックし、
+                    // 例外で Design タブ切替を壊さずテキストを保全する。
+                    unsupported.add(line);
+                } else {
+                    positions.put(pos.group(1), new int[]{px, py});
+                }
                 continue;
             }
             if (line.startsWith("'")) {
@@ -96,7 +112,7 @@ public final class SketchPumlCodec {
                     unsupported.add(line);
                 }
                 if (decl.group(4) != null) {
-                    i = readMembers(lines, i, c);
+                    i = readMembers(lines, i, c, unsupported);
                 }
                 continue;
             }
@@ -135,9 +151,23 @@ public final class SketchPumlCodec {
         return c;
     }
 
-    /** {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。 */
-    private static int readMembers(String[] lines, int start, SketchClass c) {
+    /** PlantUML のクラス内区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
+    private static final Pattern MEMBER_SEPARATOR = Pattern.compile("^(--|==|__|\\.\\.).*$");
+
+    /**
+     * {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。
+     *
+     * <p>{@link #toPuml} は「全フィールド → 全メソッド」の順で再生成するため、原文が
+     * メソッドとフィールドを交互に書いていたり区切り線 ({@code --} 等) を含むと、GUI 編集で
+     * 並びが崩れる。そうした<em>往復で並びが変質する本体</em>は {@code unsupported} へ積んで
+     * 編集をロックし、テキストの並びを保全する (isFullySupported()==true の「編集しても
+     * テキストを失わない」契約を守る)。区切り線はフィールドとして誤分類されるため特に危険。</p>
+     */
+    private static int readMembers(String[] lines, int start, SketchClass c,
+                                   List<String> unsupported) {
         int i = start;
+        boolean sawMethod = false;
+        boolean reorderRisk = false;
         while (i < lines.length) {
             String line = lines[i].trim();
             // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま
@@ -156,14 +186,39 @@ public final class SketchPumlCodec {
             // 括弧を含む行はメソッド、それ以外 (区切り線 -- を含む) はフィールド扱い。
             if (line.contains("(")) {
                 c.getMethods().add(line);
+                sawMethod = true;
             } else {
+                // 区切り線、またはメソッドの後に来るフィールド (交互配置) は再生成で並びが崩れる。
+                if (MEMBER_SEPARATOR.matcher(line).matches() || sawMethod) {
+                    reorderRisk = true;
+                }
                 c.getFields().add(line);
             }
+        }
+        if (reorderRisk) {
+            // 並びが往復で崩れる本体を含むクラスは編集不可にして原文を保全する。
+            unsupported.add(c.getName() + " {…}");
         }
         return i;
     }
 
-    /** 明示座標を反映し、座標の無いクラスは格子状に自動配置する。 */
+    /** int 範囲外・不正な整数は null を返す安全パース ({@code '@pos} 座標のクラッシュ防止)。 */
+    private static Integer parseIntSafe(String s) {
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 明示座標を反映し、座標の無いクラスは格子状に自動配置する。
+     *
+     * <p>存在しないクラス名の {@code '@pos} (テキスト側でクラスを消したが座標コメントが残った等)
+     * は対応クラスが無いため無視され、再生成テキストから落ちる。これは Juml 生成のレイアウト
+     * メタデータの無害な掃除であり、一般コメントと違い意図的に許容する (編集はロックしない)。
+     * 挙動は {@code SketchPumlCodecTest#parse_orphanPos_isDroppedButKeepsEditingEnabled} で固定。</p>
+     */
     private static void applyPositions(SketchModel model, Map<String, int[]> positions) {
         int auto = 0;
         for (SketchClass c : model.getClasses()) {
@@ -180,7 +235,11 @@ public final class SketchPumlCodec {
 
     /** モデルを PlantUML テキストへ書き出す (座標は {@code '@pos} コメントで保存)。 */
     public static String toPuml(SketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml\n");
+        StringBuilder sb = new StringBuilder("@startuml");
+        if (!model.getDiagramName().isEmpty()) {
+            sb.append(' ').append(model.getDiagramName());
+        }
+        sb.append('\n');
         for (SketchClass c : model.getClasses()) {
             sb.append(c.getKind().keyword()).append(' ').append(c.getName());
             if (c.getFields().isEmpty() && c.getMethods().isEmpty()) {
