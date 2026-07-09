@@ -67,7 +67,16 @@ public final class SketchPumlCodec {
         while (i < lines.length) {
             String line = lines[i].trim();
             i++;
-            if (line.isEmpty() || line.startsWith("@startuml") || line.equals("@enduml")) {
+            if (line.startsWith("@startuml")) {
+                // @startuml に付いた図名 (出力名) を保全する。捨てると GUI 編集の再生成で
+                // ユーザーが書いた名前が黙って失われる。
+                String name = line.substring("@startuml".length()).trim();
+                if (!name.isEmpty()) {
+                    model.setDiagramName(name);
+                }
+                continue;
+            }
+            if (line.isEmpty() || line.equals("@enduml")) {
                 continue;
             }
             Matcher pos = POS.matcher(line);
@@ -226,7 +235,11 @@ public final class SketchPumlCodec {
 
     /** モデルを PlantUML テキストへ書き出す (座標は {@code '@pos} コメントで保存)。 */
     public static String toPuml(SketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml\n");
+        StringBuilder sb = new StringBuilder("@startuml");
+        if (!model.getDiagramName().isEmpty()) {
+            sb.append(' ').append(model.getDiagramName());
+        }
+        sb.append('\n');
         for (SketchClass c : model.getClasses()) {
             sb.append(c.getKind().keyword()).append(' ').append(c.getName());
             if (c.getFields().isEmpty() && c.getMethods().isEmpty()) {

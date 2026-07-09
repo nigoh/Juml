@@ -85,6 +85,24 @@ public class SketchPumlCodecTest {
     }
 
     @Test
+    public void namedStartuml_isPreservedThroughRoundTrip() {
+        // @startuml <name> の図名 (出力名) はユーザー内容なので、GUI 編集の再生成でも保全する。
+        String puml = "@startuml Login\nclass Foo\n@enduml\n";
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(puml);
+        assertTrue("図名付きでも編集は有効", r.isFullySupported());
+        assertEquals("Login", r.model.getDiagramName());
+        assertTrue("再生成テキストに図名が残るはず: " + SketchPumlCodec.toPuml(r.model),
+                SketchPumlCodec.toPuml(r.model).startsWith("@startuml Login\n"));
+    }
+
+    @Test
+    public void unnamedStartuml_hasEmptyDiagramName() {
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse("@startuml\nclass Foo\n@enduml\n");
+        assertEquals("", r.model.getDiagramName());
+        assertTrue(SketchPumlCodec.toPuml(r.model).startsWith("@startuml\n"));
+    }
+
+    @Test
     public void parse_orphanPos_isDroppedButKeepsEditingEnabled() {
         // 存在しないクラスの '@pos (テキストでクラスを消した残骸など) は Juml 生成のレイアウト
         // メタデータの無害な掃除として意図的に破棄する。一般コメントと違い編集はロックしない。

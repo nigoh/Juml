@@ -16,9 +16,21 @@ public final class SketchModel {
 
     private final List<SketchClass> classes = new ArrayList<>();
     private final List<SketchRelation> relations = new ArrayList<>();
+    /** {@code @startuml <name>} の名前サフィックス (無ければ空文字)。往復で保全する。 */
+    private String diagramName = "";
 
     public List<SketchClass> getClasses() {
         return classes;
+    }
+
+    /** {@code @startuml} に付いた図名 (無ければ空文字)。 */
+    public String getDiagramName() {
+        return diagramName;
+    }
+
+    /** {@code @startuml} の図名を設定する (null は空文字として扱う)。 */
+    public void setDiagramName(String name) {
+        this.diagramName = name != null ? name : "";
     }
 
     public List<SketchRelation> getRelations() {
