@@ -592,16 +592,24 @@ public class UmlMainFrame extends JFrame {
                         StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
                                 setting.getClassDiagramHiddenAnnotations()))
                 : StyleSettingsDialog.ClassDiagramPrefs.defaults();
+        int curSeqMaxDepth = setting != null ? setting.getSequenceMaxDepth() : 5;
+        StyleSettingsDialog.ActivityDiagramPrefs curActivity = setting != null
+                ? new StyleSettingsDialog.ActivityDiagramPrefs(
+                        setting.isActivityExpandInlineCallbacks(),
+                        setting.isActivityShowLocalVars(),
+                        setting.isActivityShowInlineComments())
+                : StyleSettingsDialog.ActivityDiagramPrefs.defaults();
         int curCallGraphDepth = setting != null ? setting.getCallGraphMaxDepth() : 4;
         StyleSettingsDialog.Result edited = StyleSettingsDialog.showDialog(
                 this, PlantUmlRenderer.getStyle(), curShow, curStyle,
-                curPlacement, curQualify, curClass, curCallGraphDepth);
+                curPlacement, curQualify, curSeqMaxDepth, curActivity,
+                curClass, curCallGraphDepth);
         if (edited != null) {
             applyStyleSettings(edited);
         }
     }
 
-    /** Style ダイアログ結果 (Style + シーケンス図設定 + クラス図設定 + コールグラフ設定) を反映する。 */
+    /** Style ダイアログ結果 (Style + シーケンス図/アクティビティ図/クラス図/コールグラフ設定) を反映する。 */
     private void applyStyleSettings(StyleSettingsDialog.Result r) {
         try {
             juml.Setting setting = Main.getSetting();
@@ -610,6 +618,14 @@ public class UmlMainFrame extends JFrame {
                 setting.setSequenceCommentStyle(r.sequenceCommentStyle.name());
                 setting.setSequenceCommentPlacement(r.sequenceCommentPlacement.name());
                 setting.setSequenceQualifyMethodNames(r.sequenceQualifyMethodNames);
+                setting.setSequenceMaxDepth(r.sequenceMaxDepth);
+                if (r.activityDiagram != null) {
+                    setting.setActivityExpandInlineCallbacks(
+                            r.activityDiagram.expandInlineCallbacks);
+                    setting.setActivityShowLocalVars(r.activityDiagram.showLocalVars);
+                    setting.setActivityShowInlineComments(
+                            r.activityDiagram.showInlineComments);
+                }
                 setting.setCallGraphMaxDepth(r.callGraphMaxDepth);
                 if (r.classDiagram != null) {
                     StyleSettingsDialog.ClassDiagramPrefs cp = r.classDiagram;

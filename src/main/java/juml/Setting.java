@@ -57,6 +57,15 @@ public class Setting {
     private String sequenceCommentPlacement = "AT_CALL_SITE";
     /** メソッド呼び出しラベルにクラス名を付けるか (例: "Foo.bar()" vs "bar()")。 */
     private boolean sequenceQualifyMethodNames = true;
+    /** シーケンス図の呼び出し再帰展開の最大深さ (0 = 無制限、1 = 起点のみ)。 */
+    private int sequenceMaxDepth = 5;
+
+    /** アクティビティ図でラムダ/匿名クラスのコールバック本体を partition 展開するか。 */
+    private boolean activityExpandInlineCallbacks = true;
+    /** アクティビティ図でローカル変数宣言をアクションノードとして表示するか。 */
+    private boolean activityShowLocalVars = true;
+    /** アクティビティ図でメソッド本体内のインラインコメントを note 表示するか。 */
+    private boolean activityShowInlineComments = true;
 
     /** クラス図に最後に適用したプリセット名 ("MINIMAL" / "BALANCED" / "DETAILED" / "CUSTOM")。 */
     private String classDiagramLastPreset = "BALANCED";
@@ -128,6 +137,22 @@ public class Setting {
     public boolean isSequenceQualifyMethodNames() { return sequenceQualifyMethodNames; }
     public void setSequenceQualifyMethodNames(boolean v) {
         this.sequenceQualifyMethodNames = v;
+    }
+    public int getSequenceMaxDepth() { return sequenceMaxDepth; }
+    /** 0 = 無制限 (サイクル検出で停止)。1〜10 に丸める (負値は 0 扱い)。 */
+    public void setSequenceMaxDepth(int v) {
+        this.sequenceMaxDepth = Math.max(0, Math.min(10, v));
+    }
+
+    public boolean isActivityExpandInlineCallbacks() { return activityExpandInlineCallbacks; }
+    public void setActivityExpandInlineCallbacks(boolean v) {
+        this.activityExpandInlineCallbacks = v;
+    }
+    public boolean isActivityShowLocalVars() { return activityShowLocalVars; }
+    public void setActivityShowLocalVars(boolean v) { this.activityShowLocalVars = v; }
+    public boolean isActivityShowInlineComments() { return activityShowInlineComments; }
+    public void setActivityShowInlineComments(boolean v) {
+        this.activityShowInlineComments = v;
     }
 
     public String getClassDiagramLastPreset() { return classDiagramLastPreset; }
@@ -272,6 +297,13 @@ public class Setting {
         props.setProperty("sequence.commentPlacement", sequenceCommentPlacement);
         props.setProperty("sequence.qualifyMethodNames",
                 Boolean.toString(sequenceQualifyMethodNames));
+        props.setProperty("sequence.maxDepth", Integer.toString(sequenceMaxDepth));
+        props.setProperty("activity.expandInlineCallbacks",
+                Boolean.toString(activityExpandInlineCallbacks));
+        props.setProperty("activity.showLocalVars",
+                Boolean.toString(activityShowLocalVars));
+        props.setProperty("activity.showInlineComments",
+                Boolean.toString(activityShowInlineComments));
         props.setProperty("classDiagram.lastPreset", classDiagramLastPreset);
         props.setProperty("classDiagram.showFields",
                 Boolean.toString(classDiagramShowFields));
@@ -353,6 +385,13 @@ public class Setting {
                 props.getProperty("sequence.commentPlacement"), "AT_CALL_SITE");
         s.sequenceQualifyMethodNames = parseBooleanSafe(
                 props.getProperty("sequence.qualifyMethodNames"), true);
+        s.setSequenceMaxDepth(parseIntSafe(props.getProperty("sequence.maxDepth"), 5));
+        s.activityExpandInlineCallbacks = parseBooleanSafe(
+                props.getProperty("activity.expandInlineCallbacks"), true);
+        s.activityShowLocalVars = parseBooleanSafe(
+                props.getProperty("activity.showLocalVars"), true);
+        s.activityShowInlineComments = parseBooleanSafe(
+                props.getProperty("activity.showInlineComments"), true);
         s.classDiagramLastPreset = stringOrDefault(
                 props.getProperty("classDiagram.lastPreset"), "BALANCED");
         s.classDiagramShowFields = parseBooleanSafe(

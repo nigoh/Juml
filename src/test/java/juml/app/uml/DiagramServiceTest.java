@@ -240,6 +240,77 @@ public class DiagramServiceTest {
         assertTrue(puml, puml.contains("@enduml"));
     }
 
+    // --- Setting → Options の配線 (シーケンス展開深さ / アクティビティ詳細) ---
+
+    /** SettingManager のシングルトンへ任意の Setting を注入する (テスト用)。 */
+    private void injectSetting(juml.Setting setting) throws Exception {
+        java.lang.reflect.Constructor<juml.SettingManager> ctor =
+                juml.SettingManager.class.getDeclaredConstructor(
+                        juml.Setting.class, File.class);
+        ctor.setAccessible(true);
+        juml.SettingManager mgr = ctor.newInstance(
+                setting, new File(tmp.getRoot(), "settings.xml"));
+        java.lang.reflect.Field f =
+                juml.SettingManager.class.getDeclaredField("instance");
+        f.setAccessible(true);
+        f.set(null, mgr);
+    }
+
+    @org.junit.After
+    public void resetSettingManager() {
+        juml.SettingManager.resetForTest();
+    }
+
+    /** A.run → B.step → C.deep の 2 段ネスト呼び出し (深さ設定の観測用)。 */
+    private List<JavaClassInfo> nestedCallClasses() {
+        List<JavaClassInfo> infos = new ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract(
+                "package s; class A { B b; void run() { b.step(); } }"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package s; class B { C c; void step() { c.deep(); } }"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package s; class C { void deep() { int x = 0; } }"));
+        return infos;
+    }
+
+    @Test
+    public void testSequenceDiagramRespectsMaxDepthSetting() throws Exception {
+        juml.Setting setting = new juml.Setting();
+        setting.setSequenceMaxDepth(1); // 起点メソッドのみ展開
+        injectSetting(setting);
+        DiagramRequest req = new DiagramRequest(
+                DiagramKind.SEQUENCE, "s.A", "run", true);
+        String shallow = DiagramService.generatePuml(
+                req, sampleAnalysis(), nestedCallClasses());
+        assertTrue(shallow, shallow.contains("step"));
+        assertFalse("深さ 1 では呼び出し先の本体 (deep) は展開されない: " + shallow,
+                shallow.contains("deep"));
+
+        setting.setSequenceMaxDepth(5);
+        String deep = DiagramService.generatePuml(
+                req, sampleAnalysis(), nestedCallClasses());
+        assertTrue("深さ 5 では 2 段目の呼び出し (deep) まで展開される: " + deep,
+                deep.contains("deep"));
+    }
+
+    @Test
+    public void testActivityDiagramRespectsLocalVarSetting() throws Exception {
+        juml.Setting setting = new juml.Setting();
+        setting.setActivityShowLocalVars(false);
+        injectSetting(setting);
+        List<JavaClassInfo> classes = new ArrayList<>(JavaStructureExtractor.extract(
+                "package s; class D { void work() { int localMarker = 1; run(); } }"));
+        DiagramRequest req = DiagramRequest.forActivity("s.D", "work", true);
+        String without = DiagramService.generatePuml(req, sampleAnalysis(), classes);
+        assertFalse("showLocalVars=false ではローカル変数宣言が出ない: " + without,
+                without.contains("localMarker"));
+
+        setting.setActivityShowLocalVars(true);
+        String with = DiagramService.generatePuml(req, sampleAnalysis(), classes);
+        assertTrue("showLocalVars=true ではローカル変数宣言が出る: " + with,
+                with.contains("localMarker"));
+    }
+
     @Test
     public void testSequenceDiagramRequiresEntry() {
         try {
