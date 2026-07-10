@@ -87,6 +87,12 @@ final class ClassSketchEditor implements SketchEditor {
             labels[i] = Messages.get(MODE_KEYS[i]);
         }
         modeCombo = new JComboBox<>(labels);
+        // 矢印表記を文字で読まなくても形で選べるよう、各モードのプレビューを添える。
+        javax.swing.Icon[] icons = new javax.swing.Icon[MODES.length];
+        for (int i = 0; i < MODES.length; i++) {
+            icons[i] = SketchToolIcon.forRelation(MODES[i]);
+        }
+        SketchToolIcon.install(modeCombo, icons);
         modeCombo.addActionListener(
                 e -> canvas.setRelationMode(MODES[modeCombo.getSelectedIndex()]));
         toolbar.add(modeCombo);
