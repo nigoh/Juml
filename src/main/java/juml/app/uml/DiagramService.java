@@ -256,6 +256,7 @@ public final class DiagramService {
                     ? promoteToDetailed(classes, index) : classes;
             PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
+            applyActivityDetailSettings(o);
             return PlantUmlActivityDiagram.generate(source, cls, method, o);
     }
 
@@ -501,10 +502,32 @@ public final class DiagramService {
                         PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE;
             }
             o.qualifyMethodNames = s.isSequenceQualifyMethodNames();
+            o.maxDepth = s.getSequenceMaxDepth();
         } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま (showComments=true, INLINE, AT_CALL_SITE)
             juml.util.AppLog.warn(juml.util.ErrorCode.DIAG_001, "DiagramService",
                     "sequence diagram settings unavailable — using defaults", ex);
+        }
+    }
+
+    /**
+     * アクティビティ図の詳細表示設定 ({@code activity.*}) を {@link juml.SettingManager}
+     * から読み出して {@link PlantUmlActivityDiagram.Options} に反映する。
+     * SettingManager が利用できない場合 (テスト / 単体実行) は既定値のまま。
+     */
+    private static void applyActivityDetailSettings(PlantUmlActivityDiagram.Options o) {
+        try {
+            juml.Setting s = juml.SettingManager.getInstance().getSetting();
+            if (s == null) {
+                return;
+            }
+            o.expandInlineCallbacks = s.isActivityExpandInlineCallbacks();
+            o.showLocalVars = s.isActivityShowLocalVars();
+            o.showInlineComments = s.isActivityShowInlineComments();
+        } catch (RuntimeException ex) {
+            // 設定取得失敗時は既定値のまま (すべて表示)
+            juml.util.AppLog.warn(juml.util.ErrorCode.DIAG_001, "DiagramService",
+                    "activity diagram settings unavailable — using defaults", ex);
         }
     }
 

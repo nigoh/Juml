@@ -146,6 +146,55 @@ public class ProjectSettingsPersistorTest {
     }
 
     @Test
+    public void restoreAndPersist_restoresSequenceAndActivityDetailSettings() throws Exception {
+        File root = tempDir.newFolder("DetailRestore");
+        repo.touch(root);
+        Map<String, String> saved = new LinkedHashMap<>();
+        saved.put("sequence.maxDepth", "7");
+        saved.put("activity.expandInlineCallbacks", "false");
+        saved.put("activity.showLocalVars", "false");
+        saved.put("activity.showInlineComments", "false");
+        repo.saveSettings(root, saved);
+
+        Setting setting = new Setting();
+        ProjectSettingsPersistor p = new ProjectSettingsPersistor(
+                () -> setting, () -> {});
+        p.restoreAndPersist(root);
+
+        assertEquals("シーケンス図の展開深さが復元されること", 7, setting.getSequenceMaxDepth());
+        assertFalse("コールバック展開フラグが復元されること",
+                setting.isActivityExpandInlineCallbacks());
+        assertFalse("ローカル変数表示フラグが復元されること", setting.isActivityShowLocalVars());
+        assertFalse("インラインコメント表示フラグが復元されること",
+                setting.isActivityShowInlineComments());
+    }
+
+    @Test
+    public void saveCurrentProjectSettings_persistsSequenceAndActivityDetailSettings()
+            throws Exception {
+        File root = tempDir.newFolder("DetailSave");
+        repo.touch(root);
+        Setting setting = new Setting();
+        setting.setSequenceMaxDepth(9);
+        setting.setActivityExpandInlineCallbacks(false);
+        setting.setActivityShowLocalVars(false);
+        setting.setActivityShowInlineComments(false);
+
+        ProjectSettingsPersistor p = new ProjectSettingsPersistor(
+                () -> setting, () -> {});
+        p.saveCurrentProjectSettings(root);
+
+        Map<String, String> loaded = repo.loadSettings(root);
+        assertEquals("シーケンス図の展開深さが保存されること", "9", loaded.get("sequence.maxDepth"));
+        assertEquals("コールバック展開フラグが保存されること",
+                "false", loaded.get("activity.expandInlineCallbacks"));
+        assertEquals("ローカル変数表示フラグが保存されること",
+                "false", loaded.get("activity.showLocalVars"));
+        assertEquals("インラインコメント表示フラグが保存されること",
+                "false", loaded.get("activity.showInlineComments"));
+    }
+
+    @Test
     public void saveCurrentProjectSettings_persistsStyleToRepository() throws Exception {
         File root = tempDir.newFolder("SaveTarget");
         repo.touch(root);

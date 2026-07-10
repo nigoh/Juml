@@ -96,6 +96,18 @@ public final class ProjectSettingsPersistor {
             if (saved.containsKey("sequence.qualifyMethodNames"))
                 s.setSequenceQualifyMethodNames(
                         Boolean.parseBoolean(saved.get("sequence.qualifyMethodNames")));
+            if (saved.containsKey("sequence.maxDepth"))
+                s.setSequenceMaxDepth(parseIntOrZero(saved.get("sequence.maxDepth")));
+
+            if (saved.containsKey("activity.expandInlineCallbacks"))
+                s.setActivityExpandInlineCallbacks(
+                        Boolean.parseBoolean(saved.get("activity.expandInlineCallbacks")));
+            if (saved.containsKey("activity.showLocalVars"))
+                s.setActivityShowLocalVars(
+                        Boolean.parseBoolean(saved.get("activity.showLocalVars")));
+            if (saved.containsKey("activity.showInlineComments"))
+                s.setActivityShowInlineComments(
+                        Boolean.parseBoolean(saved.get("activity.showInlineComments")));
 
             if (saved.containsKey("classDiagram.lastPreset"))
                 s.setClassDiagramLastPreset(saved.get("classDiagram.lastPreset"));
@@ -155,6 +167,13 @@ public final class ProjectSettingsPersistor {
             m.put("sequence.commentPlacement", s.getSequenceCommentPlacement());
             m.put("sequence.qualifyMethodNames",
                     Boolean.toString(s.isSequenceQualifyMethodNames()));
+            m.put("sequence.maxDepth", Integer.toString(s.getSequenceMaxDepth()));
+            m.put("activity.expandInlineCallbacks",
+                    Boolean.toString(s.isActivityExpandInlineCallbacks()));
+            m.put("activity.showLocalVars",
+                    Boolean.toString(s.isActivityShowLocalVars()));
+            m.put("activity.showInlineComments",
+                    Boolean.toString(s.isActivityShowInlineComments()));
             m.put("classDiagram.lastPreset", s.getClassDiagramLastPreset());
             m.put("classDiagram.showFields", Boolean.toString(s.isClassDiagramShowFields()));
             m.put("classDiagram.showMethods", Boolean.toString(s.isClassDiagramShowMethods()));

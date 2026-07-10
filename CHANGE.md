@@ -4,6 +4,14 @@ Change log
 2.1
 --------
 
+* **シーケンス図の展開深さとアクティビティ図の詳細表示を GUI 設定に追加** (`Setting` / `StyleSettingsDialog` / `DiagramService` / `ProjectSettingsPersistor` / `UmlMainFrame` / `messages*.properties`)
+    * **背景**: 生成エンジン側 (`PlantUmlSequenceDiagram` / `PlantUmlActivityDiagram`) は呼び出しの再帰展開・分岐/ループ・ローカル変数・コールバック本体まで詳細に出力できるが、GUI からはシーケンス図の展開深さが 5 固定、アクティビティ図の詳細フラグは一切変更できなかった (CLI の `--seq-depth` のみ)。
+    * スタイル設定ダイアログの「シーケンス図」セクションに **展開の深さ** スピナー (0-10、0 = 無制限) を追加。呼び出し先メソッドをどこまでシーケンスへ展開するかを GUI から調整できる (`sequence.maxDepth`、既定 5)。
+    * **「アクティビティ図」セクションを新設**し、「ラムダ / コールバック本体を展開」「ローカル変数宣言を表示」「インラインコメントをノートとして表示」の 3 トグルを追加 (`activity.expandInlineCallbacks` / `activity.showLocalVars` / `activity.showInlineComments`、既定はすべて ON)。
+    * 設定はアプリ設定 (Properties XML) とプロジェクト単位設定の両方へ永続化し、旧設定ファイルにキーが無い場合は従来と同じ既定値で読み込む (後方互換)。
+    * テスト: `SettingTest` に既定値・クランプ・round-trip・旧ファイル互換の 4 ケース、`ProjectSettingsPersistorTest` に新キーの保存/復元 2 ケースを追加。リフレクションでダイアログを組む既存テスト 2 件を新シグネチャへ追従。
+    * 目的: エンジンが持つ詳細化能力を GUI から使えるようにし、「処理を事細かく見たい」「大きすぎる図を浅く抑えたい」の両方向へ図の粒度を調整できるようにするため。
+
 * **UML エディタ (Design タブ) をシーケンス図・アクティビティ図に対応** (`SketchPane` / `SketchDiagramType` / `SeqSketch*` / `ActivitySketch*` 新規 12 クラス)
     * **背景**: 自由編集エディタの Design サブタブ (GUI 図形デザイナー) はクラス図専用で、シーケンス図やアクティビティ図のテンプレートを開くと全行が「未対応」となり編集ロックされていた。
     * PlantUML テキストから図種 (クラス / シーケンス / アクティビティ) を自動判定 (`SketchDiagramType.detect`) し、対応するエディタ (ツールバー + キャンバス) へ自動で切り替える構造に再編。Undo/Redo (テキストスナップショット方式) とテキスト双方向同期は `SketchPane` で図種横断に一元管理。

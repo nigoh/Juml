@@ -183,6 +183,64 @@ public class SettingTest {
     }
 
     @Test
+    public void testSequenceActivityDetailDefaults() {
+        Setting s = new Setting();
+        assertEquals(5, s.getSequenceMaxDepth());
+        assertTrue(s.isActivityExpandInlineCallbacks());
+        assertTrue(s.isActivityShowLocalVars());
+        assertTrue(s.isActivityShowInlineComments());
+    }
+
+    @Test
+    public void testSequenceMaxDepthClampsToRange() {
+        Setting s = new Setting();
+        s.setSequenceMaxDepth(0); // 0 = 無制限として許容
+        assertEquals(0, s.getSequenceMaxDepth());
+        s.setSequenceMaxDepth(-3); // 負値は 0 (無制限) に丸める
+        assertEquals(0, s.getSequenceMaxDepth());
+        s.setSequenceMaxDepth(99); // 上限 10 に丸める
+        assertEquals(10, s.getSequenceMaxDepth());
+    }
+
+    @Test
+    public void testSequenceActivityDetailRoundTrip() throws IOException {
+        Setting original = new Setting();
+        original.setSequenceMaxDepth(8);
+        original.setActivityExpandInlineCallbacks(false);
+        original.setActivityShowLocalVars(false);
+        original.setActivityShowInlineComments(false);
+
+        File file = tempFolder.newFile("settings-detail.xml");
+        original.saveToFile(file);
+
+        Setting loaded = Setting.loadFromFile(file);
+        assertEquals(8, loaded.getSequenceMaxDepth());
+        assertFalse(loaded.isActivityExpandInlineCallbacks());
+        assertFalse(loaded.isActivityShowLocalVars());
+        assertFalse(loaded.isActivityShowInlineComments());
+    }
+
+    @Test
+    public void testSequenceActivityDetailLegacyFallsBackToDefaults() throws IOException {
+        // sequence.maxDepth / activity.* キーを持たない旧 XML を読んでも既定値で初期化される
+        File file = tempFolder.newFile("legacy-no-detail.xml");
+        String legacy = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<!DOCTYPE properties SYSTEM "
+                + "\"http://java.sun.com/dtd/properties.dtd\">"
+                + "<properties>"
+                + "<entry key=\"windowWidth\">1024</entry>"
+                + "</properties>";
+        java.nio.file.Files.write(file.toPath(),
+                legacy.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        Setting loaded = Setting.loadFromFile(file);
+        assertEquals(5, loaded.getSequenceMaxDepth());
+        assertTrue(loaded.isActivityExpandInlineCallbacks());
+        assertTrue(loaded.isActivityShowLocalVars());
+        assertTrue(loaded.isActivityShowInlineComments());
+    }
+
+    @Test
     public void testSequenceCommentLegacyFallsBackToDefaults() throws IOException {
         // sequence.* キーを持たない旧 XML を読んでも既定値で初期化される
         File file = tempFolder.newFile("legacy-no-seq.xml");
