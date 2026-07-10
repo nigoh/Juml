@@ -9,6 +9,7 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.BreakStmt;
@@ -84,11 +85,20 @@ final class StatementAdapter {
     /** body 直下の（子文の内部に含まれない）コメントだけを返す。 */
     private static List<juml.core.formats.uml.JavaCommentScanner.Comment> directComments(
             BlockStmt body, JpContext ctx) {
+        return directComments(body, body.getStatements(), ctx);
+    }
+
+    /**
+     * コンテナ（{@link BlockStmt} や {@link SwitchEntry}）直下のコメントだけを返す。
+     * 子文の内部に含まれるコメントは、子文側の走査で扱うため除外する。
+     */
+    private static List<juml.core.formats.uml.JavaCommentScanner.Comment> directComments(
+            com.github.javaparser.ast.Node container, List<Statement> stmts, JpContext ctx) {
         List<juml.core.formats.uml.JavaCommentScanner.Comment> out = new ArrayList<>();
         for (juml.core.formats.uml.JavaCommentScanner.Comment c
-                : ctx.comments.commentsIn(body)) {
+                : ctx.comments.commentsIn(container)) {
             boolean insideChild = false;
-            for (Statement s : body.getStatements()) {
+            for (Statement s : stmts) {
                 int sb = ctx.comments.beginOffset(s);
                 int se = ctx.comments.endOffset(s);
                 if (sb <= c.start && c.end <= se) {
@@ -108,6 +118,13 @@ final class StatementAdapter {
         if (s instanceof BlockStmt) {
             emitBody((BlockStmt) s, body, ctx, owner);
         } else {
+            // 波括弧なしの単文ボディ (else foo(); 等) は BlockStmt を経由しないため、
+            // offset ベースの flush では前置コメントを拾えない。JavaParser が文へ
+            // 帰属させたコメントをここで先出しする (無ければ no-op)。
+            String c = ctx.comments.attached(s);
+            if (c != null && !c.isEmpty()) {
+                body.add(new JavaMethodInfo.InlineComment(c));
+            }
             emit(s, body, ctx, owner);
         }
     }
@@ -188,10 +205,18 @@ final class StatementAdapter {
         } else if (s instanceof ExplicitConstructorInvocationStmt) {
             // this(...) / super(...) の委譲と、その引数中の呼び出しを拾う。
             ExplicitConstructorInvocationStmt eci = (ExplicitConstructorInvocationStmt) s;
+            StringBuilder eciArgs = new StringBuilder();
             for (Expression arg : eci.getArguments()) {
                 ExpressionAdapter.emitCalls(arg, out, ctx);
+                if (eciArgs.length() > 0) {
+                    eciArgs.append(", ");
+                }
+                eciArgs.append(arg.toString());
             }
-            out.add(new JavaMethodInfo.Call("", eci.isThis() ? "this" : "super"));
+            JavaMethodInfo.Call eciCall = new JavaMethodInfo.Call(
+                    "", eci.isThis() ? "this" : "super");
+            eciCall.setArgsLabel(eciArgs.toString());
+            out.add(eciCall);
         } else {
             // 未対応の文タイプ (assert / 空文 / 将来の追加) でも、直接の式子ノードから
             // 呼び出しだけは拾い、シーケンス図から静かに脱落させない。
@@ -216,7 +241,32 @@ final class StatementAdapter {
                 && captureFieldAssignmentInline((AssignExpr) ex, ctx, owner)) {
             return;
         }
+        // 代入 (=, +=, ...) とインクリメント/デクリメント文は、値式内の呼び出しを
+        // 兄弟 Call に持ち上げた上で Assignment ノードとして残す。これをしないと
+        // total = a; や counter++; のような「値の更新」がアクティビティ図から
+        // まるごと欠落し、直前コメントだけが浮いてしまう。
+        if (ex instanceof AssignExpr || isIncDecStatement(ex)) {
+            emitExprValue(ex, out, ctx, owner);
+            out.add(new JavaMethodInfo.Assignment(ctx.comments.raw(ex)));
+            return;
+        }
         emitExprValue(ex, out, ctx, owner);
+    }
+
+    /** 文として現れた {@code i++} / {@code --i} 等の増減式か。 */
+    private static boolean isIncDecStatement(Expression ex) {
+        if (!(ex instanceof UnaryExpr)) {
+            return false;
+        }
+        switch (((UnaryExpr) ex).getOperator()) {
+            case POSTFIX_INCREMENT:
+            case POSTFIX_DECREMENT:
+            case PREFIX_INCREMENT:
+            case PREFIX_DECREMENT:
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** {@code this.field = lambda/anon/ref} を所有クラスのフィールド inlineMethods に取り込む。 */
@@ -421,9 +471,23 @@ final class StatementAdapter {
             }
             JavaMethodInfo.Branch br = new JavaMethodInfo.Branch(type, label);
             block.getBranches().add(br);
+            // case アームの文は BlockStmt を経由しないため、emitBody と同様に
+            // アーム直下のコメントを offset 順で flush しながら emit する。
+            // (これをしないと case 内コメントがまるごと欠落する)
+            List<juml.core.formats.uml.JavaCommentScanner.Comment> direct =
+                    directComments(entry, entry.getStatements(), ctx);
+            int ci = 0;
             for (Statement st : entry.getStatements()) {
-                emitInto(st, br.getBody(), ctx, owner);
+                ci = flushComments(direct, ci, ctx.comments.beginOffset(st), br.getBody());
+                if (st instanceof BlockStmt) {
+                    emitBody((BlockStmt) st, br.getBody(), ctx, owner);
+                } else {
+                    // emitInto は attached コメントも先出しするため、ここで使うと
+                    // 直前の flushComments と二重出力になる。素の emit を使う。
+                    emit(st, br.getBody(), ctx, owner);
+                }
             }
+            flushComments(direct, ci, Integer.MAX_VALUE, br.getBody());
         }
     }
 

@@ -68,6 +68,29 @@ final class JpComments {
         return out;
     }
 
+    /**
+     * JavaParser が文へ帰属させた前置コメントを {@link JavaCommentScanner#cleanText}
+     * 整形で返す（無ければ null）。波括弧なしの単文ボディ（{@code else foo();} 等）は
+     * BlockStmt を経由しないため offset ベースの flush では拾えず、この経路で補完する。
+     * 整形を既存出力と完全一致させるため、スキャナ側の同位置コメントへ突き合わせる。
+     */
+    String attached(Node stmt) {
+        com.github.javaparser.ast.comments.Comment c = stmt.getComment().orElse(null);
+        if (c == null) {
+            return null;
+        }
+        int cs = beginOffset(c);
+        if (cs < 0) {
+            return null;
+        }
+        for (JavaCommentScanner.Comment sc : comments) {
+            if (sc.start == cs) {
+                return JavaCommentScanner.cleanText(sc);
+            }
+        }
+        return null;
+    }
+
     /** ノードの元ソース文字列（pretty-print ではなく原文）。整形差異を避けるために使う。 */
     String raw(Node node) {
         int s = beginOffset(node);

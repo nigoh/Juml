@@ -4,6 +4,24 @@ Change log
 2.1
 --------
 
+* **メソッド呼び出しの引数を図に表示できるように** (`JavaMethodInfo.Call` / `ExpressionAdapter` / `PlantUmlActivityDiagram` / `PlantUmlSequenceDiagram` / `SeqEmitters` / GUI 設定系)
+    * **背景**: 図中の呼び出しが `helper.done()` のように常に引数省略で描かれ、「処理を事細かく確認したい」用途で情報が足りなかった (シーケンス図は定数シンボルの第 1 引数のみ表示)。
+    * 抽出時に呼び出し引数の元ソースを `Call.argsLabel` として保持 (カンマ結合。ラムダ/匿名クラス引数は本体を inlineMethods が持つため λ 記号に畳む)。`this(...)`/`super(...)` の委譲引数も対象。
+    * **アクティビティ図**: `helper.done(label, 3)` の形で引数を表示 (既定 ON、`activity.showCallArguments`)。
+    * **シーケンス図**: 「矢印に呼び出し引数を表示」トグルを追加 (既定 OFF、`sequence.showCallArguments`)。ON では引数の元ソースを矢印ラベルに添え、40 文字超は "…" で切り詰めてラベルの膨張を防ぐ。OFF では従来どおり定数シンボル引数のみ。
+    * checkstyle FileLength 対応として、`StyleSettingsDialog` のラベル+コンポーネント行を `addLabeledRow` ヘルパーへ集約し、シーケンス図テストの引数表示分を `PlantUmlSequenceCallArgumentsTest` に分離。
+    * テスト: アクティビティ図の引数表示/トグル OFF/λ 畳み込み、シーケンス図の既定 OFF・ON・切り詰め・firstArgLabel 維持の計 6 ケースを追加。設定 round-trip も追記。
+    * 目的: メソッド内の処理を「何を渡して呼んでいるか」まで含めて図から読み取れるようにするため。
+
+* **アクティビティ図の「処理の書き漏れ」を解消: 代入文の欠落とコメント 2 種の取りこぼしを修正** (`JavaMethodInfo` / `StatementAdapter` / `JpComments` / `PlantUmlActivityDiagram` / GUI 設定系)
+    * **背景**: メソッド本体の抽出が「呼び出し・宣言・制御ブロック」しか Statement 化しておらず、`total = 0;` `counter += 2;` `i++;` のような**代入・インクリメント文がアクティビティ図からまるごと欠落**していた。`while (j < 3) { j = j + 1; }` は本体が空のループに見え、代入の直前コメントだけが浮いて「コメントはあるのに処理がない」状態だった。
+    * **代入文の Statement 化 (`JavaMethodInfo.Assignment`)**: `AssignExpr` (=, +=, ...) と文として現れた `i++`/`--i` を Assignment ノードとして保持し、アクティビティ図で `:total = 0;` のアクションノードとして描画。値式に含まれる呼び出しは従来どおり兄弟 Call に持ち上げるため、シーケンス図・コールグラフの挙動は不変。
+    * **switch の case アーム内コメントの欠落を修正**: case アームの文列は BlockStmt を経由しないためコメント flush が働いていなかった。アーム直下のコメントを offset 順で note として出力する。
+    * **波括弧なし単文ボディのコメント欠落を修正**: `else foo();` のような単文ボディに付いた前置コメントを、JavaParser が文へ帰属させたコメントから補完して note 出力する (`JpComments.attached`)。
+    * **GUI トグル追加**: スタイル設定ダイアログのアクティビティ図セクションに「代入・インクリメント文を表示」を追加 (`activity.showAssignments`、既定 ON)。アプリ設定・プロジェクト単位設定の両方へ永続化。
+    * テスト: `PlantUmlActivityDiagramTest` に代入描画・トグル OFF・呼び出しホイスト順序・case アームコメント・波括弧なしコメントの 5 ケースを追加。`SettingTest` / `ProjectSettingsPersistorTest` に新キーを追記。
+    * 目的: 「アクティビティ図で処理が全部書かれていない / コメントが抜けている」という実利用の指摘を解消し、メソッド内の処理を漏れなく追える図にするため。
+
 * **変数・フィールドに「格納」されたコールバックをシーケンス図/アクティビティ図で可視化** (`InlineCallbacks` 新規 / `PlantUmlSequenceDiagram` / `SeqEmitters` / `SeqRender` / `PlantUmlActivityDiagram`)
     * **背景**: ラムダ・匿名クラスを変数やフィールドへ格納して後から呼び出すコードでは、図上で処理フローが見えない/嘘になるケースが残っていた (引数直渡し・フィールド初期化子は対応済みだった)。
     * **アクティビティ図にフィールド格納コールバックの展開を追加**: `Runnable r = () -> ...;` を `r.run()` で呼ぶ処理が、シーケンス図では展開されるのにアクティビティ図では `:r.run();` の 1 アクションで消えていた非対称を解消 (partition ブロックとして本体を展開、自己再帰はガードして recursive note)。

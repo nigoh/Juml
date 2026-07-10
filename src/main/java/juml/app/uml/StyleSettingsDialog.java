@@ -81,6 +81,8 @@ public final class StyleSettingsDialog extends JDialog {
             new JComboBox<>(new String[] { "AT_CALL_SITE", "PARTICIPANT_TOP" });
     private final JCheckBox sequenceQualifyMethodsCheckbox =
             new JCheckBox(Messages.get("style.seq.qualify"));
+    private final JCheckBox sequenceShowArgsCheckbox =
+            new JCheckBox(Messages.get("style.seq.showArgs"));
     private final JSpinner sequenceMaxDepthSpinner =
             new JSpinner(new SpinnerNumberModel(5, 0, 10, 1));
 
@@ -88,6 +90,10 @@ public final class StyleSettingsDialog extends JDialog {
             new JCheckBox(Messages.get("style.act.expandCallbacks"));
     private final JCheckBox activityShowLocalVarsCheckbox =
             new JCheckBox(Messages.get("style.act.showLocalVars"));
+    private final JCheckBox activityShowAssignmentsCheckbox =
+            new JCheckBox(Messages.get("style.act.showAssignments"));
+    private final JCheckBox activityShowCallArgsCheckbox =
+            new JCheckBox(Messages.get("style.act.showCallArgs"));
     private final JCheckBox activityShowInlineCommentsCheckbox =
             new JCheckBox(Messages.get("style.act.showInlineComments"));
 
@@ -194,19 +200,26 @@ public final class StyleSettingsDialog extends JDialog {
         public final boolean expandInlineCallbacks;
         /** ローカル変数宣言をアクションノードとして表示する。 */
         public final boolean showLocalVars;
+        /** 代入・インクリメント文をアクションノードとして表示する。 */
+        public final boolean showAssignments;
+        /** メソッド呼び出しの引数を表示する (例: helper.done(label))。 */
+        public final boolean showCallArguments;
         /** メソッド本体内のインラインコメントを note として表示する。 */
         public final boolean showInlineComments;
 
         public ActivityDiagramPrefs(boolean expandInlineCallbacks, boolean showLocalVars,
+                                     boolean showAssignments, boolean showCallArguments,
                                      boolean showInlineComments) {
             this.expandInlineCallbacks = expandInlineCallbacks;
             this.showLocalVars = showLocalVars;
+            this.showAssignments = showAssignments;
+            this.showCallArguments = showCallArguments;
             this.showInlineComments = showInlineComments;
         }
 
         /** 既定値 (PlantUmlActivityDiagram.Options の既定 = すべて表示)。 */
         public static ActivityDiagramPrefs defaults() {
-            return new ActivityDiagramPrefs(true, true, true);
+            return new ActivityDiagramPrefs(true, true, true, true, true);
         }
     }
 
@@ -219,6 +232,8 @@ public final class StyleSettingsDialog extends JDialog {
         public final boolean sequenceQualifyMethodNames;
         /** シーケンス図の再帰展開の最大深さ (0 = 無制限)。 */
         public final int sequenceMaxDepth;
+        /** シーケンス図の呼び出しラベルに引数を表示するか。 */
+        public final boolean sequenceShowCallArguments;
         public final ActivityDiagramPrefs activityDiagram;
         public final ClassDiagramPrefs classDiagram;
         public final int callGraphMaxDepth;
@@ -228,6 +243,7 @@ public final class StyleSettingsDialog extends JDialog {
                       PlantUmlSequenceDiagram.CommentPlacement sequenceCommentPlacement,
                       boolean sequenceQualifyMethodNames,
                       int sequenceMaxDepth,
+                      boolean sequenceShowCallArguments,
                       ActivityDiagramPrefs activityDiagram,
                       ClassDiagramPrefs classDiagram,
                       int callGraphMaxDepth) {
@@ -237,6 +253,7 @@ public final class StyleSettingsDialog extends JDialog {
             this.sequenceCommentPlacement = sequenceCommentPlacement;
             this.sequenceQualifyMethodNames = sequenceQualifyMethodNames;
             this.sequenceMaxDepth = Math.max(0, Math.min(10, sequenceMaxDepth));
+            this.sequenceShowCallArguments = sequenceShowCallArguments;
             this.activityDiagram = activityDiagram != null
                     ? activityDiagram : ActivityDiagramPrefs.defaults();
             this.classDiagram = classDiagram != null
@@ -251,6 +268,7 @@ public final class StyleSettingsDialog extends JDialog {
                                  PlantUmlSequenceDiagram.CommentPlacement initialSeqPlacement,
                                  boolean initialSeqQualify,
                                  int initialSeqMaxDepth,
+                                 boolean initialSeqShowArgs,
                                  ActivityDiagramPrefs initialActivityPrefs,
                                  ClassDiagramPrefs initialClassPrefs,
                                  int initialCallGraphMaxDepth) {
@@ -258,7 +276,7 @@ public final class StyleSettingsDialog extends JDialog {
         setLayout(new BorderLayout());
         JScrollPane scroll = new JScrollPane(buildForm(initial, initialSeqShowComments,
                 initialSeqCommentStyle, initialSeqPlacement, initialSeqQualify,
-                initialSeqMaxDepth, initialActivityPrefs,
+                initialSeqMaxDepth, initialSeqShowArgs, initialActivityPrefs,
                 initialClassPrefs, initialCallGraphMaxDepth));
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
@@ -281,6 +299,7 @@ public final class StyleSettingsDialog extends JDialog {
                               PlantUmlSequenceDiagram.CommentPlacement initialSeqPlacement,
                               boolean initialSeqQualify,
                               int initialSeqMaxDepth,
+                              boolean initialSeqShowArgs,
                               ActivityDiagramPrefs initialActivityPrefs,
                               ClassDiagramPrefs initialClassPrefs,
                               int initialCallGraphMaxDepth) {
@@ -343,15 +362,10 @@ public final class StyleSettingsDialog extends JDialog {
         row++;
 
         // フォントサイズ
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.fontSize")), c);
         fontSizeSpinner.setValue(initial.getFontSize());
         ((JSpinner.DefaultEditor) fontSizeSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.fontSize"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(fontSizeSpinner, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.fontSize", fontSizeSpinner);
 
         // 方向
         c.gridx = 0; c.gridy = row; c.weightx = 0;
@@ -392,24 +406,14 @@ public final class StyleSettingsDialog extends JDialog {
         row++;
 
         // 線種 (linetype)
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.lineType")), c);
         lineTypeCombo.setSelectedIndex(lineTypeIndex(initial.getLineType()));
         lineTypeCombo.setToolTipText(Messages.get("style.tip.lineType"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(lineTypeCombo, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.lineType", lineTypeCombo);
 
         // 影 (shadowing)
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.shadowing")), c);
         shadowingCombo.setSelectedIndex(shadowingIndex(initial.getShadowing()));
         shadowingCombo.setToolTipText(Messages.get("style.tip.shadowing"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(shadowingCombo, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.shadowing", shadowingCombo);
 
         // 要素間隔 (nodesep / ranksep)
         c.gridx = 0; c.gridy = row; c.weightx = 0;
@@ -466,72 +470,57 @@ public final class StyleSettingsDialog extends JDialog {
         row++;
 
         // コメント表示 ON/OFF
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.comments")), c);
         sequenceShowCommentsCheckbox.setSelected(initialSeqShowComments);
         sequenceShowCommentsCheckbox.setToolTipText(Messages.get("style.tip.showComments"));
         sequenceShowCommentsCheckbox.addActionListener(
                 e -> sequenceCommentStyleCombo.setEnabled(
                         sequenceShowCommentsCheckbox.isSelected()));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(sequenceShowCommentsCheckbox, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.comments",
+                sequenceShowCommentsCheckbox);
 
         // コメントスタイル
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.commentStyle")), c);
         sequenceCommentStyleCombo.setSelectedItem(
                 initialSeqCommentStyle == PlantUmlClassDiagram.CommentStyle.NOTE
                         ? "NOTE" : "INLINE");
         sequenceCommentStyleCombo.setEnabled(initialSeqShowComments);
         sequenceCommentStyleCombo.setToolTipText(Messages.get("style.tip.commentStyle"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(sequenceCommentStyleCombo, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.commentStyle",
+                sequenceCommentStyleCombo);
 
         // コメント表示位置
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.commentPlacement")), c);
         sequenceCommentPlacementCombo.setSelectedItem(
                 initialSeqPlacement == PlantUmlSequenceDiagram.CommentPlacement.PARTICIPANT_TOP
                         ? "PARTICIPANT_TOP" : "AT_CALL_SITE");
         sequenceCommentPlacementCombo.setEnabled(initialSeqShowComments);
         sequenceCommentPlacementCombo.setToolTipText(Messages.get("style.tip.commentPlacement"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(sequenceCommentPlacementCombo, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.commentPlacement",
+                sequenceCommentPlacementCombo);
 
         // クラス名修飾
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.callLabels")), c);
         sequenceQualifyMethodsCheckbox.setSelected(initialSeqQualify);
         sequenceQualifyMethodsCheckbox.setToolTipText(Messages.get("style.tip.qualify"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(sequenceQualifyMethodsCheckbox, c);
-        c.gridwidth = 1;
+        row = addLabeledRow(form, c, row, "style.label.callLabels",
+                sequenceQualifyMethodsCheckbox);
 
         // showComments のトグルに連動して placement / qualify は別系統なので、
         // placement だけは show に依存させる (qualify は独立)。
         sequenceShowCommentsCheckbox.addActionListener(
                 e -> sequenceCommentPlacementCombo.setEnabled(
                         sequenceShowCommentsCheckbox.isSelected()));
-        row++;
+
+        // 呼び出しラベルの引数表示 (既定 OFF = 定数シンボルのみ)
+        sequenceShowArgsCheckbox.setSelected(initialSeqShowArgs);
+        sequenceShowArgsCheckbox.setToolTipText(Messages.get("style.tip.seqShowArgs"));
+        row = addWideRow(form, c, row, sequenceShowArgsCheckbox);
 
         // 呼び出し展開の深さ (0 = 無制限)
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.seqMaxDepth")), c);
         sequenceMaxDepthSpinner.setValue(Math.max(0, Math.min(10, initialSeqMaxDepth)));
         ((JSpinner.DefaultEditor) sequenceMaxDepthSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.seqMaxDepth"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(sequenceMaxDepthSpinner, c);
-        c.gridwidth = 1;
+        row = addLabeledRow(form, c, row, "style.label.seqMaxDepth",
+                sequenceMaxDepthSpinner);
 
         // ---- Activity Diagram セクション ----
-        row++;
         c.gridx = 0; c.gridy = row; c.weightx = 1; c.gridwidth = 3;
         c.insets = new Insets(10, 4, 4, 4);
         form.add(new JSeparator(SwingConstants.HORIZONTAL), c);
@@ -554,26 +543,23 @@ public final class StyleSettingsDialog extends JDialog {
         activityShowLocalVarsCheckbox.setSelected(ap.showLocalVars);
         activityShowLocalVarsCheckbox.setToolTipText(
                 Messages.get("style.tip.actShowLocalVars"));
+        activityShowAssignmentsCheckbox.setSelected(ap.showAssignments);
+        activityShowAssignmentsCheckbox.setToolTipText(
+                Messages.get("style.tip.actShowAssignments"));
+        activityShowCallArgsCheckbox.setSelected(ap.showCallArguments);
+        activityShowCallArgsCheckbox.setToolTipText(
+                Messages.get("style.tip.actShowCallArgs"));
         activityShowInlineCommentsCheckbox.setSelected(ap.showInlineComments);
         activityShowInlineCommentsCheckbox.setToolTipText(
                 Messages.get("style.tip.actShowInlineComments"));
 
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityExpandCallbacksCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityShowLocalVarsCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityShowInlineCommentsCheckbox, c);
-        c.gridwidth = 1;
+        row = addWideRow(form, c, row, activityExpandCallbacksCheckbox);
+        row = addWideRow(form, c, row, activityShowLocalVarsCheckbox);
+        row = addWideRow(form, c, row, activityShowAssignmentsCheckbox);
+        row = addWideRow(form, c, row, activityShowCallArgsCheckbox);
+        row = addWideRow(form, c, row, activityShowInlineCommentsCheckbox);
 
         // ---- Class Diagram セクション ----
-        row++;
         c.gridx = 0; c.gridy = row; c.weightx = 1; c.gridwidth = 3;
         c.insets = new Insets(10, 4, 4, 4);
         form.add(new JSeparator(SwingConstants.HORIZONTAL), c);
@@ -623,37 +609,18 @@ public final class StyleSettingsDialog extends JDialog {
         c.gridwidth = 1;
         row++;
 
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classExcludeExternalCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classMarkExternalSupertypesCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
+        row = addWideRow(form, c, row, classExcludeExternalCheckbox);
+        row = addWideRow(form, c, row, classMarkExternalSupertypesCheckbox);
         // 関係線の色分け (継承=緑/実装=青/利用=灰破線)。大規模図で依存線を追いやすくする。
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classColorCodeRelationsCheckbox, c);
-        c.gridwidth = 1;
-        row++;
+        row = addWideRow(form, c, row, classColorCodeRelationsCheckbox);
 
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.commentMaxLength")), c);
         ((JSpinner.DefaultEditor) classCommentMaxLengthSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.commentMaxLength"));
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classCommentMaxLengthSpinner, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.commentMaxLength",
+                classCommentMaxLengthSpinner);
 
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.hiddenAnnotations")), c);
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classHiddenAnnotationsField, c);
-        c.gridwidth = 1;
-        row++;
+        row = addLabeledRow(form, c, row, "style.label.hiddenAnnotations",
+                classHiddenAnnotationsField);
 
         // ─── Call Graph ────────────────────────────────────────────────────
         c.gridx = 0; c.gridy = row; c.weightx = 1; c.gridwidth = 3;
@@ -673,13 +640,29 @@ public final class StyleSettingsDialog extends JDialog {
         callGraphMaxDepthSpinner.setValue(Math.max(1, Math.min(10, initialCallGraphMaxDepth)));
         ((JSpinner.DefaultEditor) callGraphMaxDepthSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.maxDepth"));
-        c.gridx = 0; c.gridy = row; c.weightx = 0;
-        form.add(new JLabel(Messages.get("style.label.maxDepth")), c);
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(callGraphMaxDepthSpinner, c);
-        c.gridwidth = 1;
+        addLabeledRow(form, c, row, "style.label.maxDepth", callGraphMaxDepthSpinner);
 
         return form;
+    }
+
+    /** チェックボックス等を 2 列目に全幅で配置し、次の行番号を返す。 */
+    private static int addWideRow(JPanel form, GridBagConstraints c, int row,
+                                   Component comp) {
+        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
+        form.add(comp, c);
+        c.gridwidth = 1;
+        return row + 1;
+    }
+
+    /** 1 列目にラベル、2 列目にコンポーネントを全幅配置し、次の行番号を返す。 */
+    private static int addLabeledRow(JPanel form, GridBagConstraints c, int row,
+                                      String labelKey, Component comp) {
+        c.gridx = 0; c.gridy = row; c.weightx = 0;
+        form.add(new JLabel(Messages.get(labelKey)), c);
+        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
+        form.add(comp, c);
+        c.gridwidth = 1;
+        return row + 1;
     }
 
     private static int lineTypeIndex(DiagramStyle.LineType t) {
@@ -773,9 +756,12 @@ public final class StyleSettingsDialog extends JDialog {
         sequenceCommentPlacementCombo.setEnabled(true);
         sequenceQualifyMethodsCheckbox.setSelected(true);
         sequenceMaxDepthSpinner.setValue(5);
+        sequenceShowArgsCheckbox.setSelected(false);
         ActivityDiagramPrefs ap = ActivityDiagramPrefs.defaults();
         activityExpandCallbacksCheckbox.setSelected(ap.expandInlineCallbacks);
         activityShowLocalVarsCheckbox.setSelected(ap.showLocalVars);
+        activityShowAssignmentsCheckbox.setSelected(ap.showAssignments);
+        activityShowCallArgsCheckbox.setSelected(ap.showCallArguments);
         activityShowInlineCommentsCheckbox.setSelected(ap.showInlineComments);
         ClassDiagramPrefs cp = ClassDiagramPrefs.defaults();
         classShowFieldsCheckbox.setSelected(cp.showFields);
@@ -856,11 +842,14 @@ public final class StyleSettingsDialog extends JDialog {
         ActivityDiagramPrefs activityPrefs = new ActivityDiagramPrefs(
                 activityExpandCallbacksCheckbox.isSelected(),
                 activityShowLocalVarsCheckbox.isSelected(),
+                activityShowAssignmentsCheckbox.isSelected(),
+                activityShowCallArgsCheckbox.isSelected(),
                 activityShowInlineCommentsCheckbox.isSelected());
         int seqDepth = ((Number) sequenceMaxDepthSpinner.getValue()).intValue();
         int cgDepth = ((Number) callGraphMaxDepthSpinner.getValue()).intValue();
         return new Result(s, sequenceShowCommentsCheckbox.isSelected(), cs, cp,
-                sequenceQualifyMethodsCheckbox.isSelected(), seqDepth, activityPrefs,
+                sequenceQualifyMethodsCheckbox.isSelected(), seqDepth,
+                sequenceShowArgsCheckbox.isSelected(), activityPrefs,
                 classPrefs, cgDepth);
     }
 
@@ -875,6 +864,7 @@ public final class StyleSettingsDialog extends JDialog {
                                      PlantUmlSequenceDiagram.CommentPlacement currentSeqPlacement,
                                      boolean currentSeqQualify,
                                      int currentSeqMaxDepth,
+                                     boolean currentSeqShowArgs,
                                      ActivityDiagramPrefs currentActivityPrefs,
                                      ClassDiagramPrefs currentClassPrefs,
                                      int currentCallGraphMaxDepth) {
@@ -890,8 +880,8 @@ public final class StyleSettingsDialog extends JDialog {
                         : PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE;
         StyleSettingsDialog dlg = new StyleSettingsDialog(owner, initial,
                 currentSeqShowComments, initialSeqStyle, initialSeqPlacement,
-                currentSeqQualify, currentSeqMaxDepth, currentActivityPrefs,
-                currentClassPrefs, currentCallGraphMaxDepth);
+                currentSeqQualify, currentSeqMaxDepth, currentSeqShowArgs,
+                currentActivityPrefs, currentClassPrefs, currentCallGraphMaxDepth);
         dlg.setVisible(true);
         return dlg.result;
     }

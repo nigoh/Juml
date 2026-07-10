@@ -850,5 +850,7 @@ public class PlantUmlSequenceDiagramTest {
     }
 
     // 追加の InlineComment 出力検証・オーバーロード解決テストは
-    // PlantUmlSequenceDiagramInlineCommentAndOverloadTest に分離 (FileLength 対策)。
+    // PlantUmlSequenceDiagramInlineCommentAndOverloadTest に、
+    // 呼び出し引数表示 (showCallArguments) の検証は
+    // PlantUmlSequenceCallArgumentsTest に分離 (FileLength 対策)。
 }

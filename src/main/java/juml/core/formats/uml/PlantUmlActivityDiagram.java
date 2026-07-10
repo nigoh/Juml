@@ -36,6 +36,10 @@ public final class PlantUmlActivityDiagram {
         public boolean expandInlineCallbacks = true;
         /** ローカル変数宣言をアクションノードとして表示する。 */
         public boolean showLocalVars = true;
+        /** 代入・インクリメント文 ({@code x = ...;} / {@code i++;}) をアクションノードとして表示する。 */
+        public boolean showAssignments = true;
+        /** メソッド呼び出しの引数を表示する (例: {@code helper.done(label)})。 */
+        public boolean showCallArguments = true;
         /** メソッド本体内のインラインコメントを note として表示する。 */
         public boolean showInlineComments = true;
         /**
@@ -216,6 +220,10 @@ public final class PlantUmlActivityDiagram {
                 // 表示 (showLocalVars) が無効でも、格納されたコールバックの登録・展開は
                 // 行う必要があるため常に呼ぶ (行の表示可否は emitLocalVar 内で判定)。
                 emitLocalVar((JavaMethodInfo.LocalVar) s, out, indent, ctx);
+            } else if (s instanceof JavaMethodInfo.Assignment) {
+                if (opts.showAssignments) {
+                    emitAssignment((JavaMethodInfo.Assignment) s, out, indent, opts);
+                }
             } else if (s instanceof JavaMethodInfo.InlineComment) {
                 if (opts.showInlineComments) {
                     emitInlineComment((JavaMethodInfo.InlineComment) s, out, indent, opts);
@@ -230,9 +238,11 @@ public final class PlantUmlActivityDiagram {
         Options opts = ctx.opts;
         String rcv = call.getReceiver();
         String name = call.getMethodName();
+        String args = (opts.showCallArguments && call.getArgsLabel() != null)
+                ? call.getArgsLabel() : "";
         String text = (rcv == null || rcv.isEmpty())
-                ? name + "()"
-                : rcv + "." + name + "()";
+                ? name + "(" + args + ")"
+                : rcv + "." + name + "(" + args + ")";
         out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
                 .append(";\n");
 
@@ -352,6 +362,16 @@ public final class PlantUmlActivityDiagram {
             }
             out.append(indent).append("}\n");
         }
+    }
+
+    private static void emitAssignment(JavaMethodInfo.Assignment a, StringBuilder out,
+                                        String indent, Options opts) {
+        String text = a.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
+                .append(";\n");
     }
 
     private static void emitInlineComment(JavaMethodInfo.InlineComment comment, StringBuilder out,

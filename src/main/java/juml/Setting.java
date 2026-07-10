@@ -59,11 +59,17 @@ public class Setting {
     private boolean sequenceQualifyMethodNames = true;
     /** シーケンス図の呼び出し再帰展開の最大深さ (0 = 無制限、1 = 起点のみ)。 */
     private int sequenceMaxDepth = 5;
+    /** シーケンス図の呼び出しラベルに引数を表示するか (既定 OFF = 定数シンボルのみ)。 */
+    private boolean sequenceShowCallArguments = false;
 
     /** アクティビティ図でラムダ/匿名クラスのコールバック本体を partition 展開するか。 */
     private boolean activityExpandInlineCallbacks = true;
     /** アクティビティ図でローカル変数宣言をアクションノードとして表示するか。 */
     private boolean activityShowLocalVars = true;
+    /** アクティビティ図で代入・インクリメント文をアクションノードとして表示するか。 */
+    private boolean activityShowAssignments = true;
+    /** アクティビティ図でメソッド呼び出しの引数を表示するか。 */
+    private boolean activityShowCallArguments = true;
     /** アクティビティ図でメソッド本体内のインラインコメントを note 表示するか。 */
     private boolean activityShowInlineComments = true;
 
@@ -143,6 +149,10 @@ public class Setting {
     public void setSequenceMaxDepth(int v) {
         this.sequenceMaxDepth = Math.max(0, Math.min(10, v));
     }
+    public boolean isSequenceShowCallArguments() { return sequenceShowCallArguments; }
+    public void setSequenceShowCallArguments(boolean v) {
+        this.sequenceShowCallArguments = v;
+    }
 
     public boolean isActivityExpandInlineCallbacks() { return activityExpandInlineCallbacks; }
     public void setActivityExpandInlineCallbacks(boolean v) {
@@ -150,6 +160,14 @@ public class Setting {
     }
     public boolean isActivityShowLocalVars() { return activityShowLocalVars; }
     public void setActivityShowLocalVars(boolean v) { this.activityShowLocalVars = v; }
+    public boolean isActivityShowAssignments() { return activityShowAssignments; }
+    public void setActivityShowAssignments(boolean v) {
+        this.activityShowAssignments = v;
+    }
+    public boolean isActivityShowCallArguments() { return activityShowCallArguments; }
+    public void setActivityShowCallArguments(boolean v) {
+        this.activityShowCallArguments = v;
+    }
     public boolean isActivityShowInlineComments() { return activityShowInlineComments; }
     public void setActivityShowInlineComments(boolean v) {
         this.activityShowInlineComments = v;
@@ -298,10 +316,16 @@ public class Setting {
         props.setProperty("sequence.qualifyMethodNames",
                 Boolean.toString(sequenceQualifyMethodNames));
         props.setProperty("sequence.maxDepth", Integer.toString(sequenceMaxDepth));
+        props.setProperty("sequence.showCallArguments",
+                Boolean.toString(sequenceShowCallArguments));
         props.setProperty("activity.expandInlineCallbacks",
                 Boolean.toString(activityExpandInlineCallbacks));
         props.setProperty("activity.showLocalVars",
                 Boolean.toString(activityShowLocalVars));
+        props.setProperty("activity.showAssignments",
+                Boolean.toString(activityShowAssignments));
+        props.setProperty("activity.showCallArguments",
+                Boolean.toString(activityShowCallArguments));
         props.setProperty("activity.showInlineComments",
                 Boolean.toString(activityShowInlineComments));
         props.setProperty("classDiagram.lastPreset", classDiagramLastPreset);
@@ -386,10 +410,16 @@ public class Setting {
         s.sequenceQualifyMethodNames = parseBooleanSafe(
                 props.getProperty("sequence.qualifyMethodNames"), true);
         s.setSequenceMaxDepth(parseIntSafe(props.getProperty("sequence.maxDepth"), 5));
+        s.sequenceShowCallArguments = parseBooleanSafe(
+                props.getProperty("sequence.showCallArguments"), false);
         s.activityExpandInlineCallbacks = parseBooleanSafe(
                 props.getProperty("activity.expandInlineCallbacks"), true);
         s.activityShowLocalVars = parseBooleanSafe(
                 props.getProperty("activity.showLocalVars"), true);
+        s.activityShowAssignments = parseBooleanSafe(
+                props.getProperty("activity.showAssignments"), true);
+        s.activityShowCallArguments = parseBooleanSafe(
+                props.getProperty("activity.showCallArguments"), true);
         s.activityShowInlineComments = parseBooleanSafe(
                 props.getProperty("activity.showInlineComments"), true);
         s.classDiagramLastPreset = stringOrDefault(

@@ -186,8 +186,11 @@ public class SettingTest {
     public void testSequenceActivityDetailDefaults() {
         Setting s = new Setting();
         assertEquals(5, s.getSequenceMaxDepth());
+        assertFalse(s.isSequenceShowCallArguments());
         assertTrue(s.isActivityExpandInlineCallbacks());
         assertTrue(s.isActivityShowLocalVars());
+        assertTrue(s.isActivityShowAssignments());
+        assertTrue(s.isActivityShowCallArguments());
         assertTrue(s.isActivityShowInlineComments());
     }
 
@@ -206,8 +209,11 @@ public class SettingTest {
     public void testSequenceActivityDetailRoundTrip() throws IOException {
         Setting original = new Setting();
         original.setSequenceMaxDepth(8);
+        original.setSequenceShowCallArguments(true);
         original.setActivityExpandInlineCallbacks(false);
         original.setActivityShowLocalVars(false);
+        original.setActivityShowAssignments(false);
+        original.setActivityShowCallArguments(false);
         original.setActivityShowInlineComments(false);
 
         File file = tempFolder.newFile("settings-detail.xml");
@@ -215,8 +221,11 @@ public class SettingTest {
 
         Setting loaded = Setting.loadFromFile(file);
         assertEquals(8, loaded.getSequenceMaxDepth());
+        assertTrue(loaded.isSequenceShowCallArguments());
         assertFalse(loaded.isActivityExpandInlineCallbacks());
         assertFalse(loaded.isActivityShowLocalVars());
+        assertFalse(loaded.isActivityShowAssignments());
+        assertFalse(loaded.isActivityShowCallArguments());
         assertFalse(loaded.isActivityShowInlineComments());
     }
 
@@ -235,8 +244,11 @@ public class SettingTest {
 
         Setting loaded = Setting.loadFromFile(file);
         assertEquals(5, loaded.getSequenceMaxDepth());
+        assertFalse(loaded.isSequenceShowCallArguments());
         assertTrue(loaded.isActivityExpandInlineCallbacks());
         assertTrue(loaded.isActivityShowLocalVars());
+        assertTrue(loaded.isActivityShowAssignments());
+        assertTrue(loaded.isActivityShowCallArguments());
         assertTrue(loaded.isActivityShowInlineComments());
     }
 

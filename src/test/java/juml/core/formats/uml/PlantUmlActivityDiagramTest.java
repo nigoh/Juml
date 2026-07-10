@@ -481,4 +481,107 @@ public class PlantUmlActivityDiagramTest {
         assertFalse("full variable name should NOT appear when truncated: " + puml,
                 puml.contains(longVarName));
     }
+
+    @Test
+    public void testAssignmentsRenderedAsActions() {
+        // 代入・複合代入・インクリメントがアクションノードとして出ること。
+        // (以前は Statement 化されず、ループ本体が空に見える欠落があった)
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { int total; void run() {"
+                        + " int j = 0;"
+                        + " total = 0;"
+                        + " total += 2;"
+                        + " j++;"
+                        + " while (j < 3) { j = j + 1; }"
+                        + " } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue(puml, puml.contains(":total = 0;"));
+        assertTrue(puml, puml.contains(":total += 2;"));
+        assertTrue(puml, puml.contains(":j++;"));
+        // while 本体内の代入も出る (空ループにならない)
+        assertTrue(puml, puml.contains(":j = j + 1;"));
+    }
+
+    @Test
+    public void testShowAssignmentsFalseHidesAssignments() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { int total; void run() { total = 1; foo.bar(); } }");
+        PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
+        o.showAssignments = false;
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", o);
+        assertFalse("showAssignments=false では代入が出ないこと: " + puml,
+                puml.contains(":total = 1;"));
+        // 呼び出しは引き続き出る
+        assertTrue(puml, puml.contains(":foo.bar();"));
+    }
+
+    @Test
+    public void testAssignmentWithCallHoistsCallBeforeAction() {
+        // 代入の値式に含まれる呼び出しは兄弟 Call として代入の前に出る
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { int total; void run() { total = helper.calc(); } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        int callIdx = puml.indexOf(":helper.calc();");
+        int asgIdx = puml.indexOf(":total = helper.calc();");
+        assertTrue("値式の呼び出しが出ること: " + puml, callIdx >= 0);
+        assertTrue("代入ノードが出ること: " + puml, asgIdx >= 0);
+        assertTrue("呼び出しが代入より先に出ること: " + puml, callIdx < asgIdx);
+    }
+
+    @Test
+    public void testCallArgumentsRenderedByDefault() {
+        // 呼び出し引数が既定でアクションノードに出ること。ラムダ引数は λ に畳まれる。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(String label) {"
+                        + " helper.done(label, 3);"
+                        + " list.forEach(x -> helper.log(x));"
+                        + " } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue(puml, puml.contains(":helper.done(label, 3);"));
+        assertTrue("ラムダ引数は λ に畳まれること: " + puml,
+                puml.contains(":list.forEach(λ);"));
+    }
+
+    @Test
+    public void testShowCallArgumentsFalseHidesArguments() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(String label) { helper.done(label); } }");
+        PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
+        o.showCallArguments = false;
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", o);
+        assertTrue("引数なし表記に戻ること: " + puml, puml.contains(":helper.done();"));
+        assertFalse(puml, puml.contains(":helper.done(label);"));
+    }
+
+    @Test
+    public void testSwitchCaseArmCommentRendered() {
+        // case アーム直下のコメントが note として出ること (以前は欠落していた)
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(int n) { switch (n) {"
+                        + " case 1:\n"
+                        + " // case one comment\n"
+                        + " foo.one(); break;"
+                        + " default:\n"
+                        + " // default arm comment\n"
+                        + " foo.other();"
+                        + " } } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue(puml, puml.contains("case one comment"));
+        assertTrue(puml, puml.contains("default arm comment"));
+    }
+
+    @Test
+    public void testBracelessBodyCommentRendered() {
+        // 波括弧なしの単文ボディに付いたコメントが note として出ること (以前は欠落していた)
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(int n) {"
+                        + " if (n > 0) {"
+                        + " foo.inIf();"
+                        + " } else\n"
+                        + " // braceless else comment\n"
+                        + " foo.inElse();"
+                        + " } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue(puml, puml.contains("braceless else comment"));
+    }
 }

@@ -26,6 +26,7 @@ public class JavaMethodInfo {
         private final String methodName;
         private final List<JavaMethodInfo> inlineMethods = new ArrayList<>();
         private String firstArgLabel;
+        private String argsLabel;
         private String resolvedOwnerFqn;
         private String resolvedSignature;
 
@@ -88,6 +89,19 @@ public class JavaMethodInfo {
 
         public void setFirstArgLabel(String firstArgLabel) {
             this.firstArgLabel = firstArgLabel;
+        }
+
+        /**
+         * 呼び出し引数の元ソース文字列 (カンマ結合)。例: {@code "i"}, {@code "label, 3"}。
+         * ラムダ/匿名クラス引数は {@code "λ"} に畳む (本体は {@link #getInlineMethods()} が持つ)。
+         * 引数なしは空文字。抽出経路が引数を保持しない場合 (Kotlin light scanner 等) は null。
+         */
+        public String getArgsLabel() {
+            return argsLabel;
+        }
+
+        public void setArgsLabel(String argsLabel) {
+            this.argsLabel = argsLabel;
         }
     }
 
@@ -206,6 +220,26 @@ public class JavaMethodInfo {
 
         public List<JavaMethodInfo> getInlineMethods() {
             return inlineMethods;
+        }
+    }
+
+    /**
+     * 代入・インクリメント/デクリメントの式文。例: {@code total = a;}, {@code counter++;}
+     *
+     * <p>メソッド呼び出しは {@link Call}、変数宣言は {@link LocalVar} が担うため、
+     * ここには「既存変数の値更新」だけが入る。text は元ソースの式文字列
+     * (空白は描画側で畳まれる)。アクティビティ図でアクションノードとして描画する。
+     * 値式に含まれる呼び出しは抽出側で兄弟 {@link Call} に持ち上げ済み。</p>
+     */
+    public static class Assignment implements Statement {
+        private final String text;
+
+        public Assignment(String text) {
+            this.text = text == null ? "" : text;
+        }
+
+        public String getText() {
+            return text;
         }
     }
 
