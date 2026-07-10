@@ -136,6 +136,12 @@ public final class PlantUmlSequenceDiagram {
          * null/空なら全 participant を表示する (デフォルト)。
          */
         public Set<String> hiddenParticipants;
+        /**
+         * setter 経由・コレクション格納などで実体を静的に解決できないコールバック
+         * 呼び出し ({@code cb.run()} 等) に「未展開」note を出す。無言で処理が
+         * 消えたように見えるのを防ぐ (対象はコールバックらしき型のフィールドに限定)。
+         */
+        public boolean showUnresolvedCallbackNote = true;
     }
 
     /**
@@ -236,7 +242,9 @@ public final class PlantUmlSequenceDiagram {
 
         Set<String> stack = new HashSet<>();
         stack.add(cls.getSimpleName() + "." + method.getName());
-        walkStatements(method.getStatements(), cls, 1, "", new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, o));
+        walkStatements(method.getStatements(), cls, 1, "",
+                new SeqRender(classes, participants, inlineParticipants, participantMethods,
+                        body, stack, o).scopeFor(method.getStatements()));
         stack.remove(cls.getSimpleName() + "." + method.getName());
 
         body.append("deactivate ").append(idRef(cls.getSimpleName())).append('\n');
@@ -455,10 +463,22 @@ public final class PlantUmlSequenceDiagram {
             } else if (s instanceof JavaMethodInfo.Block) {
                 SeqEmitters.emitBlock((JavaMethodInfo.Block) s, currentClass, depth, indent, r);
             } else if (s instanceof JavaMethodInfo.LocalVar) {
-                // ローカル変数のラムダ/匿名本体 (Runnable x = () -> svc.work();) を展開し取りこぼさない。
-                // 本体は this をキャプチャするため currentClass を保ったまま walk する。
-                for (JavaMethodInfo inline : ((JavaMethodInfo.LocalVar) s).getInlineMethods()) {
-                    walkStatements(inline.getStatements(), currentClass, depth, indent, r);
+                JavaMethodInfo.LocalVar lv = (JavaMethodInfo.LocalVar) s;
+                if (!lv.getInlineMethods().isEmpty()) {
+                    if (r.invoked().contains(lv.getVarName())) {
+                        // 本体内で直接呼び出される (x.run() 等) ローカル変数コールバックは
+                        // 宣言位置ではなく実際の呼び出し位置で展開する (時系列を偽らない)。
+                        // ここではスコープに登録するだけ (emitCall 側で解決)。
+                        r.locals.put(lv.getVarName(), lv.getInlineMethods());
+                    } else {
+                        // 直接呼び出されない (他メソッドへ渡すだけ等) ローカル変数の
+                        // ラムダ/匿名本体は従来どおり宣言位置で展開して取りこぼさない。
+                        // 本体は this をキャプチャするため currentClass を保ったまま walk する。
+                        for (JavaMethodInfo inline : lv.getInlineMethods()) {
+                            walkStatements(inline.getStatements(), currentClass, depth, indent,
+                                    r.scopeFor(inline.getStatements()));
+                        }
+                    }
                 }
             } else if (s instanceof JavaMethodInfo.InlineComment) {
                 // インラインコメント (メソッド本体内の // / /* */ コメント) を note として出力する。
@@ -591,7 +611,9 @@ public final class PlantUmlSequenceDiagram {
                 body.append(indent).append("activate ").append(quote(inlineName)).append('\n');
                 stack.add(inlineKey);
                 // inline body 内の `this.foo()` を定義元クラスに解決させるため currentClass を保つ
-                walkStatements(inline.getStatements(), currentClass, depth + 1, isLoop ? indent + "    " : indent + "  ", new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, opts));
+                walkStatements(inline.getStatements(), currentClass, depth + 1,
+                        isLoop ? indent + "    " : indent + "  ",
+                        r.scopeFor(inline.getStatements()));
                 stack.remove(inlineKey);
                 body.append(indent).append("deactivate ").append(quote(inlineName)).append('\n');
             }
@@ -600,29 +622,33 @@ public final class PlantUmlSequenceDiagram {
             }
             return;
         }
+        // Case 1.5: ローカル変数に格納されたコールバック (Runnable x = () -> ...; x.run();)
+        // を実際の呼び出し位置で展開する (宣言位置で展開すると時系列が偽られるため)。
+        JavaMethodInfo localInline = InlineCallbacks.findLocalInline(r.locals, call);
+        if (localInline != null && !localInline.getStatements().isEmpty()) {
+            SeqEmitters.expandStoredInline(localInline, target, currentClass, depth, indent, r);
+            return;
+        }
         if (nextCls == null) {
-            // Case 2: フィールド初期化子 (匿名クラス / ラムダ) で定義された inline メソッド
+            // Case 2: フィールドに格納された (初期化子 / 代入された) inline メソッド
             JavaMethodInfo inline = findInlineMethod(currentClass, call);
-            if (inline == null || inline.getStatements().isEmpty()) {
+            if (inline == null) {
+                // setter 経由・コレクション格納などで実体を静的に解決できない。
+                // 無言で消すと「処理が省略された」ことが利用者に伝わらないため、
+                // コールバックらしき型のフィールドに限って未展開 note を出す。
+                SeqEmitters.emitUnresolvedCallbackNote(call, target, currentClass, indent, r);
                 return;
             }
-            String inlineKey = target + "." + inline.getName();
-            if (stack.contains(inlineKey)) {
-                body.append(indent).append("note over ").append(quote(target))
-                        .append(" : recursive call (")
-                        .append(PlantUmlCommentFormatter.escapeLabel(inline.getName()))
-                        .append(")\n");
+            if (inline.getStatements().isEmpty()) {
                 return;
             }
-            body.append(indent).append("activate ").append(idRef(target)).append('\n');
-            stack.add(inlineKey);
-            // inline body 内の `this.foo()` を呼び出し元クラスに解決させるため currentClass を保つ
-            walkStatements(inline.getStatements(), currentClass, depth + 1, indent, new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, opts));
-            stack.remove(inlineKey);
-            body.append(indent).append("deactivate ").append(idRef(target)).append('\n');
+            SeqEmitters.expandStoredInline(inline, target, currentClass, depth, indent, r);
             return;
         }
         if (nextMethod == null || nextMethod.getStatements().isEmpty()) {
+            // 解析済みのインタフェース型フィールド (リスナー等) 越しの呼び出しで本体が
+            // 無い場合も、実装は実行時に注入されるため静的には追えない。note で可視化する。
+            SeqEmitters.emitUnresolvedCallbackNote(call, target, currentClass, indent, r);
             return;
         }
         String key = nextCls.getSimpleName() + "." + nextMethod.getName();
@@ -636,10 +662,12 @@ public final class PlantUmlSequenceDiagram {
         }
         body.append(indent).append("activate ").append(idRef(target)).append('\n');
         stack.add(key);
-        walkStatements(nextMethod.getStatements(), nextCls, depth + 1, indent, new SeqRender(classes, participants, inlineParticipants, participantMethods, body, stack, opts));
+        walkStatements(nextMethod.getStatements(), nextCls, depth + 1, indent,
+                r.scopeFor(nextMethod.getStatements()));
         stack.remove(key);
         body.append(indent).append("deactivate ").append(idRef(target)).append('\n');
     }
+
 
     /**
      * 解析対象外の participant について、依存 JAR/AAR で解決できれば EXTERNAL_JAR、
@@ -678,30 +706,7 @@ public final class PlantUmlSequenceDiagram {
      */
     static JavaMethodInfo findInlineMethod(JavaClassInfo currentClass,
                                                     JavaMethodInfo.Call call) {
-        if (currentClass == null || call == null) {
-            return null;
-        }
-        String receiver = call.getReceiver();
-        if (receiver == null || receiver.isEmpty()) {
-            return null;
-        }
-        String head = receiver;
-        int dot = head.indexOf('.');
-        if (dot >= 0) {
-            head = head.substring(0, dot);
-        }
-        for (JavaFieldInfo f : currentClass.getFields()) {
-            if (!head.equals(f.getName())) {
-                continue;
-            }
-            for (JavaMethodInfo m : f.getInlineMethods()) {
-                if (call.getMethodName().equals(m.getName())
-                        || "<inline>".equals(m.getName())) {
-                    return m;
-                }
-            }
-        }
-        return null;
+        return InlineCallbacks.findFieldInline(currentClass, call);
     }
 
     /** call ラベルの整形。{@link Options#qualifyMethodNames} 次第で {@code Class.method()} 形に。 */
