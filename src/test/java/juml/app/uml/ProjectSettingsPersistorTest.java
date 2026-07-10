@@ -151,9 +151,11 @@ public class ProjectSettingsPersistorTest {
         repo.touch(root);
         Map<String, String> saved = new LinkedHashMap<>();
         saved.put("sequence.maxDepth", "7");
+        saved.put("sequence.showCallArguments", "true");
         saved.put("activity.expandInlineCallbacks", "false");
         saved.put("activity.showLocalVars", "false");
         saved.put("activity.showAssignments", "false");
+        saved.put("activity.showCallArguments", "false");
         saved.put("activity.showInlineComments", "false");
         repo.saveSettings(root, saved);
 
@@ -163,10 +165,13 @@ public class ProjectSettingsPersistorTest {
         p.restoreAndPersist(root);
 
         assertEquals("シーケンス図の展開深さが復元されること", 7, setting.getSequenceMaxDepth());
+        assertTrue("シーケンス図の引数表示フラグが復元されること",
+                setting.isSequenceShowCallArguments());
         assertFalse("コールバック展開フラグが復元されること",
                 setting.isActivityExpandInlineCallbacks());
         assertFalse("ローカル変数表示フラグが復元されること", setting.isActivityShowLocalVars());
         assertFalse("代入表示フラグが復元されること", setting.isActivityShowAssignments());
+        assertFalse("引数表示フラグが復元されること", setting.isActivityShowCallArguments());
         assertFalse("インラインコメント表示フラグが復元されること",
                 setting.isActivityShowInlineComments());
     }
@@ -178,9 +183,11 @@ public class ProjectSettingsPersistorTest {
         repo.touch(root);
         Setting setting = new Setting();
         setting.setSequenceMaxDepth(9);
+        setting.setSequenceShowCallArguments(true);
         setting.setActivityExpandInlineCallbacks(false);
         setting.setActivityShowLocalVars(false);
         setting.setActivityShowAssignments(false);
+        setting.setActivityShowCallArguments(false);
         setting.setActivityShowInlineComments(false);
 
         ProjectSettingsPersistor p = new ProjectSettingsPersistor(
@@ -195,6 +202,10 @@ public class ProjectSettingsPersistorTest {
                 "false", loaded.get("activity.showLocalVars"));
         assertEquals("代入表示フラグが保存されること",
                 "false", loaded.get("activity.showAssignments"));
+        assertEquals("引数表示フラグが保存されること",
+                "false", loaded.get("activity.showCallArguments"));
+        assertEquals("シーケンス図の引数表示フラグが保存されること",
+                "true", loaded.get("sequence.showCallArguments"));
         assertEquals("インラインコメント表示フラグが保存されること",
                 "false", loaded.get("activity.showInlineComments"));
     }

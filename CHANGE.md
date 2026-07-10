@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **メソッド呼び出しの引数を図に表示できるように** (`JavaMethodInfo.Call` / `ExpressionAdapter` / `PlantUmlActivityDiagram` / `PlantUmlSequenceDiagram` / `SeqEmitters` / GUI 設定系)
+    * **背景**: 図中の呼び出しが `helper.done()` のように常に引数省略で描かれ、「処理を事細かく確認したい」用途で情報が足りなかった (シーケンス図は定数シンボルの第 1 引数のみ表示)。
+    * 抽出時に呼び出し引数の元ソースを `Call.argsLabel` として保持 (カンマ結合。ラムダ/匿名クラス引数は本体を inlineMethods が持つため λ 記号に畳む)。`this(...)`/`super(...)` の委譲引数も対象。
+    * **アクティビティ図**: `helper.done(label, 3)` の形で引数を表示 (既定 ON、`activity.showCallArguments`)。
+    * **シーケンス図**: 「矢印に呼び出し引数を表示」トグルを追加 (既定 OFF、`sequence.showCallArguments`)。ON では引数の元ソースを矢印ラベルに添え、40 文字超は "…" で切り詰めてラベルの膨張を防ぐ。OFF では従来どおり定数シンボル引数のみ。
+    * checkstyle FileLength 対応として、`StyleSettingsDialog` のラベル+コンポーネント行を `addLabeledRow` ヘルパーへ集約し、シーケンス図テストの引数表示分を `PlantUmlSequenceCallArgumentsTest` に分離。
+    * テスト: アクティビティ図の引数表示/トグル OFF/λ 畳み込み、シーケンス図の既定 OFF・ON・切り詰め・firstArgLabel 維持の計 6 ケースを追加。設定 round-trip も追記。
+    * 目的: メソッド内の処理を「何を渡して呼んでいるか」まで含めて図から読み取れるようにするため。
+
 * **アクティビティ図の「処理の書き漏れ」を解消: 代入文の欠落とコメント 2 種の取りこぼしを修正** (`JavaMethodInfo` / `StatementAdapter` / `JpComments` / `PlantUmlActivityDiagram` / GUI 設定系)
     * **背景**: メソッド本体の抽出が「呼び出し・宣言・制御ブロック」しか Statement 化しておらず、`total = 0;` `counter += 2;` `i++;` のような**代入・インクリメント文がアクティビティ図からまるごと欠落**していた。`while (j < 3) { j = j + 1; }` は本体が空のループに見え、代入の直前コメントだけが浮いて「コメントはあるのに処理がない」状態だった。
     * **代入文の Statement 化 (`JavaMethodInfo.Assignment`)**: `AssignExpr` (=, +=, ...) と文として現れた `i++`/`--i` を Assignment ノードとして保持し、アクティビティ図で `:total = 0;` のアクションノードとして描画。値式に含まれる呼び出しは従来どおり兄弟 Call に持ち上げるため、シーケンス図・コールグラフの挙動は不変。

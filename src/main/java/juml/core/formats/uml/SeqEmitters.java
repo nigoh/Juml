@@ -18,6 +18,27 @@ final class SeqEmitters {
     private SeqEmitters() {
     }
 
+    /** ラベル内の引数部分の最大文字数 (超過分は "…" に切り詰めて矢印ラベルの膨張を防ぐ)。 */
+    private static final int MAX_ARGS_LABEL_LENGTH = 40;
+
+    /**
+     * 呼び出しラベルに添える引数文字列を選ぶ。{@code Options.showCallArguments} が
+     * true で引数の元ソースを保持していればそれを使い (長すぎる場合は切り詰め)、
+     * それ以外は従来の定数シンボル引数 ({@code firstArgLabel}) にフォールバックする。
+     */
+    static String argLabelOf(JavaMethodInfo.Call call,
+                             PlantUmlSequenceDiagram.Options o) {
+        if (o.showCallArguments && call.getArgsLabel() != null
+                && !call.getArgsLabel().isEmpty()) {
+            String args = call.getArgsLabel().replaceAll("\\s+", " ").trim();
+            if (args.length() > MAX_ARGS_LABEL_LENGTH) {
+                args = args.substring(0, MAX_ARGS_LABEL_LENGTH - 1) + "…";
+            }
+            return args;
+        }
+        return call.getFirstArgLabel();
+    }
+
     /**
      * 深さ上限で展開を打ち切った呼び出しについて、本来展開すべき本体が実際に
      * ある場合だけ「未展開」note を出して省略を可視化する。展開対象が無い呼び出し

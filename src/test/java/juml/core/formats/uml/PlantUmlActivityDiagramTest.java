@@ -529,6 +529,31 @@ public class PlantUmlActivityDiagramTest {
     }
 
     @Test
+    public void testCallArgumentsRenderedByDefault() {
+        // 呼び出し引数が既定でアクションノードに出ること。ラムダ引数は λ に畳まれる。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(String label) {"
+                        + " helper.done(label, 3);"
+                        + " list.forEach(x -> helper.log(x));"
+                        + " } }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        assertTrue(puml, puml.contains(":helper.done(label, 3);"));
+        assertTrue("ラムダ引数は λ に畳まれること: " + puml,
+                puml.contains(":list.forEach(λ);"));
+    }
+
+    @Test
+    public void testShowCallArgumentsFalseHidesArguments() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(String label) { helper.done(label); } }");
+        PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
+        o.showCallArguments = false;
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", o);
+        assertTrue("引数なし表記に戻ること: " + puml, puml.contains(":helper.done();"));
+        assertFalse(puml, puml.contains(":helper.done(label);"));
+    }
+
+    @Test
     public void testSwitchCaseArmCommentRendered() {
         // case アーム直下のコメントが note として出ること (以前は欠落していた)
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(

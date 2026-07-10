@@ -593,18 +593,20 @@ public class UmlMainFrame extends JFrame {
                                 setting.getClassDiagramHiddenAnnotations()))
                 : StyleSettingsDialog.ClassDiagramPrefs.defaults();
         int curSeqMaxDepth = setting != null ? setting.getSequenceMaxDepth() : 5;
+        boolean curSeqShowArgs = setting != null && setting.isSequenceShowCallArguments();
         StyleSettingsDialog.ActivityDiagramPrefs curActivity = setting != null
                 ? new StyleSettingsDialog.ActivityDiagramPrefs(
                         setting.isActivityExpandInlineCallbacks(),
                         setting.isActivityShowLocalVars(),
                         setting.isActivityShowAssignments(),
+                        setting.isActivityShowCallArguments(),
                         setting.isActivityShowInlineComments())
                 : StyleSettingsDialog.ActivityDiagramPrefs.defaults();
         int curCallGraphDepth = setting != null ? setting.getCallGraphMaxDepth() : 4;
         StyleSettingsDialog.Result edited = StyleSettingsDialog.showDialog(
                 this, PlantUmlRenderer.getStyle(), curShow, curStyle,
-                curPlacement, curQualify, curSeqMaxDepth, curActivity,
-                curClass, curCallGraphDepth);
+                curPlacement, curQualify, curSeqMaxDepth, curSeqShowArgs,
+                curActivity, curClass, curCallGraphDepth);
         if (edited != null) {
             applyStyleSettings(edited);
         }
@@ -620,11 +622,14 @@ public class UmlMainFrame extends JFrame {
                 setting.setSequenceCommentPlacement(r.sequenceCommentPlacement.name());
                 setting.setSequenceQualifyMethodNames(r.sequenceQualifyMethodNames);
                 setting.setSequenceMaxDepth(r.sequenceMaxDepth);
+                setting.setSequenceShowCallArguments(r.sequenceShowCallArguments);
                 if (r.activityDiagram != null) {
                     setting.setActivityExpandInlineCallbacks(
                             r.activityDiagram.expandInlineCallbacks);
                     setting.setActivityShowLocalVars(r.activityDiagram.showLocalVars);
                     setting.setActivityShowAssignments(r.activityDiagram.showAssignments);
+                    setting.setActivityShowCallArguments(
+                            r.activityDiagram.showCallArguments);
                     setting.setActivityShowInlineComments(
                             r.activityDiagram.showInlineComments);
                 }

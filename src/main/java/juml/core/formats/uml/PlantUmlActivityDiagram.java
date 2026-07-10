@@ -38,6 +38,8 @@ public final class PlantUmlActivityDiagram {
         public boolean showLocalVars = true;
         /** 代入・インクリメント文 ({@code x = ...;} / {@code i++;}) をアクションノードとして表示する。 */
         public boolean showAssignments = true;
+        /** メソッド呼び出しの引数を表示する (例: {@code helper.done(label)})。 */
+        public boolean showCallArguments = true;
         /** メソッド本体内のインラインコメントを note として表示する。 */
         public boolean showInlineComments = true;
     }
@@ -197,9 +199,11 @@ public final class PlantUmlActivityDiagram {
                                   String indent, Options opts) {
         String rcv = call.getReceiver();
         String name = call.getMethodName();
+        String args = (opts.showCallArguments && call.getArgsLabel() != null)
+                ? call.getArgsLabel() : "";
         String text = (rcv == null || rcv.isEmpty())
-                ? name + "()"
-                : rcv + "." + name + "()";
+                ? name + "(" + args + ")"
+                : rcv + "." + name + "(" + args + ")";
         out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
                 .append(";\n");
 

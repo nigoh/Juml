@@ -205,10 +205,18 @@ final class StatementAdapter {
         } else if (s instanceof ExplicitConstructorInvocationStmt) {
             // this(...) / super(...) の委譲と、その引数中の呼び出しを拾う。
             ExplicitConstructorInvocationStmt eci = (ExplicitConstructorInvocationStmt) s;
+            StringBuilder eciArgs = new StringBuilder();
             for (Expression arg : eci.getArguments()) {
                 ExpressionAdapter.emitCalls(arg, out, ctx);
+                if (eciArgs.length() > 0) {
+                    eciArgs.append(", ");
+                }
+                eciArgs.append(arg.toString());
             }
-            out.add(new JavaMethodInfo.Call("", eci.isThis() ? "this" : "super"));
+            JavaMethodInfo.Call eciCall = new JavaMethodInfo.Call(
+                    "", eci.isThis() ? "this" : "super");
+            eciCall.setArgsLabel(eciArgs.toString());
+            out.add(eciCall);
         } else {
             // 未対応の文タイプ (assert / 空文 / 将来の追加) でも、直接の式子ノードから
             // 呼び出しだけは拾い、シーケンス図から静かに脱落させない。

@@ -98,6 +98,9 @@ public final class ProjectSettingsPersistor {
                         Boolean.parseBoolean(saved.get("sequence.qualifyMethodNames")));
             if (saved.containsKey("sequence.maxDepth"))
                 s.setSequenceMaxDepth(parseIntOrZero(saved.get("sequence.maxDepth")));
+            if (saved.containsKey("sequence.showCallArguments"))
+                s.setSequenceShowCallArguments(
+                        Boolean.parseBoolean(saved.get("sequence.showCallArguments")));
 
             if (saved.containsKey("activity.expandInlineCallbacks"))
                 s.setActivityExpandInlineCallbacks(
@@ -108,6 +111,9 @@ public final class ProjectSettingsPersistor {
             if (saved.containsKey("activity.showAssignments"))
                 s.setActivityShowAssignments(
                         Boolean.parseBoolean(saved.get("activity.showAssignments")));
+            if (saved.containsKey("activity.showCallArguments"))
+                s.setActivityShowCallArguments(
+                        Boolean.parseBoolean(saved.get("activity.showCallArguments")));
             if (saved.containsKey("activity.showInlineComments"))
                 s.setActivityShowInlineComments(
                         Boolean.parseBoolean(saved.get("activity.showInlineComments")));
@@ -171,12 +177,16 @@ public final class ProjectSettingsPersistor {
             m.put("sequence.qualifyMethodNames",
                     Boolean.toString(s.isSequenceQualifyMethodNames()));
             m.put("sequence.maxDepth", Integer.toString(s.getSequenceMaxDepth()));
+            m.put("sequence.showCallArguments",
+                    Boolean.toString(s.isSequenceShowCallArguments()));
             m.put("activity.expandInlineCallbacks",
                     Boolean.toString(s.isActivityExpandInlineCallbacks()));
             m.put("activity.showLocalVars",
                     Boolean.toString(s.isActivityShowLocalVars()));
             m.put("activity.showAssignments",
                     Boolean.toString(s.isActivityShowAssignments()));
+            m.put("activity.showCallArguments",
+                    Boolean.toString(s.isActivityShowCallArguments()));
             m.put("activity.showInlineComments",
                     Boolean.toString(s.isActivityShowInlineComments()));
             m.put("classDiagram.lastPreset", s.getClassDiagramLastPreset());

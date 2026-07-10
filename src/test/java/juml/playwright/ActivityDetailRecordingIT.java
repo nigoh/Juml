@@ -87,7 +87,7 @@ public class ActivityDetailRecordingIT {
             + "    } else {\n"
             + "      helper.small();\n"
             + "    }\n"
-            + "    helper.done();\n"
+            + "    helper.done(counter);\n"
             + "    total = counter + j;\n"
             + "  }\n"
             + "}\n";

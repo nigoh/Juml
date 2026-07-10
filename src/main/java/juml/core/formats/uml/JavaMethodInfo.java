@@ -26,6 +26,7 @@ public class JavaMethodInfo {
         private final String methodName;
         private final List<JavaMethodInfo> inlineMethods = new ArrayList<>();
         private String firstArgLabel;
+        private String argsLabel;
         private String resolvedOwnerFqn;
         private String resolvedSignature;
 
@@ -88,6 +89,19 @@ public class JavaMethodInfo {
 
         public void setFirstArgLabel(String firstArgLabel) {
             this.firstArgLabel = firstArgLabel;
+        }
+
+        /**
+         * 呼び出し引数の元ソース文字列 (カンマ結合)。例: {@code "i"}, {@code "label, 3"}。
+         * ラムダ/匿名クラス引数は {@code "λ"} に畳む (本体は {@link #getInlineMethods()} が持つ)。
+         * 引数なしは空文字。抽出経路が引数を保持しない場合 (Kotlin light scanner 等) は null。
+         */
+        public String getArgsLabel() {
+            return argsLabel;
+        }
+
+        public void setArgsLabel(String argsLabel) {
+            this.argsLabel = argsLabel;
         }
     }
 

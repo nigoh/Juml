@@ -78,13 +78,21 @@ final class ExpressionAdapter {
         // コールバック本体として call.getInlineMethods() に取り込む。
         // (第2引数以降の匿名クラス — 例: addTextChangedListener(null, new TextWatcher(){..}) —
         // の本体を取りこぼさない)。それ以外の引数は通常どおり walk で降下する。
+        StringBuilder argsLabel = new StringBuilder();
         for (Expression arg : mc.getArguments()) {
+            if (argsLabel.length() > 0) {
+                argsLabel.append(", ");
+            }
             if (isInlineArg(arg)) {
                 buildInline(arg, null, mc.getNameAsString(), call.getInlineMethods(), ctx);
+                // 本体は inlineMethods 側が持つため、ラベル上は "λ" に畳む
+                argsLabel.append("λ");
             } else {
                 walk(arg, out, ctx);
+                argsLabel.append(arg.toString());
             }
         }
+        call.setArgsLabel(argsLabel.toString());
         out.add(call);
     }
 

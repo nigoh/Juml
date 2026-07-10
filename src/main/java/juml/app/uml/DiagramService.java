@@ -503,6 +503,7 @@ public final class DiagramService {
             }
             o.qualifyMethodNames = s.isSequenceQualifyMethodNames();
             o.maxDepth = s.getSequenceMaxDepth();
+            o.showCallArguments = s.isSequenceShowCallArguments();
         } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま (showComments=true, INLINE, AT_CALL_SITE)
             juml.util.AppLog.warn(juml.util.ErrorCode.DIAG_001, "DiagramService",
@@ -524,6 +525,7 @@ public final class DiagramService {
             o.expandInlineCallbacks = s.isActivityExpandInlineCallbacks();
             o.showLocalVars = s.isActivityShowLocalVars();
             o.showAssignments = s.isActivityShowAssignments();
+            o.showCallArguments = s.isActivityShowCallArguments();
             o.showInlineComments = s.isActivityShowInlineComments();
         } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま (すべて表示)

@@ -130,6 +130,13 @@ public final class PlantUmlSequenceDiagram {
          */
         public boolean qualifyMethodNames = true;
         /**
+         * メソッド呼び出しラベルに引数の元ソース文字列を添える
+         * (例: {@code "Helper.done(label)"})。長い引数はラベル保護のため切り詰める。
+         * false (デフォルト) では従来どおり定数シンボル引数
+         * ({@link JavaMethodInfo.Call#getFirstArgLabel()}) のみ表示する。
+         */
+        public boolean showCallArguments = false;
+        /**
          * シーケンス図から除外する participant 名の集合。
          * 含まれる participant への呼び出しは {@code A -> B: ...} 行も note も
          * 出力されず、ボディも再帰展開されない。
@@ -533,7 +540,7 @@ public final class PlantUmlSequenceDiagram {
         body.append(indent).append(idRef(currentClass.getSimpleName()))
                 .append(" -> ").append(idRef(target))
                 .append(": ").append(PlantUmlCommentFormatter.escapeLabel(formatCallLabel(target, call.getMethodName(),
-                        call.getFirstArgLabel(), opts)))
+                        SeqEmitters.argLabelOf(call, opts), opts)))
                 .append('\n');
 
         // 解析済みクラスに該当する呼び出し先メソッドを引いておく (note と再帰展開で共有)
