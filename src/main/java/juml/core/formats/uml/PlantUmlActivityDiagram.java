@@ -42,6 +42,42 @@ public final class PlantUmlActivityDiagram {
         public boolean showCallArguments = true;
         /** メソッド本体内のインラインコメントを note として表示する。 */
         public boolean showInlineComments = true;
+        /**
+         * setter 経由・コレクション格納などで実体を静的に解決できないコールバック
+         * 呼び出し ({@code cb.run()} 等) に「未展開」note を出す。無言で処理が
+         * 消えたように見えるのを防ぐ (対象はコールバックらしき型のフィールドに限定)。
+         */
+        public boolean showUnresolvedCallbackNote = true;
+    }
+
+    /**
+     * 走査中メソッドのスコープ (定義元クラス / オプション / 格納されたローカル変数
+     * コールバック / 直接呼び出される receiver / 展開再帰ガード) の束。
+     * 制御ブロックの中では同じスコープを共有し、コールバック本体へ潜るときだけ
+     * {@link #scopeFor(List)} で入れ替える。
+     */
+    private static final class Ctx {
+        final JavaClassInfo cls;
+        final Options opts;
+        /** 格納されたローカル変数コールバック (変数名 → inline 本体)。 */
+        final java.util.Map<String, List<JavaMethodInfo>> locals = new java.util.HashMap<>();
+        /** 本体内で直接呼び出される receiver の先頭識別子。 */
+        final java.util.Set<String> invoked;
+        /** 格納コールバック展開の再帰ガード (子スコープと共有)。 */
+        final java.util.Set<String> stack;
+
+        Ctx(JavaClassInfo cls, Options opts, List<JavaMethodInfo.Statement> stmts,
+            java.util.Set<String> stack) {
+            this.cls = cls;
+            this.opts = opts;
+            this.invoked = InlineCallbacks.collectInvokedHeads(stmts);
+            this.stack = stack;
+        }
+
+        /** コールバック本体へ潜るときの新しいスコープ (再帰ガードは共有)。 */
+        Ctx scopeFor(List<JavaMethodInfo.Statement> stmts) {
+            return new Ctx(cls, opts, stmts, stack);
+        }
     }
 
     /** {@link #listCandidates(List)} の戻り値要素。 */
@@ -111,7 +147,8 @@ public final class PlantUmlActivityDiagram {
         if (o.showComments && !method.isConstructor()) {
             emitMethodSignature(out, method, o);
         }
-        boolean ended = walkStatements(method.getStatements(), out, "", o);
+        boolean ended = walkStatements(method.getStatements(), out, "",
+                new Ctx(cls, o, method.getStatements(), new java.util.HashSet<>()));
         if (!ended) {
             out.append("stop\n");
         }
@@ -160,12 +197,13 @@ public final class PlantUmlActivityDiagram {
      *         true なら呼び出し元は自動 {@code stop} を追加しない。
      */
     private static boolean walkStatements(List<JavaMethodInfo.Statement> stmts,
-                                           StringBuilder out, String indent, Options opts) {
+                                           StringBuilder out, String indent, Ctx ctx) {
+        Options opts = ctx.opts;
         boolean ended = false;
         for (JavaMethodInfo.Statement s : stmts) {
             ended = false;
             if (s instanceof JavaMethodInfo.Call) {
-                emitCall((JavaMethodInfo.Call) s, out, indent, opts);
+                emitCall((JavaMethodInfo.Call) s, out, indent, ctx);
             } else if (s instanceof JavaMethodInfo.Return) {
                 ended = emitReturn((JavaMethodInfo.Return) s, out, indent, opts);
             } else if (s instanceof JavaMethodInfo.Throw) {
@@ -177,11 +215,11 @@ public final class PlantUmlActivityDiagram {
             } else if (s instanceof JavaMethodInfo.Yield) {
                 emitYield((JavaMethodInfo.Yield) s, out, indent, opts);
             } else if (s instanceof JavaMethodInfo.Block) {
-                ended = emitBlock((JavaMethodInfo.Block) s, out, indent, opts);
+                ended = emitBlock((JavaMethodInfo.Block) s, out, indent, ctx);
             } else if (s instanceof JavaMethodInfo.LocalVar) {
-                if (opts.showLocalVars) {
-                    emitLocalVar((JavaMethodInfo.LocalVar) s, out, indent, opts);
-                }
+                // 表示 (showLocalVars) が無効でも、格納されたコールバックの登録・展開は
+                // 行う必要があるため常に呼ぶ (行の表示可否は emitLocalVar 内で判定)。
+                emitLocalVar((JavaMethodInfo.LocalVar) s, out, indent, ctx);
             } else if (s instanceof JavaMethodInfo.Assignment) {
                 if (opts.showAssignments) {
                     emitAssignment((JavaMethodInfo.Assignment) s, out, indent, opts);
@@ -196,7 +234,8 @@ public final class PlantUmlActivityDiagram {
     }
 
     private static void emitCall(JavaMethodInfo.Call call, StringBuilder out,
-                                  String indent, Options opts) {
+                                  String indent, Ctx ctx) {
+        Options opts = ctx.opts;
         String rcv = call.getReceiver();
         String name = call.getMethodName();
         String args = (opts.showCallArguments && call.getArgsLabel() != null)
@@ -220,10 +259,49 @@ public final class PlantUmlActivityDiagram {
                             .append(escapeAction(samLabel + "()", opts.commentMaxLength))
                             .append(";\n");
                 } else {
-                    walkStatements(inline.getStatements(), out, inner, opts);
+                    walkStatements(inline.getStatements(), out, inner,
+                            ctx.scopeFor(inline.getStatements()));
                 }
                 out.append(indent).append("}\n");
             }
+            return;
+        }
+        if (!opts.expandInlineCallbacks) {
+            return;
+        }
+        // 変数・フィールドに格納されたコールバック (Runnable cb; ... cb.run();) の本体を
+        // 呼び出し位置で展開する (シーケンス図の Case 1.5/2 と対称の対応)。
+        JavaMethodInfo stored = InlineCallbacks.findLocalInline(ctx.locals, call);
+        if (stored == null) {
+            stored = InlineCallbacks.findFieldInline(ctx.cls, call);
+        }
+        if (stored != null && !stored.getStatements().isEmpty()) {
+            String storedKey = InlineCallbacks.receiverHead(call) + "." + stored.getName();
+            if (ctx.stack.contains(storedKey)) {
+                out.append(indent).append("note right: recursive call (")
+                        .append(noteText(stored.getName(), opts.commentMaxLength))
+                        .append(")\n");
+                return;
+            }
+            String samLabel = isGenericSamName(stored.getName()) ? name : stored.getName();
+            String inner = indent + "  ";
+            out.append(indent).append("partition \"")
+                    .append(escapeQuoted(text + " → " + samLabel + "()")).append("\" {\n");
+            ctx.stack.add(storedKey);
+            walkStatements(stored.getStatements(), out, inner,
+                    ctx.scopeFor(stored.getStatements()));
+            ctx.stack.remove(storedKey);
+            out.append(indent).append("}\n");
+            return;
+        }
+        // setter 経由・コレクション格納などで実体を静的に解決できない。
+        // コールバックらしき型のフィールドに限り「未展開」note で可視化する。
+        if (opts.showUnresolvedCallbackNote
+                && InlineCallbacks.looksLikeStoredCallback(ctx.cls, call)) {
+            out.append(indent).append("note right: ")
+                    .append(noteText(InlineCallbacks.unresolvedNoteText(call),
+                            opts.commentMaxLength))
+                    .append('\n');
         }
     }
 
@@ -241,35 +319,48 @@ public final class PlantUmlActivityDiagram {
     }
 
     private static void emitLocalVar(JavaMethodInfo.LocalVar v, StringBuilder out,
-                                      String indent, Options opts) {
+                                      String indent, Ctx ctx) {
+        Options opts = ctx.opts;
         String type = v.getType();
         String name = v.getVarName();
-        String init = v.getInitExpr();
-        String text;
-        if (init == null || init.isEmpty()) {
-            text = type + " " + name;
-        } else {
-            text = type + " " + name + " = " + init;
-        }
-        out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
-                .append(";\n");
-        // ラムダ/匿名クラス付きの変数宣言はコールバックブロックを展開
-        if (opts.expandInlineCallbacks && !v.getInlineMethods().isEmpty()) {
-            for (JavaMethodInfo inline : v.getInlineMethods()) {
-                String samLabel = isGenericSamName(inline.getName()) ? name : inline.getName();
-                String partLabel = name + " → " + samLabel + "()";
-                String inner = indent + "  ";
-                out.append(indent).append("partition \"")
-                        .append(escapeQuoted(partLabel)).append("\" {\n");
-                if (inline.getStatements().isEmpty()) {
-                    out.append(inner).append(':')
-                            .append(escapeAction(samLabel + "()", opts.commentMaxLength))
-                            .append(";\n");
-                } else {
-                    walkStatements(inline.getStatements(), out, inner, opts);
-                }
-                out.append(indent).append("}\n");
+        if (opts.showLocalVars) {
+            String init = v.getInitExpr();
+            String text;
+            if (init == null || init.isEmpty()) {
+                text = type + " " + name;
+            } else {
+                text = type + " " + name + " = " + init;
             }
+            out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
+                    .append(";\n");
+        }
+        if (!opts.expandInlineCallbacks || v.getInlineMethods().isEmpty()) {
+            return;
+        }
+        if (ctx.invoked.contains(name)) {
+            // 本体内で直接呼び出される (x.run() 等) ローカル変数コールバックは
+            // 宣言位置ではなく実際の呼び出し位置で展開する (時系列を偽らない)。
+            // ここではスコープに登録するだけ (emitCall 側で解決)。
+            ctx.locals.put(name, v.getInlineMethods());
+            return;
+        }
+        // 直接呼び出されない (他メソッドへ渡すだけ等) ローカル変数のコールバックは
+        // 従来どおり宣言位置で partition 展開して取りこぼさない。
+        for (JavaMethodInfo inline : v.getInlineMethods()) {
+            String samLabel = isGenericSamName(inline.getName()) ? name : inline.getName();
+            String partLabel = name + " → " + samLabel + "()";
+            String inner = indent + "  ";
+            out.append(indent).append("partition \"")
+                    .append(escapeQuoted(partLabel)).append("\" {\n");
+            if (inline.getStatements().isEmpty()) {
+                out.append(inner).append(':')
+                        .append(escapeAction(samLabel + "()", opts.commentMaxLength))
+                        .append(";\n");
+            } else {
+                walkStatements(inline.getStatements(), out, inner,
+                        ctx.scopeFor(inline.getStatements()));
+            }
+            out.append(indent).append("}\n");
         }
     }
 
@@ -352,7 +443,7 @@ public final class PlantUmlActivityDiagram {
     }
 
     private static boolean emitBlock(JavaMethodInfo.Block block, StringBuilder out,
-                                      String indent, Options opts) {
+                                      String indent, Ctx ctx) {
         List<JavaMethodInfo.Branch> bs = block.getBranches();
         if (bs.isEmpty()) {
             return false;
@@ -360,39 +451,39 @@ public final class PlantUmlActivityDiagram {
         String inner = indent + "  ";
         switch (block.getKind()) {
             case IF:
-                return emitIf(bs, out, indent, inner, opts);
+                return emitIf(bs, out, indent, inner, ctx);
             case WHILE:
-                return emitWhile(bs.get(0), out, indent, inner, opts);
+                return emitWhile(bs.get(0), out, indent, inner, ctx);
             case FOR:
-                return emitFor(bs.get(0), out, indent, inner, opts);
+                return emitFor(bs.get(0), out, indent, inner, ctx);
             case DO_WHILE:
-                return emitDoWhile(bs.get(0), out, indent, inner, opts);
+                return emitDoWhile(bs.get(0), out, indent, inner, ctx);
             case SWITCH:
-                return emitSwitch(bs, out, indent, inner, opts);
+                return emitSwitch(bs, out, indent, inner, ctx);
             case TRY:
-                return emitTry(bs, out, indent, inner, opts);
+                return emitTry(bs, out, indent, inner, ctx);
             case SYNCHRONIZED:
-                return emitSynchronized(bs.get(0), out, indent, inner, opts);
+                return emitSynchronized(bs.get(0), out, indent, inner, ctx);
             default:
                 return false;
         }
     }
 
     private static boolean emitIf(List<JavaMethodInfo.Branch> bs, StringBuilder out,
-                                   String indent, String inner, Options opts) {
+                                   String indent, String inner, Ctx ctx) {
         JavaMethodInfo.Branch first = bs.get(0);
         out.append(indent).append("if (").append(escapeCondition(first.getLabel()))
                 .append(") then (yes)\n");
-        walkStatements(first.getBody(), out, inner, opts);
+        walkStatements(first.getBody(), out, inner, ctx);
         for (int i = 1; i < bs.size(); i++) {
             JavaMethodInfo.Branch b = bs.get(i);
             if ("else if".equals(b.getType())) {
                 out.append(indent).append("elseif (").append(escapeCondition(b.getLabel()))
                         .append(") then (yes)\n");
-                walkStatements(b.getBody(), out, inner, opts);
+                walkStatements(b.getBody(), out, inner, ctx);
             } else {
                 out.append(indent).append("else (no)\n");
-                walkStatements(b.getBody(), out, inner, opts);
+                walkStatements(b.getBody(), out, inner, ctx);
             }
         }
         out.append(indent).append("endif\n");
@@ -400,27 +491,27 @@ public final class PlantUmlActivityDiagram {
     }
 
     private static boolean emitWhile(JavaMethodInfo.Branch br, StringBuilder out,
-                                      String indent, String inner, Options opts) {
+                                      String indent, String inner, Ctx ctx) {
         out.append(indent).append("while (").append(escapeCondition(br.getLabel()))
                 .append(") is (true)\n");
-        walkStatements(br.getBody(), out, inner, opts);
+        walkStatements(br.getBody(), out, inner, ctx);
         out.append(indent).append("endwhile (false)\n");
         return false;
     }
 
     private static boolean emitFor(JavaMethodInfo.Branch br, StringBuilder out,
-                                    String indent, String inner, Options opts) {
+                                    String indent, String inner, Ctx ctx) {
         out.append(indent).append("while (for: ").append(escapeCondition(br.getLabel()))
                 .append(") is (loop)\n");
-        walkStatements(br.getBody(), out, inner, opts);
+        walkStatements(br.getBody(), out, inner, ctx);
         out.append(indent).append("endwhile (done)\n");
         return false;
     }
 
     private static boolean emitDoWhile(JavaMethodInfo.Branch br, StringBuilder out,
-                                        String indent, String inner, Options opts) {
+                                        String indent, String inner, Ctx ctx) {
         out.append(indent).append("repeat\n");
-        walkStatements(br.getBody(), out, inner, opts);
+        walkStatements(br.getBody(), out, inner, ctx);
         String cond = br.getLabel();
         if (cond == null || cond.isEmpty()) {
             out.append(indent).append("repeat while (continue?) is (yes) not (no)\n");
@@ -432,7 +523,7 @@ public final class PlantUmlActivityDiagram {
     }
 
     private static boolean emitSwitch(List<JavaMethodInfo.Branch> bs, StringBuilder out,
-                                       String indent, String inner, Options opts) {
+                                       String indent, String inner, Ctx ctx) {
         // bs[0] = switch header (kind="switch", label=condition expression)、残りが case/default
         JavaMethodInfo.Branch head = bs.get(0);
         if (bs.size() <= 1) {
@@ -450,14 +541,14 @@ public final class PlantUmlActivityDiagram {
                 label = (lbl == null || lbl.isEmpty()) ? "case" : escapeCondition(lbl);
             }
             out.append(indent).append("case (").append(label).append(")\n");
-            walkStatements(b.getBody(), out, inner, opts);
+            walkStatements(b.getBody(), out, inner, ctx);
         }
         out.append(indent).append("endswitch\n");
         return false;
     }
 
     private static boolean emitTry(List<JavaMethodInfo.Branch> bs, StringBuilder out,
-                                    String indent, String inner, Options opts) {
+                                    String indent, String inner, Ctx ctx) {
         for (JavaMethodInfo.Branch b : bs) {
             String name;
             if ("try".equals(b.getType())) {
@@ -470,20 +561,20 @@ public final class PlantUmlActivityDiagram {
             }
             out.append(indent).append("partition \"")
                     .append(escapeQuoted(name)).append("\" {\n");
-            walkStatements(b.getBody(), out, inner, opts);
+            walkStatements(b.getBody(), out, inner, ctx);
             out.append(indent).append("}\n");
         }
         return false;
     }
 
     private static boolean emitSynchronized(JavaMethodInfo.Branch br, StringBuilder out,
-                                             String indent, String inner, Options opts) {
+                                             String indent, String inner, Ctx ctx) {
         String lock = br.getLabel();
         String header = (lock == null || lock.isEmpty())
                 ? "synchronized" : "synchronized(" + lock + ")";
         out.append(indent).append("partition \"")
                 .append(escapeQuoted(header)).append("\" {\n");
-        walkStatements(br.getBody(), out, inner, opts);
+        walkStatements(br.getBody(), out, inner, ctx);
         out.append(indent).append("}\n");
         return false;
     }
