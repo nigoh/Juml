@@ -597,6 +597,7 @@ public class UmlMainFrame extends JFrame {
                 ? new StyleSettingsDialog.ActivityDiagramPrefs(
                         setting.isActivityExpandInlineCallbacks(),
                         setting.isActivityShowLocalVars(),
+                        setting.isActivityShowAssignments(),
                         setting.isActivityShowInlineComments())
                 : StyleSettingsDialog.ActivityDiagramPrefs.defaults();
         int curCallGraphDepth = setting != null ? setting.getCallGraphMaxDepth() : 4;
@@ -623,6 +624,7 @@ public class UmlMainFrame extends JFrame {
                     setting.setActivityExpandInlineCallbacks(
                             r.activityDiagram.expandInlineCallbacks);
                     setting.setActivityShowLocalVars(r.activityDiagram.showLocalVars);
+                    setting.setActivityShowAssignments(r.activityDiagram.showAssignments);
                     setting.setActivityShowInlineComments(
                             r.activityDiagram.showInlineComments);
                 }

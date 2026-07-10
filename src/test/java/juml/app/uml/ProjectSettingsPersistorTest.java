@@ -153,6 +153,7 @@ public class ProjectSettingsPersistorTest {
         saved.put("sequence.maxDepth", "7");
         saved.put("activity.expandInlineCallbacks", "false");
         saved.put("activity.showLocalVars", "false");
+        saved.put("activity.showAssignments", "false");
         saved.put("activity.showInlineComments", "false");
         repo.saveSettings(root, saved);
 
@@ -165,6 +166,7 @@ public class ProjectSettingsPersistorTest {
         assertFalse("コールバック展開フラグが復元されること",
                 setting.isActivityExpandInlineCallbacks());
         assertFalse("ローカル変数表示フラグが復元されること", setting.isActivityShowLocalVars());
+        assertFalse("代入表示フラグが復元されること", setting.isActivityShowAssignments());
         assertFalse("インラインコメント表示フラグが復元されること",
                 setting.isActivityShowInlineComments());
     }
@@ -178,6 +180,7 @@ public class ProjectSettingsPersistorTest {
         setting.setSequenceMaxDepth(9);
         setting.setActivityExpandInlineCallbacks(false);
         setting.setActivityShowLocalVars(false);
+        setting.setActivityShowAssignments(false);
         setting.setActivityShowInlineComments(false);
 
         ProjectSettingsPersistor p = new ProjectSettingsPersistor(
@@ -190,6 +193,8 @@ public class ProjectSettingsPersistorTest {
                 "false", loaded.get("activity.expandInlineCallbacks"));
         assertEquals("ローカル変数表示フラグが保存されること",
                 "false", loaded.get("activity.showLocalVars"));
+        assertEquals("代入表示フラグが保存されること",
+                "false", loaded.get("activity.showAssignments"));
         assertEquals("インラインコメント表示フラグが保存されること",
                 "false", loaded.get("activity.showInlineComments"));
     }

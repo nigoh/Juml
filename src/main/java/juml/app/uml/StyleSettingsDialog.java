@@ -88,6 +88,8 @@ public final class StyleSettingsDialog extends JDialog {
             new JCheckBox(Messages.get("style.act.expandCallbacks"));
     private final JCheckBox activityShowLocalVarsCheckbox =
             new JCheckBox(Messages.get("style.act.showLocalVars"));
+    private final JCheckBox activityShowAssignmentsCheckbox =
+            new JCheckBox(Messages.get("style.act.showAssignments"));
     private final JCheckBox activityShowInlineCommentsCheckbox =
             new JCheckBox(Messages.get("style.act.showInlineComments"));
 
@@ -194,19 +196,22 @@ public final class StyleSettingsDialog extends JDialog {
         public final boolean expandInlineCallbacks;
         /** ローカル変数宣言をアクションノードとして表示する。 */
         public final boolean showLocalVars;
+        /** 代入・インクリメント文をアクションノードとして表示する。 */
+        public final boolean showAssignments;
         /** メソッド本体内のインラインコメントを note として表示する。 */
         public final boolean showInlineComments;
 
         public ActivityDiagramPrefs(boolean expandInlineCallbacks, boolean showLocalVars,
-                                     boolean showInlineComments) {
+                                     boolean showAssignments, boolean showInlineComments) {
             this.expandInlineCallbacks = expandInlineCallbacks;
             this.showLocalVars = showLocalVars;
+            this.showAssignments = showAssignments;
             this.showInlineComments = showInlineComments;
         }
 
         /** 既定値 (PlantUmlActivityDiagram.Options の既定 = すべて表示)。 */
         public static ActivityDiagramPrefs defaults() {
-            return new ActivityDiagramPrefs(true, true, true);
+            return new ActivityDiagramPrefs(true, true, true, true);
         }
     }
 
@@ -554,26 +559,19 @@ public final class StyleSettingsDialog extends JDialog {
         activityShowLocalVarsCheckbox.setSelected(ap.showLocalVars);
         activityShowLocalVarsCheckbox.setToolTipText(
                 Messages.get("style.tip.actShowLocalVars"));
+        activityShowAssignmentsCheckbox.setSelected(ap.showAssignments);
+        activityShowAssignmentsCheckbox.setToolTipText(
+                Messages.get("style.tip.actShowAssignments"));
         activityShowInlineCommentsCheckbox.setSelected(ap.showInlineComments);
         activityShowInlineCommentsCheckbox.setToolTipText(
                 Messages.get("style.tip.actShowInlineComments"));
 
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityExpandCallbacksCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityShowLocalVarsCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(activityShowInlineCommentsCheckbox, c);
-        c.gridwidth = 1;
+        row = addWideRow(form, c, row, activityExpandCallbacksCheckbox);
+        row = addWideRow(form, c, row, activityShowLocalVarsCheckbox);
+        row = addWideRow(form, c, row, activityShowAssignmentsCheckbox);
+        row = addWideRow(form, c, row, activityShowInlineCommentsCheckbox);
 
         // ---- Class Diagram セクション ----
-        row++;
         c.gridx = 0; c.gridy = row; c.weightx = 1; c.gridwidth = 3;
         c.insets = new Insets(10, 4, 4, 4);
         form.add(new JSeparator(SwingConstants.HORIZONTAL), c);
@@ -623,21 +621,10 @@ public final class StyleSettingsDialog extends JDialog {
         c.gridwidth = 1;
         row++;
 
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classExcludeExternalCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classMarkExternalSupertypesCheckbox, c);
-        c.gridwidth = 1;
-        row++;
-
+        row = addWideRow(form, c, row, classExcludeExternalCheckbox);
+        row = addWideRow(form, c, row, classMarkExternalSupertypesCheckbox);
         // 関係線の色分け (継承=緑/実装=青/利用=灰破線)。大規模図で依存線を追いやすくする。
-        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
-        form.add(classColorCodeRelationsCheckbox, c);
-        c.gridwidth = 1;
-        row++;
+        row = addWideRow(form, c, row, classColorCodeRelationsCheckbox);
 
         c.gridx = 0; c.gridy = row; c.weightx = 0;
         form.add(new JLabel(Messages.get("style.label.commentMaxLength")), c);
@@ -680,6 +667,15 @@ public final class StyleSettingsDialog extends JDialog {
         c.gridwidth = 1;
 
         return form;
+    }
+
+    /** チェックボックス等を 2 列目に全幅で配置し、次の行番号を返す。 */
+    private static int addWideRow(JPanel form, GridBagConstraints c, int row,
+                                   Component comp) {
+        c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
+        form.add(comp, c);
+        c.gridwidth = 1;
+        return row + 1;
     }
 
     private static int lineTypeIndex(DiagramStyle.LineType t) {
@@ -776,6 +772,7 @@ public final class StyleSettingsDialog extends JDialog {
         ActivityDiagramPrefs ap = ActivityDiagramPrefs.defaults();
         activityExpandCallbacksCheckbox.setSelected(ap.expandInlineCallbacks);
         activityShowLocalVarsCheckbox.setSelected(ap.showLocalVars);
+        activityShowAssignmentsCheckbox.setSelected(ap.showAssignments);
         activityShowInlineCommentsCheckbox.setSelected(ap.showInlineComments);
         ClassDiagramPrefs cp = ClassDiagramPrefs.defaults();
         classShowFieldsCheckbox.setSelected(cp.showFields);
@@ -856,6 +853,7 @@ public final class StyleSettingsDialog extends JDialog {
         ActivityDiagramPrefs activityPrefs = new ActivityDiagramPrefs(
                 activityExpandCallbacksCheckbox.isSelected(),
                 activityShowLocalVarsCheckbox.isSelected(),
+                activityShowAssignmentsCheckbox.isSelected(),
                 activityShowInlineCommentsCheckbox.isSelected());
         int seqDepth = ((Number) sequenceMaxDepthSpinner.getValue()).intValue();
         int cgDepth = ((Number) callGraphMaxDepthSpinner.getValue()).intValue();

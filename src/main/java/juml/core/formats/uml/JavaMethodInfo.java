@@ -210,6 +210,26 @@ public class JavaMethodInfo {
     }
 
     /**
+     * 代入・インクリメント/デクリメントの式文。例: {@code total = a;}, {@code counter++;}
+     *
+     * <p>メソッド呼び出しは {@link Call}、変数宣言は {@link LocalVar} が担うため、
+     * ここには「既存変数の値更新」だけが入る。text は元ソースの式文字列
+     * (空白は描画側で畳まれる)。アクティビティ図でアクションノードとして描画する。
+     * 値式に含まれる呼び出しは抽出側で兄弟 {@link Call} に持ち上げ済み。</p>
+     */
+    public static class Assignment implements Statement {
+        private final String text;
+
+        public Assignment(String text) {
+            this.text = text == null ? "" : text;
+        }
+
+        public String getText() {
+            return text;
+        }
+    }
+
+    /**
      * メソッド本体内のインラインコメント (行コメント / ブロックコメント)。
      *
      * <p>アクティビティ図で note として描画する。

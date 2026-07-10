@@ -64,6 +64,8 @@ public class Setting {
     private boolean activityExpandInlineCallbacks = true;
     /** アクティビティ図でローカル変数宣言をアクションノードとして表示するか。 */
     private boolean activityShowLocalVars = true;
+    /** アクティビティ図で代入・インクリメント文をアクションノードとして表示するか。 */
+    private boolean activityShowAssignments = true;
     /** アクティビティ図でメソッド本体内のインラインコメントを note 表示するか。 */
     private boolean activityShowInlineComments = true;
 
@@ -150,6 +152,10 @@ public class Setting {
     }
     public boolean isActivityShowLocalVars() { return activityShowLocalVars; }
     public void setActivityShowLocalVars(boolean v) { this.activityShowLocalVars = v; }
+    public boolean isActivityShowAssignments() { return activityShowAssignments; }
+    public void setActivityShowAssignments(boolean v) {
+        this.activityShowAssignments = v;
+    }
     public boolean isActivityShowInlineComments() { return activityShowInlineComments; }
     public void setActivityShowInlineComments(boolean v) {
         this.activityShowInlineComments = v;
@@ -302,6 +308,8 @@ public class Setting {
                 Boolean.toString(activityExpandInlineCallbacks));
         props.setProperty("activity.showLocalVars",
                 Boolean.toString(activityShowLocalVars));
+        props.setProperty("activity.showAssignments",
+                Boolean.toString(activityShowAssignments));
         props.setProperty("activity.showInlineComments",
                 Boolean.toString(activityShowInlineComments));
         props.setProperty("classDiagram.lastPreset", classDiagramLastPreset);
@@ -390,6 +398,8 @@ public class Setting {
                 props.getProperty("activity.expandInlineCallbacks"), true);
         s.activityShowLocalVars = parseBooleanSafe(
                 props.getProperty("activity.showLocalVars"), true);
+        s.activityShowAssignments = parseBooleanSafe(
+                props.getProperty("activity.showAssignments"), true);
         s.activityShowInlineComments = parseBooleanSafe(
                 props.getProperty("activity.showInlineComments"), true);
         s.classDiagramLastPreset = stringOrDefault(

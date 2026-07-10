@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **アクティビティ図の「処理の書き漏れ」を解消: 代入文の欠落とコメント 2 種の取りこぼしを修正** (`JavaMethodInfo` / `StatementAdapter` / `JpComments` / `PlantUmlActivityDiagram` / GUI 設定系)
+    * **背景**: メソッド本体の抽出が「呼び出し・宣言・制御ブロック」しか Statement 化しておらず、`total = 0;` `counter += 2;` `i++;` のような**代入・インクリメント文がアクティビティ図からまるごと欠落**していた。`while (j < 3) { j = j + 1; }` は本体が空のループに見え、代入の直前コメントだけが浮いて「コメントはあるのに処理がない」状態だった。
+    * **代入文の Statement 化 (`JavaMethodInfo.Assignment`)**: `AssignExpr` (=, +=, ...) と文として現れた `i++`/`--i` を Assignment ノードとして保持し、アクティビティ図で `:total = 0;` のアクションノードとして描画。値式に含まれる呼び出しは従来どおり兄弟 Call に持ち上げるため、シーケンス図・コールグラフの挙動は不変。
+    * **switch の case アーム内コメントの欠落を修正**: case アームの文列は BlockStmt を経由しないためコメント flush が働いていなかった。アーム直下のコメントを offset 順で note として出力する。
+    * **波括弧なし単文ボディのコメント欠落を修正**: `else foo();` のような単文ボディに付いた前置コメントを、JavaParser が文へ帰属させたコメントから補完して note 出力する (`JpComments.attached`)。
+    * **GUI トグル追加**: スタイル設定ダイアログのアクティビティ図セクションに「代入・インクリメント文を表示」を追加 (`activity.showAssignments`、既定 ON)。アプリ設定・プロジェクト単位設定の両方へ永続化。
+    * テスト: `PlantUmlActivityDiagramTest` に代入描画・トグル OFF・呼び出しホイスト順序・case アームコメント・波括弧なしコメントの 5 ケースを追加。`SettingTest` / `ProjectSettingsPersistorTest` に新キーを追記。
+    * 目的: 「アクティビティ図で処理が全部書かれていない / コメントが抜けている」という実利用の指摘を解消し、メソッド内の処理を漏れなく追える図にするため。
+
 * **シーケンス図の展開深さとアクティビティ図の詳細表示を GUI 設定に追加** (`Setting` / `StyleSettingsDialog` / `DiagramService` / `ProjectSettingsPersistor` / `UmlMainFrame` / `messages*.properties`)
     * **背景**: 生成エンジン側 (`PlantUmlSequenceDiagram` / `PlantUmlActivityDiagram`) は呼び出しの再帰展開・分岐/ループ・ローカル変数・コールバック本体まで詳細に出力できるが、GUI からはシーケンス図の展開深さが 5 固定、アクティビティ図の詳細フラグは一切変更できなかった (CLI の `--seq-depth` のみ)。
     * スタイル設定ダイアログの「シーケンス図」セクションに **展開の深さ** スピナー (0-10、0 = 無制限) を追加。呼び出し先メソッドをどこまでシーケンスへ展開するかを GUI から調整できる (`sequence.maxDepth`、既定 5)。

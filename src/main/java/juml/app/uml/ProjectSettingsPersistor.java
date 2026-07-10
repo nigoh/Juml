@@ -105,6 +105,9 @@ public final class ProjectSettingsPersistor {
             if (saved.containsKey("activity.showLocalVars"))
                 s.setActivityShowLocalVars(
                         Boolean.parseBoolean(saved.get("activity.showLocalVars")));
+            if (saved.containsKey("activity.showAssignments"))
+                s.setActivityShowAssignments(
+                        Boolean.parseBoolean(saved.get("activity.showAssignments")));
             if (saved.containsKey("activity.showInlineComments"))
                 s.setActivityShowInlineComments(
                         Boolean.parseBoolean(saved.get("activity.showInlineComments")));
@@ -172,6 +175,8 @@ public final class ProjectSettingsPersistor {
                     Boolean.toString(s.isActivityExpandInlineCallbacks()));
             m.put("activity.showLocalVars",
                     Boolean.toString(s.isActivityShowLocalVars()));
+            m.put("activity.showAssignments",
+                    Boolean.toString(s.isActivityShowAssignments()));
             m.put("activity.showInlineComments",
                     Boolean.toString(s.isActivityShowInlineComments()));
             m.put("classDiagram.lastPreset", s.getClassDiagramLastPreset());

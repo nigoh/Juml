@@ -523,6 +523,7 @@ public final class DiagramService {
             }
             o.expandInlineCallbacks = s.isActivityExpandInlineCallbacks();
             o.showLocalVars = s.isActivityShowLocalVars();
+            o.showAssignments = s.isActivityShowAssignments();
             o.showInlineComments = s.isActivityShowInlineComments();
         } catch (RuntimeException ex) {
             // 設定取得失敗時は既定値のまま (すべて表示)

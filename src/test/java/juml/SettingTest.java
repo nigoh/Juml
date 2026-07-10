@@ -188,6 +188,7 @@ public class SettingTest {
         assertEquals(5, s.getSequenceMaxDepth());
         assertTrue(s.isActivityExpandInlineCallbacks());
         assertTrue(s.isActivityShowLocalVars());
+        assertTrue(s.isActivityShowAssignments());
         assertTrue(s.isActivityShowInlineComments());
     }
 
@@ -208,6 +209,7 @@ public class SettingTest {
         original.setSequenceMaxDepth(8);
         original.setActivityExpandInlineCallbacks(false);
         original.setActivityShowLocalVars(false);
+        original.setActivityShowAssignments(false);
         original.setActivityShowInlineComments(false);
 
         File file = tempFolder.newFile("settings-detail.xml");
@@ -217,6 +219,7 @@ public class SettingTest {
         assertEquals(8, loaded.getSequenceMaxDepth());
         assertFalse(loaded.isActivityExpandInlineCallbacks());
         assertFalse(loaded.isActivityShowLocalVars());
+        assertFalse(loaded.isActivityShowAssignments());
         assertFalse(loaded.isActivityShowInlineComments());
     }
 
@@ -237,6 +240,7 @@ public class SettingTest {
         assertEquals(5, loaded.getSequenceMaxDepth());
         assertTrue(loaded.isActivityExpandInlineCallbacks());
         assertTrue(loaded.isActivityShowLocalVars());
+        assertTrue(loaded.isActivityShowAssignments());
         assertTrue(loaded.isActivityShowInlineComments());
     }
 
