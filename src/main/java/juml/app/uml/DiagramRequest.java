@@ -32,29 +32,30 @@ public final class DiagramRequest {
     private final boolean interactiveLinks;
     private final String layoutKey;
     private final Set<String> sequenceHiddenParticipants;
+    private final String stringLocale;
 
     public DiagramRequest(DiagramKind kind) {
-        this(kind, null, null, true, null, false, null, null);
+        this(kind, null, null, true, null, false, null, null, null);
     }
 
     public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
                           String sequenceEntryMethod, boolean includeLegend) {
         this(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend, null,
-                false, null, null);
+                false, null, null, null);
     }
 
     public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
                           String sequenceEntryMethod, boolean includeLegend,
                           DiagramScope scope) {
         this(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend, scope,
-                false, null, null);
+                false, null, null, null);
     }
 
     public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
                           String sequenceEntryMethod, boolean includeLegend,
                           DiagramScope scope, boolean interactiveLinks) {
         this(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend, scope,
-                interactiveLinks, null, null);
+                interactiveLinks, null, null, null);
     }
 
     public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
@@ -62,7 +63,7 @@ public final class DiagramRequest {
                           DiagramScope scope, boolean interactiveLinks,
                           String layoutKey) {
         this(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend, scope,
-                interactiveLinks, layoutKey, null);
+                interactiveLinks, layoutKey, null, null);
     }
 
     public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
@@ -70,6 +71,16 @@ public final class DiagramRequest {
                           DiagramScope scope, boolean interactiveLinks,
                           String layoutKey,
                           Set<String> sequenceHiddenParticipants) {
+        this(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend, scope,
+                interactiveLinks, layoutKey, sequenceHiddenParticipants, null);
+    }
+
+    public DiagramRequest(DiagramKind kind, String sequenceEntryClass,
+                          String sequenceEntryMethod, boolean includeLegend,
+                          DiagramScope scope, boolean interactiveLinks,
+                          String layoutKey,
+                          Set<String> sequenceHiddenParticipants,
+                          String stringLocale) {
         if (kind == null) {
             throw new IllegalArgumentException("kind is null");
         }
@@ -85,6 +96,8 @@ public final class DiagramRequest {
                         ? Collections.emptySet()
                         : Collections.unmodifiableSet(
                                 new LinkedHashSet<>(sequenceHiddenParticipants));
+        this.stringLocale = stringLocale == null || stringLocale.isEmpty()
+                ? null : stringLocale;
     }
 
     /** LAYOUT 図用のショートカットコンストラクタ。 */
@@ -171,7 +184,7 @@ public final class DiagramRequest {
      */
     public DiagramRequest withScope(DiagramScope newScope) {
         return new DiagramRequest(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend,
-                newScope, interactiveLinks, layoutKey, sequenceHiddenParticipants);
+                newScope, interactiveLinks, layoutKey, sequenceHiddenParticipants, stringLocale);
     }
 
     /**
@@ -180,7 +193,17 @@ public final class DiagramRequest {
      */
     public DiagramRequest withSequenceHiddenParticipants(Set<String> hidden) {
         return new DiagramRequest(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend,
-                scope, interactiveLinks, layoutKey, hidden);
+                scope, interactiveLinks, layoutKey, hidden, stringLocale);
+    }
+
+    /**
+     * 文言 locale だけ差し替えた複製を返す (他の次元は保持)。実寸/画面図タブの
+     * 「文言の言語」ドロップダウン選択をタブ固有状態としてその場で反映するのに使う。
+     * {@code null}/空はデフォルト locale (qualifier 無し優先) を意味する。
+     */
+    public DiagramRequest withStringLocale(String newLocale) {
+        return new DiagramRequest(kind, sequenceEntryClass, sequenceEntryMethod, includeLegend,
+                scope, interactiveLinks, layoutKey, sequenceHiddenParticipants, newLocale);
     }
 
     /**
@@ -235,5 +258,15 @@ public final class DiagramRequest {
      */
     public String getActivityEntryMethod() {
         return sequenceEntryMethod;
+    }
+
+    /**
+     * 実寸 (LAYOUT_RENDER) / 画面 (LAYOUT_SCREEN) 図で {@code @string/foo} を解決する際に
+     * 優先する values qualifier (例: {@code "ja"}, {@code "en-rUS"})。
+     * {@code null} はデフォルト locale (qualifier 無し優先) を意味する。
+     * これらの図種以外では使用されない。
+     */
+    public String getStringLocale() {
+        return stringLocale;
     }
 }

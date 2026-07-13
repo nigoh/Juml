@@ -30,21 +30,24 @@ public class ToolBarBuilderTest {
     }
 
     /**
-     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) を除く全図種にトグルが作られること。
-     * メソッド系はメソッド図タブ上部の切替バーへ一本化したため、ツールバーには出さない。
+     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) とレイアウトの画面/実寸を除く全図種に
+     * トグルが作られること。これらは各図タブ上部の切替バーへ一本化したため、ツールバーには
+     * 出さない (LAYOUT は入口として残す)。
      */
     @Test
     public void build_createsToggleForEveryNonMethodDiagramKind() {
         ToolBarBuilder.Result r = buildDefault();
         for (DiagramKind k : DiagramKind.values()) {
-            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
-                assertNull("Method kind " + k + " should not appear in the toolbar",
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
+                    || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
+                assertNull("In-bar-only kind " + k + " should not appear in the toolbar",
                         r.diagramToggles.get(k));
             } else {
                 assertNotNull("Missing toggle for " + k, r.diagramToggles.get(k));
             }
         }
-        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size(),
+        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size()
+                        - ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.size(),
                 r.diagramToggles.size());
     }
 

@@ -75,21 +75,24 @@ public class MenuBarBuilderTest {
     }
 
     /**
-     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) を除く全図種にラジオ項目が作られること。
-     * メソッド系の切替はメソッド図タブ上部の切替バーへ一本化したため、メニューからは外す。
+     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) とレイアウトの画面/実寸を除く全図種に
+     * ラジオ項目が作られること。これらの切替は各図タブ上部の切替バーへ一本化したため、
+     * メニューからは外す (LAYOUT は入口として残す)。
      */
     @Test
     public void build_diagramItemsContainsEveryNonMethodKind() {
         MenuBarBuilder.Result r = buildDefault();
         for (DiagramKind k : DiagramKind.values()) {
-            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
-                assertNull("Method kind " + k + " should not appear in the Diagram menu",
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
+                    || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
+                assertNull("In-bar-only kind " + k + " should not appear in the Diagram menu",
                         r.diagramItems.get(k));
             } else {
                 assertNotNull("Missing diagram item for " + k, r.diagramItems.get(k));
             }
         }
-        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size(),
+        assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size()
+                        - ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.size(),
                 r.diagramItems.size());
     }
 

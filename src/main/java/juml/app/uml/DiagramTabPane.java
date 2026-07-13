@@ -776,6 +776,100 @@ public final class DiagramTabPane {
     }
 
     /**
+     * アクティブなレイアウト図タブを、同じレイアウトファイルのまま
+     * {@code next} (LAYOUT/LAYOUT_SCREEN/LAYOUT_RENDER) へその場で切り替える。
+     * アクティブタブがレイアウト系図でなければ何もしない。タブは複製されない。
+     */
+    public void switchActiveLayoutKind(DiagramKind next) {
+        switchLayoutTabKind(activeTab(), next);
+    }
+
+    /**
+     * レイアウト図タブ (レイアウト ⇄ 画面 ⇄ 実寸) を、同じレイアウトファイルのまま別図種へ
+     * 「その場で」切り替える。{@link #switchMethodTabKind} のレイアウト版で、題材の identity は
+     * {@code treeSync} ではなく {@code spec.getLayoutKey()} で表す (レイアウトタブは
+     * ツリー由来ノードを持たず treeSync が null のため)。文言 locale の選択は引き継ぐ。
+     *
+     * <p>既に対象図種のタブが別に開いている場合は、重複を避けてそのタブへフォーカスする。
+     * レイアウト系 (DIAGRAMS_LAYOUT) 以外の図種・同一図種への切替は無視する。</p>
+     */
+    void switchLayoutTabKind(DiagramTab tab, DiagramKind next) {
+        if (tab == null || tab.spec == null || next == null
+                || next == tab.spec.getKind()
+                || !ToolBarBuilder.DIAGRAMS_LAYOUT.contains(next)
+                || !ToolBarBuilder.DIAGRAMS_LAYOUT.contains(tab.spec.getKind())) {
+            return;
+        }
+        String layoutKey = tab.spec.getLayoutKey();
+        if (layoutKey == null || layoutKey.isEmpty()) {
+            return;
+        }
+        String locale = tab.spec.getStringLocale();
+        String newKey = DiagramTabSupport.layoutTabKey(next, layoutKey);
+        DiagramTab existing = openTabs.get(newKey);
+        if (existing != null && existing != tab) {
+            // 既に対象図種のタブがある → 複製せずそこへフォーカスするだけ。
+            // クリックで元タブのトグル選択は既に変わっているため、元の図種へ戻して
+            // 見た目と内容のデシンクを防ぐ。
+            tab.updateLayoutToggle();
+            tabs.setSelectedComponent(existing);
+            return;
+        }
+        int index = tabs.indexOfComponent(tab);
+        if (index < 0) {
+            return;
+        }
+        String oldKey = tab.key;
+        openTabs.remove(oldKey);
+        if (oldKey.equals(previewTabKey)) {
+            previewTabKey = newKey;
+        }
+        // タブの題材 (レイアウトファイル) を保ったまま図種を差し替え、リクエスト/ラベルを再計算。
+        tab.key = newKey;
+        tab.spec = DiagramTabSupport.layoutRequest(next, layoutKey, locale);
+        tab.icon = TreeNodeIcon.COMPONENT_GROUP;
+        tab.label = DiagramTabSupport.layoutTabLabel(next, layoutKey);
+        openTabs.put(newKey, tab);
+        navHistory.replaceKey(oldKey, newKey);
+        tabMemory.rename(oldKey, newKey);
+        // 付箋は図ごとに別管理。別図種の付箋が残らないよう一旦クリアして新キーへ再バインド。
+        tab.previewPanel.notes().setData(
+                java.util.Collections.emptyList(), java.util.Collections.emptyList());
+        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        java.awt.Component header = buildTabHeader(tab);
+        tabs.setTabComponentAt(index, header);
+        if (newKey.equals(previewTabKey)) {
+            DiagramTabHeader.setPreview(header, true);
+        }
+        TabReorderHandler.install(tabs, header, () -> tabs.getTabCount() - fixedSuffix);
+        tabs.setToolTipTextAt(index,
+                DiagramTabSupport.tooltipFor(tab.spec, tab.treeSync));
+        tab.updateLayoutToggle();
+        refreshTabLabels();
+        mru.onActivated(tab, tab.label);
+        tab.startRender();
+        if (activeTab() == tab) {
+            lastDiagramRequest = tab.treeSync;
+            if (onTabFocused != null) {
+                onTabFocused.accept(new FocusedTab(tab.treeSync, tab.spec.getKind()));
+            }
+        }
+        applyTabBudget(newKey);
+    }
+
+    /** 文言 locale コンボの表示: 空文字 qualifier を「デフォルト」表記にする。 */
+    private static final class LocaleCellRenderer extends javax.swing.DefaultListCellRenderer {
+        @Override
+        public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> list,
+                Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            String q = value == null ? "" : value.toString();
+            String label = q.isEmpty() ? Messages.get("diagram.layout.locale.default") : q;
+            return super.getListCellRendererComponent(list, label, index, isSelected,
+                    cellHasFocus);
+        }
+    }
+
+    /**
      * 同名ラベルのタブが複数開いているとき、VS Code 同様にパッケージ等の補足を付けて
      * 区別できるようにする (重複が無いタブは基本ラベルへ戻す)。
      */
@@ -1391,6 +1485,16 @@ public final class DiagramTabPane {
         private final javax.swing.JToggleButton callgraphToggle;
         /** トグルのプログラム的な選択更新中にアクションが発火しても切替しないためのガード。 */
         private boolean syncingKindToggle;
+        /** レイアウト図の レイアウト ⇄ 画面 ⇄ 実寸 切替バー (レイアウト系図以外では非表示)。 */
+        private JPanel layoutBar;
+        private javax.swing.JToggleButton layoutViewToggle;
+        private javax.swing.JToggleButton layoutScreenToggle;
+        private javax.swing.JToggleButton layoutRenderToggle;
+        /** 実寸/画面の文言を解決する言語 (values qualifier) を選ぶドロップダウン。 */
+        private javax.swing.JComboBox<String> localeCombo;
+        private JLabel localeLabel;
+        /** レイアウトトグル/locale コンボのプログラム的更新中のアクション発火を無視するガード。 */
+        private boolean syncingLayoutToggle;
         private final SvgPreviewPanel previewPanel = new SvgPreviewPanel();
         /** 表示中の図に対するインクリメンタル検索バー (Ctrl+F)。 */
         private final DiagramFindBar findBar = new DiagramFindBar(previewPanel, this::revalidate);
@@ -1529,12 +1633,122 @@ public final class DiagramTabPane {
                 }
             });
             kindBar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 2));
+            kindBar.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             kindBar.add(new JLabel(Messages.get("diagram.toggle.label")));
             kindBar.add(seqToggle);
             kindBar.add(activityToggle);
             kindBar.add(callgraphToggle);
-            add(kindBar, java.awt.BorderLayout.NORTH);
+
+            // レイアウト図の上部に「レイアウト ⇄ 画面 ⇄ 実寸」切替バーを置く (下の buildLayoutBar)。
+            // kindBar と layoutBar は同時にはどちらか一方だけ表示する。BorderLayout の
+            // NORTH は 1 コンポーネントしか置けないため縦積みコンテナでまとめる。
+            buildLayoutBar();
+            JPanel topBars = new JPanel();
+            topBars.setLayout(new javax.swing.BoxLayout(topBars, javax.swing.BoxLayout.Y_AXIS));
+            topBars.add(kindBar);
+            topBars.add(layoutBar);
+            add(topBars, java.awt.BorderLayout.NORTH);
             updateKindToggle();
+            updateLayoutToggle();
+        }
+
+        /**
+         * レイアウト図の切替バー (レイアウト ⇄ 画面 ⇄ 実寸 トグル + 文言 locale コンボ) を
+         * 構築してフィールドへ格納する。同じレイアウトファイルを見たまま図種を行き来でき、
+         * トップメニュー/ツールバーからは画面/実寸を外して入口を「レイアウト」1 つに集約する。
+         */
+        private void buildLayoutBar() {
+            layoutViewToggle = new javax.swing.JToggleButton(
+                    Messages.get("diagram.kind.LAYOUT.short"));
+            layoutScreenToggle = new javax.swing.JToggleButton(
+                    Messages.get("diagram.kind.LAYOUT_SCREEN.short"));
+            layoutRenderToggle = new javax.swing.JToggleButton(
+                    Messages.get("diagram.kind.LAYOUT_RENDER.short"));
+            javax.swing.ButtonGroup layoutGroup = new javax.swing.ButtonGroup();
+            for (javax.swing.JToggleButton b : new javax.swing.JToggleButton[]{
+                    layoutViewToggle, layoutScreenToggle, layoutRenderToggle}) {
+                b.setFocusable(false);
+                b.setToolTipText(Messages.get("diagram.layout.toggle.tip"));
+                layoutGroup.add(b);
+            }
+            layoutViewToggle.addActionListener(e -> {
+                if (!syncingLayoutToggle) {
+                    switchLayoutTabKind(this, DiagramKind.LAYOUT);
+                }
+            });
+            layoutScreenToggle.addActionListener(e -> {
+                if (!syncingLayoutToggle) {
+                    switchLayoutTabKind(this, DiagramKind.LAYOUT_SCREEN);
+                }
+            });
+            layoutRenderToggle.addActionListener(e -> {
+                if (!syncingLayoutToggle) {
+                    switchLayoutTabKind(this, DiagramKind.LAYOUT_RENDER);
+                }
+            });
+            // 実寸/画面で @string を解決する言語を選ぶドロップダウン (プロジェクトに複数
+            // locale がある場合のみ表示)。多言語プロジェクトで文言をその言語で確認できる。
+            localeLabel = new JLabel(Messages.get("diagram.layout.locale.label"));
+            localeCombo = new javax.swing.JComboBox<>();
+            localeCombo.setFocusable(false);
+            localeCombo.setToolTipText(Messages.get("diagram.layout.locale.tip"));
+            localeCombo.setRenderer(new LocaleCellRenderer());
+            if (spec != null && ToolBarBuilder.DIAGRAMS_LAYOUT.contains(spec.getKind())) {
+                populateLocaleCombo();
+            }
+            localeCombo.addActionListener(e -> {
+                if (!syncingLayoutToggle) {
+                    onLocaleSelected();
+                }
+            });
+            layoutBar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 2));
+            layoutBar.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+            layoutBar.add(new JLabel(Messages.get("diagram.layout.toggle.label")));
+            layoutBar.add(layoutViewToggle);
+            layoutBar.add(layoutScreenToggle);
+            layoutBar.add(layoutRenderToggle);
+            layoutBar.add(localeLabel);
+            layoutBar.add(localeCombo);
+        }
+
+        /** 文言 locale コンボを現在のプロジェクトの利用可能 locale で埋める。 */
+        private void populateLocaleCombo() {
+            localeCombo.removeAllItems();
+            juml.core.formats.android.AndroidProjectAnalysis a = cache.getAnalysis();
+            java.util.List<String> locales = a != null
+                    ? a.availableStringLocales() : java.util.Collections.emptyList();
+            if (locales.isEmpty()) {
+                localeCombo.addItem(""); // デフォルト locale のみ
+            } else {
+                for (String q : locales) {
+                    localeCombo.addItem(q);
+                }
+            }
+        }
+
+        /** 文言 locale ドロップダウンで言語が選ばれたら、その言語で図を再描画する。 */
+        private void onLocaleSelected() {
+            if (spec == null || !ToolBarBuilder.DIAGRAMS_LAYOUT.contains(spec.getKind())) {
+                return;
+            }
+            Object sel = localeCombo.getSelectedItem();
+            String locale = sel == null ? "" : sel.toString();
+            String cur = spec.getStringLocale() == null ? "" : spec.getStringLocale();
+            if (cur.equals(locale)) {
+                return;
+            }
+            spec = spec.withStringLocale(locale);
+            startRender();
+        }
+
+        /** コンボの選択を指定 qualifier (空文字=デフォルト) に合わせる。 */
+        private void selectLocaleInCombo(String q) {
+            for (int i = 0; i < localeCombo.getItemCount(); i++) {
+                if (java.util.Objects.equals(localeCombo.getItemAt(i), q)) {
+                    localeCombo.setSelectedIndex(i);
+                    return;
+                }
+            }
         }
 
         private boolean isActive() {
@@ -1615,6 +1829,37 @@ public final class DiagramTabPane {
             }
             kindBar.revalidate();
             kindBar.repaint();
+        }
+
+        /**
+         * レイアウト切替バーの表示/選択状態と文言 locale コンボを現在の図種に合わせる。
+         * レイアウト系図 (LAYOUT/LAYOUT_SCREEN/LAYOUT_RENDER) のときだけバーを表示する。
+         * locale コンボは複数言語がある場合のみ表示し、@string を解決する 画面/実寸 でのみ
+         * 有効化する (レイアウト = View 階層図では文言解決が無いため無効)。
+         */
+        void updateLayoutToggle() {
+            DiagramKind k = spec != null ? spec.getKind() : null;
+            boolean layout = k != null && ToolBarBuilder.DIAGRAMS_LAYOUT.contains(k);
+            layoutBar.setVisible(layout);
+            syncingLayoutToggle = true;
+            try {
+                layoutViewToggle.setSelected(k == DiagramKind.LAYOUT);
+                layoutScreenToggle.setSelected(k == DiagramKind.LAYOUT_SCREEN);
+                layoutRenderToggle.setSelected(k == DiagramKind.LAYOUT_RENDER);
+                boolean localeUseful = k == DiagramKind.LAYOUT_SCREEN
+                        || k == DiagramKind.LAYOUT_RENDER;
+                boolean hasChoices = localeCombo.getItemCount() > 1;
+                localeLabel.setVisible(layout && hasChoices);
+                localeCombo.setVisible(layout && hasChoices);
+                localeCombo.setEnabled(localeUseful);
+                String cur = spec != null && spec.getStringLocale() != null
+                        ? spec.getStringLocale() : "";
+                selectLocaleInCombo(cur);
+            } finally {
+                syncingLayoutToggle = false;
+            }
+            layoutBar.revalidate();
+            layoutBar.repaint();
         }
 
         /** 付箋一覧サイドパネルの表示/非表示を切り替える。 */

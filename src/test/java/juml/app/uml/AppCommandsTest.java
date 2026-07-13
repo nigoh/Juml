@@ -159,6 +159,7 @@ public class AppCommandsTest {
 
         Set<DiagramKind> expected = EnumSet.allOf(DiagramKind.class);
         expected.removeAll(ToolBarBuilder.DIAGRAMS_METHOD);
+        expected.removeAll(ToolBarBuilder.LAYOUT_VARIANT_HIDDEN);
 
         assertEquals("メニューに出る図種の数だけコマンドが並ぶ", expected.size(), cmds.size());
 

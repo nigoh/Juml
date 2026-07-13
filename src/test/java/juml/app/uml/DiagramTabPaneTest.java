@@ -674,8 +674,85 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (j) レイアウト図の図種トグル (レイアウト ⇄ 画面 ⇄ 実寸) もタブを複製せずその場で切替
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void switchActiveLayoutKind_togglesInPlaceWithoutAddingTab() {
+        GuiActionRunner.execute(() -> openLayoutTab(DiagramKind.LAYOUT, "app::main:::activity_main.xml"));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("前提: レイアウト図タブがアクティブ", DiagramKind.LAYOUT,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        // レイアウト → 実寸へその場切替。
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT_RENDER));
+
+        assertEquals("図種トグルではタブ数が増えてはならない (複製しない)", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("トグル後は実寸図になっているはず", DiagramKind.LAYOUT_RENDER,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    @Test
+    public void switchActiveLayoutKind_cyclesLayoutScreenRender() {
+        GuiActionRunner.execute(() -> openLayoutTab(DiagramKind.LAYOUT, "app::main:::activity_cycle.xml"));
+
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT_SCREEN));
+        assertEquals(DiagramKind.LAYOUT_SCREEN, GuiActionRunner.execute(() -> pane.activeTabKind()));
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT_RENDER));
+        assertEquals(DiagramKind.LAYOUT_RENDER, GuiActionRunner.execute(() -> pane.activeTabKind()));
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT));
+        assertEquals(DiagramKind.LAYOUT, GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        assertEquals("3 図種を巡回してもタブは 1 枚のまま", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
+    public void switchActiveLayoutKind_whenTargetKindTabExists_focusesItInstead() {
+        // 同じレイアウトファイルの レイアウト図 と 実寸図 を別々に開く (別タブ)。
+        GuiActionRunner.execute(() -> {
+            openLayoutTab(DiagramKind.LAYOUT, "app::main:::dup.xml");
+            openLayoutTab(DiagramKind.LAYOUT_RENDER, "app::main:::dup.xml");
+            tabs.setSelectedIndex(0); // レイアウト図タブへ戻す
+        });
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        assertEquals("前提: レイアウト図がアクティブ", DiagramKind.LAYOUT,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT_RENDER));
+
+        assertEquals("既存タブがある場合は複製せずタブ数据え置き", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("既存の実寸図タブへフォーカスが移るはず", DiagramKind.LAYOUT_RENDER,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    @Test
+    public void switchActiveLayoutKind_onClassTab_isNoOp() {
+        TreeNodeOpenRequest cls = TreeNodeOpenRequest.classNode(classInfo("com.example.Plain2"));
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(cls));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        GuiActionRunner.execute(() -> pane.switchActiveLayoutKind(DiagramKind.LAYOUT_RENDER));
+
+        assertEquals("クラス図タブでのレイアウトトグルは no-op", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("クラス図のままであるはず", DiagramKind.CLASS,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
+
+    /** テスト用にレイアウト系図タブを開く (DiagramController.openLayout* と同じキー体系)。 */
+    private void openLayoutTab(DiagramKind kind, String layoutKey) {
+        String key = DiagramTabSupport.layoutTabKey(kind, layoutKey);
+        String label = DiagramTabSupport.layoutTabLabel(kind, layoutKey);
+        DiagramRequest spec = DiagramTabSupport.layoutRequest(kind, layoutKey, null);
+        pane.openDiagram(key, label, TreeNodeIcon.COMPONENT_GROUP, spec, null);
+    }
 
     /** テスト用のメソッド図オープンリクエストを生成する。 */
     private static TreeNodeOpenRequest methodReq(String ownerFqn, String method,

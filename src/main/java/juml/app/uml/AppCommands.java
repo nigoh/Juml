@@ -96,11 +96,12 @@ final class AppCommands {
             }
         }
         // 図種切替をコマンド化する (メニューの図種ラジオと対応)。メソッド系図種
-        // (SEQUENCE/ACTIVITY/CALLGRAPH) はメソッド図タブ上部の切替バーへ一本化されており
-        // メニューのラジオからも外れているため、パレットからも除外して挙動を揃える。
+        // (SEQUENCE/ACTIVITY/CALLGRAPH) とレイアウトの画面/実寸は各図タブ上部の切替バーへ
+        // 一本化されておりメニューのラジオからも外れているため、パレットからも除外して揃える。
         if (cb.selectDiagramKindFromMenu != null) {
             for (DiagramKind k : DiagramKind.values()) {
-                if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+                if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
+                        || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
                     continue;
                 }
                 final DiagramKind kind = k;

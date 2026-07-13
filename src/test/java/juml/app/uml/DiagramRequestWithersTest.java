@@ -81,4 +81,34 @@ public class DiagramRequestWithersTest {
         assertEquals("mod::main::::a.xml", scoped.getLayoutKey());
         assertEquals(DiagramKind.LAYOUT, scoped.getKind());
     }
+
+    @Test
+    public void withStringLocale_replacesLocaleAndPreservesLayoutKey() {
+        DiagramRequest base = DiagramRequest.forLayoutRender("mod::main::::a.xml", true);
+        assertNull("既定では文言 locale 未指定", base.getStringLocale());
+
+        DiagramRequest ja = base.withStringLocale("ja");
+
+        assertNotSame("不変: 新インスタンスを返す", base, ja);
+        assertNull("元の locale は変わらない", base.getStringLocale());
+        assertEquals("ja", ja.getStringLocale());
+        assertEquals("レイアウトキーは保持される", "mod::main::::a.xml", ja.getLayoutKey());
+        assertEquals(DiagramKind.LAYOUT_RENDER, ja.getKind());
+    }
+
+    @Test
+    public void withStringLocale_emptyIsNormalizedToNull() {
+        DiagramRequest base = DiagramRequest.forLayoutScreen("mod::main::::a.xml", true)
+                .withStringLocale("fr");
+        assertNull("空文字はデフォルト locale (null) に正規化される",
+                base.withStringLocale("").getStringLocale());
+    }
+
+    @Test
+    public void withScope_preservesStringLocale() {
+        DiagramRequest base = DiagramRequest.forLayoutRender("mod::main::::a.xml", true)
+                .withStringLocale("de");
+        assertEquals("scope 差し替え時も文言 locale を保持",
+                "de", base.withScope(null).getStringLocale());
+    }
 }

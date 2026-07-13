@@ -457,7 +457,10 @@ public final class MenuBarBuilder {
             // メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) の切替はメソッド図タブ上部の
             // 切替バーへ一本化したため、メニューの図種ラジオからは外す。起点選択・参加者
             // フィルタ等の機能項目 (下の sequenceOnly/activityOnlyItems) は引き続き残す。
-            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)) {
+            // レイアウトの画面/実寸もレイアウト図タブ上部の切替バーへ一本化し、入口は
+            // LAYOUT (レイアウト) 1 つに集約する (メニュー項目を減らして迷いを減らす)。
+            if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
+                    || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
                 continue;
             }
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(k.getDisplayName());
