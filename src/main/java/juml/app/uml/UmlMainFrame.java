@@ -168,7 +168,7 @@ public class UmlMainFrame extends JFrame {
         }
         // 図タブを「別ウィンドウ」へ切り出す仕組み (2 画面で確認しながら作業できるように)。
         // 解析キャッシュだけ共有し、各ウィンドウは独立した DiagramTabPane を持つ。
-        detachedWindows = new DetachedDiagramWindows(cache, this,
+        detachedWindows = new DetachedDiagramWindows(cache, this, tabPane,
                 () -> {
                     Setting s = Main.getSetting();
                     return s == null || s.isAutoFitOnRender();
@@ -177,6 +177,8 @@ public class UmlMainFrame extends JFrame {
                 splitSetting != null ? splitSetting.getRenderedTabs() : 4,
                 tabPane.notesBinder());
         tabPane.setOnMoveToNewWindow(detachedWindows::moveToNewWindow);
+        // 同じ図をメインと別ウィンドウで二重に開かない (既存タブがあればそこへフォーカス)。
+        tabPane.setCrossWindowFocus(key -> detachedWindows.focusExistingElsewhere(tabPane, key));
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -310,7 +312,14 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomOut = () -> tabPane.zoomOutActive();
         mcb.zoomReset = () -> tabPane.zoomResetActive();
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
-        mcb.moveTabToNewWindow = () -> tabPane.moveActiveTabToNewWindow();
+        mcb.moveTabToNewWindow = () -> {
+            // 空振り (エディタ/非図タブ/タブ無し/ロード中) では無反応にせずトーストで理由を示す。
+            if (tabPane.canMoveActiveTab()) {
+                tabPane.moveActiveTabToNewWindow();
+            } else {
+                ToastNotification.show(mainTabs, Messages.get("window.detached.cannotMove"));
+            }
+        };
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
         mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();

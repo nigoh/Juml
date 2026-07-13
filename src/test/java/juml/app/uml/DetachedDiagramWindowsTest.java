@@ -47,9 +47,10 @@ public class DetachedDiagramWindowsTest {
             tabs.addTab("Utility", new javax.swing.JPanel());
             pane = new DiagramTabPane(tabs, FIXED, cache, new DiagramState(),
                     msg -> { }, zoom -> { });
-            windows = new DetachedDiagramWindows(cache, null, () -> false, 0, 0,
+            windows = new DetachedDiagramWindows(cache, null, pane, () -> false, 0, 0,
                     pane.notesBinder());
             pane.setOnMoveToNewWindow(windows::moveToNewWindow);
+            pane.setCrossWindowFocus(k -> windows.focusExistingElsewhere(pane, k));
         });
     }
 
@@ -106,6 +107,29 @@ public class DetachedDiagramWindowsTest {
         GuiActionRunner.execute(() -> windows.closeAll());
 
         assertFalse("closeAll で別ウィンドウが無くなる",
+                GuiActionRunner.execute(() -> windows.hasOpenWindows()));
+    }
+
+    @Test
+    public void reopeningMovedDiagram_focusesDetachedWindow_insteadOfDuplicating() {
+        // 図を別ウィンドウへ移動 → メインで同じ図を開き直しても重複タブを作らず、
+        // 既存の別ウィンドウへフォーカス委譲する (同一 notes キー二重束縛による付箋消失防止)。
+        TreeNodeOpenRequest req =
+                TreeNodeOpenRequest.classNode(classInfo("com.example.Dup"));
+        GuiActionRunner.execute(() -> {
+            pane.addOrFocusTab(req);
+            pane.moveActiveTabToNewWindow();
+        });
+        assertEquals("移動後メインは動的タブ 0", FIXED,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertTrue(GuiActionRunner.execute(() -> windows.hasOpenWindows()));
+
+        // メインで同じキーを開き直す。
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(req));
+
+        assertEquals("メインに重複タブを作らない (別ウィンドウへフォーカス委譲)", FIXED,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertTrue("別ウィンドウは残ったまま",
                 GuiActionRunner.execute(() -> windows.hasOpenWindows()));
     }
 
