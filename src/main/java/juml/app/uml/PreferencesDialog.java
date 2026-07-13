@@ -142,10 +142,12 @@ public final class PreferencesDialog extends JDialog {
         public final int maxDiagramTabs;
         /** 描画保持タブ数。 */
         public final int renderedTabs;
+        /** 図の描画完了時に自動で全体表示 (Fit) するか。 */
+        public final boolean autoFitOnRender;
 
         public Result(String lookAndFeel, boolean restoreLastProjectOnStartup,
                       String language, String diagramRenderQuality,
-                      int maxDiagramTabs, int renderedTabs) {
+                      int maxDiagramTabs, int renderedTabs, boolean autoFitOnRender) {
             this.lookAndFeel = (lookAndFeel == null || lookAndFeel.isEmpty())
                     ? "SYSTEM" : lookAndFeel;
             this.restoreLastProjectOnStartup = restoreLastProjectOnStartup;
@@ -154,6 +156,7 @@ public final class PreferencesDialog extends JDialog {
                     DiagramRenderQuality.fromKey(diagramRenderQuality).name();
             this.maxDiagramTabs = maxDiagramTabs;
             this.renderedTabs = renderedTabs;
+            this.autoFitOnRender = autoFitOnRender;
         }
     }
 
@@ -169,6 +172,8 @@ public final class PreferencesDialog extends JDialog {
             new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
     private final JSpinner renderedTabsSpinner =
             new JSpinner(new SpinnerNumberModel(4, 1, 50, 1));
+    private final JCheckBox autoFitCheck =
+            new JCheckBox(Messages.get("pref.autoFitOnRender"));
 
     private Result result;
 
@@ -176,7 +181,8 @@ public final class PreferencesDialog extends JDialog {
                               boolean currentRestoreLastProject,
                               String currentLanguage,
                               String currentRenderQuality,
-                              int currentMaxTabs, int currentRenderedTabs) {
+                              int currentMaxTabs, int currentRenderedTabs,
+                              boolean currentAutoFit) {
         super(owner, Messages.get("dlg.preferences.title"), true);
         lafCombo.setSelectedItem(LookAndFeelOption.fromKey(currentLaf));
         languageCombo.setSelectedItem(LanguageOption.fromKey(currentLanguage));
@@ -185,6 +191,7 @@ public final class PreferencesDialog extends JDialog {
         restoreLastProjectCheck.setSelected(currentRestoreLastProject);
         maxTabsSpinner.setValue(currentMaxTabs);
         renderedTabsSpinner.setValue(currentRenderedTabs);
+        autoFitCheck.setSelected(currentAutoFit);
         setContentPane(buildContent());
         pack();
         setMinimumSize(new Dimension(420, getPreferredSize().height));
@@ -311,15 +318,21 @@ public final class PreferencesDialog extends JDialog {
         c.weightx = 0;
         form.add(hint(Messages.get("pref.renderQuality.hint")), c);
 
-        // --- タブ管理 (Tabs) ---
-        c.gridwidth = 1;
         c.gridy = 11;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        autoFitCheck.setToolTipText(Messages.get("pref.autoFitOnRender.tip"));
+        form.add(autoFitCheck, c);
+        c.gridwidth = 1;
+
+        // --- タブ管理 (Tabs) ---
+        c.gridy = 12;
         c.gridx = 0;
         c.insets = new Insets(14, 4, 4, 4);
         form.add(sectionLabel(Messages.get("pref.section.tabs")), c);
         c.insets = new Insets(4, 4, 4, 4);
 
-        c.gridy = 12;
+        c.gridy = 13;
         c.gridx = 0;
         form.add(new JLabel(Messages.get("pref.maxTabs")), c);
         c.gridx = 1;
@@ -327,7 +340,7 @@ public final class PreferencesDialog extends JDialog {
         c.weightx = 1.0;
         form.add(maxTabsSpinner, c);
 
-        c.gridy = 13;
+        c.gridy = 14;
         c.gridx = 0;
         c.fill = GridBagConstraints.NONE;
         c.weightx = 0;
@@ -337,7 +350,7 @@ public final class PreferencesDialog extends JDialog {
         c.weightx = 1.0;
         form.add(renderedTabsSpinner, c);
 
-        c.gridy = 14;
+        c.gridy = 15;
         c.gridx = 1;
         c.fill = GridBagConstraints.NONE;
         c.weightx = 0;
@@ -360,7 +373,8 @@ public final class PreferencesDialog extends JDialog {
                     lang != null ? lang.key() : "ja",
                     rq != null ? rq.name() : "AUTO",
                     (Integer) maxTabsSpinner.getValue(),
-                    (Integer) renderedTabsSpinner.getValue());
+                    (Integer) renderedTabsSpinner.getValue(),
+                    autoFitCheck.isSelected());
             dispose();
         });
         cancel.addActionListener(e -> {
@@ -395,10 +409,11 @@ public final class PreferencesDialog extends JDialog {
                                     boolean currentRestoreLastProject,
                                     String currentLanguage,
                                     String currentRenderQuality,
-                                    int currentMaxTabs, int currentRenderedTabs) {
+                                    int currentMaxTabs, int currentRenderedTabs,
+                                    boolean currentAutoFit) {
         PreferencesDialog dlg = new PreferencesDialog(owner, currentLaf,
                 currentRestoreLastProject, currentLanguage, currentRenderQuality,
-                currentMaxTabs, currentRenderedTabs);
+                currentMaxTabs, currentRenderedTabs, currentAutoFit);
         dlg.setVisible(true);
         return dlg.result;
     }

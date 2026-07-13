@@ -79,6 +79,16 @@ public final class DiagramTabPane {
     private Runnable closeAllRequestHandler;
     /** タブ内上下分割の既定比率 (Setting から取得)。 */
     private double tabSplitRatio = 0.7;
+    /** 図の描画完了時に自動で全体表示 (Fit) するか (Setting から取得)。 */
+    private boolean autoFitOnRender = true;
+    /**
+     * 図タブを別ウィンドウへ「移動」するときの委譲先。移動元ペインが対象タブを剥がし、
+     * その {@link TabHandle} を受け取った側 (別ウィンドウ管理) が新ウィンドウで開き直す。
+     * 未設定なら「別ウィンドウで開く」導線は無効。
+     */
+    private Consumer<TabHandle> onMoveToNewWindow;
+    /** 図タブが 0 枚になったときの通知 (別ウィンドウ = 空なら自動クローズ用)。null 可。 */
+    private Runnable onBecameEmpty;
     /** VS Code 風プレビュータブのキー (null = プレビューなし)。 */
     private String previewTabKey;
     /**
@@ -165,6 +175,25 @@ public final class DiagramTabPane {
     /** 直近のタブ内上下分割比率を返す (永続化用)。 */
     public double getTabSplitRatio() {
         return tabSplitRatio;
+    }
+
+    /** 図の描画完了時に自動で全体表示 (Fit) するかを設定する (Preferences 連動)。 */
+    public void setAutoFitOnRender(boolean autoFit) {
+        this.autoFitOnRender = autoFit;
+    }
+
+    /**
+     * 図タブを別ウィンドウへ移動する委譲先を設定する。移動元はタブを剥がし、
+     * {@link TabHandle} を渡す。受け取り側は新ウィンドウで {@link #openFromHandle} する。
+     * これを設定したペインでのみ「別ウィンドウで開く」導線が有効になる。
+     */
+    public void setOnMoveToNewWindow(Consumer<TabHandle> handler) {
+        this.onMoveToNewWindow = handler;
+    }
+
+    /** 別ウィンドウへの移動導線が使えるか (委譲先が設定されているか)。 */
+    public boolean canMoveToNewWindow() {
+        return onMoveToNewWindow != null;
     }
 
     /**
@@ -857,6 +886,74 @@ public final class DiagramTabPane {
         applyTabBudget(newKey);
     }
 
+    /**
+     * 図タブを別ウィンドウへ「移動」するための持ち運び情報 (再オープンに必要な最小集合)。
+     * 生成系の図タブ (クラス/シーケンス/レイアウト等) のみ対象で、自由編集エディタタブは扱わない
+     * (未保存テキスト・Untitled キー管理を伴い複雑になるため、移動導線は無効化する)。
+     * 付箋メモはキー単位で {@code .juml/notes.json} に永続化されるため、同じキーで開き直せば
+     * 移動先でも自動的に復元される。
+     */
+    public static final class TabHandle {
+        public final String key;
+        public final String label;
+        public final TreeNodeIcon icon;
+        public final DiagramRequest spec;
+        public final TreeNodeOpenRequest treeSync;
+
+        TabHandle(String key, String label, TreeNodeIcon icon,
+                  DiagramRequest spec, TreeNodeOpenRequest treeSync) {
+            this.key = key;
+            this.label = label;
+            this.icon = icon;
+            this.spec = spec;
+            this.treeSync = treeSync;
+        }
+    }
+
+    /**
+     * アクティブな図タブを別ウィンドウへ移動する (VS Code の "Move into New Window" 相当)。
+     * アクティブタブが生成系の図タブでなければ (エディタタブ・ユーティリティタブ) 何もしない。
+     */
+    public void moveActiveTabToNewWindow() {
+        DiagramTab t = activeTab();
+        if (t != null) {
+            moveTabToNewWindow(t.key);
+        }
+    }
+
+    /**
+     * {@code key} の図タブをこのペインから剥がし、{@link #onMoveToNewWindow} 経由で
+     * 別ウィンドウへ移す。生成系の図タブのみ対象 (エディタタブは無視)。移動先で同じキー・
+     * spec・由来ノードのまま開き直されるため、スコープ・文言 locale・付箋はそのまま引き継がれる。
+     */
+    public void moveTabToNewWindow(String key) {
+        DiagramTab tab = openTabs.get(key);
+        if (tab == null || tab.isEditor() || onMoveToNewWindow == null || tab.spec == null) {
+            return;
+        }
+        TabHandle handle = new TabHandle(tab.key, tab.label, tab.icon, tab.spec, tab.treeSync);
+        // 移動元から静かに剥がす (確認なし・再オープン履歴に積まない = closeTab の false 版)。
+        // 内容は handle として持ち出しているのでデータロスにはならない。
+        closeTab(tab, key, false);
+        onMoveToNewWindow.accept(handle);
+    }
+
+    /**
+     * {@link TabHandle} からこのペインに図タブを開く (別ウィンドウの受け取り側が呼ぶ)。
+     * 既に同キーのタブがあればフォーカスのみ移す (openDiagram の重複防止に従う)。
+     */
+    public void openFromHandle(TabHandle handle) {
+        if (handle == null) {
+            return;
+        }
+        openDiagram(handle.key, handle.label, handle.icon, handle.spec, handle.treeSync);
+    }
+
+    /** 開いている図タブが 0 になったとき通知する (別ウィンドウを自動で閉じるため)。 */
+    public void setOnBecameEmpty(Runnable handler) {
+        this.onBecameEmpty = handler;
+    }
+
     /** 文言 locale コンボの表示: 空文字 qualifier を「デフォルト」表記にする。 */
     private static final class LocaleCellRenderer extends javax.swing.DefaultListCellRenderer {
         @Override
@@ -1054,6 +1151,15 @@ public final class DiagramTabPane {
         all.addActionListener(a -> requestCloseAll());
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
+        // VS Code の "Move into New Window" 相当: この図タブを別ウィンドウへ移す。
+        // 生成系の図タブのみ対象 (自由編集エディタタブは移動不可)。
+        if (onMoveToNewWindow != null && !tab.isEditor()) {
+            menu.addSeparator();
+            JMenuItem newWindow = new JMenuItem(Messages.get("tab.menu.moveToNewWindow"));
+            newWindow.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.OPEN_IN_NEW));
+            newWindow.addActionListener(a -> moveTabToNewWindow(key));
+            menu.add(newWindow);
+        }
         if (tab.treeSync != null && revealInTree != null) {
             menu.addSeparator();
             JMenuItem reveal = new JMenuItem(Messages.get("tab.menu.revealInExplorer"));
@@ -1275,6 +1381,9 @@ public final class DiagramTabPane {
         navHistory.remove(liveKey);
         refreshTabLabels();
         tabMemory.onClose(liveKey);
+        if (openTabs.isEmpty() && onBecameEmpty != null) {
+            onBecameEmpty.run();
+        }
         return true;
     }
 
@@ -2193,6 +2302,13 @@ public final class DiagramTabPane {
                         renderedPuml = r.puml;
                         renderedSvgXml = r.svg.getSvgXml();
                         showPreviewCard();
+                        // 大きい図が毎回 1.0 倍で小さく開くのを防ぐため、設定が有効なら
+                        // 描画完了時に全体表示へフィットする。レイアウト確定後に実行する
+                        // (この時点で viewport 幅が 0 だと Fit 率が壊れるため invokeLater)。
+                        if (autoFitOnRender) {
+                            final SvgPreviewPanel fitTarget = previewPanel;
+                            javax.swing.SwingUtilities.invokeLater(fitTarget::zoomToFit);
+                        }
                         if (isActive()) {
                             mirrorToState();
                         }

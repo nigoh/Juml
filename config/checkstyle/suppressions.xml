@@ -12,6 +12,10 @@
          フィールドが増えるたびに行数が伸びる。1 関数に収めた方が UI の縦並びが直感的。 -->
     <suppress checks="MethodLength" files="StyleSettingsDialog\.java" />
 
+    <!-- PreferencesDialog.buildForm も同じく GridBag フォームの行を順に積む構成で、
+         設定項目 (自動フィット等) が増えるたびに行数が伸びる。同上の理由で許可する。 -->
+    <suppress checks="MethodLength" files="PreferencesDialog\.java" />
+
     <!-- テストメソッドは BDD 風に method_condition_expected のようなアンダースコア命名を
          意図的に用いるため、テストソースに限り MethodName を許可する。 -->
     <suppress checks="MethodName" files=".*Test\.java" />

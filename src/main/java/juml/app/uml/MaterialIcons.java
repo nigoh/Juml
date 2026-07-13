@@ -45,7 +45,7 @@ public final class MaterialIcons implements Icon {
         // ── ファイル / プロジェクト操作 ──
         FOLDER_OPEN, ARCHIVE, SAVE, REFRESH, SEARCH, NOTE_ADD, CLOSE,
         // ── 表示 / ズーム / ナビゲーション ──
-        ZOOM_IN, ZOOM_OUT, FIT_SCREEN, CENTER_FOCUS, SIDEBAR, CODE,
+        ZOOM_IN, ZOOM_OUT, FIT_SCREEN, CENTER_FOCUS, SIDEBAR, CODE, OPEN_IN_NEW,
         TERMINAL, FILTER, ARROW_BACK, ARROW_FORWARD, CHEVRON_UP, CHEVRON_DOWN,
         // ── 設定 / スタイル ──
         SETTINGS, TUNE, PALETTE, DELETE_SWEEP, HELP, INFO,
@@ -145,6 +145,7 @@ public final class MaterialIcons implements Icon {
             case ZOOM_OUT: zoom(g, false); break;
             case FIT_SCREEN: fitScreen(g); break;
             case CENTER_FOCUS: centerFocus(g); break;
+            case OPEN_IN_NEW: openInNew(g); break;
             case SIDEBAR: sidebar(g); break;
             case CODE: code(g); break;
             case TERMINAL: terminal(g); break;
@@ -316,6 +317,17 @@ public final class MaterialIcons implements Icon {
         br.lineTo(17, 15.5);
         br.lineTo(14.5, 15.5);
         stroke(g, br);
+    }
+
+    private static void openInNew(Graphics2D g) {
+        // ウィンドウ枠 (左下) + 右上へ飛び出す矢印 (別ウィンドウで開く)
+        stroke(g, new RoundRectangle2D.Double(4, 8, 11, 11, 2, 2));
+        line(g, 12.5, 11.5, 20, 4);          // 斜めの軸
+        GeneralPath head = path();            // 右上の矢じり
+        head.moveTo(14.5, 4);
+        head.lineTo(20, 4);
+        head.lineTo(20, 9.5);
+        stroke(g, head);
     }
 
     private static void centerFocus(Graphics2D g) {

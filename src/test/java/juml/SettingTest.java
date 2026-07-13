@@ -102,6 +102,30 @@ public class SettingTest {
     }
 
     @Test
+    public void testAutoFitOnRenderRoundTrip() throws IOException {
+        assertTrue("既定は自動フィット ON", new Setting().isAutoFitOnRender());
+        Setting original = new Setting();
+        original.setAutoFitOnRender(false);
+        File file = tempFolder.newFile("settings-autofit.xml");
+        original.saveToFile(file);
+        assertFalse("保存 → 読込で false が保持される",
+                Setting.loadFromFile(file).isAutoFitOnRender());
+    }
+
+    @Test
+    public void testAutoFitOnRenderDefaultsTrueWhenKeyMissing() throws IOException {
+        // 旧バージョンが書いた (キーの無い) 設定を読んでも既定 ON になること。
+        Setting original = new Setting();
+        File file = tempFolder.newFile("settings-legacy.xml");
+        original.saveToFile(file);
+        // キー行を物理的に削って「未知バージョン」を再現。
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(file.toPath());
+        lines.removeIf(l -> l.contains("app.autoFitOnRender"));
+        java.nio.file.Files.write(file.toPath(), lines);
+        assertTrue("キーが無ければ既定 ON", Setting.loadFromFile(file).isAutoFitOnRender());
+    }
+
+    @Test
     public void testStyleRoundTrip() throws IOException {
         Setting original = new Setting();
         DiagramStyle style = new DiagramStyle();

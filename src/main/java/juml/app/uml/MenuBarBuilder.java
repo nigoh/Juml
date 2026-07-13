@@ -86,6 +86,8 @@ public final class MenuBarBuilder {
         public Runnable zoomOut;
         public Runnable zoomReset;
         public Runnable zoomToFit;
+        /** View &gt; Move Diagram to New Window: アクティブ図タブを別ウィンドウへ切り出す。 */
+        public Runnable moveTabToNewWindow;
         /** Ctrl+W / File &gt; Close Tab: アクティブな動的タブを閉じる。 */
         public Runnable closeActiveTab;
         /** Ctrl+Shift+T / File &gt; Reopen Closed Tab: 直近に閉じたタブを再オープン。 */
@@ -634,6 +636,15 @@ public final class MenuBarBuilder {
         m.add(zoomOut);
         m.add(zoomReset);
         m.add(zoomFit);
+        if (cb.moveTabToNewWindow != null) {
+            // VS Code の "Move into New Window" 相当。図を別モニタで大きく見ながら作業できる。
+            JMenuItem newWindow = new JMenuItem(Messages.get("menubar.view.moveToNewWindow"));
+            newWindow.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.OPEN_IN_NEW));
+            newWindow.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M,
+                    menuMask | InputEvent.SHIFT_DOWN_MASK));
+            newWindow.addActionListener(e -> cb.moveTabToNewWindow.run());
+            m.add(newWindow);
+        }
         m.addSeparator();
         JMenuItem palette = new JMenuItem(Messages.get("menubar.view.commandPalette"));
         palette.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.TERMINAL));

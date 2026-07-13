@@ -261,11 +261,11 @@ public class DialogKeyboardTest {
     private PreferencesDialog createPreferences() throws Exception {
         Constructor<PreferencesDialog> ctor = PreferencesDialog.class.getDeclaredConstructor(
                 java.awt.Frame.class, String.class, boolean.class, String.class,
-                String.class, int.class, int.class);
+                String.class, int.class, int.class, boolean.class);
         ctor.setAccessible(true);
         PreferencesDialog dlg = GuiActionRunner.execute(() -> {
             try {
-                return ctor.newInstance(null, "SYSTEM", true, "ja", "AUTO", 20, 4);
+                return ctor.newInstance(null, "SYSTEM", true, "ja", "AUTO", 20, 4, true);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
