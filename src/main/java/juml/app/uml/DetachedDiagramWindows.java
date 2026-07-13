@@ -15,7 +15,8 @@ import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -34,14 +35,17 @@ public final class DetachedDiagramWindows {
     private final ProjectAnalysisCache cache;
     private final BooleanSupplier autoFitOnRender;
     private final java.awt.Window owner;
-    private final int tabBudget;
-    private final int renderedTabs;
+    private final DiagramTabPane mainPane;
+    private int tabBudget;
+    private int renderedTabs;
     private final DiagramNotesBinder sharedNotes;
-    private final List<JFrame> windows = new ArrayList<>();
+    /** 開いている別ウィンドウ → その図ペイン (ウィンドウ横断の重複タブフォーカス用)。 */
+    private final Map<JFrame, DiagramTabPane> windows = new LinkedHashMap<>();
 
     /**
      * @param cache           メインと共有する解析キャッシュ (読み取り専用の解析結果)
      * @param owner           位置決めの基準にするメインウィンドウ (null 可)
+     * @param mainPane        メインウィンドウの図ペイン (ウィンドウ横断の重複タブ照合用)
      * @param autoFitOnRender 新ウィンドウの図に自動フィットを適用するか (Preferences 連動)
      * @param tabBudget       ウィンドウあたりのタブ上限 (メインと同じ設定)
      * @param renderedTabs    描画保持数 (メインと同じ設定)
@@ -50,15 +54,37 @@ public final class DetachedDiagramWindows {
      *                        別ウィンドウの shutdown では止めない。
      */
     public DetachedDiagramWindows(ProjectAnalysisCache cache,
-                                  java.awt.Window owner, BooleanSupplier autoFitOnRender,
+                                  java.awt.Window owner, DiagramTabPane mainPane,
+                                  BooleanSupplier autoFitOnRender,
                                   int tabBudget, int renderedTabs,
                                   DiagramNotesBinder sharedNotes) {
         this.cache = cache;
         this.owner = owner;
+        this.mainPane = mainPane;
         this.autoFitOnRender = autoFitOnRender;
         this.tabBudget = tabBudget;
         this.renderedTabs = renderedTabs;
         this.sharedNotes = sharedNotes;
+    }
+
+    /**
+     * {@code key} の図タブが「別のウィンドウ」(呼び出し元ペイン以外) で既に開かれていれば、
+     * そのウィンドウを前面に出しタブを選択して true を返す。ウィンドウ横断の重複タブ防止に使う。
+     */
+    boolean focusExistingElsewhere(DiagramTabPane caller, String key) {
+        if (mainPane != null && mainPane != caller && mainPane.selectTabByKey(key)) {
+            if (owner != null) {
+                owner.toFront();
+            }
+            return true;
+        }
+        for (Map.Entry<JFrame, DiagramTabPane> e : windows.entrySet()) {
+            if (e.getValue() != caller && e.getValue().selectTabByKey(key)) {
+                e.getKey().toFront();
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -88,18 +114,26 @@ public final class DetachedDiagramWindows {
         if (sharedNotes != null) {
             pane.useSharedNotesBinder(sharedNotes);
         }
+        // 自動フィットは "サプライヤ" で毎回問い合わせる。生成時の値を焼き付けると、開いた後の
+        // Preferences 変更 (auto-fit ON/OFF) がこのウィンドウへ反映されないため。
         if (autoFitOnRender != null) {
-            pane.setAutoFitOnRender(autoFitOnRender.getAsBoolean());
+            pane.setAutoFitSupplier(autoFitOnRender);
         }
         if (tabBudget > 0) {
             pane.setTabBudget(tabBudget, renderedTabs);
         }
         // このウィンドウのタブも、さらに別ウィンドウへ移せるようにする (ウィンドウ間ホップ)。
         pane.setOnMoveToNewWindow(this::moveToNewWindow);
+        // 同じ図をメイン/別ウィンドウで二重に開かないよう、既存タブがあればそこへフォーカス委譲。
+        pane.setCrossWindowFocus(key -> focusExistingElsewhere(pane, key));
         // タブが 0 枚になったらウィンドウごと閉じる (空ウィンドウを残さない)。
         pane.setOnBecameEmpty(frame::dispose);
-        // 選択タブの変更でウィンドウタイトルを追従させる。
-        tabs.addChangeListener(e -> frame.setTitle(windowTitle(selectedTitle(tabs))));
+        // タイトルはタブ選択変更 (ChangeListener) と、タブ内トグルによる図種/レイアウト切替
+        // (onTabFocused 経由) の両方で追従させる。切替はラベルだけ変えて選択を動かさないため、
+        // ChangeListener だけだとタイトルが旧図種のまま残る。
+        Runnable syncTitle = () -> frame.setTitle(windowTitle(selectedTitle(tabs)));
+        tabs.addChangeListener(e -> syncTitle.run());
+        pane.setOnTabFocused(ft -> syncTitle.run());
 
         JToolBar toolBar = buildZoomToolBar(pane);
         JPanel content = new JPanel(new BorderLayout());
@@ -111,13 +145,13 @@ public final class DetachedDiagramWindows {
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e) {
-                pane.shutdown(); // 付箋保存 IO スレッドを止める
+                pane.shutdown(); // 付箋保存 IO スレッドを止める (共有バインダは所有者が止める)
                 windows.remove(frame);
             }
         });
 
         placeWindow(frame);
-        windows.add(frame);
+        windows.put(frame, pane);
         pane.openFromHandle(handle);
         frame.setVisible(true);
         frame.toFront();
@@ -210,12 +244,26 @@ public final class DetachedDiagramWindows {
     }
 
     /**
+     * タブ上限/描画保持数の Preferences 変更を、以後の新規ウィンドウと
+     * 既に開いている全ウィンドウへ反映する (メイン pane と挙動を揃える)。
+     */
+    public void setTabBudget(int maxTabs, int keepRendered) {
+        this.tabBudget = maxTabs;
+        this.renderedTabs = keepRendered;
+        if (maxTabs > 0) {
+            for (DiagramTabPane pane : windows.values()) {
+                pane.setTabBudget(maxTabs, keepRendered);
+            }
+        }
+    }
+
+    /**
      * アプリ終了時に全ての別ウィンドウを閉じる。各ペインの付箋保存 IO スレッドを止めてから破棄する。
      * (別ウィンドウには生成系の図タブしか入らないため未保存確認は不要。)
      */
     public void closeAll() {
-        for (JFrame f : new ArrayList<>(windows)) {
-            f.dispose(); // windowClosed 経由で pane.shutdown() + リスト除去
+        for (JFrame f : new ArrayList<>(windows.keySet())) {
+            f.dispose(); // windowClosed 経由で pane.shutdown() + マップ除去
         }
         windows.clear();
     }

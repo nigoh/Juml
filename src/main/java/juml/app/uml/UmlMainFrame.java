@@ -168,7 +168,7 @@ public class UmlMainFrame extends JFrame {
         }
         // 図タブを「別ウィンドウ」へ切り出す仕組み (2 画面で確認しながら作業できるように)。
         // 解析キャッシュだけ共有し、各ウィンドウは独立した DiagramTabPane を持つ。
-        detachedWindows = new DetachedDiagramWindows(cache, this,
+        detachedWindows = new DetachedDiagramWindows(cache, this, tabPane,
                 () -> {
                     Setting s = Main.getSetting();
                     return s == null || s.isAutoFitOnRender();
@@ -177,6 +177,8 @@ public class UmlMainFrame extends JFrame {
                 splitSetting != null ? splitSetting.getRenderedTabs() : 4,
                 tabPane.notesBinder());
         tabPane.setOnMoveToNewWindow(detachedWindows::moveToNewWindow);
+        // 同じ図をメインと別ウィンドウで二重に開かない (既存タブがあればそこへフォーカス)。
+        tabPane.setCrossWindowFocus(key -> detachedWindows.focusExistingElsewhere(tabPane, key));
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -310,7 +312,14 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomOut = () -> tabPane.zoomOutActive();
         mcb.zoomReset = () -> tabPane.zoomResetActive();
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
-        mcb.moveTabToNewWindow = () -> tabPane.moveActiveTabToNewWindow();
+        mcb.moveTabToNewWindow = () -> {
+            // 空振り (エディタ/非図タブ/タブ無し/ロード中) では無反応にせずトーストで理由を示す。
+            if (tabPane.canMoveActiveTab()) {
+                tabPane.moveActiveTabToNewWindow();
+            } else {
+                ToastNotification.show(mainTabs, Messages.get("window.detached.cannotMove"));
+            }
+        };
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
         mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();
@@ -508,6 +517,11 @@ public class UmlMainFrame extends JFrame {
             // 再描画 (F5/スタイル変更/LRU 復帰) が新プロジェクトの解析結果に対して走り、
             // 旧ラベルのまま空図・別クラスの図が表示される。
             tabPane.onProjectSwitched();
+            // 別ウィンドウも旧プロジェクトの図を保持しており、共有 cache が差し替わると
+            // stale 図の再描画や crossWindowFocus の誤ヒットを起こすため、まとめて閉じる。
+            if (detachedWindows != null) {
+                detachedWindows.closeAll();
+            }
             // Doxygen/TODO/Groups タブの前プロジェクト結果も破棄する。
             doxygenResultCache.clear();
             // Functions / Members は遅延生成のため、表示中でなければ次回選択時に
@@ -712,9 +726,12 @@ public class UmlMainFrame extends JFrame {
                 w.repaint();
             }
         }
-        // タブ上限/描画保持数も再起動不要で即時反映する。
+        // タブ上限/描画保持数も再起動不要で即時反映する (別ウィンドウ群にも伝播)。
         if (tabLimitsChanged && tabPane != null) {
             tabPane.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+            if (detachedWindows != null) {
+                detachedWindows.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+            }
         }
         // 「描画時に自動フィット」は再起動不要で即時反映する (別ウィンドウは supplier 経由で追従)。
         if (tabPane != null) {

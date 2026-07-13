@@ -88,6 +88,18 @@ public final class DiagramTabPane {
     /** 図の描画完了時に自動で全体表示 (Fit) するか (Setting から取得)。 */
     private boolean autoFitOnRender = true;
     /**
+     * 自動フィット可否を毎回問い合わせるサプライヤ (別ウィンドウ用)。設定されていれば
+     * {@link #autoFitOnRender} より優先し、Preferences 変更を開きっぱなしのウィンドウへも
+     * ライブ反映する。null ならフィールド値を使う。
+     */
+    private java.util.function.BooleanSupplier autoFitSupplier;
+    /**
+     * 同じ図キーが「別のウィンドウ」で既に開かれていれば、そこへフォーカスして true を返す
+     * 述語 (ウィンドウ横断の重複防止)。同一キーを 2 つのペインで開くと共有付箋バインダへ
+     * 二重束縛され付箋が消えるため、重複を作らずフォーカスへ委譲する。null なら重複チェックなし。
+     */
+    private java.util.function.Predicate<String> crossWindowFocus;
+    /**
      * 図タブを別ウィンドウへ「移動」するときの委譲先。移動元ペインが対象タブを剥がし、
      * その {@link TabHandle} を受け取った側 (別ウィンドウ管理) が新ウィンドウで開き直す。
      * 未設定なら「別ウィンドウで開く」導線は無効。
@@ -186,6 +198,44 @@ public final class DiagramTabPane {
     /** 図の描画完了時に自動で全体表示 (Fit) するかを設定する (Preferences 連動)。 */
     public void setAutoFitOnRender(boolean autoFit) {
         this.autoFitOnRender = autoFit;
+    }
+
+    /**
+     * 自動フィット可否を毎描画で問い合わせるサプライヤを設定する (別ウィンドウ用)。
+     * これを設定すると、Preferences の変更が開きっぱなしのウィンドウにも即反映される。
+     */
+    public void setAutoFitSupplier(java.util.function.BooleanSupplier supplier) {
+        this.autoFitSupplier = supplier;
+    }
+
+    /** 現在の自動フィット設定 (サプライヤがあればそれを優先)。 */
+    private boolean autoFitEnabled() {
+        return autoFitSupplier != null ? autoFitSupplier.getAsBoolean() : autoFitOnRender;
+    }
+
+    /**
+     * ウィンドウ横断の重複タブ防止述語を設定する。{@code test(key)} が true を返したら
+     * 「別ウィンドウに既存タブがありフォーカスした」ことを意味し、このペインでは開かない。
+     */
+    public void setCrossWindowFocus(java.util.function.Predicate<String> focus) {
+        this.crossWindowFocus = focus;
+    }
+
+    /** 指定キーのタブがこのペインにあれば選択して true を返す (ウィンドウ横断フォーカス用)。 */
+    public boolean selectTabByKey(String key) {
+        DiagramTab t = openTabs.get(key);
+        if (t == null) {
+            return false;
+        }
+        tabs.setSelectedComponent(t);
+        return true;
+    }
+
+    /** アクティブタブを別ウィンドウへ移動できるか (メニュー/導線の可否判定・空振り通知用)。 */
+    public boolean canMoveActiveTab() {
+        DiagramTab t = activeTab();
+        return t != null && !t.isEditor() && t.spec != null
+                && onMoveToNewWindow != null && cache.isLoaded();
     }
 
     /**
@@ -433,6 +483,12 @@ public final class DiagramTabPane {
         DiagramTab existing = openTabs.get(key);
         if (existing != null) {
             tabs.setSelectedComponent(existing);
+            return;
+        }
+        // 同じ図が別ウィンドウで開かれていれば、二重に開かず既存タブへフォーカスする。
+        // 二重に開くと共有付箋バインダへ同一キーで二重束縛され、片方の保存が他方を
+        // 上書きして付箋が消える (VS Code 同様の重複防止も兼ねる)。
+        if (crossWindowFocus != null && crossWindowFocus.test(key)) {
             return;
         }
         DiagramTab tab = new DiagramTab(key, label, icon, spec, treeSync);
@@ -781,6 +837,12 @@ public final class DiagramTabPane {
             tabs.setSelectedComponent(existing);
             return;
         }
+        // 別ウィンドウに対象図種のタブがあれば、その場切替で二重に作らずそこへフォーカス委譲する
+        // (共有付箋バインダへの同一キー二重束縛による付箋消失を防ぐ。openDiagram と同じガード)。
+        if (crossWindowFocus != null && crossWindowFocus.test(newKey)) {
+            tab.updateKindToggle(); // 見た目を元図種へ戻す
+            return;
+        }
         int index = tabs.indexOfComponent(tab);
         if (index < 0) {
             return;
@@ -868,6 +930,12 @@ public final class DiagramTabPane {
             // 見た目と内容のデシンクを防ぐ。
             tab.updateLayoutToggle();
             tabs.setSelectedComponent(existing);
+            return;
+        }
+        // 別ウィンドウに対象図種のタブがあれば、その場切替で二重に作らずそこへフォーカス委譲する
+        // (共有付箋バインダへの同一キー二重束縛による付箋消失を防ぐ)。
+        if (crossWindowFocus != null && crossWindowFocus.test(newKey)) {
+            tab.updateLayoutToggle(); // 見た目を元図種へ戻す
             return;
         }
         int index = tabs.indexOfComponent(tab);
@@ -1184,8 +1252,9 @@ public final class DiagramTabPane {
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
         // VS Code の "Move into New Window" 相当: この図タブを別ウィンドウへ移す。
-        // 生成系の図タブのみ対象 (自由編集エディタタブは移動不可)。
-        if (onMoveToNewWindow != null && !tab.isEditor()) {
+        // 生成系の図タブのみ対象 (自由編集エディタタブは移動不可)。ロード中は移動が
+        // 空振りする (moveTabToNewWindow が !cache.isLoaded() で no-op) ため項目を出さない。
+        if (onMoveToNewWindow != null && !tab.isEditor() && cache.isLoaded()) {
             menu.addSeparator();
             JMenuItem newWindow = new JMenuItem(Messages.get("tab.menu.moveToNewWindow"));
             newWindow.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.OPEN_IN_NEW));
@@ -2348,7 +2417,7 @@ public final class DiagramTabPane {
                         // 再描画時) に一度だけ全体表示へフィットする。以後の再描画では手動ズームを
                         // 尊重してリセットしない。エディタのライブプレビューは編集中に破壊的なので除外。
                         // レイアウト確定後に実行する (viewport 幅が 0 だと Fit 率が壊れるため invokeLater)。
-                        if (autoFitOnRender && autoFitPending && !isEditor()) {
+                        if (autoFitEnabled() && autoFitPending && !isEditor()) {
                             autoFitPending = false;
                             final SvgPreviewPanel fitTarget = previewPanel;
                             javax.swing.SwingUtilities.invokeLater(fitTarget::zoomToFit);
