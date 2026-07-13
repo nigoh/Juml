@@ -36,8 +36,8 @@ public final class DetachedDiagramWindows {
     private final BooleanSupplier autoFitOnRender;
     private final java.awt.Window owner;
     private final DiagramTabPane mainPane;
-    private final int tabBudget;
-    private final int renderedTabs;
+    private int tabBudget;
+    private int renderedTabs;
     private final DiagramNotesBinder sharedNotes;
     /** 開いている別ウィンドウ → その図ペイン (ウィンドウ横断の重複タブフォーカス用)。 */
     private final Map<JFrame, DiagramTabPane> windows = new LinkedHashMap<>();
@@ -241,6 +241,20 @@ public final class DetachedDiagramWindows {
     /** 開いている別ウィンドウがあるか。 */
     public boolean hasOpenWindows() {
         return !windows.isEmpty();
+    }
+
+    /**
+     * タブ上限/描画保持数の Preferences 変更を、以後の新規ウィンドウと
+     * 既に開いている全ウィンドウへ反映する (メイン pane と挙動を揃える)。
+     */
+    public void setTabBudget(int maxTabs, int keepRendered) {
+        this.tabBudget = maxTabs;
+        this.renderedTabs = keepRendered;
+        if (maxTabs > 0) {
+            for (DiagramTabPane pane : windows.values()) {
+                pane.setTabBudget(maxTabs, keepRendered);
+            }
+        }
     }
 
     /**

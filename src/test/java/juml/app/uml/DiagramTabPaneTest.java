@@ -797,6 +797,33 @@ public class DiagramTabPaneTest {
         assertTrue("エディタタブでは移動ハンドルが発行されない", moved.isEmpty());
     }
 
+    @Test
+    public void switchActiveMethodKind_whenTargetOpenInOtherWindow_focusesInsteadOfSwitching() {
+        // その場切替も openDiagram と同じくウィンドウ横断の重複を避ける。切替先キーが別ウィンドウに
+        // あると crossWindowFocus が true を返し、切替せず (二重束縛せず) 元図種のまま留まる。
+        java.util.Set<String> focusedKeys = new java.util.HashSet<>();
+        boolean[] active = {false};
+        GuiActionRunner.execute(() -> pane.setCrossWindowFocus(key -> {
+            if (!active[0]) {
+                return false; // 初期オープンは通常どおり (別ウィンドウ扱いしない)
+            }
+            focusedKeys.add(key);
+            return true; // 切替時のみ「別ウィンドウに既存」を模擬
+        }));
+        TreeNodeOpenRequest seq = methodReq("com.example.Xwin", "run", DiagramKind.SEQUENCE);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(seq));
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        active[0] = true;
+
+        GuiActionRunner.execute(() -> pane.switchActiveMethodKind(DiagramKind.ACTIVITY));
+
+        assertEquals("別ウィンドウに切替先があれば新規に切替えない", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("切替されず元のシーケンス図のまま", DiagramKind.SEQUENCE,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+        assertFalse("crossWindowFocus が切替先キーで問い合わせられた", focusedKeys.isEmpty());
+    }
+
     // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------

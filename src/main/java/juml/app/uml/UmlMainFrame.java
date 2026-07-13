@@ -517,6 +517,11 @@ public class UmlMainFrame extends JFrame {
             // 再描画 (F5/スタイル変更/LRU 復帰) が新プロジェクトの解析結果に対して走り、
             // 旧ラベルのまま空図・別クラスの図が表示される。
             tabPane.onProjectSwitched();
+            // 別ウィンドウも旧プロジェクトの図を保持しており、共有 cache が差し替わると
+            // stale 図の再描画や crossWindowFocus の誤ヒットを起こすため、まとめて閉じる。
+            if (detachedWindows != null) {
+                detachedWindows.closeAll();
+            }
             // Doxygen/TODO/Groups タブの前プロジェクト結果も破棄する。
             doxygenResultCache.clear();
             // Functions / Members は遅延生成のため、表示中でなければ次回選択時に
@@ -721,9 +726,12 @@ public class UmlMainFrame extends JFrame {
                 w.repaint();
             }
         }
-        // タブ上限/描画保持数も再起動不要で即時反映する。
+        // タブ上限/描画保持数も再起動不要で即時反映する (別ウィンドウ群にも伝播)。
         if (tabLimitsChanged && tabPane != null) {
             tabPane.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+            if (detachedWindows != null) {
+                detachedWindows.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+            }
         }
         // 「描画時に自動フィット」は再起動不要で即時反映する (別ウィンドウは supplier 経由で追従)。
         if (tabPane != null) {

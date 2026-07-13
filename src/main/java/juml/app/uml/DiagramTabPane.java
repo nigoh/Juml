@@ -837,6 +837,12 @@ public final class DiagramTabPane {
             tabs.setSelectedComponent(existing);
             return;
         }
+        // 別ウィンドウに対象図種のタブがあれば、その場切替で二重に作らずそこへフォーカス委譲する
+        // (共有付箋バインダへの同一キー二重束縛による付箋消失を防ぐ。openDiagram と同じガード)。
+        if (crossWindowFocus != null && crossWindowFocus.test(newKey)) {
+            tab.updateKindToggle(); // 見た目を元図種へ戻す
+            return;
+        }
         int index = tabs.indexOfComponent(tab);
         if (index < 0) {
             return;
@@ -924,6 +930,12 @@ public final class DiagramTabPane {
             // 見た目と内容のデシンクを防ぐ。
             tab.updateLayoutToggle();
             tabs.setSelectedComponent(existing);
+            return;
+        }
+        // 別ウィンドウに対象図種のタブがあれば、その場切替で二重に作らずそこへフォーカス委譲する
+        // (共有付箋バインダへの同一キー二重束縛による付箋消失を防ぐ)。
+        if (crossWindowFocus != null && crossWindowFocus.test(newKey)) {
+            tab.updateLayoutToggle(); // 見た目を元図種へ戻す
             return;
         }
         int index = tabs.indexOfComponent(tab);
@@ -1240,8 +1252,9 @@ public final class DiagramTabPane {
         all.setEnabled(!openTabs.isEmpty());
         menu.add(all);
         // VS Code の "Move into New Window" 相当: この図タブを別ウィンドウへ移す。
-        // 生成系の図タブのみ対象 (自由編集エディタタブは移動不可)。
-        if (onMoveToNewWindow != null && !tab.isEditor()) {
+        // 生成系の図タブのみ対象 (自由編集エディタタブは移動不可)。ロード中は移動が
+        // 空振りする (moveTabToNewWindow が !cache.isLoaded() で no-op) ため項目を出さない。
+        if (onMoveToNewWindow != null && !tab.isEditor() && cache.isLoaded()) {
             menu.addSeparator();
             JMenuItem newWindow = new JMenuItem(Messages.get("tab.menu.moveToNewWindow"));
             newWindow.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.OPEN_IN_NEW));
