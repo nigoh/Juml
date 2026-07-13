@@ -97,6 +97,8 @@ public class UmlMainFrame extends JFrame {
 
     /** タブマネージャ (すべての図を対等なタブとして管理)。 */
     private DiagramTabPane tabPane;
+    /** 図タブを別ウィンドウへ切り出す仕組み (VS Code の Move into New Window 相当)。 */
+    private DetachedDiagramWindows detachedWindows;
     /** 右側のフラットタブバー (動的タブ / Manifest / Impact / References / Func Diff / Insights / Functions)。 */
     private JTabbedPane mainTabs;
     /** 左右分割 (左: ツリーサイドバー / 右: タブ)。Ctrl+B で折りたたむ対象。 */
@@ -162,7 +164,18 @@ public class UmlMainFrame extends JFrame {
         Setting splitSetting = Main.getSetting();
         if (splitSetting != null) {
             tabPane.setTabSplitRatio(splitSetting.getTabSplitRatio());
+            tabPane.setAutoFitOnRender(splitSetting.isAutoFitOnRender());
         }
+        // 図タブを「別ウィンドウ」へ切り出す仕組み (2 画面で確認しながら作業できるように)。
+        // 解析キャッシュだけ共有し、各ウィンドウは独立した DiagramTabPane を持つ。
+        detachedWindows = new DetachedDiagramWindows(cache, state, this,
+                () -> {
+                    Setting s = Main.getSetting();
+                    return s == null || s.isAutoFitOnRender();
+                },
+                splitSetting != null ? splitSetting.getMaxDiagramTabs() : 20,
+                splitSetting != null ? splitSetting.getRenderedTabs() : 4);
+        tabPane.setOnMoveToNewWindow(detachedWindows::moveToNewWindow);
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
         installDropTarget();
@@ -296,6 +309,7 @@ public class UmlMainFrame extends JFrame {
         mcb.zoomOut = () -> tabPane.zoomOutActive();
         mcb.zoomReset = () -> tabPane.zoomResetActive();
         mcb.zoomToFit = () -> tabPane.zoomToFitActive();
+        mcb.moveTabToNewWindow = () -> tabPane.moveActiveTabToNewWindow();
         mcb.closeActiveTab = () -> tabPane.closeActiveTab();
         mcb.closeOtherTabs = () -> tabPane.closeOtherTabsExceptActive();
         mcb.closeTabsToRight = () -> tabPane.closeTabsToRightOfActive();
@@ -663,9 +677,10 @@ public class UmlMainFrame extends JFrame {
         String curQuality = setting != null ? setting.getDiagramRenderQuality() : "AUTO";
         int curMaxTabs = setting != null ? setting.getMaxDiagramTabs() : 20;
         int curRenderedTabs = setting != null ? setting.getRenderedTabs() : 4;
+        boolean curAutoFit = setting == null || setting.isAutoFitOnRender();
         PreferencesDialog.Result r =
                 PreferencesDialog.showDialog(this, curLaf, curRestore, curLang, curQuality,
-                        curMaxTabs, curRenderedTabs);
+                        curMaxTabs, curRenderedTabs, curAutoFit);
         if (r == null) {
             return;
         }
@@ -682,6 +697,7 @@ public class UmlMainFrame extends JFrame {
                 setting.setDiagramRenderQuality(r.diagramRenderQuality);
                 setting.setMaxDiagramTabs(r.maxDiagramTabs);
                 setting.setRenderedTabs(r.renderedTabs);
+                setting.setAutoFitOnRender(r.autoFitOnRender);
                 Main.saveSetting();
             }
         } catch (RuntimeException ignored) {
@@ -698,6 +714,10 @@ public class UmlMainFrame extends JFrame {
         // タブ上限/描画保持数も再起動不要で即時反映する。
         if (tabLimitsChanged && tabPane != null) {
             tabPane.setTabBudget(r.maxDiagramTabs, r.renderedTabs);
+        }
+        // 「描画時に自動フィット」は再起動不要で即時反映する (別ウィンドウは supplier 経由で追従)。
+        if (tabPane != null) {
+            tabPane.setAutoFitOnRender(r.autoFitOnRender);
         }
         // 外観 (L&F) は FlatLaf 等なら再起動なしで即時反映する。失敗した L&F や
         // 言語変更は生成済み UI へ遡及できないため、その時だけ再起動を促す。
@@ -1126,6 +1146,9 @@ public class UmlMainFrame extends JFrame {
             return;
         }
         saveWindowState();
+        if (detachedWindows != null) {
+            detachedWindows.closeAll(); // 別ウィンドウの付箋 IO を止めて破棄
+        }
         if (tabPane != null) {
             tabPane.shutdown();
         }

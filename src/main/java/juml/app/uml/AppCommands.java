@@ -80,6 +80,7 @@ final class AppCommands {
         add(list, "cmd.view.zoomOut", cb.zoomOut, MOD + "-");
         add(list, "cmd.view.zoom100", cb.zoomReset, MOD + "0");
         add(list, "cmd.view.zoomFit", cb.zoomToFit, MOD + SHIFT + "0");
+        add(list, "cmd.view.moveToNewWindow", cb.moveTabToNewWindow, MOD + SHIFT + "M");
         add(list, "cmd.settings.style", cb.openStyleSettings);
         add(list, "cmd.settings.prefs", cb.openPreferences, MOD + ",");
         add(list, "cmd.settings.graphviz", cb.enableGraphviz);

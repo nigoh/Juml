@@ -743,6 +743,61 @@ public class DiagramTabPaneTest {
     }
 
     // -------------------------------------------------------------------------
+    // (k) 図タブを別ウィンドウへ「移動」する (VS Code の Move into New Window 相当)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void moveActiveTabToNewWindow_detachesTabAndEmitsHandle() {
+        java.util.List<DiagramTabPane.TabHandle> moved = new java.util.ArrayList<>();
+        GuiActionRunner.execute(() -> pane.setOnMoveToNewWindow(moved::add));
+        TreeNodeOpenRequest cls = TreeNodeOpenRequest.classNode(classInfo("com.example.Move"));
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(cls));
+        assertEquals("前提: 動的タブ 1 枚", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+
+        GuiActionRunner.execute(() -> pane.moveActiveTabToNewWindow());
+
+        assertEquals("移動元からタブが剥がれる", FIXED,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("移動ハンドルが 1 つ渡る", 1, moved.size());
+        assertEquals("ハンドルの図種はクラス図", DiagramKind.CLASS, moved.get(0).spec.getKind());
+    }
+
+    @Test
+    public void openFromHandle_recreatesTabInTargetPane() {
+        java.util.List<DiagramTabPane.TabHandle> moved = new java.util.ArrayList<>();
+        GuiActionRunner.execute(() -> pane.setOnMoveToNewWindow(moved::add));
+        GuiActionRunner.execute(() ->
+                pane.addOrFocusTab(TreeNodeOpenRequest.classNode(classInfo("com.example.Round"))));
+        GuiActionRunner.execute(() -> pane.moveActiveTabToNewWindow());
+        assertEquals(FIXED, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+
+        // 別ウィンドウの受け取り相当: 同じペインへハンドルから開き直せること (往復)。
+        GuiActionRunner.execute(() -> pane.openFromHandle(moved.get(0)));
+
+        assertEquals("ハンドルから図タブが再生成される", FIXED + 1,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("再生成された図種はクラス図", DiagramKind.CLASS,
+                GuiActionRunner.execute(() -> pane.activeTabKind()));
+    }
+
+    @Test
+    public void moveActiveTabToNewWindow_editorTab_isNoOp() {
+        java.util.List<DiagramTabPane.TabHandle> moved = new java.util.ArrayList<>();
+        GuiActionRunner.execute(() -> {
+            pane.setOnMoveToNewWindow(moved::add);
+            pane.openPumlEditor("@startuml\nclass A\n@enduml", null);
+        });
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+
+        GuiActionRunner.execute(() -> pane.moveActiveTabToNewWindow());
+
+        assertEquals("自由編集エディタタブは別ウィンドウへ移動しない (剥がれない)", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertTrue("エディタタブでは移動ハンドルが発行されない", moved.isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
     // ヘルパ
     // -------------------------------------------------------------------------
 
