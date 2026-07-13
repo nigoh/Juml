@@ -62,7 +62,13 @@ public final class DiagramTabPane {
     /** Alt+Left/Right による前後ナビゲーション (VS Code 風 Go Back / Go Forward)。 */
     private final NavigationHistory navHistory = new NavigationHistory();
     /** UML に重ねる付箋メモのロード/保存配線を担うヘルパ。 */
-    private final DiagramNotesBinder notesBinder = new DiagramNotesBinder(this::reportStatus);
+    private DiagramNotesBinder notesBinder = new DiagramNotesBinder(this::reportStatus);
+    /**
+     * この {@link #notesBinder} を自分で所有しているか。別ウィンドウが
+     * {@link #useSharedNotesBinder} で共有バインダを注入した場合は false になり、
+     * {@link #shutdown()} で共有 IO スレッドを止めない (所有者 = メインが止める)。
+     */
+    private boolean ownsNotesBinder = true;
     /** {@link #tabMemory} 適用中フラグ。クローズ起因の選択変更による再入を防ぐ。 */
     private boolean applyingTabBudget;
     private final ProjectAnalysisCache cache;
@@ -225,7 +231,27 @@ public final class DiagramTabPane {
      * キュー内の保存タスクが完了するまで短時間待つ (データロス防止)。
      */
     public void shutdown() {
-        notesBinder.shutdown();
+        if (ownsNotesBinder) {
+            notesBinder.shutdown();
+        }
+    }
+
+    /** メインと共有する付箋バインダ (別ウィンドウ生成時に共有ストアを渡すため)。 */
+    DiagramNotesBinder notesBinder() {
+        return notesBinder;
+    }
+
+    /**
+     * 付箋バインダを共有インスタンスへ差し替える (別ウィンドウが同じ {@code .juml/notes.json}
+     * を二重書き込みして付箋を消すのを防ぐ)。タブを開く前 (空ペイン生成直後) に呼ぶこと。
+     * 共有バインダの IO スレッド停止は所有者 (メイン) の責務なので、以後 {@link #shutdown()}
+     * ではこのバインダを止めない。
+     */
+    void useSharedNotesBinder(DiagramNotesBinder shared) {
+        if (shared != null) {
+            this.notesBinder = shared;
+            this.ownsNotesBinder = false;
+        }
     }
 
     /** ダイアグラムタブが 1 つ以上開かれていて、かつ選択中か。 */
@@ -931,6 +957,12 @@ public final class DiagramTabPane {
         if (tab == null || tab.isEditor() || onMoveToNewWindow == null || tab.spec == null) {
             return;
         }
+        // プロジェクト(再)ロード中は解析キャッシュが空で、移動先の openDiagram が
+        // 無言で return する。先に剥がすと元タブが消えて空の別ウィンドウだけが残るため、
+        // ロード完了までは移動しない (図は開いたまま残す)。
+        if (!cache.isLoaded()) {
+            return;
+        }
         TabHandle handle = new TabHandle(tab.key, tab.label, tab.icon, tab.spec, tab.treeSync);
         // 移動元から静かに剥がす (確認なし・再オープン履歴に積まない = closeTab の false 版)。
         // 内容は handle として持ち出しているのでデータロスにはならない。
@@ -1633,6 +1665,13 @@ public final class DiagramTabPane {
         private String copyableFailureText;
         /** 描画済み SVG をメモリ節約のため解放した状態か (再フォーカスで再描画する)。 */
         private boolean renderReleased;
+        /**
+         * 次の描画完了時に自動フィットすべきか。図タブを開いた初回描画と、メモリ解放後の
+         * 再描画のときだけ true。以後の再描画 (F5 / 図種切替 / スコープ変更) では false のまま
+         * にして、ユーザーが合わせた手動ズームを毎回リセットしない。エディタのライブ
+         * プレビュー編集中に破壊的にならないよう、エディタタブでは自動フィットしない。
+         */
+        private boolean autoFitPending = true;
         /** 進行中の描画ワーカー。再描画/クローズ時にキャンセルして競合・無駄を防ぐ。 */
         private SwingWorker<RenderResult, Void> activeWorker;
 
@@ -2192,6 +2231,9 @@ public final class DiagramTabPane {
             findBar.reset();
             renderedSvgXml = null;
             renderReleased = true;
+            // 解放後の再描画では全体表示から始めたい (解放前のズームは失われている) ので、
+            // 次の描画完了時に一度だけ自動フィットさせる。
+            autoFitPending = true;
             showMessageCard("<b>" + esc(label) + "</b><br><br>" + Messages.get("tab.released"));
         }
 
@@ -2302,10 +2344,12 @@ public final class DiagramTabPane {
                         renderedPuml = r.puml;
                         renderedSvgXml = r.svg.getSvgXml();
                         showPreviewCard();
-                        // 大きい図が毎回 1.0 倍で小さく開くのを防ぐため、設定が有効なら
-                        // 描画完了時に全体表示へフィットする。レイアウト確定後に実行する
-                        // (この時点で viewport 幅が 0 だと Fit 率が壊れるため invokeLater)。
-                        if (autoFitOnRender) {
+                        // 大きい図が小さく開くのを防ぐため、設定が有効なら初回描画時 (と解放後の
+                        // 再描画時) に一度だけ全体表示へフィットする。以後の再描画では手動ズームを
+                        // 尊重してリセットしない。エディタのライブプレビューは編集中に破壊的なので除外。
+                        // レイアウト確定後に実行する (viewport 幅が 0 だと Fit 率が壊れるため invokeLater)。
+                        if (autoFitOnRender && autoFitPending && !isEditor()) {
+                            autoFitPending = false;
                             final SvgPreviewPanel fitTarget = previewPanel;
                             javax.swing.SwingUtilities.invokeLater(fitTarget::zoomToFit);
                         }
