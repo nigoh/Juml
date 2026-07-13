@@ -32,30 +32,33 @@ import java.util.function.BooleanSupplier;
 public final class DetachedDiagramWindows {
 
     private final ProjectAnalysisCache cache;
-    private final DiagramState sharedRenderState;
     private final BooleanSupplier autoFitOnRender;
     private final java.awt.Window owner;
     private final int tabBudget;
     private final int renderedTabs;
+    private final DiagramNotesBinder sharedNotes;
     private final List<JFrame> windows = new ArrayList<>();
 
     /**
-     * @param cache           メインと共有する解析キャッシュ
-     * @param sharedRenderState 図の描画結果を反映する共有状態 (エクスポート等が参照する既存の state)
+     * @param cache           メインと共有する解析キャッシュ (読み取り専用の解析結果)
      * @param owner           位置決めの基準にするメインウィンドウ (null 可)
      * @param autoFitOnRender 新ウィンドウの図に自動フィットを適用するか (Preferences 連動)
      * @param tabBudget       ウィンドウあたりのタブ上限 (メインと同じ設定)
      * @param renderedTabs    描画保持数 (メインと同じ設定)
+     * @param sharedNotes     メインと共有する付箋バインダ (単一ファイル二重書き込みによる
+     *                        付箋消失を防ぐ)。IO スレッドの停止は所有者 (メイン) が行うため
+     *                        別ウィンドウの shutdown では止めない。
      */
-    public DetachedDiagramWindows(ProjectAnalysisCache cache, DiagramState sharedRenderState,
+    public DetachedDiagramWindows(ProjectAnalysisCache cache,
                                   java.awt.Window owner, BooleanSupplier autoFitOnRender,
-                                  int tabBudget, int renderedTabs) {
+                                  int tabBudget, int renderedTabs,
+                                  DiagramNotesBinder sharedNotes) {
         this.cache = cache;
-        this.sharedRenderState = sharedRenderState;
         this.owner = owner;
         this.autoFitOnRender = autoFitOnRender;
         this.tabBudget = tabBudget;
         this.renderedTabs = renderedTabs;
+        this.sharedNotes = sharedNotes;
     }
 
     /**
@@ -73,9 +76,18 @@ public final class DetachedDiagramWindows {
         JTabbedPane tabs = new JTabbedPane();
         JLabel statusLine = new JLabel(" ");
         statusLine.setBorder(javax.swing.BorderFactory.createEmptyBorder(2, 8, 2, 8));
-        DiagramTabPane pane = new DiagramTabPane(tabs, 0, cache, sharedRenderState,
+        // 各ウィンドウは "独立した" DiagramState を持つ。メインと共有すると、別ウィンドウの
+        // 描画完了/フォーカス/クローズが共有 state を上書き・クリアし、メインの Export/Copy が
+        // 別ウィンドウの図を出したり「図なし」になる (クロスウィンドウ state 汚染) ため。
+        DiagramTabPane pane = new DiagramTabPane(tabs, 0, cache, new DiagramState(),
                 msg -> statusLine.setText(msg == null || msg.isEmpty() ? " " : msg),
                 zoom -> { });
+        // 付箋ストアはメインと "共有" する。ウィンドウごとに別ストアだと、それぞれが
+        // .juml/notes.json をメモリ像から丸ごと上書きし、last-writer-wins で他ウィンドウの
+        // 付箋を無言で消す (単一ファイル二重書き込み)。共有すれば単一の in-memory 像になる。
+        if (sharedNotes != null) {
+            pane.useSharedNotesBinder(sharedNotes);
+        }
         if (autoFitOnRender != null) {
             pane.setAutoFitOnRender(autoFitOnRender.getAsBoolean());
         }
@@ -147,35 +159,46 @@ public final class DetachedDiagramWindows {
 
     /**
      * 新ウィンドウを配置する。サブモニタがあればそこへ (2 画面で並べて確認できるように)、
-     * 無ければメインウィンドウから少しずらして重ならないようにする。
+     * 無ければオーナーのスクリーンの右半分へ置き、メイン (通常は左寄せ) を覆い隠さないようにする。
+     * 複数開くときは台数ぶんカスケードしてウィンドウ同士も重なりすぎないようにする。
      */
     private void placeWindow(JFrame frame) {
-        frame.setSize(1000, 760);
+        int cascade = windows.size() * 28;
         GraphicsDevice primary = null;
         try {
             GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
             GraphicsDevice[] screens = ge.getScreenDevices();
-            if (owner != null) {
-                primary = owner.getGraphicsConfiguration() != null
-                        ? owner.getGraphicsConfiguration().getDevice() : null;
+            if (owner != null && owner.getGraphicsConfiguration() != null) {
+                primary = owner.getGraphicsConfiguration().getDevice();
             }
+            // サブモニタがあればそこへ (中央寄せ + 台数ぶんカスケード)。
             for (GraphicsDevice gd : screens) {
                 if (gd != primary) {
                     Rectangle b = gd.getDefaultConfiguration().getBounds();
-                    // サブスクリーン中央寄りに配置。
-                    int x = b.x + Math.max(0, (b.width - frame.getWidth()) / 2);
-                    int y = b.y + Math.max(0, (b.height - frame.getHeight()) / 2);
+                    frame.setSize(Math.min(1000, b.width - 80), Math.min(760, b.height - 80));
+                    int x = b.x + Math.max(0, (b.width - frame.getWidth()) / 2) + cascade;
+                    int y = b.y + Math.max(0, (b.height - frame.getHeight()) / 2) + cascade;
                     frame.setLocation(x, y);
                     return;
                 }
             }
+            // 単一モニタ: オーナーのスクリーンの右半分に配置してメイン (左半分想定) を隠さない。
+            Rectangle sb = (primary != null ? primary : screens[0])
+                    .getDefaultConfiguration().getBounds();
+            int w = Math.min(1000, Math.max(560, sb.width / 2 - 24));
+            int h = Math.min(900, Math.max(480, sb.height - 96));
+            frame.setSize(w, h);
+            int x = sb.x + sb.width - w - 16 - cascade;
+            int y = sb.y + 40 + cascade;
+            frame.setLocation(Math.max(sb.x, x), Math.max(sb.y, y));
+            return;
         } catch (RuntimeException ignore) {
             // ヘッドレス/情報取得失敗時は下のフォールバックへ。
         }
-        // 単一モニタ: メインウィンドウから右下へずらして重なりを避ける。
-        int offset = 40 + windows.size() * 28;
+        // 最終フォールバック (スクリーン情報が取れないとき)。
+        frame.setSize(1000, 760);
         if (owner != null) {
-            frame.setLocation(owner.getX() + offset, owner.getY() + offset);
+            frame.setLocation(owner.getX() + 40 + cascade, owner.getY() + 40 + cascade);
         } else {
             frame.setLocationByPlatform(true);
         }

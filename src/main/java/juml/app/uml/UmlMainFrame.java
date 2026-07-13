@@ -168,13 +168,14 @@ public class UmlMainFrame extends JFrame {
         }
         // 図タブを「別ウィンドウ」へ切り出す仕組み (2 画面で確認しながら作業できるように)。
         // 解析キャッシュだけ共有し、各ウィンドウは独立した DiagramTabPane を持つ。
-        detachedWindows = new DetachedDiagramWindows(cache, state, this,
+        detachedWindows = new DetachedDiagramWindows(cache, this,
                 () -> {
                     Setting s = Main.getSetting();
                     return s == null || s.isAutoFitOnRender();
                 },
                 splitSetting != null ? splitSetting.getMaxDiagramTabs() : 20,
-                splitSetting != null ? splitSetting.getRenderedTabs() : 4);
+                splitSetting != null ? splitSetting.getRenderedTabs() : 4,
+                tabPane.notesBinder());
         tabPane.setOnMoveToNewWindow(detachedWindows::moveToNewWindow);
         add(statusBar.getComponent(), BorderLayout.SOUTH);
         setGlassPane(loadingOverlay);
