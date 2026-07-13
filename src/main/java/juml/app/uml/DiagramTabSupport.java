@@ -85,6 +85,57 @@ final class DiagramTabSupport {
         }
     }
 
+    // ------------------------------------------------------------------------
+    // レイアウト系タブ (LAYOUT / LAYOUT_SCREEN / LAYOUT_RENDER) のキー・ラベル・リクエスト。
+    // タブ上部の切替バーでこの 3 図種を同じレイアウトファイルのまま行き来するために使う。
+    // openLayout*Diagram (DiagramController) が生成するキー/ラベルと必ず一致させること。
+    // ------------------------------------------------------------------------
+
+    /** レイアウト系タブのキー接頭辞 ({@code "LAYOUT:"} 等)。 */
+    static String layoutTabKeyPrefix(DiagramKind kind) {
+        switch (kind) {
+            case LAYOUT_SCREEN: return "LAYOUT_SCREEN:";
+            case LAYOUT_RENDER: return "LAYOUT_RENDER:";
+            default:            return "LAYOUT:";
+        }
+    }
+
+    /** {@code layoutKey} に対応するレイアウト系タブのキー。 */
+    static String layoutTabKey(DiagramKind kind, String layoutKey) {
+        return layoutTabKeyPrefix(kind) + layoutKey;
+    }
+
+    /** レイアウトキー ({@code module::sourceSet::qualifier::fileName}) の末尾要素 (ファイル名)。 */
+    static String layoutShortName(String layoutKey) {
+        if (layoutKey == null) {
+            return "";
+        }
+        int sep = layoutKey.lastIndexOf("::");
+        return sep >= 0 ? layoutKey.substring(sep + 2) : layoutKey;
+    }
+
+    /** レイアウト系タブのヘッダラベル (図種で {@code (screen)}/{@code (render)} を付す)。 */
+    static String layoutTabLabel(DiagramKind kind, String layoutKey) {
+        String base = layoutShortName(layoutKey);
+        switch (kind) {
+            case LAYOUT_SCREEN: return base + " (screen)";
+            case LAYOUT_RENDER: return base + " (render)";
+            default:            return base;
+        }
+    }
+
+    /** レイアウト系タブの {@link DiagramRequest} (文言 locale を引き継ぐ)。 */
+    static DiagramRequest layoutRequest(DiagramKind kind, String layoutKey, String stringLocale) {
+        DiagramRequest base;
+        switch (kind) {
+            case LAYOUT_SCREEN: base = DiagramRequest.forLayoutScreen(layoutKey, true); break;
+            case LAYOUT_RENDER: base = DiagramRequest.forLayoutRender(layoutKey, true); break;
+            default:            base = DiagramRequest.forLayout(layoutKey, true); break;
+        }
+        return stringLocale != null && !stringLocale.isEmpty()
+                ? base.withStringLocale(stringLocale) : base;
+    }
+
     /**
      * 図タブの PlantUML を指定形式でファイル保存する (右クリック/エクスポート用)。
      * {@code preview} に付箋メモがあれば、PNG/SVG にはそれを含めて「見たまま」を保存する。

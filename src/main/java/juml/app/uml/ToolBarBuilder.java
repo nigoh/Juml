@@ -39,6 +39,21 @@ public final class ToolBarBuilder {
             DiagramKind.CLASS, DiagramKind.COMMON);
     public static final EnumSet<DiagramKind> DIAGRAMS_METHOD = EnumSet.of(
             DiagramKind.SEQUENCE, DiagramKind.ACTIVITY, DiagramKind.CALLGRAPH);
+    /**
+     * 同一レイアウトファイルを題材とする 3 図種。レイアウト図タブ上部の切替バー
+     * ({@link DiagramTabPane} の layoutBar) で「レイアウト ⇄ 画面 ⇄ 実寸」を
+     * その場で行き来する対象。{@link #LAYOUT} を単一の入口として残し、
+     * 画面/実寸 ({@link #LAYOUT_VARIANT_HIDDEN}) はトップメニュー/ツールバーから外す。
+     */
+    public static final EnumSet<DiagramKind> DIAGRAMS_LAYOUT = EnumSet.of(
+            DiagramKind.LAYOUT, DiagramKind.LAYOUT_SCREEN, DiagramKind.LAYOUT_RENDER);
+    /**
+     * レイアウト図タブ上部の切替バーへ一本化したため、トップメニュー/ツールバーからは
+     * 外す図種 (画面/実寸)。入口は {@link #LAYOUT} 1 つに集約し、開いた後は切替バーで
+     * 画面/実寸へ切り替える。
+     */
+    public static final EnumSet<DiagramKind> LAYOUT_VARIANT_HIDDEN = EnumSet.of(
+            DiagramKind.LAYOUT_SCREEN, DiagramKind.LAYOUT_RENDER);
     public static final EnumSet<DiagramKind> DIAGRAMS_ANDROID = EnumSet.of(
             DiagramKind.MANIFEST, DiagramKind.COMPONENT, DiagramKind.SCREEN_FLOW,
             DiagramKind.SOONG, DiagramKind.BUILD_NINJA, DiagramKind.INTERMEDIATES);
@@ -171,7 +186,8 @@ public final class ToolBarBuilder {
      * 描画時にここでフィルタする。
      */
     private static final EnumSet<DiagramKind> TOOLBAR_HIDDEN_KINDS = EnumSet.of(
-            DiagramKind.SEQUENCE, DiagramKind.ACTIVITY, DiagramKind.CALLGRAPH);
+            DiagramKind.SEQUENCE, DiagramKind.ACTIVITY, DiagramKind.CALLGRAPH,
+            DiagramKind.LAYOUT_SCREEN, DiagramKind.LAYOUT_RENDER);
 
     private JToolBar buildDiagramKindToolBar(EnumMap<DiagramKind, JToggleButton> toggles,
                                              javax.swing.ButtonGroup group) {

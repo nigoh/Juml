@@ -324,8 +324,10 @@ public final class DiagramService {
                                   DependencyJarIndex depIndex) {
             AndroidLayoutInfo layout = lookupLayout(request, analysis);
             PlantUmlLayoutScreenDiagram.Options o = new PlantUmlLayoutScreenDiagram.Options();
-            // @string/foo をプロジェクトの strings.xml で実文言へ解決する
-            o.stringResolver = analysis::resolveString;
+            // @string/foo をプロジェクトの strings.xml で実文言へ解決する。
+            // 図タブで選んだ文言 locale (例: ja) があればその言語を優先する。
+            final String screenLocale = request.getStringLocale();
+            o.stringResolver = ref -> analysis.resolveString(ref, screenLocale);
             return PlantUmlLayoutScreenDiagram.generate(layout, o);
     }
 
@@ -342,7 +344,9 @@ public final class DiagramService {
             AndroidLayoutInfo layout = lookupLayout(request, analysis);
             juml.core.formats.android.render.AndroidLayoutSvgRenderer.Options o =
                     new juml.core.formats.android.render.AndroidLayoutSvgRenderer.Options();
-            o.stringResolver = analysis::resolveString;
+            // 図タブで選んだ文言 locale (例: ja) があればその言語で @string を解決する。
+            final String renderLocale = request.getStringLocale();
+            o.stringResolver = ref -> analysis.resolveString(ref, renderLocale);
             return juml.core.formats.android.render.AndroidLayoutSvgRenderer.render(layout, o);
     }
 

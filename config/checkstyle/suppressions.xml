@@ -31,6 +31,11 @@
          増えるたびにコンストラクタ引数が増える。同上の理由で ParameterNumber を許可する。 -->
     <suppress checks="ParameterNumber" files="StyleSettingsDialog\.java" />
 
+    <!-- DiagramRequest は図種ごとの入力 (起点・レイアウトキー・スコープ・文言 locale 等) を
+         束ねる不変リクエストで、図種が増えるたびに正準コンストラクタの引数が増える。
+         意味のある分割が難しいため ParameterNumber を許可する。 -->
+    <suppress checks="ParameterNumber" files="DiagramRequest\.java" />
+
     <!-- UmlMainFrame は各図機能を配線する中枢クラスで、機能追加のたびに数行ずつ増える。
          分割するより配線を 1 箇所に集約した方が追いやすいため FileLength を許可する。 -->
     <suppress checks="FileLength" files="UmlMainFrame\.java" />

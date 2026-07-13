@@ -158,6 +158,67 @@ public class AndroidProjectAnalysis {
     }
 
     /**
+     * {@code @string/foo} を、指定 locale (values qualifier) を優先して解決する。
+     *
+     * <p>実寸/画面図で「文言を選んだ言語で表示する」ために使う。
+     * {@code preferredQualifier} に一致する {@code values-<qualifier>/strings.xml}
+     * (例: {@code "ja"}) に定義があればそれを返し、無ければデフォルト locale 優先の
+     * {@link #resolveString(String)} へフォールバックする。{@code preferredQualifier}
+     * が null/空ならデフォルト解決と同じ。</p>
+     */
+    public String resolveString(String ref, String preferredQualifier) {
+        if (ref == null || ref.isEmpty()) {
+            return null;
+        }
+        if (preferredQualifier != null && !preferredQualifier.isEmpty()) {
+            String name = ref;
+            int slash = name.lastIndexOf('/');
+            if (slash >= 0) {
+                name = name.substring(slash + 1);
+            }
+            int dot = name.lastIndexOf('.');
+            if (dot >= 0) {
+                name = name.substring(dot + 1);
+            }
+            for (AndroidStringResources sr : allStringResources()) {
+                if (preferredQualifier.equals(sr.getConfigQualifier())) {
+                    String v = sr.getString(name);
+                    if (v != null) {
+                        return v;
+                    }
+                }
+            }
+        }
+        return resolveString(ref);
+    }
+
+    /**
+     * 文字列リソース (strings.xml 等) に実在する values qualifier の一覧を返す。
+     *
+     * <p>デフォルト locale を表す空文字列 {@code ""} を先頭に、以降は qualifier
+     * (例: {@code "ja"}, {@code "en-rUS"}, {@code "night"}) を昇順で並べた不変リスト。
+     * 実寸/画面図の「文言の言語」ドロップダウンの選択肢に使う。1 つも無ければ空リスト。</p>
+     */
+    public List<String> availableStringLocales() {
+        java.util.SortedSet<String> qualifiers = new java.util.TreeSet<>();
+        boolean hasDefault = false;
+        for (AndroidStringResources sr : allStringResources()) {
+            String q = sr.getConfigQualifier();
+            if (q == null || q.isEmpty()) {
+                hasDefault = true;
+            } else {
+                qualifiers.add(q);
+            }
+        }
+        List<String> out = new ArrayList<>();
+        if (hasDefault || !qualifiers.isEmpty()) {
+            out.add("");
+        }
+        out.addAll(qualifiers);
+        return out;
+    }
+
+    /**
      * モジュール名 → そのモジュールに含まれるスタイル/テーマ定義ファイルのリスト。
      * {@link StyleResourceParser} 経由でパース済み。空 Map で初期化されるので null にはならない。
      */
