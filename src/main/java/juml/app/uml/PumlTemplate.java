@@ -81,21 +81,20 @@ public enum PumlTemplate {
 
     // ----- ふるまい (Behavior) ---------------------------------------------
 
-    /** シーケンス図: 参加者 + 呼び出し/応答 + alt/loop のサンプル。 */
+    /**
+     * シーケンス図: 参加者 2 つ + 呼び出し/応答のサンプル。
+     *
+     * <p>図形デザイナー (Design タブ) が扱える基本要素だけにとどめる。alt/loop などの
+     * 複合フラグメントはデザイナーが未対応でタブがロックされるため、それらは
+     * スニペット/スケルトンパレット (R2) から挿入させる。</p>
+     */
     SEQUENCE(Category.BEHAVIOR, "template.sequence", String.join("\n",
             "@startuml",
             "actor User",
             "participant Service",
-            "database DB",
             "User -> Service : request()",
             "activate Service",
-            "alt success",
-            "  Service -> DB : query",
-            "  DB --> Service : rows",
-            "  Service --> User : response",
-            "else failure",
-            "  Service --> User : error",
-            "end",
+            "Service --> User : response",
             "deactivate Service",
             "@enduml",
             "")),
