@@ -264,21 +264,7 @@ public final class MenuBarBuilder {
             @Override public void menuCanceled(javax.swing.event.MenuEvent e) {}
         });
         // 自由編集 PlantUML エディタ (新規/開く/保存)。プロジェクト未ロードでも使える。
-        JMenu newUml = null;
-        if (cb.newUmlDiagram != null) {
-            newUml = new JMenu(Messages.get("menubar.file.newUml"));
-            newUml.setMnemonic(KeyEvent.VK_N);
-            newUml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.NOTE_ADD));
-            for (PumlTemplate t : PumlTemplate.values()) {
-                JMenuItem item = new JMenuItem(t.displayName());
-                if (t == PumlTemplate.CLASS) {
-                    item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
-                }
-                final PumlTemplate template = t;
-                item.addActionListener(e -> cb.newUmlDiagram.accept(template));
-                newUml.add(item);
-            }
-        }
+        JMenu newUml = buildNewUmlMenu();
         JMenuItem openPuml = null;
         if (cb.openPumlFile != null) {
             openPuml = new JMenuItem(Messages.get("menubar.file.openPuml"));
@@ -388,6 +374,37 @@ public final class MenuBarBuilder {
         m.addSeparator();
         m.add(exit);
         return m;
+    }
+
+    /**
+     * 「新規」図種メニューを構築する。テンプレートをカテゴリ別サブメニューへ束ね、
+     * フラットな長い一覧を避けて目的の図種を見つけやすくする (Ctrl+N のアクセラレータは
+     * 入れ子でも有効に働く)。{@code cb.newUmlDiagram} が未配線なら null を返す。
+     */
+    private JMenu buildNewUmlMenu() {
+        if (cb.newUmlDiagram == null) {
+            return null;
+        }
+        JMenu newUml = new JMenu(Messages.get("menubar.file.newUml"));
+        newUml.setMnemonic(KeyEvent.VK_N);
+        newUml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.NOTE_ADD));
+        for (PumlTemplate.Category cat : PumlTemplate.Category.values()) {
+            JMenu group = new JMenu(cat.displayName());
+            for (PumlTemplate t : PumlTemplate.values()) {
+                if (t.category() != cat) {
+                    continue;
+                }
+                JMenuItem item = new JMenuItem(t.displayName());
+                if (t == PumlTemplate.CLASS) {
+                    item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
+                }
+                final PumlTemplate template = t;
+                item.addActionListener(e -> cb.newUmlDiagram.accept(template));
+                group.add(item);
+            }
+            newUml.add(group);
+        }
+        return newUml;
     }
 
     /**
