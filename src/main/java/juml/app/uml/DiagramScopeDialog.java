@@ -48,6 +48,7 @@ public final class DiagramScopeDialog extends JDialog {
     private final JList<String> excludePackageList;
     private final JList<String> moduleList;
     private final JTextField regexField;
+    private final JTextField excludeRegexField;
     private final JSpinner maxClassesSpinner;
     private final JSpinner neighborHopsSpinner;
     private final JComboBox<DiagramPreset> presetCombo;
@@ -74,6 +75,8 @@ public final class DiagramScopeDialog extends JDialog {
         moduleList.setVisibleRowCount(5);
         regexField = new JTextField(20);
         regexField.setToolTipText(Messages.get("dlg.scope.regexTip"));
+        excludeRegexField = new JTextField(20);
+        excludeRegexField.setToolTipText(Messages.get("dlg.scope.excludeRegexTip"));
         maxClassesSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100_000, 50));
         maxClassesSpinner.setToolTipText(Messages.get("dlg.scope.maxClassesTip"));
         neighborHopsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 10, 1));
@@ -100,6 +103,9 @@ public final class DiagramScopeDialog extends JDialog {
             selectAll(moduleList, initial.getIncludedModules());
             if (initial.getClassNameRegex() != null) {
                 regexField.setText(initial.getClassNameRegex().pattern());
+            }
+            if (initial.getExcludeClassNameRegex() != null) {
+                excludeRegexField.setText(initial.getExcludeClassNameRegex().pattern());
             }
             maxClassesSpinner.setValue(initial.getMaxClasses());
             neighborHopsSpinner.setValue(initial.getNeighborHops());
@@ -185,7 +191,12 @@ public final class DiagramScopeDialog extends JDialog {
         c.gridy = 8;
         p.add(regexField, c);
 
-        c.gridy = 9;
+        c.gridy = 9; c.weighty = 0;
+        p.add(new JLabel(Messages.get("dlg.scope.excludeClassRegex")), c);
+        c.gridy = 10;
+        p.add(excludeRegexField, c);
+
+        c.gridy = 11;
         JPanel row = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
         row.add(new JLabel(Messages.get("dlg.scope.maxClasses")));
         row.add(Box.createHorizontalStrut(4));
@@ -196,7 +207,7 @@ public final class DiagramScopeDialog extends JDialog {
         row.add(neighborHopsSpinner);
         p.add(row, c);
 
-        c.gridy = 10;
+        c.gridy = 12;
         JPanel relations = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
         relations.add(new JLabel(Messages.get("dlg.scope.relations")));
         relations.add(Box.createHorizontalStrut(4));
@@ -205,7 +216,7 @@ public final class DiagramScopeDialog extends JDialog {
         relations.add(usageCheckbox);
         p.add(relations, c);
 
-        c.gridy = 11;
+        c.gridy = 13;
         JPanel vis = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
         vis.add(new JLabel(Messages.get("dlg.scope.visibility")));
         vis.add(Box.createHorizontalStrut(4));
@@ -214,7 +225,7 @@ public final class DiagramScopeDialog extends JDialog {
         vis.add(excludeExternalCheckbox);
         p.add(vis, c);
 
-        c.gridy = 12;
+        c.gridy = 14;
         JPanel mode = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
         mode.add(new JLabel(Messages.get("dlg.scope.parseMode")));
         mode.add(Box.createHorizontalStrut(4));
@@ -295,6 +306,22 @@ public final class DiagramScopeDialog extends JDialog {
                         Messages.get("dlg.scope.invalidRegexTitle"),
                         javax.swing.JOptionPane.WARNING_MESSAGE);
                 regexField.requestFocusInWindow();
+                return null; // 閉じずに修正させる
+            }
+        }
+        String excludeRegex = excludeRegexField.getText().trim();
+        if (!excludeRegex.isEmpty()) {
+            try {
+                b.excludeClassNameRegex(excludeRegex);
+            } catch (java.util.regex.PatternSyntaxException ex) {
+                juml.util.AppLog.warn(juml.util.ErrorCode.DIAG_002, "DiagramScopeDialog",
+                        "Invalid exclude class-name regex in scope filter: " + excludeRegex, ex);
+                javax.swing.JOptionPane.showMessageDialog(this,
+                        java.text.MessageFormat.format(
+                                Messages.get("dlg.scope.invalidRegex"), ex.getMessage()),
+                        Messages.get("dlg.scope.invalidRegexTitle"),
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
+                excludeRegexField.requestFocusInWindow();
                 return null; // 閉じずに修正させる
             }
         }

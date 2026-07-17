@@ -53,4 +53,20 @@ public class UmlOverridesFocusColorTest {
         assertEquals("com.example.Foo",
                 apply("-c", "--focus", "com.example.Foo").focusClass);
     }
+
+    @Test
+    public void excludeNameRegexFlagIsCaptured() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c", "--exclude-name-regex", ".*(Test|Impl)$" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertEquals(".*(Test|Impl)$", ov.excludeNameRegex);
+    }
+
+    @Test
+    public void excludeNameRegexDefaultsEmpty() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertEquals("", ov.excludeNameRegex);
+    }
 }

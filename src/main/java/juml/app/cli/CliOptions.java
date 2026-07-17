@@ -56,6 +56,7 @@ public final class CliOptions {
             new Option(null, "mark-external-supertypes", false);
     public final Option noVisibilityIcons = new Option(null, "no-visibility-icons", false);
     public final Option excludePackage = new Option(null, "exclude-package", true);
+    public final Option excludeNameRegex = new Option(null, "exclude-name-regex", true);
     public final Option colorRelations = new Option(null, "color-relations", false);
     public final Option hideEmptyMembers = new Option(null, "hide-empty-members", false);
     public final Option hideUnlinked = new Option(null, "hide-unlinked", false);
@@ -108,7 +109,8 @@ public final class CliOptions {
             sequenceDiagrams, jetpack, perFolder,
             preset, noFields, noMethods, publicOnly,
             excludeExternal, markExternalSupertypes, noVisibilityIcons,
-            excludePackage, colorRelations, hideEmptyMembers, hideUnlinked,
+            excludePackage, excludeNameRegex, colorRelations,
+            hideEmptyMembers, hideUnlinked,
             focus, relation, mode,
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
@@ -215,6 +217,8 @@ public final class CliOptions {
                 + " instead of color icons in the class diagram.");
         System.err.println("  --exclude-package PREFIX: Exclude classes whose package"
                 + " matches PREFIX (may be specified multiple times).");
+        System.err.println("  --exclude-name-regex REGEX: Exclude classes whose simple or"
+                + " qualified name matches the Java regex, e.g. '.*(Test|Impl)$'.");
         System.err.println("  --relation inherit,impl,use: Limit relation lines to the"
                 + " listed kinds (CSV).");
         System.err.println("  --color-relations: Color-code class-diagram relations"

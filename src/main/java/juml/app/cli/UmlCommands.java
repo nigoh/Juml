@@ -101,6 +101,29 @@ public final class UmlCommands {
             }
             infos = filtered;
         }
+        // クラス図モードで --exclude-name-regex が指定されていれば名前一致クラスを落とす。
+        if (classDiagram && overrides != null
+                && overrides.excludeNameRegex != null
+                && !overrides.excludeNameRegex.isEmpty()) {
+            java.util.regex.Pattern ex;
+            try {
+                ex = java.util.regex.Pattern.compile(overrides.excludeNameRegex);
+            } catch (java.util.regex.PatternSyntaxException pse) {
+                System.err.println("Invalid --exclude-name-regex value: "
+                        + overrides.excludeNameRegex + " (" + pse.getMessage() + ")");
+                System.exit(1);
+                return;
+            }
+            java.util.List<juml.core.formats.uml.JavaClassInfo> filtered =
+                    new java.util.ArrayList<>(infos.size());
+            for (juml.core.formats.uml.JavaClassInfo c : infos) {
+                if (!(ex.matcher(c.getSimpleName()).find()
+                        || ex.matcher(c.getQualifiedName()).find())) {
+                    filtered.add(c);
+                }
+            }
+            infos = filtered;
+        }
 
         String output;
         if (sequenceEntry != null && !spec.isEmpty()) {

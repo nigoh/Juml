@@ -601,7 +601,8 @@ public final class DiagramService {
      * スコープに従って ClassInfo リストを絞り込む。
      *
      * <p>順序: module → package include → package exclude → external libraries →
-     * regex → seed + BFS by neighborHops → 個別クラス除外 (excludedQualifiedNames)。
+     * regex (include) → regex (exclude) → seed + BFS by neighborHops →
+     * 個別クラス除外 (excludedQualifiedNames)。
      * maxClasses 上限は呼び出し側 (PlantUmlClassDiagram.Options.maxClasses) で適用する。</p>
      */
     static List<JavaClassInfo> applyScope(List<JavaClassInfo> classes, DiagramScope scope,
@@ -678,13 +679,26 @@ public final class DiagramService {
             result = next;
         }
 
-        // 3. regex フィルタ
+        // 3. regex フィルタ (include)
         Pattern p = scope.getClassNameRegex();
         if (p != null) {
             List<JavaClassInfo> next = new ArrayList<>(result.size());
             for (JavaClassInfo c : result) {
                 if (p.matcher(c.getSimpleName()).find()
                         || p.matcher(c.getQualifiedName()).find()) {
+                    next.add(c);
+                }
+            }
+            result = next;
+        }
+
+        // 3.5. regex フィルタ (exclude): 名前が一致したクラスを落とす (*Test / *Impl 等のノイズ除去)。
+        Pattern ex = scope.getExcludeClassNameRegex();
+        if (ex != null) {
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                if (!(ex.matcher(c.getSimpleName()).find()
+                        || ex.matcher(c.getQualifiedName()).find())) {
                     next.add(c);
                 }
             }

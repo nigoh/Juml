@@ -47,6 +47,8 @@ public final class DiagramScope {
     private final boolean excludeExternalLibraries;
     private final Set<String> externalPackagePrefixes;
     private final Pattern classNameRegex;
+    /** simpleName/qualifiedName のいずれかに一致したら除外する正規表現 (null で無効)。 */
+    private final Pattern excludeClassNameRegex;
     private final Set<String> seedQualifiedNames;
     private final int neighborHops;
     private final int maxClasses;
@@ -69,6 +71,7 @@ public final class DiagramScope {
                 ? ExternalPackageMatcher.DEFAULT_PREFIXES
                 : Collections.unmodifiableSet(new LinkedHashSet<>(b.externalPackagePrefixes));
         this.classNameRegex = b.classNameRegex;
+        this.excludeClassNameRegex = b.excludeClassNameRegex;
         this.seedQualifiedNames = Collections.unmodifiableSet(
                 new LinkedHashSet<>(b.seedQualifiedNames));
         this.neighborHops = Math.max(0, b.neighborHops);
@@ -109,6 +112,11 @@ public final class DiagramScope {
 
     public Pattern getClassNameRegex() {
         return classNameRegex;
+    }
+
+    /** simpleName/qualifiedName のいずれかに一致したら除外する正規表現 (null で無効)。 */
+    public Pattern getExcludeClassNameRegex() {
+        return excludeClassNameRegex;
     }
 
     public Set<String> getSeedQualifiedNames() {
@@ -153,6 +161,7 @@ public final class DiagramScope {
                 && excludedQualifiedNames.isEmpty()
                 && !excludeExternalLibraries
                 && classNameRegex == null
+                && excludeClassNameRegex == null
                 && seedQualifiedNames.isEmpty()
                 && maxClasses <= 0
                 && relationKinds.containsAll(EnumSet.allOf(RelationKind.class))
@@ -174,6 +183,7 @@ public final class DiagramScope {
         b.excludeExternalLibraries = excludeExternalLibraries;
         b.externalPackagePrefixes.addAll(externalPackagePrefixes);
         b.classNameRegex = classNameRegex;
+        b.excludeClassNameRegex = excludeClassNameRegex;
         b.seedQualifiedNames.addAll(seedQualifiedNames);
         b.neighborHops = neighborHops;
         b.maxClasses = maxClasses;
@@ -194,6 +204,7 @@ public final class DiagramScope {
         private boolean excludeExternalLibraries;
         private final Set<String> externalPackagePrefixes = new LinkedHashSet<>();
         private Pattern classNameRegex;
+        private Pattern excludeClassNameRegex;
         private final Set<String> seedQualifiedNames = new LinkedHashSet<>();
         private int neighborHops;
         private int maxClasses;
@@ -289,6 +300,19 @@ public final class DiagramScope {
 
         public Builder classNameRegex(String regex) {
             this.classNameRegex = (regex == null || regex.isEmpty())
+                    ? null : Pattern.compile(regex);
+            return this;
+        }
+
+        /** simpleName/qualifiedName のいずれかに一致したクラスを除外する正規表現。 */
+        public Builder excludeClassNameRegex(Pattern p) {
+            this.excludeClassNameRegex = p;
+            return this;
+        }
+
+        /** {@link #excludeClassNameRegex(Pattern)} の文字列版 (空/null で無効)。 */
+        public Builder excludeClassNameRegex(String regex) {
+            this.excludeClassNameRegex = (regex == null || regex.isEmpty())
                     ? null : Pattern.compile(regex);
             return this;
         }

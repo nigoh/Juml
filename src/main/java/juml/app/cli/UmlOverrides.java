@@ -50,6 +50,8 @@ public final class UmlOverrides {
     Integer commentMaxLengthOverride; // null = preset 既定をそのまま使う
     Set<String> hiddenAnnotationsOverride; // null = preset 既定をそのまま使う
     public Set<String> excludedPackages = new LinkedHashSet<>();
+    /** クラス名 (単純名/完全修飾名) が一致したら除外する正規表現 (空で無効)。 */
+    public String excludeNameRegex = "";
     public UmlGenerator.ParseMode parseMode = UmlGenerator.ParseMode.FULL;
 
     public Integer seqDepth;
@@ -271,13 +273,16 @@ public final class UmlOverrides {
         o.hiddenAnnotationsOverride = set;
     }
 
-    /** {@code --exclude-package} (複数指定可)。 */
+    /** {@code --exclude-package} (複数指定可) と {@code --exclude-name-regex}。 */
     private static void applyExcludePackages(UmlOverrides o, CliOptions options) {
         List<String> argList = options.excludePackage.getArguments();
         for (String pkg : argList) {
             if (pkg != null && !pkg.isEmpty()) {
                 o.excludedPackages.add(pkg);
             }
+        }
+        if (!options.excludeNameRegex.getArguments().isEmpty()) {
+            o.excludeNameRegex = options.excludeNameRegex.getArguments().getLast();
         }
     }
 

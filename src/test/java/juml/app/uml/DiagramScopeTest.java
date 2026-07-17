@@ -106,6 +106,46 @@ public class DiagramScopeTest {
     }
 
     @Test
+    public void testExcludeClassNameRegexFilters() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClassNameRegex(".*(Test|Impl)$").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "FooService"),
+                cls("p", "FooServiceImpl"),
+                cls("p", "FooServiceTest"),
+                cls("p", "Bar"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("FooService", out.get(0).getSimpleName());
+        assertEquals("Bar", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testIncludeAndExcludeRegexCompose() {
+        // include で *Service に絞り、exclude で *Impl を落とす
+        DiagramScope s = DiagramScope.builder()
+                .classNameRegex(".*Service.*")
+                .excludeClassNameRegex(".*Impl$")
+                .build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "AService"),
+                cls("p", "AServiceImpl"),
+                cls("p", "Other"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(1, out.size());
+        assertEquals("AService", out.get(0).getSimpleName());
+    }
+
+    @Test
+    public void testExcludeRegexInIsEmptyAndToBuilder() {
+        assertFalse(DiagramScope.builder().excludeClassNameRegex(".*X$").build().isEmpty());
+        DiagramScope s = DiagramScope.builder().excludeClassNameRegex(".*X$").build();
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getExcludeClassNameRegex() != null);
+        assertEquals(".*X$", copy.getExcludeClassNameRegex().pattern());
+    }
+
+    @Test
     public void testCombinedFilters() {
         DiagramScope s = DiagramScope.builder()
                 .includePackage("com.car")
