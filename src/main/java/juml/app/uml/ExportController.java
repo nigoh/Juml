@@ -51,6 +51,10 @@ final class ExportController {
         savePuml.addActionListener(e -> exportAs(UmlExporter.Format.PUML));
         popup.add(savePuml);
         popup.addSeparator();
+        JMenuItem copyImage = new JMenuItem(Messages.get("export.copyImage"));
+        copyImage.addActionListener(e -> ClipboardImageExporter.copy(
+                activePreview.get(), state.currentPuml, parent, status::setText));
+        popup.add(copyImage);
         JMenuItem copySvg = new JMenuItem(Messages.get("export.copySvg"));
         copySvg.addActionListener(e -> copySvgToClipboard());
         popup.add(copySvg);

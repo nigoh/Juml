@@ -2580,6 +2580,9 @@ public final class DiagramTabPane {
             popup.add(menuItem(Messages.get("export.saveSvg"), () -> exportTabAs(UmlExporter.Format.SVG)));
             popup.add(menuItem(Messages.get("export.savePng"), () -> exportTabAs(UmlExporter.Format.PNG)));
             popup.add(menuItem(Messages.get("export.savePuml"), () -> exportTabAs(UmlExporter.Format.PUML)));
+            popup.add(menuItem(Messages.get("export.copyImage"),
+                    () -> ClipboardImageExporter.copy(previewPanel, renderedPuml,
+                            previewPanel, DiagramTabPane.this::reportStatus)));
             popup.addSeparator();
             popup.add(menuItem(Messages.get("note.menu.addHere"),
                     () -> previewPanel.addNoteAtPanelPoint(event.getPoint())));

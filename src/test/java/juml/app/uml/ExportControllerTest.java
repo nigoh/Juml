@@ -52,12 +52,12 @@ public class ExportControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    public void buildExportPopup_hasFourMenuItems() {
+    public void buildExportPopup_hasFiveMenuItems() {
         JPopupMenu popup = GuiActionRunner.execute(() -> controller.buildExportPopup());
-        // SVG 保存 / PNG 保存 / PUML 保存 / (Separator) / SVG コピー = 4 菜単 + 1 区切り
+        // SVG 保存 / PNG 保存 / PUML 保存 / (Separator) / 画像コピー / SVG コピー = 5 菜単 + 1 区切り
         assertNotNull("buildExportPopup は null を返してはならない", popup);
         List<JMenuItem> items = collectMenuItems(popup);
-        assertEquals("エクスポートポップアップは 4 つのメニュー項目を持つはず", 4, items.size());
+        assertEquals("エクスポートポップアップは 5 つのメニュー項目を持つはず", 5, items.size());
     }
 
     // -------------------------------------------------------------------------
@@ -92,12 +92,23 @@ public class ExportControllerTest {
     }
 
     @Test
-    public void buildExportPopup_fourthItemIsCopySvg() {
+    public void buildExportPopup_fourthItemIsCopyImage() {
         JPopupMenu popup = GuiActionRunner.execute(() -> controller.buildExportPopup());
         List<JMenuItem> items = collectMenuItems(popup);
         assertTrue("4 件目のメニュー項目が存在するはず", items.size() >= 4);
         String label = GuiActionRunner.execute(() -> items.get(3).getText());
-        assertFalse("SVG コピーの項目ラベルが空であってはならない", label == null || label.isEmpty());
+        assertEquals("4 件目は画像コピーであるはず",
+                juml.util.Messages.get("export.copyImage"), label);
+    }
+
+    @Test
+    public void buildExportPopup_fifthItemIsCopySvg() {
+        JPopupMenu popup = GuiActionRunner.execute(() -> controller.buildExportPopup());
+        List<JMenuItem> items = collectMenuItems(popup);
+        assertTrue("5 件目のメニュー項目が存在するはず", items.size() >= 5);
+        String label = GuiActionRunner.execute(() -> items.get(4).getText());
+        assertEquals("5 件目は SVG コピーであるはず",
+                juml.util.Messages.get("export.copySvg"), label);
     }
 
     // -------------------------------------------------------------------------
@@ -116,13 +127,13 @@ public class ExportControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    public void buildExportPopup_withActivePreviewSupplier_hasFourItems() {
+    public void buildExportPopup_withActivePreviewSupplier_hasFiveItems() {
         JLabel statusLabel = GuiActionRunner.execute(() -> new JLabel());
         ExportController ec = GuiActionRunner.execute(
                 () -> new ExportController(null, state, statusLabel, () -> null));
         JPopupMenu popup = GuiActionRunner.execute(() -> ec.buildExportPopup());
         List<JMenuItem> items = collectMenuItems(popup);
-        assertEquals("activePreview 付きコンストラクタでも 4 項目になるはず", 4, items.size());
+        assertEquals("activePreview 付きコンストラクタでも 5 項目になるはず", 5, items.size());
     }
 
     // -------------------------------------------------------------------------
