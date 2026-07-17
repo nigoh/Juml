@@ -341,6 +341,30 @@ public final class DiagramTabPane {
         return t != null ? t.previewPanel : null;
     }
 
+    /** フォーカス中タブの描画済み PlantUML テキスト (未描画/無しは null)。 */
+    public String activeRenderedPuml() {
+        DiagramTab t = activeTab();
+        return t != null ? t.renderedPuml : null;
+    }
+
+    /**
+     * フォーカス中の生成図の PlantUML を、自由編集できる新規 Untitled タブへ複製する
+     * (Edit as PlantUML)。生成図が無い / まだ描画されていない場合は false を返す。
+     * 既にエディタタブがフォーカスされている場合は複製しない (自分自身を複製しても無意味)。
+     */
+    public boolean editActiveAsPuml() {
+        DiagramTab t = activeTab();
+        if (t == null || t.isEditor()) {
+            return false;
+        }
+        String puml = t.renderedPuml;
+        if (puml == null || puml.isEmpty()) {
+            return false;
+        }
+        openPumlEditor(puml, null);
+        return true;
+    }
+
     private DiagramTab activeTab() {
         java.awt.Component sel = tabs.getSelectedComponent();
         return (sel instanceof DiagramTab) ? (DiagramTab) sel : null;

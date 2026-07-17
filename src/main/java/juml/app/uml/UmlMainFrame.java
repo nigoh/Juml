@@ -258,6 +258,7 @@ public class UmlMainFrame extends JFrame {
         mcb.openArchive = this::openArchive;
         mcb.newUmlDiagram = t -> openPumlEditorTab(t.body(), null);
         mcb.openPumlFile = this::openPumlFile;
+        mcb.editActiveAsPuml = this::editActiveAsPuml;
         mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
         mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
         mcb.diffPumlVsSaved = () -> tabPane.showDiffVsSavedForActiveEditor();
@@ -1084,6 +1085,18 @@ public class UmlMainFrame extends JFrame {
     private void openPumlEditorTab(String text, File file) {
         centerCards.showWorkspace();
         tabPane.openPumlEditor(text, file);
+    }
+
+    /**
+     * アクティブな生成図の PlantUML を、自由編集できる新規 Untitled タブへ複製する
+     * (File &gt; Edit as PlantUML)。生成図が無い / 未描画 / 既にエディタタブの場合は
+     * ステータスで案内するだけで何もしない。
+     */
+    private void editActiveAsPuml() {
+        centerCards.showWorkspace();
+        if (!tabPane.editActiveAsPuml()) {
+            status.setText(Messages.get("editAsPuml.unavailable"));
+        }
     }
 
     /** 既存の .puml ファイルを選択して自由編集エディタタブで開く (File メニュー / Welcome)。 */
