@@ -56,7 +56,13 @@ public final class CliOptions {
             new Option(null, "mark-external-supertypes", false);
     public final Option noVisibilityIcons = new Option(null, "no-visibility-icons", false);
     public final Option excludePackage = new Option(null, "exclude-package", true);
+    public final Option excludeNameRegex = new Option(null, "exclude-name-regex", true);
+    public final Option annotation = new Option(null, "annotation", true);
+    public final Option excludeAnnotation = new Option(null, "exclude-annotation", true);
     public final Option colorRelations = new Option(null, "color-relations", false);
+    public final Option hideEmptyMembers = new Option(null, "hide-empty-members", false);
+    public final Option hideUnlinked = new Option(null, "hide-unlinked", false);
+    public final Option colorStereotypes = new Option(null, "color-stereotypes", false);
     public final Option focus = new Option(null, "focus", true);
     public final Option relation = new Option(null, "relation", true);
     public final Option mode = new Option(null, "mode", true);
@@ -106,7 +112,9 @@ public final class CliOptions {
             sequenceDiagrams, jetpack, perFolder,
             preset, noFields, noMethods, publicOnly,
             excludeExternal, markExternalSupertypes, noVisibilityIcons,
-            excludePackage, colorRelations, focus, relation, mode,
+            excludePackage, excludeNameRegex, annotation, excludeAnnotation,
+            colorRelations, hideEmptyMembers, hideUnlinked, colorStereotypes,
+            focus, relation, mode,
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
             vhalFlow, aidlBinding, erDiagram, dataFlow,
@@ -150,7 +158,9 @@ public final class CliOptions {
         System.err.println(
                 "Arguments: [-o file] [-c|-q M|-d|-M|-G|-g|-m|-Q|-A|--summary] [-v] [-h] [input]");
         System.err.println("  No arguments / [input dir]: Launch UML GUI for the project.");
-        System.err.println("  -o path: Save diagram (puml/svg) or report (md) to path."
+        System.err.println("  -o path: Save diagram (puml/svg/png) or report (md) to path."
+                + " Extension decides the format: .svg / .png are rendered with the"
+                + " bundled PlantUML, anything else keeps PlantUML text."
                 + " If path is an existing directory, a command-specific default"
                 + " file name is used inside it.");
         System.err.println("  --include-tests: Include test sources (src/test,"
@@ -210,10 +220,22 @@ public final class CliOptions {
                 + " instead of color icons in the class diagram.");
         System.err.println("  --exclude-package PREFIX: Exclude classes whose package"
                 + " matches PREFIX (may be specified multiple times).");
+        System.err.println("  --exclude-name-regex REGEX: Exclude classes whose simple or"
+                + " qualified name matches the Java regex, e.g. '.*(Test|Impl)$'.");
+        System.err.println("  --annotation CSV: Keep only classes carrying one of the listed"
+                + " class-level annotations (simple names), e.g. 'Entity,RestController'.");
+        System.err.println("  --exclude-annotation CSV: Drop classes carrying any of the listed"
+                + " class-level annotations, e.g. 'Generated,Deprecated'.");
         System.err.println("  --relation inherit,impl,use: Limit relation lines to the"
                 + " listed kinds (CSV).");
         System.err.println("  --color-relations: Color-code class-diagram relations"
                 + " (inherit=green / implement=blue / use=gray dashed).");
+        System.err.println("  --hide-empty-members: Collapse empty field/method"
+                + " compartments in the class diagram (hide empty members).");
+        System.err.println("  --hide-unlinked: Drop classes with no relation line from the"
+                + " class diagram (remove @unlinked) to keep only connected structure.");
+        System.err.println("  --color-stereotypes: Tint class boxes by stereotype"
+                + " (CarManager / Activity / aidl / record etc.) with a fixed pastel palette.");
         System.err.println("  --focus FQN: Focus the class diagram on a class; emphasize it"
                 + " and its 1-hop neighbors, dim the rest (FQN or simple name).");
         System.err.println("  --mode headers-only|full: Use the lightweight headers-only"

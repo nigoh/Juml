@@ -552,6 +552,9 @@ public final class DiagramService {
             o.excludeExternalLibraries = s.isClassDiagramExcludeExternal();
             o.markExternalSupertypes = s.isClassDiagramMarkExternalSupertypes();
             o.colorCodeRelations = s.isClassDiagramColorCodeRelations();
+            o.hideEmptyMembers = s.isClassDiagramHideEmptyMembers();
+            o.hideUnlinkedClasses = s.isClassDiagramHideUnlinked();
+            o.colorCodeStereotypes = s.isClassDiagramColorCodeStereotypes();
             o.commentMaxLength = s.getClassDiagramCommentMaxLength();
             String csv = s.getClassDiagramHiddenAnnotations();
             if (csv != null) {
@@ -599,7 +602,8 @@ public final class DiagramService {
      * スコープに従って ClassInfo リストを絞り込む。
      *
      * <p>順序: module → package include → package exclude → external libraries →
-     * regex → seed + BFS by neighborHops。
+     * annotation (include/exclude) → regex (include) → regex (exclude) →
+     * seed + BFS by neighborHops → 個別クラス除外 (excludedQualifiedNames)。
      * maxClasses 上限は呼び出し側 (PlantUmlClassDiagram.Options.maxClasses) で適用する。</p>
      */
     static List<JavaClassInfo> applyScope(List<JavaClassInfo> classes, DiagramScope scope,
@@ -676,7 +680,28 @@ public final class DiagramService {
             result = next;
         }
 
-        // 3. regex フィルタ
+        // 2.7. アノテーションフィルタ: クラスレベル @Annotation の単純名で include / exclude する。
+        if (!scope.getIncludedAnnotations().isEmpty() || !scope.getExcludedAnnotations().isEmpty()) {
+            Set<String> inc = scope.getIncludedAnnotations();
+            Set<String> exc = scope.getExcludedAnnotations();
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                Set<String> names = new java.util.HashSet<>();
+                for (String a : c.getAnnotations()) {
+                    names.add(annotationSimpleName(a));
+                }
+                if (!inc.isEmpty() && java.util.Collections.disjoint(names, inc)) {
+                    continue; // include 指定があり、どれも持たないクラスは落とす
+                }
+                if (!exc.isEmpty() && !java.util.Collections.disjoint(names, exc)) {
+                    continue; // exclude 指定のいずれかを持つクラスは落とす
+                }
+                next.add(c);
+            }
+            result = next;
+        }
+
+        // 3. regex フィルタ (include)
         Pattern p = scope.getClassNameRegex();
         if (p != null) {
             List<JavaClassInfo> next = new ArrayList<>(result.size());
@@ -689,13 +714,56 @@ public final class DiagramService {
             result = next;
         }
 
+        // 3.5. regex フィルタ (exclude): 名前が一致したクラスを落とす (*Test / *Impl 等のノイズ除去)。
+        Pattern ex = scope.getExcludeClassNameRegex();
+        if (ex != null) {
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                if (!(ex.matcher(c.getSimpleName()).find()
+                        || ex.matcher(c.getQualifiedName()).find())) {
+                    next.add(c);
+                }
+            }
+            result = next;
+        }
+
         // 4. seed + neighborHops BFS
         if (!scope.getSeedQualifiedNames().isEmpty()) {
             result = bfsNeighbors(result, scope.getSeedQualifiedNames(),
                     scope.getNeighborHops());
         }
 
+        // 5. 個別クラス除外 (プレビュー右クリックの「このクラスを隠す」)。
+        //    seed BFS より後段に置くことで、近傍展開で隠したクラスが復活しないようにする。
+        if (!scope.getExcludedQualifiedNames().isEmpty()) {
+            Set<String> hidden = scope.getExcludedQualifiedNames();
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                if (!hidden.contains(c.getQualifiedName())) {
+                    next.add(c);
+                }
+            }
+            result = next;
+        }
+
         return result;
+    }
+
+    /** {@code @}・パッケージ・{@code (...)} 引数を落としてアノテーションを単純名へ正規化する。 */
+    private static String annotationSimpleName(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim().replaceFirst("^@", "");
+        int paren = s.indexOf('(');
+        if (paren >= 0) {
+            s = s.substring(0, paren);
+        }
+        int dot = s.lastIndexOf('.');
+        if (dot >= 0) {
+            s = s.substring(dot + 1);
+        }
+        return s.trim();
     }
 
     /** シード集合から継承/実装/フィールド型を辿り、N hop 以内のクラスのみを返す。 */

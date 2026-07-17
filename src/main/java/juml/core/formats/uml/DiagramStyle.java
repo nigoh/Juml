@@ -57,6 +57,19 @@ public final class DiagramStyle {
         OFF
     }
 
+    /**
+     * モノクロ（グレースケール）描画。白黒印刷やカラーに依存しない資料向け。
+     * DEFAULT は指定行を出さず PlantUML 既定（カラー）に従う。
+     */
+    public enum Monochrome {
+        /** 指定なし（カラー）。 */
+        DEFAULT,
+        /** {@code skinparam monochrome true}（グレースケール）。 */
+        ON,
+        /** {@code skinparam monochrome reverse}（白黒反転＝暗背景向け）。 */
+        REVERSE
+    }
+
     private String theme = "";
     private String backgroundColor = "";
     private String fontName = "";
@@ -67,6 +80,12 @@ public final class DiagramStyle {
     private int nodeSep = 0;
     private int rankSep = 0;
     private String customSkinparam = "";
+    /** 図の下部中央に出すキャプション文字列（空で非表示）。全図種共通のブランディング/文脈付与用。 */
+    private String caption = "";
+    /** モノクロ（グレースケール）描画。DEFAULT は指定行を出さない。 */
+    private Monochrome monochrome = Monochrome.DEFAULT;
+    /** ボックスの角丸半径 (px)。0 で指定行を出さない (PlantUML 既定)。 */
+    private int roundCorner = 0;
 
     /** 全フィールド未指定の既定スタイル。 */
     public static DiagramStyle defaults() {
@@ -102,6 +121,9 @@ public final class DiagramStyle {
         s.nodeSep = this.nodeSep;
         s.rankSep = this.rankSep;
         s.customSkinparam = this.customSkinparam;
+        s.caption = this.caption;
+        s.monochrome = this.monochrome;
+        s.roundCorner = this.roundCorner;
         return s;
     }
 
@@ -144,6 +166,17 @@ public final class DiagramStyle {
     public void setCustomSkinparam(String customSkinparam) {
         this.customSkinparam = customSkinparam == null ? "" : customSkinparam;
     }
+
+    public String getCaption() { return caption; }
+    public void setCaption(String caption) { this.caption = caption == null ? "" : caption; }
+
+    public Monochrome getMonochrome() { return monochrome; }
+    public void setMonochrome(Monochrome monochrome) {
+        this.monochrome = monochrome == null ? Monochrome.DEFAULT : monochrome;
+    }
+
+    public int getRoundCorner() { return roundCorner; }
+    public void setRoundCorner(int roundCorner) { this.roundCorner = Math.max(0, roundCorner); }
 
     /**
      * PlantUML に挿入する {@code !theme} / {@code skinparam} 等のプレリュード行を返す。
@@ -214,6 +247,19 @@ public final class DiagramStyle {
             default:
                 break;
         }
+        switch (monochrome) {
+            case ON:
+                sb.append("skinparam monochrome true\n");
+                break;
+            case REVERSE:
+                sb.append("skinparam monochrome reverse\n");
+                break;
+            default:
+                break;
+        }
+        if (roundCorner > 0) {
+            sb.append("skinparam roundcorner ").append(roundCorner).append('\n');
+        }
         if (nodeSep > 0) {
             sb.append("skinparam nodesep ").append(nodeSep).append('\n');
         }
@@ -229,6 +275,12 @@ public final class DiagramStyle {
                 sb.append('\n');
             }
         }
+        if (!caption.isEmpty()) {
+            // 図下部中央のキャプション。改行と <> & をタグ誤認しないよう 1 行化 + エスケープする。
+            String oneLine = caption.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ');
+            sb.append("caption ")
+              .append(PlantUmlCommentFormatter.escapeLabel(oneLine)).append('\n');
+        }
         return sb.toString();
     }
 
@@ -240,18 +292,22 @@ public final class DiagramStyle {
         return fontSize == that.fontSize
                 && nodeSep == that.nodeSep
                 && rankSep == that.rankSep
+                && roundCorner == that.roundCorner
                 && Objects.equals(theme, that.theme)
                 && Objects.equals(backgroundColor, that.backgroundColor)
                 && Objects.equals(fontName, that.fontName)
                 && direction == that.direction
                 && lineType == that.lineType
                 && shadowing == that.shadowing
-                && Objects.equals(customSkinparam, that.customSkinparam);
+                && monochrome == that.monochrome
+                && Objects.equals(customSkinparam, that.customSkinparam)
+                && Objects.equals(caption, that.caption);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(theme, backgroundColor, fontName, fontSize, direction,
-                lineType, shadowing, nodeSep, rankSep, customSkinparam);
+                lineType, shadowing, nodeSep, rankSep, customSkinparam, caption,
+                monochrome, roundCorner);
     }
 }

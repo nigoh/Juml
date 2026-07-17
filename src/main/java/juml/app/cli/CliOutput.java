@@ -130,23 +130,61 @@ public final class CliOutput {
             throws IOException {
         fileOut = resolveInDir(fileOut,
                 defaultBaseName == null ? null : defaultBaseName + ".svg");
-        if (fileOut != null && fileOut.getName().toLowerCase().endsWith(".svg")) {
+        String lower = fileOut == null ? ""
+                : fileOut.getName().toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".svg")) {
             try {
                 ensureParentDir(fileOut);
                 PlantUmlRenderer.renderSvg(puml, fileOut);
             } catch (PlantUmlRenderFailedException ex) {
-                File pumlFallback = siblingPumlFor(fileOut);
-                writeText(pumlFallback, puml);
-                System.err.println("[juml] " + fileOut.getName()
-                        + " FAILED: " + ex.getMessage());
-                System.err.println("[juml]    Saved " + pumlFallback.getPath()
-                        + " -- render externally with: plantuml -tsvg "
-                        + pumlFallback.getName());
-                System.exit(2);
+                fallbackToPuml(fileOut, puml, ex, "svg");
+            }
+        } else if (lower.endsWith(".png")) {
+            // .png 指定は同梱 PlantUML でラスタライズして「実際の PNG」を書き出す。
+            // 以前は拡張子を無視して PlantUML テキストを .png ファイルに書いていた
+            // (画像を期待した利用者が中身がテキストのファイルを受け取る不具合)。
+            try {
+                ensureParentDir(fileOut);
+                renderPng(puml, fileOut);
+            } catch (PlantUmlRenderFailedException ex) {
+                fallbackToPuml(fileOut, puml, ex, "png");
             }
         } else {
             writeText(fileOut, puml);
         }
+    }
+
+    /** 同梱 PlantUML で PNG にラスタライズしてファイルへ保存する。空図は失敗として扱う。 */
+    private static void renderPng(String puml, File pngFile)
+            throws IOException {
+        java.awt.image.BufferedImage img =
+                juml.app.uml.PlantUmlImageRenderer.toBufferedImage(puml);
+        if (img == null) {
+            // 要素が 1 つも配置されなかった (空図)。テキストへ静かにフォールスルー
+            // させず、SVG と同じサイドカー .puml フォールバック経路に載せる。
+            throw new PlantUmlRenderFailedException(juml.util.ErrorCode.UML_R006,
+                    "empty diagram — no PNG was produced");
+        }
+        juml.app.uml.UmlExporter.export(
+                juml.app.uml.UmlExporter.Format.PNG, pngFile, puml, img);
+    }
+
+    /**
+     * SVG/PNG レンダリング失敗時の共通フォールバック: サイドカー {@code .puml} を残し、
+     * 外部レンダリング手順を案内して {@code exit(2)} する。
+     *
+     * @param kind {@code svg} / {@code png} — 案内する {@code plantuml -t<kind>} の種別
+     */
+    private static void fallbackToPuml(File fileOut, String puml,
+            PlantUmlRenderFailedException ex, String kind) throws IOException {
+        File pumlFallback = siblingPumlFor(fileOut);
+        writeText(pumlFallback, puml);
+        System.err.println("[juml] " + fileOut.getName()
+                + " FAILED: " + ex.getMessage());
+        System.err.println("[juml]    Saved " + pumlFallback.getPath()
+                + " -- render externally with: plantuml -t" + kind + " "
+                + pumlFallback.getName());
+        System.exit(2);
     }
 
     /** 与えられた SVG ファイルと同じ親ディレクトリ・同じベース名で {@code .puml} を指す

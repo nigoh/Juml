@@ -31,9 +31,14 @@
          コンストラクタ引数が増える。意味のある分割が難しいため ParameterNumber を許可する。 -->
     <suppress checks="ParameterNumber" files="MethodUsageReport\.java" />
 
-    <!-- StyleSettingsDialog.ClassDiagramPrefs はクラス図設定の不変データホルダで、設定項目が
+    <!-- StyleSettingsDialog.Result はダイアログの戻り値を束ねる不変データホルダで、設定項目が
          増えるたびにコンストラクタ引数が増える。同上の理由で ParameterNumber を許可する。 -->
     <suppress checks="ParameterNumber" files="StyleSettingsDialog\.java" />
+
+    <!-- ClassDiagramPrefs はクラス図設定の不変データホルダで、設定項目が増えるたびに
+         コンストラクタ引数が増える (後方互換のため引数の少ない委譲版も持つ)。
+         意味のある分割が難しいため ParameterNumber を許可する。 -->
+    <suppress checks="ParameterNumber" files="ClassDiagramPrefs\.java" />
 
     <!-- DiagramRequest は図種ごとの入力 (起点・レイアウトキー・スコープ・文言 locale 等) を
          束ねる不変リクエストで、図種が増えるたびに正準コンストラクタの引数が増える。

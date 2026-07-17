@@ -42,6 +42,8 @@ public final class MenuBarBuilder {
         public Consumer<PumlTemplate> newUmlDiagram;
         /** File &gt; Open .puml File...: 既存の PlantUML テキストをエディタタブで開く。 */
         public Runnable openPumlFile;
+        /** File &gt; Edit as PlantUML: アクティブな生成図の PlantUML を編集可能なタブへ複製する。 */
+        public Runnable editActiveAsPuml;
         /** Ctrl+S / File &gt; Save .puml: アクティブなエディタタブを保存する。 */
         public Runnable savePumlTab;
         /** File &gt; Save .puml As...: アクティブなエディタタブを別名保存する。 */
@@ -285,6 +287,7 @@ public final class MenuBarBuilder {
             openPuml.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.CODE));
             openPuml.addActionListener(e -> cb.openPumlFile.run());
         }
+        JMenuItem editAsPuml = buildEditAsPumlItem(cb);
         JMenuItem savePuml = null;
         if (cb.savePumlTab != null) {
             savePuml = new JMenuItem(Messages.get("menubar.file.savePuml"));
@@ -343,6 +346,9 @@ public final class MenuBarBuilder {
         if (openPuml != null) {
             m.add(openPuml);
         }
+        if (editAsPuml != null) {
+            m.add(editAsPuml);
+        }
         m.add(recent);
         m.addSeparator();
         if (savePuml != null) {
@@ -388,6 +394,18 @@ public final class MenuBarBuilder {
         m.addSeparator();
         m.add(exit);
         return m;
+    }
+
+    /** 「PlantUML として編集」項目 (アクティブ生成図を編集タブへ複製) を組み立てる。無効時は null。 */
+    private static JMenuItem buildEditAsPumlItem(Callbacks cb) {
+        if (cb.editActiveAsPuml == null) {
+            return null;
+        }
+        JMenuItem item = new JMenuItem(Messages.get("menubar.file.editAsPuml"));
+        item.setIcon(MaterialIcons.menu(MaterialIcons.Glyph.OPEN_IN_NEW));
+        item.setToolTipText(Messages.get("menubar.file.editAsPuml.tip"));
+        item.addActionListener(e -> cb.editActiveAsPuml.run());
+        return item;
     }
 
     /**

@@ -67,6 +67,52 @@ public class DiagramStyleTest {
     }
 
     @Test
+    public void captionEmitsCaptionLineAndSurvivesCopy() {
+        DiagramStyle s = new DiagramStyle();
+        assertEquals("", s.toPlantUmlPrelude()); // 既定は空
+        s.setCaption("Acme Corp — Confidential");
+        String out = s.toPlantUmlPrelude();
+        assertTrue(out, out.contains("caption "));
+        assertTrue(out, out.contains("Acme Corp"));
+        // copy / equals にも含まれる
+        assertEquals(s, s.copy());
+        assertEquals("Acme Corp — Confidential", s.copy().getCaption());
+    }
+
+    @Test
+    public void captionNewlinesAreFlattenedToOneLine() {
+        DiagramStyle s = new DiagramStyle();
+        s.setCaption("line1\nline2");
+        String out = s.toPlantUmlPrelude();
+        // caption 行は 1 行に畳まれる (改行で PlantUML 構文が壊れない)
+        assertTrue(out, out.contains("caption line1 line2\n"));
+    }
+
+    @Test
+    public void monochromeEmitsSkinparamAndSurvivesCopy() {
+        DiagramStyle s = new DiagramStyle();
+        assertEquals("", s.toPlantUmlPrelude()); // 既定 (DEFAULT) は空
+        s.setMonochrome(DiagramStyle.Monochrome.ON);
+        assertEquals("skinparam monochrome true\n", s.toPlantUmlPrelude());
+        s.setMonochrome(DiagramStyle.Monochrome.REVERSE);
+        assertEquals("skinparam monochrome reverse\n", s.toPlantUmlPrelude());
+        assertEquals(s, s.copy());
+        assertEquals(DiagramStyle.Monochrome.REVERSE, s.copy().getMonochrome());
+    }
+
+    @Test
+    public void roundCornerEmitsSkinparamWhenPositive() {
+        DiagramStyle s = new DiagramStyle();
+        assertEquals("", s.toPlantUmlPrelude()); // 0 は出力しない
+        s.setRoundCorner(15);
+        assertEquals("skinparam roundcorner 15\n", s.toPlantUmlPrelude());
+        assertEquals(s, s.copy());
+        // 負値は 0 にクランプ (出力なしに戻る)
+        s.setRoundCorner(-5);
+        assertEquals("", s.toPlantUmlPrelude());
+    }
+
+    @Test
     public void spacingEmitsNodesepAndRanksep() {
         DiagramStyle s = new DiagramStyle();
         s.setNodeSep(40);

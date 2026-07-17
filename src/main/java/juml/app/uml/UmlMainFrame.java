@@ -258,6 +258,7 @@ public class UmlMainFrame extends JFrame {
         mcb.openArchive = this::openArchive;
         mcb.newUmlDiagram = t -> openPumlEditorTab(t.body(), null);
         mcb.openPumlFile = this::openPumlFile;
+        mcb.editActiveAsPuml = this::editActiveAsPuml;
         mcb.savePumlTab = () -> tabPane.saveActivePumlEditor(false);
         mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
         mcb.diffPumlVsSaved = () -> tabPane.showDiffVsSavedForActiveEditor();
@@ -608,8 +609,8 @@ public class UmlMainFrame extends JFrame {
                         ? juml.core.formats.uml.PlantUmlSequenceDiagram.CommentPlacement.PARTICIPANT_TOP
                         : juml.core.formats.uml.PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE;
         boolean curQualify = setting == null || setting.isSequenceQualifyMethodNames();
-        StyleSettingsDialog.ClassDiagramPrefs curClass = setting != null
-                ? new StyleSettingsDialog.ClassDiagramPrefs(
+        ClassDiagramPrefs curClass = setting != null
+                ? new ClassDiagramPrefs(
                         setting.isClassDiagramShowFields(),
                         setting.isClassDiagramShowMethods(),
                         setting.isClassDiagramShowAnnotations(),
@@ -618,19 +619,22 @@ public class UmlMainFrame extends JFrame {
                         setting.isClassDiagramMarkExternalSupertypes(),
                         setting.isClassDiagramColorCodeRelations(),
                         setting.getClassDiagramCommentMaxLength(),
-                        StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
-                                setting.getClassDiagramHiddenAnnotations()))
-                : StyleSettingsDialog.ClassDiagramPrefs.defaults();
+                        ClassDiagramPrefs.parseCsv(
+                                setting.getClassDiagramHiddenAnnotations()),
+                        setting.isClassDiagramHideEmptyMembers(),
+                        setting.isClassDiagramHideUnlinked(),
+                        setting.isClassDiagramColorCodeStereotypes())
+                : ClassDiagramPrefs.defaults();
         int curSeqMaxDepth = setting != null ? setting.getSequenceMaxDepth() : 5;
         boolean curSeqShowArgs = setting != null && setting.isSequenceShowCallArguments();
-        StyleSettingsDialog.ActivityDiagramPrefs curActivity = setting != null
-                ? new StyleSettingsDialog.ActivityDiagramPrefs(
+        ActivityDiagramPrefs curActivity = setting != null
+                ? new ActivityDiagramPrefs(
                         setting.isActivityExpandInlineCallbacks(),
                         setting.isActivityShowLocalVars(),
                         setting.isActivityShowAssignments(),
                         setting.isActivityShowCallArguments(),
                         setting.isActivityShowInlineComments())
-                : StyleSettingsDialog.ActivityDiagramPrefs.defaults();
+                : ActivityDiagramPrefs.defaults();
         int curCallGraphDepth = setting != null ? setting.getCallGraphMaxDepth() : 4;
         StyleSettingsDialog.Result edited = StyleSettingsDialog.showDialog(
                 this, PlantUmlRenderer.getStyle(), curShow, curStyle,
@@ -664,7 +668,7 @@ public class UmlMainFrame extends JFrame {
                 }
                 setting.setCallGraphMaxDepth(r.callGraphMaxDepth);
                 if (r.classDiagram != null) {
-                    StyleSettingsDialog.ClassDiagramPrefs cp = r.classDiagram;
+                    ClassDiagramPrefs cp = r.classDiagram;
                     setting.setClassDiagramShowFields(cp.showFields);
                     setting.setClassDiagramShowMethods(cp.showMethods);
                     setting.setClassDiagramShowAnnotations(cp.showAnnotations);
@@ -672,6 +676,9 @@ public class UmlMainFrame extends JFrame {
                     setting.setClassDiagramExcludeExternal(cp.excludeExternal);
                     setting.setClassDiagramMarkExternalSupertypes(cp.markExternalSupertypes);
                     setting.setClassDiagramColorCodeRelations(cp.colorCodeRelations);
+                    setting.setClassDiagramHideEmptyMembers(cp.hideEmptyMembers);
+                    setting.setClassDiagramHideUnlinked(cp.hideUnlinked);
+                    setting.setClassDiagramColorCodeStereotypes(cp.colorCodeStereotypes);
                     setting.setClassDiagramCommentMaxLength(cp.commentMaxLength);
                     setting.setClassDiagramHiddenAnnotations(cp.hiddenAnnotationsCsv());
                 }
@@ -1080,6 +1087,18 @@ public class UmlMainFrame extends JFrame {
     private void openPumlEditorTab(String text, File file) {
         centerCards.showWorkspace();
         tabPane.openPumlEditor(text, file);
+    }
+
+    /**
+     * アクティブな生成図の PlantUML を、自由編集できる新規 Untitled タブへ複製する
+     * (File &gt; Edit as PlantUML)。生成図が無い / 未描画 / 既にエディタタブの場合は
+     * ステータスで案内するだけで何もしない。
+     */
+    private void editActiveAsPuml() {
+        centerCards.showWorkspace();
+        if (!tabPane.editActiveAsPuml()) {
+            status.setText(Messages.get("editAsPuml.unavailable"));
+        }
     }
 
     /** 既存の .puml ファイルを選択して自由編集エディタタブで開く (File メニュー / Welcome)。 */

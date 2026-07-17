@@ -105,6 +105,22 @@ public class CliOutputTest {
     }
 
     @Test
+    public void writeUmlOutputRendersRealPngFromExtension() throws IOException {
+        // -o diagram.png は以前 PlantUML テキストを .png に書いていた (拡張子無視の不具合)。
+        // 現在は同梱 PlantUML で本物の PNG をラスタライズすることを、PNG シグネチャで固定する。
+        File out = new File(tmp.getRoot(), "diagram.png");
+        CliOutput.writeUmlOutput(out, "@startuml\nclass A\n@enduml\n", "class-diagram");
+        assertTrue("PNG file must be created", out.isFile());
+        byte[] bytes = java.nio.file.Files.readAllBytes(out.toPath());
+        assertTrue("file must not be empty", bytes.length > 8);
+        // PNG マジックナンバー 89 50 4E 47 (テキスト '@startuml' でないこと)
+        assertEquals((byte) 0x89, bytes[0]);
+        assertEquals((byte) 0x50, bytes[1]);
+        assertEquals((byte) 0x4E, bytes[2]);
+        assertEquals((byte) 0x47, bytes[3]);
+    }
+
+    @Test
     public void siblingPumlForDerivesBaseName() {
         File svg = new File(tmp.getRoot(), "foo.svg");
         assertEquals("foo.puml", CliOutput.siblingPumlFor(svg).getName());

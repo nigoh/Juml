@@ -29,6 +29,8 @@ public class UmlOverridesFocusColorTest {
         PlantUmlClassDiagram.Options o = apply("-c");
         assertFalse(o.colorCodeRelations);
         assertEquals("", o.focusClass);
+        assertFalse(o.hideEmptyMembers);
+        assertFalse(o.hideUnlinkedClasses);
     }
 
     @Test
@@ -37,8 +39,61 @@ public class UmlOverridesFocusColorTest {
     }
 
     @Test
+    public void hideEmptyMembersFlagEnablesDirective() {
+        assertTrue(apply("-c", "--hide-empty-members").hideEmptyMembers);
+    }
+
+    @Test
+    public void hideUnlinkedFlagEnablesDirective() {
+        assertTrue(apply("-c", "--hide-unlinked").hideUnlinkedClasses);
+    }
+
+    @Test
+    public void colorStereotypesFlagEnablesColorCoding() {
+        assertFalse(apply("-c").colorCodeStereotypes);
+        assertTrue(apply("-c", "--color-stereotypes").colorCodeStereotypes);
+    }
+
+    @Test
     public void focusFlagSetsFocusClass() {
         assertEquals("com.example.Foo",
                 apply("-c", "--focus", "com.example.Foo").focusClass);
+    }
+
+    @Test
+    public void excludeNameRegexFlagIsCaptured() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c", "--exclude-name-regex", ".*(Test|Impl)$" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertEquals(".*(Test|Impl)$", ov.excludeNameRegex);
+    }
+
+    @Test
+    public void excludeNameRegexDefaultsEmpty() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertEquals("", ov.excludeNameRegex);
+    }
+
+    @Test
+    public void annotationFlagsAreNormalizedToSimpleNames() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c",
+            "--annotation", "@javax.persistence.Entity, RestController",
+            "--exclude-annotation", "Generated" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertTrue(ov.includedAnnotations.contains("Entity"));
+        assertTrue(ov.includedAnnotations.contains("RestController"));
+        assertTrue(ov.excludedAnnotations.contains("Generated"));
+    }
+
+    @Test
+    public void annotationFlagsDefaultEmpty() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertTrue(ov.includedAnnotations.isEmpty());
+        assertTrue(ov.excludedAnnotations.isEmpty());
     }
 }

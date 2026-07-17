@@ -38,6 +38,9 @@ public final class UmlOverrides {
     boolean excludeExternal = false;
     boolean markExternalSupertypes = false;
     boolean colorCodeRelations = false;
+    boolean hideEmptyMembers = false;
+    boolean hideUnlinked = false;
+    boolean colorCodeStereotypes = false;
     String focusClass = "";
     boolean visibilityIcons = true;
     boolean interactiveLinks = false;
@@ -48,6 +51,12 @@ public final class UmlOverrides {
     Integer commentMaxLengthOverride; // null = preset 既定をそのまま使う
     Set<String> hiddenAnnotationsOverride; // null = preset 既定をそのまま使う
     public Set<String> excludedPackages = new LinkedHashSet<>();
+    /** クラス名 (単純名/完全修飾名) が一致したら除外する正規表現 (空で無効)。 */
+    public String excludeNameRegex = "";
+    /** このアノテーション (単純名) を持つクラスのみ残す (空でフィルタなし)。 */
+    public Set<String> includedAnnotations = new LinkedHashSet<>();
+    /** このアノテーション (単純名) を持つクラスを除外する (空で除外なし)。 */
+    public Set<String> excludedAnnotations = new LinkedHashSet<>();
     public UmlGenerator.ParseMode parseMode = UmlGenerator.ParseMode.FULL;
 
     public Integer seqDepth;
@@ -67,6 +76,9 @@ public final class UmlOverrides {
         o.excludeExternalLibraries = excludeExternal;
         o.markExternalSupertypes = markExternalSupertypes;
         o.colorCodeRelations = colorCodeRelations;
+        o.hideEmptyMembers = hideEmptyMembers;
+        o.hideUnlinkedClasses = hideUnlinked;
+        o.colorCodeStereotypes = colorCodeStereotypes;
         o.focusClass = focusClass == null ? "" : focusClass;
         o.visibilityIcons = visibilityIcons;
         o.commentStyle = commentStyle;
@@ -182,6 +194,15 @@ public final class UmlOverrides {
         if (options.colorRelations.isSet()) {
             o.colorCodeRelations = true;
         }
+        if (options.hideEmptyMembers.isSet()) {
+            o.hideEmptyMembers = true;
+        }
+        if (options.hideUnlinked.isSet()) {
+            o.hideUnlinked = true;
+        }
+        if (options.colorStereotypes.isSet()) {
+            o.colorCodeStereotypes = true;
+        }
         if (!options.focus.getArguments().isEmpty()) {
             o.focusClass = options.focus.getArguments().getLast();
         }
@@ -261,12 +282,36 @@ public final class UmlOverrides {
         o.hiddenAnnotationsOverride = set;
     }
 
-    /** {@code --exclude-package} (複数指定可)。 */
+    /** {@code --exclude-package} (複数指定可) と {@code --exclude-name-regex}。 */
     private static void applyExcludePackages(UmlOverrides o, CliOptions options) {
         List<String> argList = options.excludePackage.getArguments();
         for (String pkg : argList) {
             if (pkg != null && !pkg.isEmpty()) {
                 o.excludedPackages.add(pkg);
+            }
+        }
+        if (!options.excludeNameRegex.getArguments().isEmpty()) {
+            o.excludeNameRegex = options.excludeNameRegex.getArguments().getLast();
+        }
+        addCsvSimpleNames(o.includedAnnotations, options.annotation.getArguments());
+        addCsvSimpleNames(o.excludedAnnotations, options.excludeAnnotation.getArguments());
+    }
+
+    /** {@code --annotation}/{@code --exclude-annotation} の CSV を単純名へ正規化して集合へ足す。 */
+    private static void addCsvSimpleNames(Set<String> target, List<String> args) {
+        for (String csv : args) {
+            if (csv == null) {
+                continue;
+            }
+            for (String tok : csv.split(",")) {
+                String t = tok.trim().replaceFirst("^@", "");
+                int dot = t.lastIndexOf('.');
+                if (dot >= 0) {
+                    t = t.substring(dot + 1);
+                }
+                if (!t.isEmpty()) {
+                    target.add(t);
+                }
             }
         }
     }

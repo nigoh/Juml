@@ -80,26 +80,10 @@ public final class UmlCommands {
                 infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
             }
         }
-        // クラス図モードで --exclude-package が指定されていれば、ここで除外を効かせる。
-        if (classDiagram && overrides != null
-                && overrides.excludedPackages != null
-                && !overrides.excludedPackages.isEmpty()) {
-            java.util.List<juml.core.formats.uml.JavaClassInfo> filtered =
-                    new java.util.ArrayList<>(infos.size());
-            for (juml.core.formats.uml.JavaClassInfo c : infos) {
-                String pkg = c.getPackageName() == null ? "" : c.getPackageName();
-                boolean drop = false;
-                for (String ex : overrides.excludedPackages) {
-                    if (pkg.equals(ex) || pkg.startsWith(ex + ".")) {
-                        drop = true;
-                        break;
-                    }
-                }
-                if (!drop) {
-                    filtered.add(c);
-                }
-            }
-            infos = filtered;
+        // クラス図モードの CLI スコープフィルタ (--exclude-package / --exclude-name-regex /
+        // --annotation / --exclude-annotation) をまとめて適用する。
+        if (classDiagram && overrides != null) {
+            infos = applyCliClassFilters(infos, overrides);
         }
 
         String output;
@@ -455,5 +439,91 @@ public final class UmlCommands {
         copy.getAnnotations().addAll(src.getAnnotations());
         copy.getInterfaces().addAll(src.getInterfaces());
         return copy;
+    }
+
+    /**
+     * クラス図モードの CLI スコープフィルタをこの順で適用する:
+     * package 除外 → 名前 regex 除外 → annotation include/exclude。
+     * 不正な {@code --exclude-name-regex} は案内を出して {@code System.exit(1)}。
+     */
+    private static java.util.List<juml.core.formats.uml.JavaClassInfo> applyCliClassFilters(
+            java.util.List<juml.core.formats.uml.JavaClassInfo> infos, UmlOverrides overrides) {
+        java.util.List<juml.core.formats.uml.JavaClassInfo> result = infos;
+        if (overrides.excludedPackages != null && !overrides.excludedPackages.isEmpty()) {
+            java.util.List<juml.core.formats.uml.JavaClassInfo> next =
+                    new java.util.ArrayList<>(result.size());
+            for (juml.core.formats.uml.JavaClassInfo c : result) {
+                String pkg = c.getPackageName() == null ? "" : c.getPackageName();
+                boolean drop = false;
+                for (String ex : overrides.excludedPackages) {
+                    if (pkg.equals(ex) || pkg.startsWith(ex + ".")) {
+                        drop = true;
+                        break;
+                    }
+                }
+                if (!drop) {
+                    next.add(c);
+                }
+            }
+            result = next;
+        }
+        if (overrides.excludeNameRegex != null && !overrides.excludeNameRegex.isEmpty()) {
+            java.util.regex.Pattern ex;
+            try {
+                ex = java.util.regex.Pattern.compile(overrides.excludeNameRegex);
+            } catch (java.util.regex.PatternSyntaxException pse) {
+                System.err.println("Invalid --exclude-name-regex value: "
+                        + overrides.excludeNameRegex + " (" + pse.getMessage() + ")");
+                System.exit(1);
+                return result;
+            }
+            java.util.List<juml.core.formats.uml.JavaClassInfo> next =
+                    new java.util.ArrayList<>(result.size());
+            for (juml.core.formats.uml.JavaClassInfo c : result) {
+                if (!(ex.matcher(c.getSimpleName()).find()
+                        || ex.matcher(c.getQualifiedName()).find())) {
+                    next.add(c);
+                }
+            }
+            result = next;
+        }
+        if (!overrides.includedAnnotations.isEmpty() || !overrides.excludedAnnotations.isEmpty()) {
+            java.util.Set<String> inc = overrides.includedAnnotations;
+            java.util.Set<String> exc = overrides.excludedAnnotations;
+            java.util.List<juml.core.formats.uml.JavaClassInfo> next =
+                    new java.util.ArrayList<>(result.size());
+            for (juml.core.formats.uml.JavaClassInfo c : result) {
+                java.util.Set<String> names = new java.util.HashSet<>();
+                for (String a : c.getAnnotations()) {
+                    names.add(annotationSimpleName(a));
+                }
+                if (!inc.isEmpty() && java.util.Collections.disjoint(names, inc)) {
+                    continue;
+                }
+                if (!exc.isEmpty() && !java.util.Collections.disjoint(names, exc)) {
+                    continue;
+                }
+                next.add(c);
+            }
+            result = next;
+        }
+        return result;
+    }
+
+    /** {@code @}・パッケージ・{@code (...)} 引数を落としてアノテーションを単純名へ正規化する。 */
+    private static String annotationSimpleName(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim().replaceFirst("^@", "");
+        int paren = s.indexOf('(');
+        if (paren >= 0) {
+            s = s.substring(0, paren);
+        }
+        int dot = s.lastIndexOf('.');
+        if (dot >= 0) {
+            s = s.substring(dot + 1);
+        }
+        return s.trim();
     }
 }

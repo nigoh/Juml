@@ -101,6 +101,24 @@ public final class PlantUmlClassDiagram {
         public boolean groupConstants = true;
         /** ネストした型と外側の型を含有エッジ ({@code Outer +-- Inner}) で結ぶ。既定 false。 */
         public boolean showNestedContainment = false;
+        /**
+         * メンバーの無いコンパートメント (フィールド欄 / メソッド欄) を隠す
+         * ({@code hide empty members})。マーカー IF・定数ホルダ等の空欄を畳んで縦の
+         * ノイズを減らす。既定 false (従来出力を維持)。
+         */
+        public boolean hideEmptyMembers = false;
+        /**
+         * どの関連線とも繋がっていない孤立クラスを描画後に取り除く
+         * ({@code remove @unlinked})。巨大な自動生成図で「関係のある構造だけ」を見たいときに使う。
+         * 既定 false (従来出力を維持)。
+         */
+        public boolean hideUnlinkedClasses = false;
+        /**
+         * ステレオタイプ (CarManager / Activity / aidl / record 等) ごとにクラスボックスの
+         * 背景色を色分けする ({@code skinparam class { BackgroundColor<<...>> }})。
+         * 大規模図でカテゴリを一目で見分けられる。既定 false (従来出力を維持)。
+         */
+        public boolean colorCodeStereotypes = false;
         /** 図全体に出すクラスの最大数 (0 以下で無制限)。超過時は先頭から切り詰める。 */
         public int maxClasses = 0;
         /** 図末尾に出す警告メッセージ (PlantUML の {@code footer} 行)。null/空で出力しない。 */
@@ -241,21 +259,7 @@ public final class PlantUmlClassDiagram {
             classes = classes.subList(0, o.maxClasses);
         }
         StringBuilder out = new StringBuilder();
-        out.append("@startuml\n");
-        if (o.topToBottomDirection) {
-            out.append("top to bottom direction\n");
-        }
-        if (o.title != null && !o.title.isEmpty()) {
-            // title 行に <> & が含まれると PlantUML が HTML タグとして誤認するためエスケープする。
-            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
-        }
-        VisibilityIconStyle.appendSkinparams(out, o.showVisibility && o.visibilityIcons);
-        // NOTE 表示時のコメント色を skinparam で指定 (INLINE 時は <color:..> タグで個別色付けするため出力しない)。
-        if (o.showComments && o.commentStyle == CommentStyle.NOTE
-                && o.commentColor != null && !o.commentColor.isEmpty()) {
-            out.append("skinparam noteBorderColor ").append(o.commentColor).append('\n');
-            out.append("skinparam noteFontColor ").append(o.commentColor).append('\n');
-        }
+        appendHeader(out, o, classes);
         // クラスごとに一意のエイリアスを発行する (PlantUML は "a.b.c" をネスト解釈するため引用符名 + as で切り離す)。
         Set<String> knownNames = new HashSet<>();
         java.util.Map<String, String> aliasByQn = new java.util.LinkedHashMap<>();
@@ -334,21 +338,64 @@ public final class PlantUmlClassDiagram {
                 }
             }
         }
+        if (o.hideUnlinkedClasses) {
+            // 全関連線を出し終えた後で、どの線とも繋がらない孤立クラスをレイアウト解決時に除去する。
+            // legend/footer は要素ではないため影響を受けない。
+            out.append("remove @unlinked\n");
+        }
         if (o.includeLegend) {
             PlantUmlClassLegend.emit(out, classes, o);
         }
-        // フッタ警告: maxClasses で切り詰めた場合の自動メッセージを優先
+        appendFooter(out, o, originalTotal, classes.size());
+        out.append("@enduml\n");
+        return out.toString();
+    }
+
+    /**
+     * {@code @startuml} 直後のヘッダ / skinparam プレリュード (向き・タイトル・可視性アイコン・
+     * 空メンバー畳み・ステレオタイプ色分け・NOTE コメント色) を出力する。
+     */
+    private static void appendHeader(StringBuilder out, Options o, List<JavaClassInfo> classes) {
+        out.append("@startuml\n");
+        if (o.topToBottomDirection) {
+            out.append("top to bottom direction\n");
+        }
+        if (o.title != null && !o.title.isEmpty()) {
+            // title 行に <> & が含まれると PlantUML が HTML タグとして誤認するためエスケープする。
+            out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
+        }
+        VisibilityIconStyle.appendSkinparams(out, o.showVisibility && o.visibilityIcons);
+        if (o.hideEmptyMembers) {
+            // メンバーの無いフィールド欄/メソッド欄を畳む (マーカー IF・定数ホルダのノイズ抑制)。
+            out.append("hide empty members\n");
+        }
+        if (o.colorCodeStereotypes) {
+            // ステレオタイプごとのボックス背景色 (カテゴリ識別)。表示クラスに現れる分だけ出す。
+            out.append(stereotypeColorSkinparams(classes, o));
+        }
+        // NOTE 表示時のコメント色を skinparam で指定 (INLINE 時は <color:..> タグで個別色付けするため出力しない)。
+        if (o.showComments && o.commentStyle == CommentStyle.NOTE
+                && o.commentColor != null && !o.commentColor.isEmpty()) {
+            out.append("skinparam noteBorderColor ").append(o.commentColor).append('\n');
+            out.append("skinparam noteFontColor ").append(o.commentColor).append('\n');
+        }
+    }
+
+    /**
+     * フッタ警告行を出力する。{@code maxClasses} での切り詰め時は自動メッセージを、
+     * 明示指定 ({@code o.footerWarning}) があればそれを優先する。
+     */
+    private static void appendFooter(StringBuilder out, Options o,
+                                     int originalTotal, int shownCount) {
         String footer = o.footerWarning;
         if ((footer == null || footer.isEmpty())
-                && o.maxClasses > 0 && originalTotal > classes.size()) {
-            footer = "showing " + classes.size() + " of " + originalTotal + " classes";
+                && o.maxClasses > 0 && originalTotal > shownCount) {
+            footer = "showing " + shownCount + " of " + originalTotal + " classes";
         }
         if (footer != null && !footer.isEmpty()) {
             // footer テキストの < をチルダエスケープしてタグ誤認を防ぐ
             out.append("footer ").append(PlantUmlCommentFormatter.escapeText(footer)).append('\n');
         }
-        out.append("@enduml\n");
-        return out.toString();
     }
 
     static boolean hasVisibleAnnotation(List<String> annotations, Options o) {
@@ -612,6 +659,27 @@ public final class PlantUmlClassDiagram {
     }
 
     private static String stereotype(JavaClassInfo c, Options o) {
+        List<String> parts = stereotypeParts(c, o);
+        if (parts.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            sb.append("<<").append(p).append(">>");
+        }
+        // MISSING_JAR には警告色を suffix で付与
+        if (c.getOrigin() == JavaClassInfo.Origin.MISSING_JAR) {
+            sb.append(" #LightYellow");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * クラスに付与するステレオタイプ名の一覧を返す ({@code <<...>>} の中身のみ、色 suffix なし)。
+     * {@link #stereotype} の表示と、ステレオタイプ色分け ({@link Options#colorCodeStereotypes})
+     * の色対象トークン収集で共用する。
+     */
+    private static List<String> stereotypeParts(JavaClassInfo c, Options o) {
         List<String> parts = new ArrayList<>();
         // 外部 JAR 由来 / 解決失敗のステレオタイプを先頭に出す (視認性最優先)
         switch (c.getOrigin()) {
@@ -673,17 +741,57 @@ public final class PlantUmlClassDiagram {
                 }
             }
         }
-        if (parts.isEmpty()) {
+        return parts;
+    }
+
+    /** ステレオタイプ→パステル背景色の固定パレット (色分け対象カテゴリのみ)。 */
+    private static final java.util.Map<String, String> STEREOTYPE_COLORS =
+            buildStereotypeColors();
+
+    private static java.util.Map<String, String> buildStereotypeColors() {
+        java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+        m.put("external", "#ECEFF1");       // blue-grey 50
+        m.put("CarManager", "#E3F2FD");     // blue 50
+        m.put("CarService", "#E1F5FE");     // light-blue 50
+        m.put("ICarInterface", "#E0F7FA");  // cyan 50
+        m.put("binder", "#E0F2F1");         // teal 50
+        m.put("aidl", "#F1F8E9");           // light-green 50
+        m.put("Activity", "#FFF3E0");       // orange 50
+        m.put("Service", "#FBE9E7");        // deep-orange 50
+        m.put("Receiver", "#FFF8E1");       // amber 50
+        m.put("Provider", "#F3E5F5");       // purple 50
+        m.put("Application", "#FCE4EC");     // pink 50
+        m.put("Fragment", "#FFF9C4");       // yellow 100
+        m.put("ViewModel", "#E8F5E9");      // green 50
+        m.put("Hilt", "#EDE7F6");           // deep-purple 50
+        m.put("record", "#F9FBE7");         // lime 50
+        m.put("sealed", "#FFEBEE");         // red 50
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * {@link Options#colorCodeStereotypes} 有効時、表示クラスに現れるステレオタイプの
+     * 背景色 skinparam ブロックを返す (パレットに無いトークンや該当クラス無しなら空文字)。
+     * per-class の {@code #color} (focus/missing) はこの skinparam より優先されるため競合しない。
+     */
+    private static String stereotypeColorSkinparams(List<JavaClassInfo> classes, Options o) {
+        java.util.Set<String> present = new java.util.LinkedHashSet<>();
+        for (JavaClassInfo c : classes) {
+            for (String p : stereotypeParts(c, o)) {
+                if (STEREOTYPE_COLORS.containsKey(p)) {
+                    present.add(p);
+                }
+            }
+        }
+        if (present.isEmpty()) {
             return "";
         }
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            sb.append("<<").append(p).append(">>");
+        StringBuilder sb = new StringBuilder("skinparam class {\n");
+        for (String p : present) {
+            sb.append("  BackgroundColor<<").append(p).append(">> ")
+              .append(STEREOTYPE_COLORS.get(p)).append('\n');
         }
-        // MISSING_JAR には警告色を suffix で付与
-        if (c.getOrigin() == JavaClassInfo.Origin.MISSING_JAR) {
-            sb.append(" #LightYellow");
-        }
+        sb.append("}\n");
         return sb.toString();
     }
 

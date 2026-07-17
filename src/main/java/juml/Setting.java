@@ -49,6 +49,12 @@ public class Setting {
     private int styleNodeSep = 0;
     private int styleRankSep = 0;
     private String styleCustomSkinparam = "";
+    /** 図下部中央のキャプション文字列（空で非表示、全図種共通）。 */
+    private String styleCaption = "";
+    /** モノクロ描画 ("DEFAULT" | "ON" | "REVERSE")。 */
+    private String styleMonochrome = DiagramStyle.Monochrome.DEFAULT.name();
+    /** ボックスの角丸半径 (px、0 で指定なし)。 */
+    private int styleRoundCorner = 0;
     /** シーケンス図に JavaDoc / コメントを note として表示するか。 */
     private boolean sequenceShowComments = true;
     /** シーケンス図のコメント表示スタイル ("INLINE" | "NOTE")。 */
@@ -93,6 +99,12 @@ public class Setting {
     private int classDiagramCommentMaxLength = 0;
     /** 非表示アノテーション名の CSV (例: "Override,SuppressWarnings")。 */
     private String classDiagramHiddenAnnotations = "Override,SuppressWarnings";
+    /** メンバーの無いコンパートメント (空のフィールド欄/メソッド欄) を隠すか (hide empty members)。 */
+    private boolean classDiagramHideEmptyMembers = false;
+    /** どの関連線とも繋がらない孤立クラスを描画後に取り除くか (remove @unlinked)。 */
+    private boolean classDiagramHideUnlinked = false;
+    /** ステレオタイプ (CarManager/Activity/aidl 等) ごとにクラスボックスを色分けするか。 */
+    private boolean classDiagramColorCodeStereotypes = false;
 
     /** コールグラフの最大追跡階層数 (1〜10)。 */
     private int callGraphMaxDepth = 4;
@@ -213,6 +225,18 @@ public class Setting {
     public void setClassDiagramHiddenAnnotations(String v) {
         this.classDiagramHiddenAnnotations = v == null ? "" : v;
     }
+    public boolean isClassDiagramHideEmptyMembers() { return classDiagramHideEmptyMembers; }
+    public void setClassDiagramHideEmptyMembers(boolean v) {
+        this.classDiagramHideEmptyMembers = v;
+    }
+    public boolean isClassDiagramHideUnlinked() { return classDiagramHideUnlinked; }
+    public void setClassDiagramHideUnlinked(boolean v) {
+        this.classDiagramHideUnlinked = v;
+    }
+    public boolean isClassDiagramColorCodeStereotypes() { return classDiagramColorCodeStereotypes; }
+    public void setClassDiagramColorCodeStereotypes(boolean v) {
+        this.classDiagramColorCodeStereotypes = v;
+    }
 
     public int getCallGraphMaxDepth() { return callGraphMaxDepth; }
     public void setCallGraphMaxDepth(int v) {
@@ -269,6 +293,9 @@ public class Setting {
         s.setNodeSep(styleNodeSep);
         s.setRankSep(styleRankSep);
         s.setCustomSkinparam(styleCustomSkinparam);
+        s.setCaption(styleCaption);
+        s.setMonochrome(parseMonochrome(styleMonochrome));
+        s.setRoundCorner(styleRoundCorner);
         return s;
     }
 
@@ -285,6 +312,9 @@ public class Setting {
         styleNodeSep = s.getNodeSep();
         styleRankSep = s.getRankSep();
         styleCustomSkinparam = s.getCustomSkinparam();
+        styleCaption = s.getCaption();
+        styleMonochrome = s.getMonochrome().name();
+        styleRoundCorner = s.getRoundCorner();
     }
 
     /**
@@ -314,6 +344,9 @@ public class Setting {
         props.setProperty("style.nodeSep", Integer.toString(styleNodeSep));
         props.setProperty("style.rankSep", Integer.toString(styleRankSep));
         props.setProperty("style.customSkinparam", styleCustomSkinparam);
+        props.setProperty("style.caption", styleCaption);
+        props.setProperty("style.monochrome", styleMonochrome);
+        props.setProperty("style.roundCorner", Integer.toString(styleRoundCorner));
         props.setProperty("sequence.showComments", Boolean.toString(sequenceShowComments));
         props.setProperty("sequence.commentStyle", sequenceCommentStyle);
         props.setProperty("sequence.commentPlacement", sequenceCommentPlacement);
@@ -354,6 +387,12 @@ public class Setting {
         props.setProperty("classDiagram.commentMaxLength.migrated", "true");
         props.setProperty("classDiagram.hiddenAnnotations",
                 classDiagramHiddenAnnotations);
+        props.setProperty("classDiagram.hideEmptyMembers",
+                Boolean.toString(classDiagramHideEmptyMembers));
+        props.setProperty("classDiagram.hideUnlinked",
+                Boolean.toString(classDiagramHideUnlinked));
+        props.setProperty("classDiagram.colorCodeStereotypes",
+                Boolean.toString(classDiagramColorCodeStereotypes));
         props.setProperty("callGraph.maxDepth", Integer.toString(callGraphMaxDepth));
         props.setProperty("app.lookAndFeel", lookAndFeel);
         props.setProperty("app.restoreLastProjectOnStartup",
@@ -406,6 +445,10 @@ public class Setting {
         s.styleNodeSep = parseIntSafe(props.getProperty("style.nodeSep"), 0);
         s.styleRankSep = parseIntSafe(props.getProperty("style.rankSep"), 0);
         s.styleCustomSkinparam = stringOrEmpty(props.getProperty("style.customSkinparam"));
+        s.styleCaption = stringOrEmpty(props.getProperty("style.caption"));
+        s.styleMonochrome = stringOrDefault(props.getProperty("style.monochrome"),
+                DiagramStyle.Monochrome.DEFAULT.name());
+        s.styleRoundCorner = parseIntSafe(props.getProperty("style.roundCorner"), 0);
         s.sequenceShowComments = parseBooleanSafe(
                 props.getProperty("sequence.showComments"), true);
         s.sequenceCommentStyle = stringOrDefault(
@@ -456,6 +499,12 @@ public class Setting {
         s.classDiagramHiddenAnnotations = stringOrDefault(
                 props.getProperty("classDiagram.hiddenAnnotations"),
                 "Override,SuppressWarnings");
+        s.classDiagramHideEmptyMembers = parseBooleanSafe(
+                props.getProperty("classDiagram.hideEmptyMembers"), false);
+        s.classDiagramHideUnlinked = parseBooleanSafe(
+                props.getProperty("classDiagram.hideUnlinked"), false);
+        s.classDiagramColorCodeStereotypes = parseBooleanSafe(
+                props.getProperty("classDiagram.colorCodeStereotypes"), false);
         s.callGraphMaxDepth = parseIntSafe(props.getProperty("callGraph.maxDepth"), 4);
         s.lookAndFeel = stringOrDefault(props.getProperty("app.lookAndFeel"), "FLATLAF_LIGHT");
         s.restoreLastProjectOnStartup = parseBooleanSafe(
@@ -542,6 +591,17 @@ public class Setting {
             return DiagramStyle.Shadowing.valueOf(name);
         } catch (IllegalArgumentException e) {
             return DiagramStyle.Shadowing.DEFAULT;
+        }
+    }
+
+    private static DiagramStyle.Monochrome parseMonochrome(String name) {
+        if (name == null || name.isEmpty()) {
+            return DiagramStyle.Monochrome.DEFAULT;
+        }
+        try {
+            return DiagramStyle.Monochrome.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return DiagramStyle.Monochrome.DEFAULT;
         }
     }
 }

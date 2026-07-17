@@ -106,6 +106,95 @@ public class DiagramScopeTest {
     }
 
     @Test
+    public void testExcludeClassNameRegexFilters() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClassNameRegex(".*(Test|Impl)$").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "FooService"),
+                cls("p", "FooServiceImpl"),
+                cls("p", "FooServiceTest"),
+                cls("p", "Bar"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("FooService", out.get(0).getSimpleName());
+        assertEquals("Bar", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testIncludeAndExcludeRegexCompose() {
+        // include で *Service に絞り、exclude で *Impl を落とす
+        DiagramScope s = DiagramScope.builder()
+                .classNameRegex(".*Service.*")
+                .excludeClassNameRegex(".*Impl$")
+                .build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "AService"),
+                cls("p", "AServiceImpl"),
+                cls("p", "Other"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(1, out.size());
+        assertEquals("AService", out.get(0).getSimpleName());
+    }
+
+    @Test
+    public void testExcludeRegexInIsEmptyAndToBuilder() {
+        assertFalse(DiagramScope.builder().excludeClassNameRegex(".*X$").build().isEmpty());
+        DiagramScope s = DiagramScope.builder().excludeClassNameRegex(".*X$").build();
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getExcludeClassNameRegex() != null);
+        assertEquals(".*X$", copy.getExcludeClassNameRegex().pattern());
+    }
+
+    private static JavaClassInfo clsWithAnnotations(String pkg, String name, String... annos) {
+        JavaClassInfo c = cls(pkg, name);
+        for (String a : annos) {
+            c.getAnnotations().add(a);
+        }
+        return c;
+    }
+
+    @Test
+    public void testIncludeAnnotationKeepsOnlyMatching() {
+        DiagramScope s = DiagramScope.builder().includeAnnotation("Entity").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                clsWithAnnotations("p", "User", "@javax.persistence.Entity"),
+                clsWithAnnotations("p", "Order", "Entity(name=\"orders\")"),
+                clsWithAnnotations("p", "Service", "@Component"),
+                cls("p", "Plain"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("User", out.get(0).getSimpleName());
+        assertEquals("Order", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testExcludeAnnotationDropsMatching() {
+        DiagramScope s = DiagramScope.builder().excludeAnnotation("Generated").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                clsWithAnnotations("p", "Gen", "@Generated"),
+                clsWithAnnotations("p", "Real", "@Service"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(1, out.size());
+        assertEquals("Real", out.get(0).getSimpleName());
+    }
+
+    @Test
+    public void testAnnotationScopeIsEmptyAndToBuilder() {
+        assertFalse(DiagramScope.builder().includeAnnotation("Entity").build().isEmpty());
+        assertFalse(DiagramScope.builder().excludeAnnotation("Generated").build().isEmpty());
+        DiagramScope s = DiagramScope.builder()
+                .includeAnnotation("@a.b.Entity")
+                .excludeAnnotation("Deprecated")
+                .build();
+        // ビルダは単純名へ正規化する
+        assertTrue(s.getIncludedAnnotations().contains("Entity"));
+        assertTrue(s.getExcludedAnnotations().contains("Deprecated"));
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getIncludedAnnotations().contains("Entity"));
+        assertTrue(copy.getExcludedAnnotations().contains("Deprecated"));
+    }
+
+    @Test
     public void testCombinedFilters() {
         DiagramScope s = DiagramScope.builder()
                 .includePackage("com.car")
@@ -125,5 +214,37 @@ public class DiagramScopeTest {
         assertTrue(DiagramScope.builder().build().isEmpty());
         assertFalse(DiagramScope.builder().includePackage("p").build().isEmpty());
         assertFalse(DiagramScope.builder().maxClasses(10).build().isEmpty());
+        // 個別クラス除外があれば isEmpty=false (applyScope の早期リターンを通さないため)
+        assertFalse(DiagramScope.builder().excludeClass("p.A").build().isEmpty());
+    }
+
+    @Test
+    public void testExcludeClassFilters() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClass("p.B").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "A"), cls("p", "B"), cls("p", "C"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("A", out.get(0).getSimpleName());
+        assertEquals("C", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testToBuilderPreservesExcludedClassesAndClearResets() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClass("p.A")
+                .excludeClass("p.B")
+                .focusClass("p.C")
+                .build();
+        // toBuilder は個別除外と focus を引き継ぐ
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getExcludedQualifiedNames().contains("p.A"));
+        assertTrue(copy.getExcludedQualifiedNames().contains("p.B"));
+        assertEquals("p.C", copy.getFocusClass());
+        // clearExcludedClasses + focusClass("") で整形だけ解除できる
+        DiagramScope reset = s.toBuilder().clearExcludedClasses().focusClass("").build();
+        assertTrue(reset.getExcludedQualifiedNames().isEmpty());
+        assertTrue(reset.getFocusClass().isEmpty());
     }
 }

@@ -68,11 +68,16 @@ public final class StyleSettingsDialog extends JDialog {
             new JComboBox<>(new String[] { "Default", "Polyline", "Ortho", "Spline" });
     private final JComboBox<String> shadowingCombo =
             new JComboBox<>(new String[] { "Default", "On", "Off" });
+    private final JComboBox<String> monochromeCombo =
+            new JComboBox<>(new String[] { "Default", "On", "Reverse" });
+    private final JSpinner roundCornerSpinner =
+            new JSpinner(new SpinnerNumberModel(0, 0, 40, 1));
     private final JSpinner nodeSepSpinner =
             new JSpinner(new SpinnerNumberModel(0, 0, 200, 5));
     private final JSpinner rankSepSpinner =
             new JSpinner(new SpinnerNumberModel(0, 0, 200, 5));
     private final JTextArea customSkinparamArea = new JTextArea(6, 32);
+    private final JTextField captionField = new JTextField(24);
     private final JCheckBox sequenceShowCommentsCheckbox =
             new JCheckBox(Messages.get("style.seq.showComments"));
     private final JComboBox<String> sequenceCommentStyleCombo =
@@ -111,6 +116,12 @@ public final class StyleSettingsDialog extends JDialog {
             new JCheckBox(Messages.get("style.class.markExternalSupertypes"));
     private final JCheckBox classColorCodeRelationsCheckbox =
             new JCheckBox(Messages.get("style.class.colorCodeRelations"));
+    private final JCheckBox classHideEmptyMembersCheckbox =
+            new JCheckBox(Messages.get("style.class.hideEmptyMembers"));
+    private final JCheckBox classHideUnlinkedCheckbox =
+            new JCheckBox(Messages.get("style.class.hideUnlinked"));
+    private final JCheckBox classColorCodeStereotypesCheckbox =
+            new JCheckBox(Messages.get("style.class.colorCodeStereotypes"));
     private final JSpinner classCommentMaxLengthSpinner =
             new JSpinner(new SpinnerNumberModel(80, 0, 500, 10));
     private final JTextField classHiddenAnnotationsField = new JTextField(24);
@@ -119,109 +130,6 @@ public final class StyleSettingsDialog extends JDialog {
             new JSpinner(new SpinnerNumberModel(4, 1, 10, 1));
 
     private Result result;
-
-    /** クラス図向け Setting 永続化用 DTO (不変)。 */
-    public static final class ClassDiagramPrefs {
-        public final boolean showFields;
-        public final boolean showMethods;
-        public final boolean showAnnotations;
-        public final boolean publicOnly;
-        public final boolean excludeExternal;
-        /** 継承元が JDK 標準/外部ライブラリかをステレオタイプ表示する。 */
-        public final boolean markExternalSupertypes;
-        /** 関係線を種別ごとに色分け (継承=緑/実装=青/利用=灰破線) するか。 */
-        public final boolean colorCodeRelations;
-        public final int commentMaxLength;
-        /** 表示しないアノテーション名集合 (大括弧なし、例: {"Override", "Nullable"})。 */
-        public final java.util.Set<String> hiddenAnnotations;
-
-        /** 後方互換コンストラクタ ({@code colorCodeRelations=false})。 */
-        public ClassDiagramPrefs(boolean showFields, boolean showMethods,
-                                  boolean showAnnotations, boolean publicOnly,
-                                  boolean excludeExternal, boolean markExternalSupertypes,
-                                  int commentMaxLength,
-                                  java.util.Set<String> hiddenAnnotations) {
-            this(showFields, showMethods, showAnnotations, publicOnly, excludeExternal,
-                    markExternalSupertypes, false, commentMaxLength, hiddenAnnotations);
-        }
-
-        public ClassDiagramPrefs(boolean showFields, boolean showMethods,
-                                  boolean showAnnotations, boolean publicOnly,
-                                  boolean excludeExternal, boolean markExternalSupertypes,
-                                  boolean colorCodeRelations,
-                                  int commentMaxLength,
-                                  java.util.Set<String> hiddenAnnotations) {
-            this.showFields = showFields;
-            this.showMethods = showMethods;
-            this.showAnnotations = showAnnotations;
-            this.publicOnly = publicOnly;
-            this.excludeExternal = excludeExternal;
-            this.markExternalSupertypes = markExternalSupertypes;
-            this.colorCodeRelations = colorCodeRelations;
-            this.commentMaxLength = Math.max(0, commentMaxLength);
-            this.hiddenAnnotations = (hiddenAnnotations == null)
-                    ? java.util.Collections.emptySet()
-                    : java.util.Collections.unmodifiableSet(
-                            new java.util.LinkedHashSet<>(hiddenAnnotations));
-        }
-
-        /** カンマ区切り文字列に整形 (CSV)。 */
-        public String hiddenAnnotationsCsv() {
-            return String.join(",", hiddenAnnotations);
-        }
-
-        /** CSV からインスタンスを組み立てるユーティリティ。 */
-        public static java.util.Set<String> parseCsv(String csv) {
-            java.util.Set<String> set = new java.util.LinkedHashSet<>();
-            if (csv == null || csv.isEmpty()) {
-                return set;
-            }
-            for (String tok : csv.split(",")) {
-                String t = tok.trim();
-                if (!t.isEmpty()) {
-                    set.add(t);
-                }
-            }
-            return set;
-        }
-
-        /** 既定値 (PlantUmlClassDiagram.Options の既定 = BALANCED 相当)。 */
-        public static ClassDiagramPrefs defaults() {
-            java.util.Set<String> hidden = new java.util.LinkedHashSet<>();
-            hidden.add("Override");
-            hidden.add("SuppressWarnings");
-            return new ClassDiagramPrefs(true, true, true, false, false, false, false, 80, hidden);
-        }
-    }
-
-    /** アクティビティ図向け Setting 永続化用 DTO (不変)。 */
-    public static final class ActivityDiagramPrefs {
-        /** ラムダ/匿名クラスのコールバック本体を partition ブロックに展開する。 */
-        public final boolean expandInlineCallbacks;
-        /** ローカル変数宣言をアクションノードとして表示する。 */
-        public final boolean showLocalVars;
-        /** 代入・インクリメント文をアクションノードとして表示する。 */
-        public final boolean showAssignments;
-        /** メソッド呼び出しの引数を表示する (例: helper.done(label))。 */
-        public final boolean showCallArguments;
-        /** メソッド本体内のインラインコメントを note として表示する。 */
-        public final boolean showInlineComments;
-
-        public ActivityDiagramPrefs(boolean expandInlineCallbacks, boolean showLocalVars,
-                                     boolean showAssignments, boolean showCallArguments,
-                                     boolean showInlineComments) {
-            this.expandInlineCallbacks = expandInlineCallbacks;
-            this.showLocalVars = showLocalVars;
-            this.showAssignments = showAssignments;
-            this.showCallArguments = showCallArguments;
-            this.showInlineComments = showInlineComments;
-        }
-
-        /** 既定値 (PlantUmlActivityDiagram.Options の既定 = すべて表示)。 */
-        public static ActivityDiagramPrefs defaults() {
-            return new ActivityDiagramPrefs(true, true, true, true, true);
-        }
-    }
 
     /** ダイアログの戻り値 (Style + シーケンス図 + アクティビティ図 + クラス図設定)。 */
     public static final class Result {
@@ -415,6 +323,17 @@ public final class StyleSettingsDialog extends JDialog {
         shadowingCombo.setToolTipText(Messages.get("style.tip.shadowing"));
         row = addLabeledRow(form, c, row, "style.label.shadowing", shadowingCombo);
 
+        // モノクロ (印刷向けグレースケール)
+        monochromeCombo.setSelectedIndex(monochromeIndex(initial.getMonochrome()));
+        monochromeCombo.setToolTipText(Messages.get("style.tip.monochrome"));
+        row = addLabeledRow(form, c, row, "style.label.monochrome", monochromeCombo);
+
+        // 角丸 (ボックスの roundcorner 半径)
+        roundCornerSpinner.setValue(initial.getRoundCorner());
+        ((JSpinner.DefaultEditor) roundCornerSpinner.getEditor()).getTextField()
+                .setToolTipText(Messages.get("style.tip.roundCorner"));
+        row = addLabeledRow(form, c, row, "style.label.roundCorner", roundCornerSpinner);
+
         // 要素間隔 (nodesep / ranksep)
         c.gridx = 0; c.gridy = row; c.weightx = 0;
         form.add(new JLabel(Messages.get("style.label.spacing")), c);
@@ -434,6 +353,11 @@ public final class StyleSettingsDialog extends JDialog {
         form.add(spacingPanel, c);
         c.gridwidth = 1;
         row++;
+
+        // 図キャプション (全図種の下部中央に出すブランディング/文脈テキスト)
+        captionField.setText(initial.getCaption());
+        captionField.setToolTipText(Messages.get("style.tip.caption"));
+        row = addLabeledRow(form, c, row, "style.label.caption", captionField);
 
         // カスタム skinparam
         c.gridx = 0; c.gridy = row; c.weightx = 0; c.anchor = GridBagConstraints.NORTHWEST;
@@ -585,6 +509,15 @@ public final class StyleSettingsDialog extends JDialog {
         classColorCodeRelationsCheckbox.setSelected(cp.colorCodeRelations);
         classColorCodeRelationsCheckbox.setToolTipText(
                 Messages.get("style.tip.colorCodeRelations"));
+        classHideEmptyMembersCheckbox.setSelected(cp.hideEmptyMembers);
+        classHideEmptyMembersCheckbox.setToolTipText(
+                Messages.get("style.tip.hideEmptyMembers"));
+        classHideUnlinkedCheckbox.setSelected(cp.hideUnlinked);
+        classHideUnlinkedCheckbox.setToolTipText(
+                Messages.get("style.tip.hideUnlinked"));
+        classColorCodeStereotypesCheckbox.setSelected(cp.colorCodeStereotypes);
+        classColorCodeStereotypesCheckbox.setToolTipText(
+                Messages.get("style.tip.colorCodeStereotypes"));
         classCommentMaxLengthSpinner.setValue(cp.commentMaxLength);
         classHiddenAnnotationsField.setText(cp.hiddenAnnotationsCsv());
         classHiddenAnnotationsField.setToolTipText(Messages.get("style.tip.hiddenAnnotations"));
@@ -613,6 +546,11 @@ public final class StyleSettingsDialog extends JDialog {
         row = addWideRow(form, c, row, classMarkExternalSupertypesCheckbox);
         // 関係線の色分け (継承=緑/実装=青/利用=灰破線)。大規模図で依存線を追いやすくする。
         row = addWideRow(form, c, row, classColorCodeRelationsCheckbox);
+        // 密度削減トグル: 空メンバー欄を畳む / 孤立クラスを取り除く。
+        row = addWideRow(form, c, row, classHideEmptyMembersCheckbox);
+        row = addWideRow(form, c, row, classHideUnlinkedCheckbox);
+        // ステレオタイプ別の色分け (CarManager/Activity/aidl 等をパステルで識別)。
+        row = addWideRow(form, c, row, classColorCodeStereotypesCheckbox);
 
         ((JSpinner.DefaultEditor) classCommentMaxLengthSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.commentMaxLength"));
@@ -699,6 +637,22 @@ public final class StyleSettingsDialog extends JDialog {
         }
     }
 
+    private static int monochromeIndex(DiagramStyle.Monochrome m) {
+        switch (m) {
+            case ON: return 1;
+            case REVERSE: return 2;
+            default: return 0;
+        }
+    }
+
+    private static DiagramStyle.Monochrome monochromeFromIndex(int i) {
+        switch (i) {
+            case 1: return DiagramStyle.Monochrome.ON;
+            case 2: return DiagramStyle.Monochrome.REVERSE;
+            default: return DiagramStyle.Monochrome.DEFAULT;
+        }
+    }
+
     /**
      * 「可読性優先」: 影なし・直交線・余白広めの推奨スタイルを各コントロールへ適用する。
      * あわせてクラス図の関係線色分け (継承=緑/実装=青/利用=灰破線) も有効化し、
@@ -709,6 +663,8 @@ public final class StyleSettingsDialog extends JDialog {
         themeCombo.setSelectedItem(r.getTheme());
         lineTypeCombo.setSelectedIndex(lineTypeIndex(r.getLineType()));
         shadowingCombo.setSelectedIndex(shadowingIndex(r.getShadowing()));
+        monochromeCombo.setSelectedIndex(monochromeIndex(r.getMonochrome()));
+        roundCornerSpinner.setValue(r.getRoundCorner());
         nodeSepSpinner.setValue(r.getNodeSep());
         rankSepSpinner.setValue(r.getRankSep());
         classColorCodeRelationsCheckbox.setSelected(true);
@@ -746,9 +702,12 @@ public final class StyleSettingsDialog extends JDialog {
         dirDefault.setSelected(true);
         lineTypeCombo.setSelectedIndex(lineTypeIndex(d.getLineType()));
         shadowingCombo.setSelectedIndex(shadowingIndex(d.getShadowing()));
+        monochromeCombo.setSelectedIndex(monochromeIndex(d.getMonochrome()));
+        roundCornerSpinner.setValue(d.getRoundCorner());
         nodeSepSpinner.setValue(d.getNodeSep());
         rankSepSpinner.setValue(d.getRankSep());
         customSkinparamArea.setText(d.getCustomSkinparam());
+        captionField.setText(d.getCaption());
         sequenceShowCommentsCheckbox.setSelected(true);
         sequenceCommentStyleCombo.setSelectedItem("INLINE");
         sequenceCommentStyleCombo.setEnabled(true);
@@ -771,6 +730,9 @@ public final class StyleSettingsDialog extends JDialog {
         classExcludeExternalCheckbox.setSelected(cp.excludeExternal);
         classMarkExternalSupertypesCheckbox.setSelected(cp.markExternalSupertypes);
         classColorCodeRelationsCheckbox.setSelected(cp.colorCodeRelations);
+        classHideEmptyMembersCheckbox.setSelected(cp.hideEmptyMembers);
+        classHideUnlinkedCheckbox.setSelected(cp.hideUnlinked);
+        classColorCodeStereotypesCheckbox.setSelected(cp.colorCodeStereotypes);
         classCommentMaxLengthSpinner.setValue(cp.commentMaxLength);
         classHiddenAnnotationsField.setText(cp.hiddenAnnotationsCsv());
         callGraphMaxDepthSpinner.setValue(4);
@@ -817,9 +779,12 @@ public final class StyleSettingsDialog extends JDialog {
         }
         s.setLineType(lineTypeFromIndex(lineTypeCombo.getSelectedIndex()));
         s.setShadowing(shadowingFromIndex(shadowingCombo.getSelectedIndex()));
+        s.setMonochrome(monochromeFromIndex(monochromeCombo.getSelectedIndex()));
+        s.setRoundCorner(((Number) roundCornerSpinner.getValue()).intValue());
         s.setNodeSep(((Number) nodeSepSpinner.getValue()).intValue());
         s.setRankSep(((Number) rankSepSpinner.getValue()).intValue());
         s.setCustomSkinparam(customSkinparamArea.getText());
+        s.setCaption(captionField.getText());
         Object styleSel = sequenceCommentStyleCombo.getSelectedItem();
         PlantUmlClassDiagram.CommentStyle cs = "NOTE".equals(styleSel)
                 ? PlantUmlClassDiagram.CommentStyle.NOTE
@@ -838,7 +803,10 @@ public final class StyleSettingsDialog extends JDialog {
                 classMarkExternalSupertypesCheckbox.isSelected(),
                 classColorCodeRelationsCheckbox.isSelected(),
                 ((Number) classCommentMaxLengthSpinner.getValue()).intValue(),
-                ClassDiagramPrefs.parseCsv(classHiddenAnnotationsField.getText()));
+                ClassDiagramPrefs.parseCsv(classHiddenAnnotationsField.getText()),
+                classHideEmptyMembersCheckbox.isSelected(),
+                classHideUnlinkedCheckbox.isSelected(),
+                classColorCodeStereotypesCheckbox.isSelected());
         ActivityDiagramPrefs activityPrefs = new ActivityDiagramPrefs(
                 activityExpandCallbacksCheckbox.isSelected(),
                 activityShowLocalVarsCheckbox.isSelected(),
