@@ -145,6 +145,55 @@ public class DiagramScopeTest {
         assertEquals(".*X$", copy.getExcludeClassNameRegex().pattern());
     }
 
+    private static JavaClassInfo clsWithAnnotations(String pkg, String name, String... annos) {
+        JavaClassInfo c = cls(pkg, name);
+        for (String a : annos) {
+            c.getAnnotations().add(a);
+        }
+        return c;
+    }
+
+    @Test
+    public void testIncludeAnnotationKeepsOnlyMatching() {
+        DiagramScope s = DiagramScope.builder().includeAnnotation("Entity").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                clsWithAnnotations("p", "User", "@javax.persistence.Entity"),
+                clsWithAnnotations("p", "Order", "Entity(name=\"orders\")"),
+                clsWithAnnotations("p", "Service", "@Component"),
+                cls("p", "Plain"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("User", out.get(0).getSimpleName());
+        assertEquals("Order", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testExcludeAnnotationDropsMatching() {
+        DiagramScope s = DiagramScope.builder().excludeAnnotation("Generated").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                clsWithAnnotations("p", "Gen", "@Generated"),
+                clsWithAnnotations("p", "Real", "@Service"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(1, out.size());
+        assertEquals("Real", out.get(0).getSimpleName());
+    }
+
+    @Test
+    public void testAnnotationScopeIsEmptyAndToBuilder() {
+        assertFalse(DiagramScope.builder().includeAnnotation("Entity").build().isEmpty());
+        assertFalse(DiagramScope.builder().excludeAnnotation("Generated").build().isEmpty());
+        DiagramScope s = DiagramScope.builder()
+                .includeAnnotation("@a.b.Entity")
+                .excludeAnnotation("Deprecated")
+                .build();
+        // ビルダは単純名へ正規化する
+        assertTrue(s.getIncludedAnnotations().contains("Entity"));
+        assertTrue(s.getExcludedAnnotations().contains("Deprecated"));
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getIncludedAnnotations().contains("Entity"));
+        assertTrue(copy.getExcludedAnnotations().contains("Deprecated"));
+    }
+
     @Test
     public void testCombinedFilters() {
         DiagramScope s = DiagramScope.builder()

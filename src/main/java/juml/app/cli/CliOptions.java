@@ -57,6 +57,8 @@ public final class CliOptions {
     public final Option noVisibilityIcons = new Option(null, "no-visibility-icons", false);
     public final Option excludePackage = new Option(null, "exclude-package", true);
     public final Option excludeNameRegex = new Option(null, "exclude-name-regex", true);
+    public final Option annotation = new Option(null, "annotation", true);
+    public final Option excludeAnnotation = new Option(null, "exclude-annotation", true);
     public final Option colorRelations = new Option(null, "color-relations", false);
     public final Option hideEmptyMembers = new Option(null, "hide-empty-members", false);
     public final Option hideUnlinked = new Option(null, "hide-unlinked", false);
@@ -109,8 +111,8 @@ public final class CliOptions {
             sequenceDiagrams, jetpack, perFolder,
             preset, noFields, noMethods, publicOnly,
             excludeExternal, markExternalSupertypes, noVisibilityIcons,
-            excludePackage, excludeNameRegex, colorRelations,
-            hideEmptyMembers, hideUnlinked,
+            excludePackage, excludeNameRegex, annotation, excludeAnnotation,
+            colorRelations, hideEmptyMembers, hideUnlinked,
             focus, relation, mode,
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
@@ -219,6 +221,10 @@ public final class CliOptions {
                 + " matches PREFIX (may be specified multiple times).");
         System.err.println("  --exclude-name-regex REGEX: Exclude classes whose simple or"
                 + " qualified name matches the Java regex, e.g. '.*(Test|Impl)$'.");
+        System.err.println("  --annotation CSV: Keep only classes carrying one of the listed"
+                + " class-level annotations (simple names), e.g. 'Entity,RestController'.");
+        System.err.println("  --exclude-annotation CSV: Drop classes carrying any of the listed"
+                + " class-level annotations, e.g. 'Generated,Deprecated'.");
         System.err.println("  --relation inherit,impl,use: Limit relation lines to the"
                 + " listed kinds (CSV).");
         System.err.println("  --color-relations: Color-code class-diagram relations"

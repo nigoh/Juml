@@ -69,4 +69,25 @@ public class UmlOverridesFocusColorTest {
         UmlOverrides ov = UmlOverrides.build(opts);
         assertEquals("", ov.excludeNameRegex);
     }
+
+    @Test
+    public void annotationFlagsAreNormalizedToSimpleNames() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c",
+            "--annotation", "@javax.persistence.Entity, RestController",
+            "--exclude-annotation", "Generated" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertTrue(ov.includedAnnotations.contains("Entity"));
+        assertTrue(ov.includedAnnotations.contains("RestController"));
+        assertTrue(ov.excludedAnnotations.contains("Generated"));
+    }
+
+    @Test
+    public void annotationFlagsDefaultEmpty() {
+        CliOptions opts = new CliOptions();
+        opts.parse(new String[] { "-c" });
+        UmlOverrides ov = UmlOverrides.build(opts);
+        assertTrue(ov.includedAnnotations.isEmpty());
+        assertTrue(ov.excludedAnnotations.isEmpty());
+    }
 }

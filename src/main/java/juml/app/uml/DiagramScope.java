@@ -49,6 +49,10 @@ public final class DiagramScope {
     private final Pattern classNameRegex;
     /** simpleName/qualifiedName のいずれかに一致したら除外する正規表現 (null で無効)。 */
     private final Pattern excludeClassNameRegex;
+    /** クラスレベルのアノテーション名 (単純名) が一致するクラスのみ残す (空でフィルタなし)。 */
+    private final Set<String> includedAnnotations;
+    /** クラスレベルのアノテーション名 (単純名) が一致するクラスを除外する (空で除外なし)。 */
+    private final Set<String> excludedAnnotations;
     private final Set<String> seedQualifiedNames;
     private final int neighborHops;
     private final int maxClasses;
@@ -72,6 +76,10 @@ public final class DiagramScope {
                 : Collections.unmodifiableSet(new LinkedHashSet<>(b.externalPackagePrefixes));
         this.classNameRegex = b.classNameRegex;
         this.excludeClassNameRegex = b.excludeClassNameRegex;
+        this.includedAnnotations = Collections.unmodifiableSet(
+                new LinkedHashSet<>(b.includedAnnotations));
+        this.excludedAnnotations = Collections.unmodifiableSet(
+                new LinkedHashSet<>(b.excludedAnnotations));
         this.seedQualifiedNames = Collections.unmodifiableSet(
                 new LinkedHashSet<>(b.seedQualifiedNames));
         this.neighborHops = Math.max(0, b.neighborHops);
@@ -119,6 +127,16 @@ public final class DiagramScope {
         return excludeClassNameRegex;
     }
 
+    /** クラスレベルのアノテーション名 (単純名) の include 集合 (空でフィルタなし)。 */
+    public Set<String> getIncludedAnnotations() {
+        return includedAnnotations;
+    }
+
+    /** クラスレベルのアノテーション名 (単純名) の exclude 集合 (空で除外なし)。 */
+    public Set<String> getExcludedAnnotations() {
+        return excludedAnnotations;
+    }
+
     public Set<String> getSeedQualifiedNames() {
         return seedQualifiedNames;
     }
@@ -162,6 +180,8 @@ public final class DiagramScope {
                 && !excludeExternalLibraries
                 && classNameRegex == null
                 && excludeClassNameRegex == null
+                && includedAnnotations.isEmpty()
+                && excludedAnnotations.isEmpty()
                 && seedQualifiedNames.isEmpty()
                 && maxClasses <= 0
                 && relationKinds.containsAll(EnumSet.allOf(RelationKind.class))
@@ -184,6 +204,8 @@ public final class DiagramScope {
         b.externalPackagePrefixes.addAll(externalPackagePrefixes);
         b.classNameRegex = classNameRegex;
         b.excludeClassNameRegex = excludeClassNameRegex;
+        b.includedAnnotations.addAll(includedAnnotations);
+        b.excludedAnnotations.addAll(excludedAnnotations);
         b.seedQualifiedNames.addAll(seedQualifiedNames);
         b.neighborHops = neighborHops;
         b.maxClasses = maxClasses;
@@ -205,6 +227,8 @@ public final class DiagramScope {
         private final Set<String> externalPackagePrefixes = new LinkedHashSet<>();
         private Pattern classNameRegex;
         private Pattern excludeClassNameRegex;
+        private final Set<String> includedAnnotations = new LinkedHashSet<>();
+        private final Set<String> excludedAnnotations = new LinkedHashSet<>();
         private final Set<String> seedQualifiedNames = new LinkedHashSet<>();
         private int neighborHops;
         private int maxClasses;
@@ -315,6 +339,56 @@ public final class DiagramScope {
             this.excludeClassNameRegex = (regex == null || regex.isEmpty())
                     ? null : Pattern.compile(regex);
             return this;
+        }
+
+        /** このアノテーション (単純名) を持つクラスだけ残す include 条件を足す。 */
+        public Builder includeAnnotation(String name) {
+            if (name != null && !name.isEmpty()) {
+                includedAnnotations.add(stripAnnotation(name));
+            }
+            return this;
+        }
+
+        /** include アノテーションをまとめて足す。 */
+        public Builder includeAnnotations(Set<String> names) {
+            if (names != null) {
+                for (String n : names) {
+                    includeAnnotation(n);
+                }
+            }
+            return this;
+        }
+
+        /** このアノテーション (単純名) を持つクラスを除外する exclude 条件を足す。 */
+        public Builder excludeAnnotation(String name) {
+            if (name != null && !name.isEmpty()) {
+                excludedAnnotations.add(stripAnnotation(name));
+            }
+            return this;
+        }
+
+        /** exclude アノテーションをまとめて足す。 */
+        public Builder excludeAnnotations(Set<String> names) {
+            if (names != null) {
+                for (String n : names) {
+                    excludeAnnotation(n);
+                }
+            }
+            return this;
+        }
+
+        /** {@code @}・パッケージ・{@code (...)} 引数を落として単純名へ正規化する。 */
+        private static String stripAnnotation(String raw) {
+            String s = raw.trim().replaceFirst("^@", "");
+            int paren = s.indexOf('(');
+            if (paren >= 0) {
+                s = s.substring(0, paren);
+            }
+            int dot = s.lastIndexOf('.');
+            if (dot >= 0) {
+                s = s.substring(dot + 1);
+            }
+            return s.trim();
         }
 
         public Builder seed(String qualifiedName) {

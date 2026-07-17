@@ -49,6 +49,8 @@ public final class DiagramScopeDialog extends JDialog {
     private final JList<String> moduleList;
     private final JTextField regexField;
     private final JTextField excludeRegexField;
+    private final JTextField includeAnnotationsField;
+    private final JTextField excludeAnnotationsField;
     private final JSpinner maxClassesSpinner;
     private final JSpinner neighborHopsSpinner;
     private final JComboBox<DiagramPreset> presetCombo;
@@ -77,6 +79,10 @@ public final class DiagramScopeDialog extends JDialog {
         regexField.setToolTipText(Messages.get("dlg.scope.regexTip"));
         excludeRegexField = new JTextField(20);
         excludeRegexField.setToolTipText(Messages.get("dlg.scope.excludeRegexTip"));
+        includeAnnotationsField = new JTextField(20);
+        includeAnnotationsField.setToolTipText(Messages.get("dlg.scope.includeAnnotationsTip"));
+        excludeAnnotationsField = new JTextField(20);
+        excludeAnnotationsField.setToolTipText(Messages.get("dlg.scope.excludeAnnotationsTip"));
         maxClassesSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100_000, 50));
         maxClassesSpinner.setToolTipText(Messages.get("dlg.scope.maxClassesTip"));
         neighborHopsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 10, 1));
@@ -107,6 +113,8 @@ public final class DiagramScopeDialog extends JDialog {
             if (initial.getExcludeClassNameRegex() != null) {
                 excludeRegexField.setText(initial.getExcludeClassNameRegex().pattern());
             }
+            includeAnnotationsField.setText(String.join(", ", initial.getIncludedAnnotations()));
+            excludeAnnotationsField.setText(String.join(", ", initial.getExcludedAnnotations()));
             maxClassesSpinner.setValue(initial.getMaxClasses());
             neighborHopsSpinner.setValue(initial.getNeighborHops());
             EnumSet<RelationKind> kinds = initial.getRelationKinds();
@@ -233,6 +241,15 @@ public final class DiagramScopeDialog extends JDialog {
         mode.add(parseModeHeaders);
         p.add(mode, c);
 
+        c.gridy = 15; c.weighty = 0;
+        p.add(new JLabel(Messages.get("dlg.scope.includeAnnotations")), c);
+        c.gridy = 16;
+        p.add(includeAnnotationsField, c);
+        c.gridy = 17;
+        p.add(new JLabel(Messages.get("dlg.scope.excludeAnnotations")), c);
+        c.gridy = 18;
+        p.add(excludeAnnotationsField, c);
+
         return p;
     }
 
@@ -285,6 +302,20 @@ public final class DiagramScopeDialog extends JDialog {
         maxClassesSpinner.setValue(tmp.getMaxClasses());
     }
 
+    /** カンマ区切りのアノテーション名を集合へ (空要素は無視)。@ 除去はビルダ側で行う。 */
+    private static Set<String> parseCsvSet(String csv) {
+        Set<String> set = new LinkedHashSet<>();
+        if (csv != null) {
+            for (String tok : csv.split(",")) {
+                String t = tok.trim();
+                if (!t.isEmpty()) {
+                    set.add(t);
+                }
+            }
+        }
+        return set;
+    }
+
     private DiagramScope buildScope() {
         DiagramScope.Builder b = DiagramScope.builder();
         Set<String> pkgs = new LinkedHashSet<>(packageList.getSelectedValuesList());
@@ -325,6 +356,8 @@ public final class DiagramScopeDialog extends JDialog {
                 return null; // 閉じずに修正させる
             }
         }
+        b.includeAnnotations(parseCsvSet(includeAnnotationsField.getText()));
+        b.excludeAnnotations(parseCsvSet(excludeAnnotationsField.getText()));
         b.maxClasses(((Number) maxClassesSpinner.getValue()).intValue());
         b.neighborHops(((Number) neighborHopsSpinner.getValue()).intValue());
         EnumSet<RelationKind> kinds = EnumSet.noneOf(RelationKind.class);

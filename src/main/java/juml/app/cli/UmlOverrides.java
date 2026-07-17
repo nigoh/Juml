@@ -52,6 +52,10 @@ public final class UmlOverrides {
     public Set<String> excludedPackages = new LinkedHashSet<>();
     /** クラス名 (単純名/完全修飾名) が一致したら除外する正規表現 (空で無効)。 */
     public String excludeNameRegex = "";
+    /** このアノテーション (単純名) を持つクラスのみ残す (空でフィルタなし)。 */
+    public Set<String> includedAnnotations = new LinkedHashSet<>();
+    /** このアノテーション (単純名) を持つクラスを除外する (空で除外なし)。 */
+    public Set<String> excludedAnnotations = new LinkedHashSet<>();
     public UmlGenerator.ParseMode parseMode = UmlGenerator.ParseMode.FULL;
 
     public Integer seqDepth;
@@ -283,6 +287,27 @@ public final class UmlOverrides {
         }
         if (!options.excludeNameRegex.getArguments().isEmpty()) {
             o.excludeNameRegex = options.excludeNameRegex.getArguments().getLast();
+        }
+        addCsvSimpleNames(o.includedAnnotations, options.annotation.getArguments());
+        addCsvSimpleNames(o.excludedAnnotations, options.excludeAnnotation.getArguments());
+    }
+
+    /** {@code --annotation}/{@code --exclude-annotation} の CSV を単純名へ正規化して集合へ足す。 */
+    private static void addCsvSimpleNames(Set<String> target, List<String> args) {
+        for (String csv : args) {
+            if (csv == null) {
+                continue;
+            }
+            for (String tok : csv.split(",")) {
+                String t = tok.trim().replaceFirst("^@", "");
+                int dot = t.lastIndexOf('.');
+                if (dot >= 0) {
+                    t = t.substring(dot + 1);
+                }
+                if (!t.isEmpty()) {
+                    target.add(t);
+                }
+            }
         }
     }
 

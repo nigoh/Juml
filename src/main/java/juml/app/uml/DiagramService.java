@@ -601,8 +601,8 @@ public final class DiagramService {
      * スコープに従って ClassInfo リストを絞り込む。
      *
      * <p>順序: module → package include → package exclude → external libraries →
-     * regex (include) → regex (exclude) → seed + BFS by neighborHops →
-     * 個別クラス除外 (excludedQualifiedNames)。
+     * annotation (include/exclude) → regex (include) → regex (exclude) →
+     * seed + BFS by neighborHops → 個別クラス除外 (excludedQualifiedNames)。
      * maxClasses 上限は呼び出し側 (PlantUmlClassDiagram.Options.maxClasses) で適用する。</p>
      */
     static List<JavaClassInfo> applyScope(List<JavaClassInfo> classes, DiagramScope scope,
@@ -679,6 +679,27 @@ public final class DiagramService {
             result = next;
         }
 
+        // 2.7. アノテーションフィルタ: クラスレベル @Annotation の単純名で include / exclude する。
+        if (!scope.getIncludedAnnotations().isEmpty() || !scope.getExcludedAnnotations().isEmpty()) {
+            Set<String> inc = scope.getIncludedAnnotations();
+            Set<String> exc = scope.getExcludedAnnotations();
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                Set<String> names = new java.util.HashSet<>();
+                for (String a : c.getAnnotations()) {
+                    names.add(annotationSimpleName(a));
+                }
+                if (!inc.isEmpty() && java.util.Collections.disjoint(names, inc)) {
+                    continue; // include 指定があり、どれも持たないクラスは落とす
+                }
+                if (!exc.isEmpty() && !java.util.Collections.disjoint(names, exc)) {
+                    continue; // exclude 指定のいずれかを持つクラスは落とす
+                }
+                next.add(c);
+            }
+            result = next;
+        }
+
         // 3. regex フィルタ (include)
         Pattern p = scope.getClassNameRegex();
         if (p != null) {
@@ -725,6 +746,23 @@ public final class DiagramService {
         }
 
         return result;
+    }
+
+    /** {@code @}・パッケージ・{@code (...)} 引数を落としてアノテーションを単純名へ正規化する。 */
+    private static String annotationSimpleName(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim().replaceFirst("^@", "");
+        int paren = s.indexOf('(');
+        if (paren >= 0) {
+            s = s.substring(0, paren);
+        }
+        int dot = s.lastIndexOf('.');
+        if (dot >= 0) {
+            s = s.substring(dot + 1);
+        }
+        return s.trim();
     }
 
     /** シード集合から継承/実装/フィールド型を辿り、N hop 以内のクラスのみを返す。 */
