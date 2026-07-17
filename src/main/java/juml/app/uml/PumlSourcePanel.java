@@ -3,6 +3,7 @@
 
 package juml.app.uml;
 
+import juml.app.uml.SourceHighlighter.Span;
 import juml.util.Messages;
 
 import javax.swing.JButton;
@@ -10,23 +11,44 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
+import javax.swing.JTextPane;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.text.Element;
+import javax.swing.text.Highlighter;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
+import javax.swing.undo.UndoManager;
+import javax.swing.undo.UndoableEdit;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.awt.geom.Rectangle2D;
 
 /**
- * PlantUML テキストを表示するパネル。既定はリードオンリー (生成された図のソース参照用)。
- *
- * <p>デバッグ目的、もしくはユーザーが PlantUML テキストを別ツールに
- * コピーしたい場合の参照用。等幅フォントで表示し、上部に「Copy」ボタンを置く。</p>
+ * PlantUML テキストを表示・編集するコードペイン。既定はリードオンリー
+ * (生成された図のソース参照用)。行番号ガター・シンタックスハイライト
+ * ({@link PlantUmlHighlighter})・現在行の強調を備え、あらゆる図種のテキストを
+ * 読みやすくする。
  *
  * <p>自由編集 PlantUML エディタタブでは {@link #setEditable(boolean)} で編集可能にし、
- * {@link #setOnTextChange(Runnable)} でユーザー編集をライブプレビューへ配線する。</p>
+ * {@link #setOnTextChange(Runnable)} でユーザー編集をライブプレビューへ配線する。
+ * 装飾は {@link StyleConstants#setForeground} のみを用い、段落属性は変えない
+ * (行番号ガターを {@code modelToView2D} で整列させる前提を崩さないため)。</p>
  */
 public class PumlSourcePanel extends JPanel {
+
+    /** これを超える文字数のテキストはハイライトを省略してプレーン表示する (EDT 保護)。 */
+    private static final int HIGHLIGHT_CHAR_LIMIT = 400_000;
 
     /** スニペット: {labelKey, 挿入テキスト}。編集モードでキャレット位置へ挿入する。 */
     private static final String[][] SNIPPETS = {
@@ -42,18 +64,26 @@ public class PumlSourcePanel extends JPanel {
         {"puml.snippet.title", "title My Diagram\n"},
     };
 
-    private final JTextArea textArea;
+    private final JTextPane textPane;
+    private final LineNumberGutter gutter;
     private final JButton copyButton;
     private final JLabel snippetLabel;
     private final JComboBox<String> snippetCombo;
+    /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
+    private final Timer highlightTimer;
+
+    /** 現在行ハイライトのタグ (キャレット移動で貼り替える)。 */
+    private Object currentLineTag;
 
     public PumlSourcePanel() {
         super(new BorderLayout());
-        textArea = new JTextArea();
-        textArea.setEditable(false);
-        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        textArea.setLineWrap(false);
-        textArea.setTabSize(2);
+        textPane = new JTextPane();
+        textPane.setEditable(false);
+        textPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textPane.setForeground(EditorColors.text());
+        textPane.setBackground(EditorColors.background());
+        // Ctrl+Tab 等のタブ移動が外側へ届くよう、フォーカストラバーサルは無効化する。
+        textPane.setFocusTraversalKeysEnabled(false);
 
         copyButton = new JButton(Messages.get("puml.copy"));
         copyButton.setToolTipText(Messages.get("puml.copy.tip"));
@@ -82,24 +112,58 @@ public class PumlSourcePanel extends JPanel {
         bar.add(snippetLabel);
         bar.add(snippetCombo);
 
+        // 折り返し無効ラッパー経由で横スクロールさせる (コード編集は折り返さない)。
+        JPanel noWrap = new JPanel(new BorderLayout());
+        noWrap.add(textPane, BorderLayout.CENTER);
+        JScrollPane scroll = new JScrollPane(noWrap);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        gutter = new LineNumberGutter(textPane, () -> true);
+        scroll.setRowHeaderView(gutter);
+
         add(bar, BorderLayout.NORTH);
-        add(new JScrollPane(textArea), BorderLayout.CENTER);
+        add(scroll, BorderLayout.CENTER);
+
+        highlightTimer = new Timer(120, e -> applyHighlight());
+        highlightTimer.setRepeats(false);
+        // 本文編集 (挿入/削除) のたびに、ハイライト再計算とガター更新をスケジュールする。
+        textPane.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) {
+                onStructuralChange();
+            }
+            @Override public void removeUpdate(DocumentEvent e) {
+                onStructuralChange();
+            }
+            @Override public void changedUpdate(DocumentEvent e) {
+                // 属性変更 (ハイライト自身) は無視する (再ハイライトの無限ループを防ぐ)。
+            }
+        });
+        textPane.addCaretListener(e -> updateCurrentLineHighlight());
+    }
+
+    private void onStructuralChange() {
+        highlightTimer.restart();
+        gutter.refresh();
     }
 
     /** スニペット文字列を現在のキャレット位置へ挿入する (編集不可なら無視)。 */
     void insertSnippet(String text) {
-        if (!textArea.isEditable() || text == null || text.isEmpty()) {
+        if (!textPane.isEditable() || text == null || text.isEmpty()) {
             return;
         }
-        int pos = Math.max(0, Math.min(textArea.getCaretPosition(), textArea.getText().length()));
-        textArea.insert(text, pos);
-        textArea.setCaretPosition(pos + text.length());
-        textArea.requestFocusInWindow();
+        StyledDocument doc = textPane.getStyledDocument();
+        int pos = Math.max(0, Math.min(textPane.getCaretPosition(), doc.getLength()));
+        try {
+            doc.insertString(pos, text, null);
+            textPane.setCaretPosition(pos + text.length());
+        } catch (BadLocationException ignored) {
+            return;
+        }
+        textPane.requestFocusInWindow();
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
     private void copyAllToClipboard() {
-        String text = textArea.getText();
+        String text = getText();
         if (text == null || text.isEmpty()) {
             return;
         }
@@ -108,20 +172,123 @@ public class PumlSourcePanel extends JPanel {
     }
 
     public void setText(String puml) {
-        textArea.setText(puml == null ? "" : puml);
-        textArea.setCaretPosition(0);
-        copyButton.setEnabled(puml != null && !puml.isEmpty());
+        String text = puml == null ? "" : puml;
+        // 全ハイライト (現在行・エラー行) を一旦消す。オフセットが旧内容基準で無効になるため。
+        textPane.getHighlighter().removeAllHighlights();
+        currentLineTag = null;
+        errorHighlightTag = null;
+        highlightedErrorLine = 0;
+        replaceDocText(text);
+        textPane.setCaretPosition(0);
+        copyButton.setEnabled(!text.isEmpty());
         // プログラムによる全文差し替え (ファイル読込・Design キャンバス同期など) は
         // undo 単位として意味を成さないため履歴を破棄する。ユーザーのキー入力・
         // スニペット挿入だけが Ctrl+Z の対象になる。
         if (undoManager != null) {
             undoManager.discardAllEdits();
         }
+        // 描画は通知外なので遅延実行で安全にハイライトする (ドキュメント変更通知中の再入回避)。
+        SwingUtilities.invokeLater(this::applyHighlight);
+        SwingUtilities.invokeLater(this::updateCurrentLineHighlight);
+        gutter.refresh();
+    }
+
+    /** ドキュメント本文を丸ごと差し替える (基準色を付与)。 */
+    private void replaceDocText(String text) {
+        StyledDocument doc = textPane.getStyledDocument();
+        SimpleAttributeSet base = new SimpleAttributeSet();
+        StyleConstants.setForeground(base, EditorColors.text());
+        try {
+            doc.remove(0, doc.getLength());
+            doc.insertString(0, text, base);
+        } catch (BadLocationException ignored) {
+            // 空ドキュメントへの操作は通常失敗しない。
+        }
     }
 
     public String getText() {
-        return textArea.getText();
+        StyledDocument doc = textPane.getStyledDocument();
+        try {
+            return doc.getText(0, doc.getLength());
+        } catch (BadLocationException ex) {
+            return "";
+        }
     }
+
+    // -------------------------------------------------------------------------
+    // シンタックスハイライト
+    // -------------------------------------------------------------------------
+
+    /** 現在の本文を PlantUML トークンで再着色する (基準色→トークン色の順に適用)。 */
+    private void applyHighlight() {
+        StyledDocument doc = textPane.getStyledDocument();
+        int len = doc.getLength();
+        if (len == 0) {
+            return;
+        }
+        String text = getText();
+        SimpleAttributeSet base = new SimpleAttributeSet();
+        StyleConstants.setForeground(base, EditorColors.text());
+        doc.setCharacterAttributes(0, len, base, true);
+        if (len > HIGHLIGHT_CHAR_LIMIT) {
+            return; // 巨大テキストはプレーン表示 (EDT 保護)
+        }
+        for (Span s : PlantUmlHighlighter.highlight(text)) {
+            SimpleAttributeSet a = new SimpleAttributeSet();
+            StyleConstants.setForeground(a, s.color);
+            doc.setCharacterAttributes(s.start, s.length, a, false);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 現在行ハイライト
+    // -------------------------------------------------------------------------
+
+    /** キャレット行を薄く塗る現在行ハイライトを貼り替える (エラー行とは重ねない)。 */
+    private void updateCurrentLineHighlight() {
+        Highlighter h = textPane.getHighlighter();
+        if (h == null) {
+            return;
+        }
+        try {
+            if (currentLineTag != null) {
+                h.removeHighlight(currentLineTag);
+                currentLineTag = null;
+            }
+            Element root = textPane.getDocument().getDefaultRootElement();
+            int line0 = root.getElementIndex(textPane.getCaretPosition());
+            // 赤いエラー帯を隠さないよう、エラー行と重なるときは現在行を塗らない。
+            if (line0 + 1 == highlightedErrorLine) {
+                gutter.repaint();
+                return;
+            }
+            Element el = root.getElement(line0);
+            currentLineTag = h.addHighlight(el.getStartOffset(), el.getEndOffset(),
+                    CURRENT_LINE_PAINTER);
+            gutter.repaint();
+        } catch (BadLocationException ignored) {
+            // 行範囲取得失敗時はハイライトを諦める。
+        }
+    }
+
+    /** 行全体 (ビュー幅いっぱい) を塗る現在行ハイライトペインター。 */
+    private static final Highlighter.HighlightPainter CURRENT_LINE_PAINTER =
+            (g, p0, p1, bounds, c) -> {
+                try {
+                    Rectangle2D r = c.modelToView2D(p0);
+                    if (r == null) {
+                        return;
+                    }
+                    g.setColor(EditorColors.currentLine());
+                    g.fillRect(0, (int) r.getY(), c.getWidth(), (int) Math.ceil(r.getHeight()));
+                } catch (BadLocationException ignored) {
+                    // 無視 (致命的でない)。
+                }
+            };
+
+    // -------------------------------------------------------------------------
+    // エラー行ハイライト
+    // -------------------------------------------------------------------------
 
     private Object errorHighlightTag;
     /** 現在強調しているエラー行 (1 始まり)。無しは 0。テーマ切替時の再着色に使う。 */
@@ -130,25 +297,31 @@ public class PumlSourcePanel extends JPanel {
     /**
      * Look&amp;Feel のライブ切替に追従して、焼き込まれた色のハイライトを現テーマで貼り直す。
      * ハイライトのペインター色は追加時に固定されるため、{@code updateComponentTreeUI} では
-     * 更新されず旧テーマ色が残る (JavaSourcePanel と同じ対策)。エラー行の強調があれば
-     * 現在のテーマ色で再適用する。super から呼ばれるためフィールド未初期化ガードを置く。
+     * 更新されず旧テーマ色が残る。エラー行の強調・シンタックスハイライトを現テーマで再適用する。
+     * super から呼ばれるためフィールド未初期化ガードを置く。
      */
     @Override
     public void updateUI() {
         super.updateUI();
-        if (textArea == null || highlightedErrorLine <= 0) {
+        if (textPane == null) {
             return;
         }
-        // ツリーの LaF 更新が済んでから貼り直す。
         final int line = highlightedErrorLine;
-        javax.swing.SwingUtilities.invokeLater(() -> highlightErrorLine(line));
+        // ツリーの LaF 更新が済んでから貼り直す。
+        SwingUtilities.invokeLater(() -> {
+            applyHighlight();
+            updateCurrentLineHighlight();
+            if (line > 0) {
+                highlightErrorLine(line);
+            }
+        });
     }
 
     /** エラー行の強調色。テーマ (ライト/ダーク) に応じて描画時に解決する。 */
-    private static java.awt.Color errorHighlightColor() {
+    private static Color errorHighlightColor() {
         return EditorColors.isDark()
-                ? new java.awt.Color(0x5A, 0x1D, 0x1D)
-                : new java.awt.Color(0xFF, 0xCD, 0xD2);
+                ? new Color(0x5A, 0x1D, 0x1D)
+                : new Color(0xFF, 0xCD, 0xD2);
     }
 
     /**
@@ -165,23 +338,26 @@ public class PumlSourcePanel extends JPanel {
             return;
         }
         try {
+            Element root = textPane.getDocument().getDefaultRootElement();
             int li = line - 1;
-            if (li >= textArea.getLineCount()) {
+            if (li >= root.getElementCount()) {
                 return;
             }
-            int start = textArea.getLineStartOffset(li);
-            int end = textArea.getLineEndOffset(li);
-            errorHighlightTag = textArea.getHighlighter().addHighlight(start, end,
-                    new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
-                            errorHighlightColor()));
+            Element el = root.getElement(li);
+            int start = el.getStartOffset();
+            int end = el.getEndOffset();
+            errorHighlightTag = textPane.getHighlighter().addHighlight(start, end,
+                    new DefaultHighlighter.DefaultHighlightPainter(errorHighlightColor()));
             highlightedErrorLine = line;
-            if (!textArea.hasFocus()) {
-                java.awt.geom.Rectangle2D r = textArea.modelToView2D(start);
+            // エラー行に現在行ハイライトが重なっていたら退かす (赤帯を隠さない)。
+            updateCurrentLineHighlight();
+            if (!textPane.hasFocus()) {
+                Rectangle2D r = textPane.modelToView2D(start);
                 if (r != null) {
-                    textArea.scrollRectToVisible(r.getBounds());
+                    textPane.scrollRectToVisible(r.getBounds());
                 }
             }
-        } catch (javax.swing.text.BadLocationException ignored) {
+        } catch (BadLocationException ignored) {
             // 行範囲がずれた場合は強調しない (致命的でない)。
         }
     }
@@ -190,14 +366,46 @@ public class PumlSourcePanel extends JPanel {
     public void clearErrorHighlight() {
         highlightedErrorLine = 0;
         if (errorHighlightTag != null) {
-            textArea.getHighlighter().removeHighlight(errorHighlightTag);
+            textPane.getHighlighter().removeHighlight(errorHighlightTag);
             errorHighlightTag = null;
         }
     }
 
-    /** テスト用: 現在のハイライト件数。 */
+    /** テスト用: シンタックスハイライトを同期適用する (タイマ待ちを避ける)。 */
+    void applyHighlightForTest() {
+        applyHighlight();
+    }
+
+    /** テスト用: 基準色と異なる着色 (キーワード等) の文字が 1 つでもあるか。 */
+    boolean hasColoredRunForTest() {
+        StyledDocument doc = textPane.getStyledDocument();
+        Color base = EditorColors.text();
+        for (int i = 0; i < doc.getLength(); i++) {
+            Color fg = StyleConstants.getForeground(doc.getCharacterElement(i).getAttributes());
+            if (fg != null && !fg.equals(base)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** テスト用: 行番号ガターが認識している行数 (本文の行数と一致するはず)。 */
+    int gutterLineCountForTest() {
+        return textPane.getDocument().getDefaultRootElement().getElementCount();
+    }
+
+    /**
+     * テスト用: エラー行ハイライトの件数。常時付く現在行ハイライトは数えない
+     * (現在行はキャレット追従の装飾で、エラー行強調とは別責務のため)。
+     */
     int highlightCountForTest() {
-        return textArea.getHighlighter().getHighlights().length;
+        int n = 0;
+        for (Highlighter.Highlight h : textPane.getHighlighter().getHighlights()) {
+            if (h.getPainter() != CURRENT_LINE_PAINTER) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /**
@@ -287,12 +495,16 @@ public class PumlSourcePanel extends JPanel {
         return null;
     }
 
+    // -------------------------------------------------------------------------
+    // 編集モード / Undo
+    // -------------------------------------------------------------------------
+
     /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */
-    private javax.swing.undo.UndoManager undoManager;
+    private UndoManager undoManager;
 
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
-        textArea.setEditable(editable);
+        textPane.setEditable(editable);
         // 編集モードでは空テキストからでもコピーできるよう常時有効にする。
         if (editable) {
             copyButton.setEnabled(true);
@@ -305,19 +517,29 @@ public class PumlSourcePanel extends JPanel {
 
     /**
      * Ctrl(⌘)+Z / Ctrl(⌘)+Y / Ctrl(⌘)+Shift+Z の undo/redo を編集モードに配線する。
-     * JTextArea は既定では undo を持たないため、エディタとして「まともに使える」
-     * 最低限の取り消し操作をここで足す。多重呼び出しは無視 (再インストールしない)。
+     * JTextPane は既定では undo を持たないため、エディタとして「まともに使える」
+     * 最低限の取り消し操作をここで足す。シンタックスハイライトによる属性変更 (CHANGE) は
+     * undo 対象から除外し、Ctrl+Z が文字の挿入/削除だけを巻き戻すようにする。
+     * 多重呼び出しは無視 (再インストールしない)。
      */
     private void installUndoSupport() {
         if (undoManager != null) {
             return;
         }
-        undoManager = new javax.swing.undo.UndoManager();
+        undoManager = new UndoManager();
         undoManager.setLimit(500);
-        textArea.getDocument().addUndoableEditListener(undoManager);
+        textPane.getDocument().addUndoableEditListener(e -> {
+            UndoableEdit edit = e.getEdit();
+            if (edit instanceof AbstractDocument.DefaultDocumentEvent
+                    && ((AbstractDocument.DefaultDocumentEvent) edit).getType()
+                        == DocumentEvent.EventType.CHANGE) {
+                return; // 属性変更 (ハイライト) は取り消し対象にしない
+            }
+            undoManager.addEdit(edit);
+        });
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
-        javax.swing.InputMap im = textArea.getInputMap();
-        javax.swing.ActionMap am = textArea.getActionMap();
+        javax.swing.InputMap im = textPane.getInputMap();
+        javax.swing.ActionMap am = textPane.getActionMap();
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, menuMask),
                 "juml-undo");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Y, menuMask),
@@ -342,23 +564,25 @@ public class PumlSourcePanel extends JPanel {
 
     /** エディタのテキスト領域へ入力フォーカスを移す (タブを開いた直後に呼ぶ)。 */
     public void focusEditor() {
-        textArea.requestFocusInWindow();
+        textPane.requestFocusInWindow();
     }
 
     /**
      * ユーザー編集 (挿入/削除) のたびに呼ぶリスナーを登録する。
      * デバウンスは呼び出し側の責務 (連続キー入力のたびの再描画を避けるため)。
+     * シンタックスハイライトによる属性変更 (changedUpdate) では発火しない
+     * (無変更の再描画・偽 dirty を防ぐ)。
      */
     public void setOnTextChange(Runnable onChange) {
-        textArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) {
+        textPane.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) {
                 onChange.run();
             }
-            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) {
+            @Override public void removeUpdate(DocumentEvent e) {
                 onChange.run();
             }
-            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) {
-                onChange.run();
+            @Override public void changedUpdate(DocumentEvent e) {
+                // 属性変更 (ハイライト) はユーザー編集ではないので通知しない。
             }
         });
     }
