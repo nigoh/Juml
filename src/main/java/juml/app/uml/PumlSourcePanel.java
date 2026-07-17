@@ -7,9 +7,10 @@ import juml.app.uml.SourceHighlighter.Span;
 import juml.util.Messages;
 
 import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTextPane;
 import javax.swing.SwingUtilities;
@@ -50,25 +51,11 @@ public class PumlSourcePanel extends JPanel {
     /** これを超える文字数のテキストはハイライトを省略してプレーン表示する (EDT 保護)。 */
     private static final int HIGHLIGHT_CHAR_LIMIT = 400_000;
 
-    /** スニペット: {labelKey, 挿入テキスト}。編集モードでキャレット位置へ挿入する。 */
-    private static final String[][] SNIPPETS = {
-        {"puml.snippet.class", "class NewClass {\n  +field: Type\n  +method(): Type\n}\n"},
-        {"puml.snippet.interface", "interface NewInterface {\n  +method(): Type\n}\n"},
-        {"puml.snippet.abstract", "abstract class NewClass {\n  +method(): Type\n}\n"},
-        {"puml.snippet.enum", "enum NewEnum {\n  VALUE_A\n  VALUE_B\n}\n"},
-        {"puml.snippet.inheritance", "Parent <|-- Child\n"},
-        {"puml.snippet.association", "ClassA --> ClassB\n"},
-        {"puml.snippet.dependency", "ClassA ..> ClassB\n"},
-        {"puml.snippet.note", "note right of ClassName: text\n"},
-        {"puml.snippet.package", "package \"name\" {\n}\n"},
-        {"puml.snippet.title", "title My Diagram\n"},
-    };
-
     private final JTextPane textPane;
     private final LineNumberGutter gutter;
     private final JButton copyButton;
-    private final JLabel snippetLabel;
-    private final JComboBox<String> snippetCombo;
+    /** 図種別スニペットを挿入するパレットボタン (編集モードのみ表示)。 */
+    private final JButton snippetButton;
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
 
@@ -92,25 +79,15 @@ public class PumlSourcePanel extends JPanel {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         bar.add(copyButton);
 
-        snippetLabel = new JLabel(Messages.get("puml.snippet.label"));
-        snippetCombo = new JComboBox<>();
-        snippetCombo.setToolTipText(Messages.get("puml.snippet.tip"));
-        snippetCombo.addItem(Messages.get("puml.snippet.prompt"));
-        for (String[] s : SNIPPETS) {
-            snippetCombo.addItem(Messages.get(s[0]));
-        }
-        snippetCombo.addActionListener(e -> {
-            int i = snippetCombo.getSelectedIndex();
-            if (i >= 1 && i <= SNIPPETS.length) {
-                insertSnippet(SNIPPETS[i - 1][1]);
-                snippetCombo.setSelectedIndex(0); // プロンプトへ戻す
-            }
-        });
+        // 図種別スニペットのパレット。ボタン押下でグループ別のポップアップを開く。
+        snippetButton = new JButton(Messages.get("puml.snippet.label"));
+        snippetButton.setToolTipText(Messages.get("puml.snippet.tip"));
+        final JPopupMenu palette = buildSnippetPalette();
+        snippetButton.addActionListener(
+                e -> palette.show(snippetButton, 0, snippetButton.getHeight()));
         // スニペット挿入は編集モードのときだけ有効。
-        snippetLabel.setVisible(false);
-        snippetCombo.setVisible(false);
-        bar.add(snippetLabel);
-        bar.add(snippetCombo);
+        snippetButton.setVisible(false);
+        bar.add(snippetButton);
 
         // 折り返し無効ラッパー経由で横スクロールさせる (コード編集は折り返さない)。
         JPanel noWrap = new JPanel(new BorderLayout());
@@ -145,20 +122,43 @@ public class PumlSourcePanel extends JPanel {
         gutter.refresh();
     }
 
-    /** スニペット文字列を現在のキャレット位置へ挿入する (編集不可なら無視)。 */
+    /**
+     * スニペット文字列を現在のキャレット位置へ挿入する (編集不可なら無視)。
+     * {@code ${caret}} マーカー ({@link PumlSnippets#CARET}) があれば取り除き、
+     * その位置へキャレットを移す (続きをすぐ入力できるようにする)。
+     */
     void insertSnippet(String text) {
         if (!textPane.isEditable() || text == null || text.isEmpty()) {
             return;
         }
+        int marker = text.indexOf(PumlSnippets.CARET);
+        String body = marker >= 0 ? text.replace(PumlSnippets.CARET, "") : text;
         StyledDocument doc = textPane.getStyledDocument();
         int pos = Math.max(0, Math.min(textPane.getCaretPosition(), doc.getLength()));
         try {
-            doc.insertString(pos, text, null);
-            textPane.setCaretPosition(pos + text.length());
+            doc.insertString(pos, body, null);
+            // marker はマーカー除去前の位置。除去しても手前の文字数は変わらないので pos+marker。
+            int caret = marker >= 0 ? pos + marker : pos + body.length();
+            textPane.setCaretPosition(Math.min(caret, doc.getLength()));
         } catch (BadLocationException ignored) {
             return;
         }
         textPane.requestFocusInWindow();
+    }
+
+    /** 図種別グループのサブメニューを持つスニペット挿入パレットを構築する。 */
+    private JPopupMenu buildSnippetPalette() {
+        JPopupMenu menu = new JPopupMenu();
+        for (PumlSnippets.Group g : PumlSnippets.Group.values()) {
+            JMenu sub = new JMenu(g.displayName());
+            for (PumlSnippets.Snippet snip : PumlSnippets.forGroup(g)) {
+                JMenuItem item = new JMenuItem(snip.displayName());
+                item.addActionListener(e -> insertSnippet(snip.body()));
+                sub.add(item);
+            }
+            menu.add(sub);
+        }
+        return menu;
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
@@ -394,6 +394,11 @@ public class PumlSourcePanel extends JPanel {
         return textPane.getDocument().getDefaultRootElement().getElementCount();
     }
 
+    /** テスト用: 現在のキャレット位置 ({@code ${caret}} 配置の検証に使う)。 */
+    int caretForTest() {
+        return textPane.getCaretPosition();
+    }
+
     /**
      * テスト用: エラー行ハイライトの件数。常時付く現在行ハイライトは数えない
      * (現在行はキャレット追従の装飾で、エラー行強調とは別責務のため)。
@@ -511,8 +516,7 @@ public class PumlSourcePanel extends JPanel {
             installUndoSupport();
         }
         // スニペット挿入 UI は編集モードのときだけ見せる。
-        snippetLabel.setVisible(editable);
-        snippetCombo.setVisible(editable);
+        snippetButton.setVisible(editable);
     }
 
     /**
