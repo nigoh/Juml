@@ -599,7 +599,7 @@ public final class DiagramService {
      * スコープに従って ClassInfo リストを絞り込む。
      *
      * <p>順序: module → package include → package exclude → external libraries →
-     * regex → seed + BFS by neighborHops。
+     * regex → seed + BFS by neighborHops → 個別クラス除外 (excludedQualifiedNames)。
      * maxClasses 上限は呼び出し側 (PlantUmlClassDiagram.Options.maxClasses) で適用する。</p>
      */
     static List<JavaClassInfo> applyScope(List<JavaClassInfo> classes, DiagramScope scope,
@@ -693,6 +693,19 @@ public final class DiagramService {
         if (!scope.getSeedQualifiedNames().isEmpty()) {
             result = bfsNeighbors(result, scope.getSeedQualifiedNames(),
                     scope.getNeighborHops());
+        }
+
+        // 5. 個別クラス除外 (プレビュー右クリックの「このクラスを隠す」)。
+        //    seed BFS より後段に置くことで、近傍展開で隠したクラスが復活しないようにする。
+        if (!scope.getExcludedQualifiedNames().isEmpty()) {
+            Set<String> hidden = scope.getExcludedQualifiedNames();
+            List<JavaClassInfo> next = new ArrayList<>(result.size());
+            for (JavaClassInfo c : result) {
+                if (!hidden.contains(c.getQualifiedName())) {
+                    next.add(c);
+                }
+            }
+            result = next;
         }
 
         return result;

@@ -42,6 +42,8 @@ public final class DiagramScope {
     private final Set<String> includedPackages;
     private final Set<String> includedModules;
     private final Set<String> excludedPackages;
+    /** 個別に非表示指定されたクラスの FQN 集合（プレビュー右クリックの「このクラスを隠す」）。 */
+    private final Set<String> excludedQualifiedNames;
     private final boolean excludeExternalLibraries;
     private final Set<String> externalPackagePrefixes;
     private final Pattern classNameRegex;
@@ -59,6 +61,8 @@ public final class DiagramScope {
         this.includedPackages = Collections.unmodifiableSet(new LinkedHashSet<>(b.includedPackages));
         this.includedModules = Collections.unmodifiableSet(new LinkedHashSet<>(b.includedModules));
         this.excludedPackages = Collections.unmodifiableSet(new LinkedHashSet<>(b.excludedPackages));
+        this.excludedQualifiedNames = Collections.unmodifiableSet(
+                new LinkedHashSet<>(b.excludedQualifiedNames));
         this.excludeExternalLibraries = b.excludeExternalLibraries;
         this.externalPackagePrefixes = (b.externalPackagePrefixes == null
                 || b.externalPackagePrefixes.isEmpty())
@@ -88,6 +92,11 @@ public final class DiagramScope {
 
     public Set<String> getExcludedPackages() {
         return excludedPackages;
+    }
+
+    /** 個別に非表示指定されたクラスの FQN 集合（プレビュー右クリックの「このクラスを隠す」）。 */
+    public Set<String> getExcludedQualifiedNames() {
+        return excludedQualifiedNames;
     }
 
     public boolean isExcludeExternalLibraries() {
@@ -141,6 +150,7 @@ public final class DiagramScope {
         return includedPackages.isEmpty()
                 && includedModules.isEmpty()
                 && excludedPackages.isEmpty()
+                && excludedQualifiedNames.isEmpty()
                 && !excludeExternalLibraries
                 && classNameRegex == null
                 && seedQualifiedNames.isEmpty()
@@ -160,6 +170,7 @@ public final class DiagramScope {
         b.includedPackages.addAll(includedPackages);
         b.includedModules.addAll(includedModules);
         b.excludedPackages.addAll(excludedPackages);
+        b.excludedQualifiedNames.addAll(excludedQualifiedNames);
         b.excludeExternalLibraries = excludeExternalLibraries;
         b.externalPackagePrefixes.addAll(externalPackagePrefixes);
         b.classNameRegex = classNameRegex;
@@ -179,6 +190,7 @@ public final class DiagramScope {
         private final Set<String> includedPackages = new LinkedHashSet<>();
         private final Set<String> includedModules = new LinkedHashSet<>();
         private final Set<String> excludedPackages = new LinkedHashSet<>();
+        private final Set<String> excludedQualifiedNames = new LinkedHashSet<>();
         private boolean excludeExternalLibraries;
         private final Set<String> externalPackagePrefixes = new LinkedHashSet<>();
         private Pattern classNameRegex;
@@ -236,6 +248,20 @@ public final class DiagramScope {
                     excludePackage(p);
                 }
             }
+            return this;
+        }
+
+        /** 個別クラスを FQN 指定で非表示にする（プレビュー右クリックの「このクラスを隠す」）。 */
+        public Builder excludeClass(String qualifiedName) {
+            if (qualifiedName != null && !qualifiedName.isEmpty()) {
+                excludedQualifiedNames.add(qualifiedName);
+            }
+            return this;
+        }
+
+        /** 個別クラス非表示指定をすべて解除する（右クリックの「整形をリセット」用）。 */
+        public Builder clearExcludedClasses() {
+            excludedQualifiedNames.clear();
             return this;
         }
 

@@ -125,5 +125,37 @@ public class DiagramScopeTest {
         assertTrue(DiagramScope.builder().build().isEmpty());
         assertFalse(DiagramScope.builder().includePackage("p").build().isEmpty());
         assertFalse(DiagramScope.builder().maxClasses(10).build().isEmpty());
+        // 個別クラス除外があれば isEmpty=false (applyScope の早期リターンを通さないため)
+        assertFalse(DiagramScope.builder().excludeClass("p.A").build().isEmpty());
+    }
+
+    @Test
+    public void testExcludeClassFilters() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClass("p.B").build();
+        List<JavaClassInfo> input = Arrays.asList(
+                cls("p", "A"), cls("p", "B"), cls("p", "C"));
+        List<JavaClassInfo> out = DiagramService.applyScope(input, s, null);
+        assertEquals(2, out.size());
+        assertEquals("A", out.get(0).getSimpleName());
+        assertEquals("C", out.get(1).getSimpleName());
+    }
+
+    @Test
+    public void testToBuilderPreservesExcludedClassesAndClearResets() {
+        DiagramScope s = DiagramScope.builder()
+                .excludeClass("p.A")
+                .excludeClass("p.B")
+                .focusClass("p.C")
+                .build();
+        // toBuilder は個別除外と focus を引き継ぐ
+        DiagramScope copy = s.toBuilder().build();
+        assertTrue(copy.getExcludedQualifiedNames().contains("p.A"));
+        assertTrue(copy.getExcludedQualifiedNames().contains("p.B"));
+        assertEquals("p.C", copy.getFocusClass());
+        // clearExcludedClasses + focusClass("") で整形だけ解除できる
+        DiagramScope reset = s.toBuilder().clearExcludedClasses().focusClass("").build();
+        assertTrue(reset.getExcludedQualifiedNames().isEmpty());
+        assertTrue(reset.getFocusClass().isEmpty());
     }
 }

@@ -2527,6 +2527,51 @@ public final class DiagramTabPane {
             menu.show(event.getComponent(), event.getX(), event.getY());
         }
 
+        /**
+         * プレビュー右クリック「このクラスを隠す」: タブ固有スコープに個別除外を足して
+         * 再描画する。空スコープの場合も {@link DiagramScope#ALL} を土台にするため NPE しない。
+         */
+        private void hideClassInScope(String fqn) {
+            if (spec == null || fqn == null || fqn.isEmpty()) {
+                return;
+            }
+            DiagramScope base = spec.getScope() != null ? spec.getScope() : DiagramScope.ALL;
+            spec = spec.withScope(base.toBuilder().excludeClass(fqn).build());
+            setStatus(Messages.get("scope.status.hidden") + " " + extractSimpleClass(fqn));
+            startRender();
+        }
+
+        /**
+         * プレビュー右クリック「このクラスを強調」: 周囲を淡色化しつつ全ノードは残す
+         * フォーカス強調 ({@link juml.core.formats.uml.PlantUmlClassFocus}) を掛けて再描画する。
+         * ノードを削る Isolate とは異なり、文脈を保ったまま 1 つの関係を追える。
+         */
+        private void emphasizeClassInScope(String fqn) {
+            if (spec == null || fqn == null || fqn.isEmpty()) {
+                return;
+            }
+            DiagramScope base = spec.getScope() != null ? spec.getScope() : DiagramScope.ALL;
+            spec = spec.withScope(base.toBuilder().focusClass(fqn).build());
+            setStatus(Messages.get("scope.status.emphasized") + " " + extractSimpleClass(fqn));
+            startRender();
+        }
+
+        /**
+         * プレビュー右クリック「整形をリセット」: 個別の隠し／強調だけを解除して再描画する
+         * (パッケージ絞り込み等の他のスコープ設定は保持する)。
+         */
+        private void resetScopeShaping() {
+            if (spec == null || spec.getScope() == null) {
+                return;
+            }
+            spec = spec.withScope(spec.getScope().toBuilder()
+                    .clearExcludedClasses()
+                    .focusClass("")
+                    .build());
+            setStatus(Messages.get("scope.status.reset"));
+            startRender();
+        }
+
         private void handleLinkPopup(LinkArea link, MouseEvent event) {
             if (event == null) {
                 return;
@@ -2549,6 +2594,24 @@ public final class DiagramTabPane {
                     popup.add(menuItem(Messages.get("source.openSource"),
                             () -> openSourceFor(ci, null)));
                 });
+                // クラス図では、このノードを起点に図を「形作る」対話操作を提供する
+                // (このクラスを隠す / 強調する / 整形をリセット)。sequence 図の参加者
+                // フィルタと対を成す、クラス図側のインタラクティブな絞り込みである。
+                if (spec != null && spec.getKind() == DiagramKind.CLASS) {
+                    popup.addSeparator();
+                    popup.add(menuItem(Messages.get("scope.menu.hideClass"),
+                            () -> hideClassInScope(fqn)));
+                    popup.add(menuItem(Messages.get("scope.menu.emphasizeClass"),
+                            () -> emphasizeClassInScope(fqn)));
+                    DiagramScope sc = spec.getScope();
+                    boolean shaped = sc != null
+                            && (!sc.getExcludedQualifiedNames().isEmpty()
+                                || (sc.getFocusClass() != null && !sc.getFocusClass().isEmpty()));
+                    if (shaped) {
+                        popup.add(menuItem(Messages.get("scope.menu.resetShaping"),
+                                this::resetScopeShaping));
+                    }
+                }
             }
             if (!previewPanel.getTextItems().isEmpty()) {
                 popup.addSeparator();

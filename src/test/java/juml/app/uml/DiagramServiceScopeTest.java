@@ -116,6 +116,37 @@ public class DiagramServiceScopeTest {
     }
 
     @Test
+    public void testExcludeClassHidesSingleClass() {
+        // プレビュー右クリック「このクラスを隠す」相当: FQN 個別除外。
+        DiagramScope scope = DiagramScope.builder()
+                .excludeClass("com.car.CarHelper").build();
+        DiagramRequest req = new DiagramRequest(DiagramKind.CLASS, null, null, false, scope);
+        String puml = DiagramService.generatePuml(req, null, sample(), null);
+        assertTrue("残すクラスは描画される", puml.contains("CarManager"));
+        assertTrue("別パッケージのクラスも残る", puml.contains("OtherClass"));
+        assertFalse("FQN 除外したクラスは消える", puml.contains("CarHelper"));
+    }
+
+    @Test
+    public void testExcludeClassAppliedAfterSeedBfs() {
+        // 個別除外は seed + 近傍 BFS より後段に適用され、近傍展開で復活しないこと
+        // (パッケージ内 static メソッド applyScope を直接叩き、リストで堅牢に検証する)。
+        DiagramScope scope = DiagramScope.builder()
+                .includePackage("com.car")           // CarManager + CarHelper
+                .excludeClass("com.car.CarHelper")    // うち 1 つを個別除外
+                .build();
+        List<JavaClassInfo> out = DiagramService.applyScope(sample(), scope, null);
+        List<String> names = new ArrayList<>();
+        for (JavaClassInfo c : out) {
+            names.add(c.getQualifiedName());
+        }
+        assertTrue("include で残るべきクラス", names.contains("com.car.CarManager"));
+        assertFalse("個別除外したクラスは最終結果に残らない",
+                names.contains("com.car.CarHelper"));
+        assertFalse("include 対象外は元々除外", names.contains("com.other.OtherClass"));
+    }
+
+    @Test
     public void testScopePropagatesPublicOnlyToOptions() {
         // public でないクラスがフィルタされることを確認
         JavaClassInfo pub = cls("com.app", "PublicCls");
