@@ -150,7 +150,9 @@ public final class CliOptions {
         System.err.println(
                 "Arguments: [-o file] [-c|-q M|-d|-M|-G|-g|-m|-Q|-A|--summary] [-v] [-h] [input]");
         System.err.println("  No arguments / [input dir]: Launch UML GUI for the project.");
-        System.err.println("  -o path: Save diagram (puml/svg) or report (md) to path."
+        System.err.println("  -o path: Save diagram (puml/svg/png) or report (md) to path."
+                + " Extension decides the format: .svg / .png are rendered with the"
+                + " bundled PlantUML, anything else keeps PlantUML text."
                 + " If path is an existing directory, a command-specific default"
                 + " file name is used inside it.");
         System.err.println("  --include-tests: Include test sources (src/test,"
