@@ -4,6 +4,18 @@ Change log
 2.1
 --------
 
+* **新規 UML エディタの自由度を大幅強化 — テキストを「最強のコードエディタ」化 + 図種テンプレート網羅** (`PumlSourcePanel` / `PlantUmlHighlighter` / `LineNumberGutter` / `PumlSnippets` / `PumlCompletion` / `BracketMatcher` / `PumlErrorLineMapper` / `SourceFindBar` / `PumlTemplate` / `MenuBarBuilder` ほか)
+    * **背景**: 「新規」で作れる図が UML 7 種に限られ、自由編集エディタは素の `JTextArea` (ハイライトも行番号も補完も無し) だった。テキストは全図種の真実源なので、ここを強くすると図解全体が楽になる。
+    * **図種テンプレート網羅**: クラス/シーケンス等の 7 種から 18 種へ拡充 (オブジェクト・配置・タイミング・ER・JSON・YAML・マインドマップ・WBS・ガント・ワイヤフレーム(salt)・ArchiMate)。カテゴリ別サブメニュー化し、全テンプレートが同梱 Smetana エンジンで描画されることをテストで固定。
+    * **コードペイン化**: `JTextArea` → シンタックスハイライト付き `JTextPane`。`@start/@end`・図種キーワード・矢印・文字列・コメント・ステレオタイプ・色リテラルを着色。行番号ガター (読み取り専用ソースビューアと共有) と現在行ハイライトを追加。着色は属性変更のみで行い、dirty 判定や Undo 履歴を汚さない。
+    * **図種別スニペットパレット**: クラス/シーケンス/アクティビティ/状態/共通の 26 断片を「Insert」ポップアップから挿入 (`${caret}` で挿入後のキャレット位置を指定)。
+    * **検索/置換・コメント切替・ブロックインデント**: Ctrl+F 検索・Ctrl+H 置換 (`SourceFindBar` を置換対応へ一般化)、Ctrl+/ で行コメント切替、Tab/Shift+Tab で選択行インデント (複数行は 1 手で Undo)。
+    * **入力補完**: Ctrl+Space で PlantUML キーワード + 本文識別子の前方一致補完。
+    * **対応括弧強調**: キャレット隣の括弧と対応括弧を枠で囲む (入れ子の多い package/クラス本体/複合状態/JSON で有効)。ドキュメントは変更しない。
+    * **設計判断 (据え置き)**: 図形デザイナー (Design タブ) のコーデックがコメント行で編集をロックする挙動は「GUI 編集でコメントを失わないための意図的な保護」であり既存テストで固定されているため、無言で反転せず今回は据え置いた (要望あれば別途対応)。
+    * テスト: `PlantUmlHighlighterTest` / `PumlSnippetsTest` / `PumlCompletionTest` / `BracketMatcherTest` (純ロジック, headless) と `PumlSourcePanelHighlightTest` / `PumlSourcePanelEditTest` / `PumlSourcePanelCompletionTest` (GUI, headless-skip) を新設。既存のスニペット/エラー行/検索バー/ソースビューアのテストは全て非破壊。checkstyle FileLength 対応として純ロジックを `BracketMatcher` / `PumlErrorLineMapper` へ分離。
+    * 目的: 「umlを作る際のエディタの自由度をとにかく高め、あらゆる図解化を支援する最強のエディタにする」要望に対し、まず全図種の土台であるテキスト編集体験を一段引き上げるため。
+
 * **メソッド呼び出しの引数を図に表示できるように** (`JavaMethodInfo.Call` / `ExpressionAdapter` / `PlantUmlActivityDiagram` / `PlantUmlSequenceDiagram` / `SeqEmitters` / GUI 設定系)
     * **背景**: 図中の呼び出しが `helper.done()` のように常に引数省略で描かれ、「処理を事細かく確認したい」用途で情報が足りなかった (シーケンス図は定数シンボルの第 1 引数のみ表示)。
     * 抽出時に呼び出し引数の元ソースを `Call.argsLabel` として保持 (カンマ結合。ラムダ/匿名クラス引数は本体を inlineMethods が持つため λ 記号に畳む)。`this(...)`/`super(...)` の委譲引数も対象。
