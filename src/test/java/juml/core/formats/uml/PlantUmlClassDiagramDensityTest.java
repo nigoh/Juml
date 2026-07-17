@@ -52,6 +52,37 @@ public class PlantUmlClassDiagramDensityTest {
     }
 
     @Test
+    public void colorCodeStereotypesEmitsSkinparamForPresentStereotype() {
+        // record は <<record>> ステレオタイプを持ち、パレットに色がある。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; public record Point(int a, int b) {}");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.colorCodeStereotypes = true;
+        String puml = PlantUmlClassDiagram.generate(infos, o);
+        assertTrue(puml, puml.contains("skinparam class {"));
+        assertTrue(puml, puml.contains("BackgroundColor<<record>>"));
+    }
+
+    @Test
+    public void colorCodeStereotypesOffByDefault() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; public record Point(int a, int b) {}");
+        String puml = PlantUmlClassDiagram.generate(infos);
+        assertFalse("既定ではステレオタイプ色分けをしない",
+                puml.contains("BackgroundColor<<"));
+    }
+
+    @Test
+    public void colorCodeStereotypesEmitsNothingWhenNoPaletteMatch() {
+        // 素の class にはパレット対象ステレオタイプが無いので skinparam block を出さない。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.colorCodeStereotypes = true;
+        String puml = PlantUmlClassDiagram.generate(sample(), o);
+        assertFalse("色分け対象が無ければ skinparam class ブロックを出さない",
+                puml.contains("BackgroundColor<<"));
+    }
+
+    @Test
     public void bothDirectivesRenderWithoutSyntaxError() {
         // ディレクティブを両方入れても同梱 PlantUML で構文エラーにならないこと。
         PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();

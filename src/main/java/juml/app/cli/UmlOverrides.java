@@ -40,6 +40,7 @@ public final class UmlOverrides {
     boolean colorCodeRelations = false;
     boolean hideEmptyMembers = false;
     boolean hideUnlinked = false;
+    boolean colorCodeStereotypes = false;
     String focusClass = "";
     boolean visibilityIcons = true;
     boolean interactiveLinks = false;
@@ -77,6 +78,7 @@ public final class UmlOverrides {
         o.colorCodeRelations = colorCodeRelations;
         o.hideEmptyMembers = hideEmptyMembers;
         o.hideUnlinkedClasses = hideUnlinked;
+        o.colorCodeStereotypes = colorCodeStereotypes;
         o.focusClass = focusClass == null ? "" : focusClass;
         o.visibilityIcons = visibilityIcons;
         o.commentStyle = commentStyle;
@@ -197,6 +199,9 @@ public final class UmlOverrides {
         }
         if (options.hideUnlinked.isSet()) {
             o.hideUnlinked = true;
+        }
+        if (options.colorStereotypes.isSet()) {
+            o.colorCodeStereotypes = true;
         }
         if (!options.focus.getArguments().isEmpty()) {
             o.focusClass = options.focus.getArguments().getLast();

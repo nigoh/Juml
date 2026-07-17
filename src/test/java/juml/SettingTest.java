@@ -367,6 +367,7 @@ public class SettingTest {
         s.setClassDiagramColorCodeRelations(true);
         s.setClassDiagramHideEmptyMembers(true);
         s.setClassDiagramHideUnlinked(true);
+        s.setClassDiagramColorCodeStereotypes(true);
         s.setClassDiagramCommentMaxLength(0);
         s.setClassDiagramHiddenAnnotations("Override,Nullable,NonNull");
 
@@ -384,6 +385,7 @@ public class SettingTest {
         assertTrue(loaded.isClassDiagramColorCodeRelations());
         assertTrue(loaded.isClassDiagramHideEmptyMembers());
         assertTrue(loaded.isClassDiagramHideUnlinked());
+        assertTrue(loaded.isClassDiagramColorCodeStereotypes());
         assertEquals(0, loaded.getClassDiagramCommentMaxLength());
         assertEquals("Override,Nullable,NonNull",
                 loaded.getClassDiagramHiddenAnnotations());

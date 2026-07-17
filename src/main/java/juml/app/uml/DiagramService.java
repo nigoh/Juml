@@ -554,6 +554,7 @@ public final class DiagramService {
             o.colorCodeRelations = s.isClassDiagramColorCodeRelations();
             o.hideEmptyMembers = s.isClassDiagramHideEmptyMembers();
             o.hideUnlinkedClasses = s.isClassDiagramHideUnlinked();
+            o.colorCodeStereotypes = s.isClassDiagramColorCodeStereotypes();
             o.commentMaxLength = s.getClassDiagramCommentMaxLength();
             String csv = s.getClassDiagramHiddenAnnotations();
             if (csv != null) {

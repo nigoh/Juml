@@ -62,6 +62,7 @@ public final class CliOptions {
     public final Option colorRelations = new Option(null, "color-relations", false);
     public final Option hideEmptyMembers = new Option(null, "hide-empty-members", false);
     public final Option hideUnlinked = new Option(null, "hide-unlinked", false);
+    public final Option colorStereotypes = new Option(null, "color-stereotypes", false);
     public final Option focus = new Option(null, "focus", true);
     public final Option relation = new Option(null, "relation", true);
     public final Option mode = new Option(null, "mode", true);
@@ -112,7 +113,7 @@ public final class CliOptions {
             preset, noFields, noMethods, publicOnly,
             excludeExternal, markExternalSupertypes, noVisibilityIcons,
             excludePackage, excludeNameRegex, annotation, excludeAnnotation,
-            colorRelations, hideEmptyMembers, hideUnlinked,
+            colorRelations, hideEmptyMembers, hideUnlinked, colorStereotypes,
             focus, relation, mode,
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
@@ -233,6 +234,8 @@ public final class CliOptions {
                 + " compartments in the class diagram (hide empty members).");
         System.err.println("  --hide-unlinked: Drop classes with no relation line from the"
                 + " class diagram (remove @unlinked) to keep only connected structure.");
+        System.err.println("  --color-stereotypes: Tint class boxes by stereotype"
+                + " (CarManager / Activity / aidl / record etc.) with a fixed pastel palette.");
         System.err.println("  --focus FQN: Focus the class diagram on a class; emphasize it"
                 + " and its 1-hop neighbors, dim the rest (FQN or simple name).");
         System.err.println("  --mode headers-only|full: Use the lightweight headers-only"

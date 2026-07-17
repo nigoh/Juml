@@ -239,7 +239,7 @@ public class DialogKeyboardTest {
                 PlantUmlSequenceDiagram.CommentPlacement.class,
                 boolean.class, int.class, boolean.class,
                 ActivityDiagramPrefs.class,
-                StyleSettingsDialog.ClassDiagramPrefs.class, int.class);
+                ClassDiagramPrefs.class, int.class);
         ctor.setAccessible(true);
         StyleSettingsDialog dlg = GuiActionRunner.execute(() -> {
             try {
@@ -249,7 +249,7 @@ public class DialogKeyboardTest {
                         PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE,
                         true, 5, false,
                         ActivityDiagramPrefs.defaults(),
-                        StyleSettingsDialog.ClassDiagramPrefs.defaults(), 3);
+                        ClassDiagramPrefs.defaults(), 3);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

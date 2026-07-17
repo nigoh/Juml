@@ -609,8 +609,8 @@ public class UmlMainFrame extends JFrame {
                         ? juml.core.formats.uml.PlantUmlSequenceDiagram.CommentPlacement.PARTICIPANT_TOP
                         : juml.core.formats.uml.PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE;
         boolean curQualify = setting == null || setting.isSequenceQualifyMethodNames();
-        StyleSettingsDialog.ClassDiagramPrefs curClass = setting != null
-                ? new StyleSettingsDialog.ClassDiagramPrefs(
+        ClassDiagramPrefs curClass = setting != null
+                ? new ClassDiagramPrefs(
                         setting.isClassDiagramShowFields(),
                         setting.isClassDiagramShowMethods(),
                         setting.isClassDiagramShowAnnotations(),
@@ -619,11 +619,12 @@ public class UmlMainFrame extends JFrame {
                         setting.isClassDiagramMarkExternalSupertypes(),
                         setting.isClassDiagramColorCodeRelations(),
                         setting.getClassDiagramCommentMaxLength(),
-                        StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
+                        ClassDiagramPrefs.parseCsv(
                                 setting.getClassDiagramHiddenAnnotations()),
                         setting.isClassDiagramHideEmptyMembers(),
-                        setting.isClassDiagramHideUnlinked())
-                : StyleSettingsDialog.ClassDiagramPrefs.defaults();
+                        setting.isClassDiagramHideUnlinked(),
+                        setting.isClassDiagramColorCodeStereotypes())
+                : ClassDiagramPrefs.defaults();
         int curSeqMaxDepth = setting != null ? setting.getSequenceMaxDepth() : 5;
         boolean curSeqShowArgs = setting != null && setting.isSequenceShowCallArguments();
         ActivityDiagramPrefs curActivity = setting != null
@@ -667,7 +668,7 @@ public class UmlMainFrame extends JFrame {
                 }
                 setting.setCallGraphMaxDepth(r.callGraphMaxDepth);
                 if (r.classDiagram != null) {
-                    StyleSettingsDialog.ClassDiagramPrefs cp = r.classDiagram;
+                    ClassDiagramPrefs cp = r.classDiagram;
                     setting.setClassDiagramShowFields(cp.showFields);
                     setting.setClassDiagramShowMethods(cp.showMethods);
                     setting.setClassDiagramShowAnnotations(cp.showAnnotations);
@@ -677,6 +678,7 @@ public class UmlMainFrame extends JFrame {
                     setting.setClassDiagramColorCodeRelations(cp.colorCodeRelations);
                     setting.setClassDiagramHideEmptyMembers(cp.hideEmptyMembers);
                     setting.setClassDiagramHideUnlinked(cp.hideUnlinked);
+                    setting.setClassDiagramColorCodeStereotypes(cp.colorCodeStereotypes);
                     setting.setClassDiagramCommentMaxLength(cp.commentMaxLength);
                     setting.setClassDiagramHiddenAnnotations(cp.hiddenAnnotationsCsv());
                 }

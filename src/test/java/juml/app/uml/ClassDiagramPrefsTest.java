@@ -16,8 +16,8 @@ public class ClassDiagramPrefsTest {
 
     @Test
     public void defaultsMatchBalancedPresetExpectations() {
-        StyleSettingsDialog.ClassDiagramPrefs cp =
-                StyleSettingsDialog.ClassDiagramPrefs.defaults();
+        ClassDiagramPrefs cp =
+                ClassDiagramPrefs.defaults();
         assertTrue(cp.showFields);
         assertTrue(cp.showMethods);
         assertTrue(cp.showAnnotations);
@@ -32,13 +32,13 @@ public class ClassDiagramPrefsTest {
 
     @Test
     public void colorCodeRelationsConstructorSetsField() {
-        StyleSettingsDialog.ClassDiagramPrefs cp =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs cp =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, true, 80, null);
         assertTrue("colorCodeRelations should be retained", cp.colorCodeRelations);
         // 後方互換 (8 引数) コンストラクタは colorCodeRelations=false で生成する
-        StyleSettingsDialog.ClassDiagramPrefs legacy =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs legacy =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, 80, null);
         assertFalse("legacy ctor defaults colorCodeRelations off", legacy.colorCodeRelations);
     }
@@ -46,26 +46,33 @@ public class ClassDiagramPrefsTest {
     @Test
     public void densityTogglesDefaultOffAndAreRetainedBy11ArgCtor() {
         // 既定値 (8/9 引数コンストラクタ経由) は false
-        StyleSettingsDialog.ClassDiagramPrefs def =
-                StyleSettingsDialog.ClassDiagramPrefs.defaults();
+        ClassDiagramPrefs def =
+                ClassDiagramPrefs.defaults();
         assertFalse(def.hideEmptyMembers);
         assertFalse(def.hideUnlinked);
-        StyleSettingsDialog.ClassDiagramPrefs nineArg =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs nineArg =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, false, 80, null);
         assertFalse("9 引数コンストラクタは密度トグルを false にする", nineArg.hideEmptyMembers);
         assertFalse(nineArg.hideUnlinked);
         // 11 引数コンストラクタは両フラグを保持する
-        StyleSettingsDialog.ClassDiagramPrefs full =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs full =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, false, 80, null, true, true);
         assertTrue(full.hideEmptyMembers);
         assertTrue(full.hideUnlinked);
+        // 11 引数版は colorCodeStereotypes を false に、12 引数版は保持する
+        assertFalse(full.colorCodeStereotypes);
+        ClassDiagramPrefs twelve =
+                new ClassDiagramPrefs(true, true, true,
+                        false, false, false, false, 80, null, false, false, true);
+        assertTrue(twelve.colorCodeStereotypes);
+        assertFalse(ClassDiagramPrefs.defaults().colorCodeStereotypes);
     }
 
     @Test
     public void parseCsvSplitsAndTrims() {
-        Set<String> result = StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
+        Set<String> result = ClassDiagramPrefs.parseCsv(
                 "Override, Nullable ,NonNull, ,Keep");
         assertEquals(4, result.size());
         assertTrue(result.contains("Override"));
@@ -76,9 +83,9 @@ public class ClassDiagramPrefsTest {
 
     @Test
     public void parseCsvHandlesNullAndEmpty() {
-        assertTrue(StyleSettingsDialog.ClassDiagramPrefs.parseCsv(null).isEmpty());
-        assertTrue(StyleSettingsDialog.ClassDiagramPrefs.parseCsv("").isEmpty());
-        assertTrue(StyleSettingsDialog.ClassDiagramPrefs.parseCsv("  ").isEmpty());
+        assertTrue(ClassDiagramPrefs.parseCsv(null).isEmpty());
+        assertTrue(ClassDiagramPrefs.parseCsv("").isEmpty());
+        assertTrue(ClassDiagramPrefs.parseCsv("  ").isEmpty());
     }
 
     @Test
@@ -86,16 +93,16 @@ public class ClassDiagramPrefsTest {
         Set<String> input = new LinkedHashSet<>();
         input.add("Override");
         input.add("Deprecated");
-        StyleSettingsDialog.ClassDiagramPrefs cp =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs cp =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, 80, input);
         assertEquals("Override,Deprecated", cp.hiddenAnnotationsCsv());
     }
 
     @Test
     public void commentMaxLengthClampedAtZero() {
-        StyleSettingsDialog.ClassDiagramPrefs cp =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs cp =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, -10, null);
         assertEquals(0, cp.commentMaxLength);
         assertTrue(cp.hiddenAnnotations.isEmpty());
@@ -105,8 +112,8 @@ public class ClassDiagramPrefsTest {
     public void hiddenAnnotationsIsImmutable() {
         Set<String> input = new LinkedHashSet<>();
         input.add("Override");
-        StyleSettingsDialog.ClassDiagramPrefs cp =
-                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+        ClassDiagramPrefs cp =
+                new ClassDiagramPrefs(true, true, true,
                         false, false, false, 80, input);
         try {
             cp.hiddenAnnotations.add("NewItem");

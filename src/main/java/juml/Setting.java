@@ -97,6 +97,8 @@ public class Setting {
     private boolean classDiagramHideEmptyMembers = false;
     /** どの関連線とも繋がらない孤立クラスを描画後に取り除くか (remove @unlinked)。 */
     private boolean classDiagramHideUnlinked = false;
+    /** ステレオタイプ (CarManager/Activity/aidl 等) ごとにクラスボックスを色分けするか。 */
+    private boolean classDiagramColorCodeStereotypes = false;
 
     /** コールグラフの最大追跡階層数 (1〜10)。 */
     private int callGraphMaxDepth = 4;
@@ -224,6 +226,10 @@ public class Setting {
     public boolean isClassDiagramHideUnlinked() { return classDiagramHideUnlinked; }
     public void setClassDiagramHideUnlinked(boolean v) {
         this.classDiagramHideUnlinked = v;
+    }
+    public boolean isClassDiagramColorCodeStereotypes() { return classDiagramColorCodeStereotypes; }
+    public void setClassDiagramColorCodeStereotypes(boolean v) {
+        this.classDiagramColorCodeStereotypes = v;
     }
 
     public int getCallGraphMaxDepth() { return callGraphMaxDepth; }
@@ -370,6 +376,8 @@ public class Setting {
                 Boolean.toString(classDiagramHideEmptyMembers));
         props.setProperty("classDiagram.hideUnlinked",
                 Boolean.toString(classDiagramHideUnlinked));
+        props.setProperty("classDiagram.colorCodeStereotypes",
+                Boolean.toString(classDiagramColorCodeStereotypes));
         props.setProperty("callGraph.maxDepth", Integer.toString(callGraphMaxDepth));
         props.setProperty("app.lookAndFeel", lookAndFeel);
         props.setProperty("app.restoreLastProjectOnStartup",
@@ -476,6 +484,8 @@ public class Setting {
                 props.getProperty("classDiagram.hideEmptyMembers"), false);
         s.classDiagramHideUnlinked = parseBooleanSafe(
                 props.getProperty("classDiagram.hideUnlinked"), false);
+        s.classDiagramColorCodeStereotypes = parseBooleanSafe(
+                props.getProperty("classDiagram.colorCodeStereotypes"), false);
         s.callGraphMaxDepth = parseIntSafe(props.getProperty("callGraph.maxDepth"), 4);
         s.lookAndFeel = stringOrDefault(props.getProperty("app.lookAndFeel"), "FLATLAF_LIGHT");
         s.restoreLastProjectOnStartup = parseBooleanSafe(

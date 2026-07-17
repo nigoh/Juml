@@ -49,6 +49,12 @@ public class UmlOverridesFocusColorTest {
     }
 
     @Test
+    public void colorStereotypesFlagEnablesColorCoding() {
+        assertFalse(apply("-c").colorCodeStereotypes);
+        assertTrue(apply("-c", "--color-stereotypes").colorCodeStereotypes);
+    }
+
+    @Test
     public void focusFlagSetsFocusClass() {
         assertEquals("com.example.Foo",
                 apply("-c", "--focus", "com.example.Foo").focusClass);
