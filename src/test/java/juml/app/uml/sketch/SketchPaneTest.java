@@ -65,6 +65,40 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void loadFrom_stateTemplate_enablesStateEditing() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.STATE.body()));
+        assertEquals("状態遷移図として判定されるはず", SketchDiagramType.STATE,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("状態遷移図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.statesForTest().size()));
+        assertEquals(4, (int) GuiActionRunner.execute(
+                () -> pane.transitionsForTest().size()));
+    }
+
+    @Test
+    public void stateEdit_syncsTextAndUndoRedo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.STATE.body());
+        });
+        GuiActionRunner.execute(pane::addStateForTest);
+        assertTrue("追加直後のテキストに新状態が載る: " + lastPuml.get(),
+                lastPuml.get().contains("state State"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新状態が消える: " + lastPuml.get(),
+                lastPuml.get().contains("state State"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新状態が戻る: " + lastPuml.get(),
+                lastPuml.get().contains("state State"));
+    }
+
+    @Test
     public void loadFrom_usecaseTemplate_disablesEditing() {
         // 専用エディタの無い図種 (ユースケース等) は従来どおり編集ロックで保全する。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);

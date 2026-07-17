@@ -36,6 +36,7 @@ public final class SketchPane extends JPanel {
     private final ClassSketchEditor classEditor = new ClassSketchEditor();
     private final SeqSketchEditor seqEditor = new SeqSketchEditor();
     private final ActivitySketchEditor activityEditor = new ActivitySketchEditor();
+    private final StateSketchEditor stateEditor = new StateSketchEditor();
     private SketchEditor active = classEditor;
     private SketchDiagramType activeType = SketchDiagramType.CLASS;
 
@@ -86,6 +87,7 @@ public final class SketchPane extends JPanel {
         switch (type) {
             case SEQUENCE: return seqEditor;
             case ACTIVITY: return activityEditor;
+            case STATE:    return stateEditor;
             default:       return classEditor;
         }
     }
@@ -235,6 +237,21 @@ public final class SketchPane extends JPanel {
     /** テスト用: 現在の解析済みアクティビティ図モデルの最上位ノード列。 */
     List<ActivityNode> activityNodesForTest() {
         return activityEditor.nodesForTest();
+    }
+
+    /** テスト用: 現在の解析済み状態遷移図モデルの状態群。 */
+    List<StateNode> statesForTest() {
+        return stateEditor.statesForTest();
+    }
+
+    /** テスト用: 現在の解析済み状態遷移図モデルの遷移群。 */
+    List<StateTransition> transitionsForTest() {
+        return stateEditor.transitionsForTest();
+    }
+
+    /** テスト用: 実際の編集経路で状態を追加し Undo 履歴も積む。 */
+    void addStateForTest() {
+        stateEditor.addStateForTest();
     }
 
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */

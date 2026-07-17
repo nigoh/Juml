@@ -113,16 +113,17 @@ public enum PumlTemplate {
             "@enduml",
             "")),
 
-    /** 状態遷移図: 状態 2 つ + 入れ子状態 + 遷移のサンプル。 */
+    /**
+     * 状態遷移図: 初期→状態 2 つ→終了のフラットなサンプル。
+     *
+     * <p>図形デザイナー (Design タブ) が扱える基本要素だけにとどめる。複合状態
+     * ({@code state X { … }}) はデザイナーが未対応でタブがロックされるため、必要なら
+     * テキストで追加する。</p>
+     */
     STATE(Category.BEHAVIOR, "template.state", String.join("\n",
             "@startuml",
             "[*] --> Idle",
             "Idle --> Running : start",
-            "state Running {",
-            "  [*] --> Working",
-            "  Working --> Paused : pause",
-            "  Paused --> Working : resume",
-            "}",
             "Running --> Idle : stop",
             "Running --> [*] : finish",
             "@enduml",

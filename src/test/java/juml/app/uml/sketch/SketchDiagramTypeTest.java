@@ -38,10 +38,28 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
-    public void detect_stateTemplate_defaultsToClass() {
-        // 状態遷移図は専用エディタが無いため既定 (クラス図コーデックが編集ロックで保全)。
-        assertEquals(SketchDiagramType.CLASS,
+    public void detect_stateTemplate_isState() {
+        // 状態遷移図テンプレートは専用デザイナーで扱えるよう STATE と判定される。
+        assertEquals(SketchDiagramType.STATE,
                 SketchDiagramType.detect(PumlTemplate.STATE.body()));
+    }
+
+    @Test
+    public void detect_stateDeclaration_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\nstate Idle\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_initialTransition_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\n[*] --> Idle\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_finalTransition_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\nRunning --> [*]\n@enduml\n"));
     }
 
     @Test

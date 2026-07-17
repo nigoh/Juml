@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **状態遷移図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`StateNode` / `StateTransition` / `StateSketchModel` / `StateSketchCodec` / `StateSketchCanvas` / `StateSketchEditor` / `StateSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 図形デザイナーはクラス図・シーケンス図・アクティビティ図の 3 種のみグラフィカル編集でき、状態遷移図はテキスト専用 (Design タブは編集ロック) だった。
+    * 状態を角丸ボックスで描き遷移を矢印で結ぶ状態遷移図デザイナーを追加。初期/終了の擬似状態 `[*]` は接続状態から導出した位置に小円/二重丸として描画。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで遷移追加・右クリックで「初期/終了状態にする」「状態/遷移の削除」・ダブルクリックで状態改名/遷移ラベル編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に STATE 判定を追加 (`state X` 宣言 / `[*] -->` / `--> [*]` を状態遷移図と判定。素の `A --> B` はクラス図の関連と曖昧なため判定材料にしない)。「新規」STATE テンプレートは、デザイナーが扱えるフラット構成へ簡素化 (複合状態はテキストで追加でき従来どおり編集ロックで保全)。
+    * 対応構文は基本要素に限定し、複合状態 (`state X { … }`) や一般コメントは未対応として編集をロックしテキストを保全 (クラス図コーデックと同じ契約)。
+    * テスト: `StateSketchCodecTest` (往復・擬似状態・複合ロック・改名/削除の 10 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に STATE の判定・編集・Undo/Redo 同期を追加。
+    * 目的: 「あらゆる図解化を支援する」ため、テキストだけでなく図形操作でも状態遷移図を作れるようにするため。
+
 * **新規 UML エディタの自由度を大幅強化 — テキストを「最強のコードエディタ」化 + 図種テンプレート網羅** (`PumlSourcePanel` / `PlantUmlHighlighter` / `LineNumberGutter` / `PumlSnippets` / `PumlCompletion` / `BracketMatcher` / `PumlErrorLineMapper` / `SourceFindBar` / `PumlTemplate` / `MenuBarBuilder` ほか)
     * **背景**: 「新規」で作れる図が UML 7 種に限られ、自由編集エディタは素の `JTextArea` (ハイライトも行番号も補完も無し) だった。テキストは全図種の真実源なので、ここを強くすると図解全体が楽になる。
     * **図種テンプレート網羅**: クラス/シーケンス等の 7 種から 18 種へ拡充 (オブジェクト・配置・タイミング・ER・JSON・YAML・マインドマップ・WBS・ガント・ワイヤフレーム(salt)・ArchiMate)。カテゴリ別サブメニュー化し、全テンプレートが同梱 Smetana エンジンで描画されることをテストで固定。
