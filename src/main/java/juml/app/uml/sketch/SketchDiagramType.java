@@ -8,7 +8,8 @@ import java.util.regex.Pattern;
 /**
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
- * <p>判定は行単位の先勝ち: アクティビティ図の構文 ({@code start} / {@code :action;} /
+ * <p>まず {@code usecase} キーワード (一意) があればユースケース図と確定する。無ければ
+ * 行単位の先勝ちで: アクティビティ図の構文 ({@code start} / {@code :action;} /
  * {@code if (...) then}) → 状態遷移図の構文 ({@code state X} / {@code [*] --> X}) →
  * クラス宣言 ({@code class} / {@code interface} / {@code enum}) → シーケンス図の構文
  * ({@code participant} / {@code A -> B} / {@code activate}) の順で調べ、どれにも該当
@@ -23,7 +24,16 @@ public enum SketchDiagramType {
     /** アクティビティ図 (新形式構文)。 */
     ACTIVITY,
     /** 状態遷移図。 */
-    STATE;
+    STATE,
+    /** ユースケース図。 */
+    USECASE;
+
+    /**
+     * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
+     * これが 1 行でもあればユースケース図と確定できる ({@code actor} はシーケンス図と
+     * 共有するため単独では判定材料にしない)。
+     */
+    private static final Pattern USECASE_LINE = Pattern.compile("^usecase\\b.*$");
 
     /** アクティビティ図に固有の行 ({@code start} / {@code :action;} / {@code if} など)。 */
     private static final Pattern ACTIVITY_LINE = Pattern.compile(
@@ -51,6 +61,13 @@ public enum SketchDiagramType {
     /** PlantUML テキストから図種を判定する。 */
     public static SketchDiagramType detect(String text) {
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // usecase キーワードは他図種と衝突しないため、1 行でもあればユースケース図と確定する
+        // (actor はシーケンス図と共有するため、行順に依らずここで先取りして判定する)。
+        for (String raw : lines) {
+            if (USECASE_LINE.matcher(raw.trim()).matches()) {
+                return USECASE;
+            }
+        }
         for (String raw : lines) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("@") || line.startsWith("'")) {

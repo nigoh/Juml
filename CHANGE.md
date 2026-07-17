@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **ユースケース図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`UseCaseNode` / `UseCaseRelation` / `UseCaseSketchModel` / `UseCaseSketchCodec` / `UseCaseSketchCanvas` / `UseCaseSketchEditor` / `UseCaseSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 状態遷移図に続き、ユースケース図もテキスト専用 (Design タブは編集ロック) だった。
+    * アクターを棒人間、ユースケースを楕円で描き、関連 (`-->`) / 依存 (`..>`、include/extend) / 汎化 (`--|>`) の 3 種で結ぶデザイナーを追加。空白を含む表示名は `"表示名" as id` 形式で往復保全。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで関係追加・右クリックで要素/関係の追加削除・ダブルクリックで id/種別/表示名・関係種別/ラベルを編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に USECASE 判定を追加。`usecase` キーワードは他図種と衝突しないため 1 行でもあればユースケース図と確定する (`actor` はシーケンス図と共有するため単独では判定しない)。「新規」USECASE テンプレートは境界・向き指定を外したフラット構成へ簡素化。
+    * 境界 (`rectangle X { … }`)・向き指定・短縮記法・一般コメントは未対応として編集をロックしテキストを保全 (クラス図コーデックと同じ契約)。
+    * テスト: `UseCaseSketchCodecTest` (往復・別名保全・境界/向き/コメントのロック・汎化・改名の 9 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に USECASE の判定・編集・Undo/Redo 同期を追加 (actor 単独ではシーケンス図判定を維持することも固定)。
+    * 目的: 「あらゆる図解化を支援する」ため、図形操作でもユースケース図を作れるようにするため。
+
 * **状態遷移図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`StateNode` / `StateTransition` / `StateSketchModel` / `StateSketchCodec` / `StateSketchCanvas` / `StateSketchEditor` / `StateSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
     * **背景**: 図形デザイナーはクラス図・シーケンス図・アクティビティ図の 3 種のみグラフィカル編集でき、状態遷移図はテキスト専用 (Design タブは編集ロック) だった。
     * 状態を角丸ボックスで描き遷移を矢印で結ぶ状態遷移図デザイナーを追加。初期/終了の擬似状態 `[*]` は接続状態から導出した位置に小円/二重丸として描画。

@@ -76,6 +76,25 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void detect_usecaseTemplate_isUseCase() {
+        assertEquals(SketchDiagramType.USECASE,
+                SketchDiagramType.detect(PumlTemplate.USECASE.body()));
+    }
+
+    @Test
+    public void detect_usecaseKeyword_isUseCase() {
+        assertEquals(SketchDiagramType.USECASE,
+                SketchDiagramType.detect("@startuml\nactor User\nusecase UC1\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_actorWithoutUsecase_staysSequence() {
+        // actor はシーケンス図と共有。usecase キーワードが無ければユースケース図と誤判定しない。
+        assertEquals(SketchDiagramType.SEQUENCE,
+                SketchDiagramType.detect(PumlTemplate.SEQUENCE.body()));
+    }
+
+    @Test
     public void detect_actionLine_isActivity() {
         assertEquals(SketchDiagramType.ACTIVITY,
                 SketchDiagramType.detect("@startuml\n:Do work;\n@enduml\n"));

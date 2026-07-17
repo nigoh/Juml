@@ -99,10 +99,45 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void loadFrom_usecaseTemplate_disablesEditing() {
-        // 専用エディタの無い図種 (ユースケース等) は従来どおり編集ロックで保全する。
+    public void loadFrom_usecaseTemplate_enablesUseCaseEditing() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.USECASE.body()));
+        assertEquals("ユースケース図として判定されるはず", SketchDiagramType.USECASE,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("ユースケース図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(3, (int) GuiActionRunner.execute(
+                () -> pane.usecaseNodesForTest().size()));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.usecaseRelationsForTest().size()));
+    }
+
+    @Test
+    public void usecaseEdit_syncsTextAndUndoRedo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.USECASE.body());
+        });
+        GuiActionRunner.execute(
+                () -> pane.addUseCaseNodeForTest(UseCaseNode.Kind.USECASE));
+        assertTrue("追加直後のテキストに新要素が載る: " + lastPuml.get(),
+                lastPuml.get().contains("usecase UseCase"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新要素が消える: " + lastPuml.get(),
+                lastPuml.get().contains("usecase UseCase"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新要素が戻る: " + lastPuml.get(),
+                lastPuml.get().contains("usecase UseCase"));
+    }
+
+    @Test
+    public void loadFrom_componentTemplate_disablesEditing() {
+        // 専用エディタの無い図種 (コンポーネント図等) は従来どおり編集ロックで保全する。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.COMPONENT.body()));
         assertFalse("未対応構文では GUI 編集が無効になるはず",
                 GuiActionRunner.execute(pane::isEditable));
     }

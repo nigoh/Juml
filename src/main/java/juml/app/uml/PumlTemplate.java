@@ -129,15 +129,18 @@ public enum PumlTemplate {
             "@enduml",
             "")),
 
-    /** ユースケース図: アクターとユースケースのサンプル。 */
+    /**
+     * ユースケース図: アクター + ユースケース 2 つ + 関連のサンプル。
+     *
+     * <p>図形デザイナー (Design タブ) が扱える基本要素だけにとどめる。境界
+     * ({@code rectangle X { … }}) や向き指定はデザイナーが未対応でタブがロックされるため、
+     * 必要ならテキストで追加する。</p>
+     */
     USECASE(Category.BEHAVIOR, "template.usecase", String.join("\n",
             "@startuml",
-            "left to right direction",
             "actor User",
-            "rectangle System {",
-            "  usecase \"Do something\" as UC1",
-            "  usecase \"See results\" as UC2",
-            "}",
+            "usecase \"Do something\" as UC1",
+            "usecase \"See results\" as UC2",
             "User --> UC1",
             "User --> UC2",
             "@enduml",
