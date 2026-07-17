@@ -134,10 +134,45 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void loadFrom_componentTemplate_disablesEditing() {
-        // 専用エディタの無い図種 (コンポーネント図等) は従来どおり編集ロックで保全する。
+    public void loadFrom_componentTemplate_enablesComponentEditing() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.COMPONENT.body()));
+        assertEquals("コンポーネント図として判定されるはず", SketchDiagramType.COMPONENT,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("コンポーネント図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(3, (int) GuiActionRunner.execute(
+                () -> pane.componentNodesForTest().size()));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.componentRelationsForTest().size()));
+    }
+
+    @Test
+    public void componentEdit_syncsTextAndUndoRedo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.COMPONENT.body());
+        });
+        GuiActionRunner.execute(
+                () -> pane.addComponentNodeForTest(ComponentNode.Kind.COMPONENT));
+        assertTrue("追加直後のテキストに新要素が載る: " + lastPuml.get(),
+                lastPuml.get().contains("component Component"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新要素が消える: " + lastPuml.get(),
+                lastPuml.get().contains("component Component"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新要素が戻る: " + lastPuml.get(),
+                lastPuml.get().contains("component Component"));
+    }
+
+    @Test
+    public void loadFrom_deploymentTemplate_disablesEditing() {
+        // 専用エディタの無い図種 (配置図等) は従来どおり編集ロックで保全する。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.DEPLOYMENT.body()));
         assertFalse("未対応構文では GUI 編集が無効になるはず",
                 GuiActionRunner.execute(pane::isEditable));
     }

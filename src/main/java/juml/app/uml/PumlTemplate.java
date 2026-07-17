@@ -53,16 +53,20 @@ public enum PumlTemplate {
             "@enduml",
             "")),
 
-    /** コンポーネント図: コンポーネント 2 つ + インターフェースのサンプル。 */
+    /**
+     * コンポーネント図: コンポーネント 2 つ + インターフェース + 関係のサンプル。
+     *
+     * <p>図形デザイナー (Design タブ) が扱える基本要素だけにとどめる。パッケージ境界や
+     * {@code database}/{@code node} 等はデザイナーが未対応でタブがロックされるため、
+     * 必要ならテキストで追加する。</p>
+     */
     COMPONENT(Category.STRUCTURE, "template.component", String.join("\n",
             "@startuml",
-            "package \"App\" {",
-            "  [UI]",
-            "  [Core]",
-            "}",
-            "database DB",
-            "[UI] --> [Core]",
-            "[Core] --> DB",
+            "component UI",
+            "component Core",
+            "interface API",
+            "UI --> Core",
+            "Core ..> API",
             "@enduml",
             "")),
 

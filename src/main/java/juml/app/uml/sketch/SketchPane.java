@@ -38,6 +38,7 @@ public final class SketchPane extends JPanel {
     private final ActivitySketchEditor activityEditor = new ActivitySketchEditor();
     private final StateSketchEditor stateEditor = new StateSketchEditor();
     private final UseCaseSketchEditor usecaseEditor = new UseCaseSketchEditor();
+    private final ComponentSketchEditor componentEditor = new ComponentSketchEditor();
     private SketchEditor active = classEditor;
     private SketchDiagramType activeType = SketchDiagramType.CLASS;
 
@@ -90,6 +91,7 @@ public final class SketchPane extends JPanel {
             case ACTIVITY: return activityEditor;
             case STATE:    return stateEditor;
             case USECASE:  return usecaseEditor;
+            case COMPONENT: return componentEditor;
             default:       return classEditor;
         }
     }
@@ -269,6 +271,21 @@ public final class SketchPane extends JPanel {
     /** テスト用: 実際の編集経路でユースケース図要素を追加し Undo 履歴も積む。 */
     void addUseCaseNodeForTest(UseCaseNode.Kind kind) {
         usecaseEditor.addNodeForTest(kind);
+    }
+
+    /** テスト用: 現在の解析済みコンポーネント図モデルの要素群。 */
+    List<ComponentNode> componentNodesForTest() {
+        return componentEditor.nodesForTest();
+    }
+
+    /** テスト用: 現在の解析済みコンポーネント図モデルの関係群。 */
+    List<ComponentRelation> componentRelationsForTest() {
+        return componentEditor.relationsForTest();
+    }
+
+    /** テスト用: 実際の編集経路でコンポーネント図要素を追加し Undo 履歴も積む。 */
+    void addComponentNodeForTest(ComponentNode.Kind kind) {
+        componentEditor.addNodeForTest(kind);
     }
 
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */

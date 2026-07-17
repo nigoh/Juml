@@ -8,8 +8,9 @@ import java.util.regex.Pattern;
 /**
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
- * <p>まず {@code usecase} キーワード (一意) があればユースケース図と確定する。無ければ
- * 行単位の先勝ちで: アクティビティ図の構文 ({@code start} / {@code :action;} /
+ * <p>まず {@code usecase} / {@code component} キーワード (いずれも一意) があれば
+ * ユースケース図 / コンポーネント図と確定する。無ければ行単位の先勝ちで:
+ * アクティビティ図の構文 ({@code start} / {@code :action;} /
  * {@code if (...) then}) → 状態遷移図の構文 ({@code state X} / {@code [*] --> X}) →
  * クラス宣言 ({@code class} / {@code interface} / {@code enum}) → シーケンス図の構文
  * ({@code participant} / {@code A -> B} / {@code activate}) の順で調べ、どれにも該当
@@ -26,7 +27,9 @@ public enum SketchDiagramType {
     /** 状態遷移図。 */
     STATE,
     /** ユースケース図。 */
-    USECASE;
+    USECASE,
+    /** コンポーネント図。 */
+    COMPONENT;
 
     /**
      * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
@@ -34,6 +37,12 @@ public enum SketchDiagramType {
      * 共有するため単独では判定材料にしない)。
      */
     private static final Pattern USECASE_LINE = Pattern.compile("^usecase\\b.*$");
+    /**
+     * コンポーネント図に固有の行。{@code component} キーワード、または単独の短縮形
+     * {@code [Id]} (Id は識別子)。{@code [*]} は識別子でないので状態図と衝突しない。
+     */
+    private static final Pattern COMPONENT_LINE = Pattern.compile(
+            "^(component\\b.*|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
 
     /** アクティビティ図に固有の行 ({@code start} / {@code :action;} / {@code if} など)。 */
     private static final Pattern ACTIVITY_LINE = Pattern.compile(
@@ -66,6 +75,12 @@ public enum SketchDiagramType {
         for (String raw : lines) {
             if (USECASE_LINE.matcher(raw.trim()).matches()) {
                 return USECASE;
+            }
+        }
+        // component キーワード / [Id] も他図種と衝突しないため先取りで判定する。
+        for (String raw : lines) {
+            if (COMPONENT_LINE.matcher(raw.trim()).matches()) {
+                return COMPONENT;
             }
         }
         for (String raw : lines) {

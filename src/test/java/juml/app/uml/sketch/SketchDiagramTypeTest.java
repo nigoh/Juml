@@ -95,6 +95,27 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void detect_componentTemplate_isComponent() {
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
+    }
+
+    @Test
+    public void detect_componentKeywordOrBracket_isComponent() {
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect("@startuml\ncomponent UI\n@enduml\n"));
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect("@startuml\n[UI]\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_stateInitialBracket_isNotComponent() {
+        // [*] は識別子でないのでコンポーネント短縮形と混同せず状態図のまま。
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\n[*] --> Idle\n@enduml\n"));
+    }
+
+    @Test
     public void detect_actionLine_isActivity() {
         assertEquals(SketchDiagramType.ACTIVITY,
                 SketchDiagramType.detect("@startuml\n:Do work;\n@enduml\n"));

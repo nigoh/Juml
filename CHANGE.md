@@ -4,6 +4,15 @@ Change log
 2.1
 --------
 
+* **コンポーネント図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`ComponentNode` / `ComponentRelation` / `ComponentSketchModel` / `ComponentSketchCodec` / `ComponentSketchCanvas` / `ComponentSketchEditor` / `ComponentSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 状態遷移図・ユースケース図に続き、コンポーネント図もテキスト専用だった。これで図形デザイナーはクラス・シーケンス・アクティビティ・状態・ユースケース・コンポーネントの 6 図種に対応する。
+    * コンポーネントを UML コンポーネントアイコン付き矩形、インターフェースを円で描き、矢印 (`-->`) / 依存 (`..>`) / 接続 (`--`) の 3 種で結ぶデザイナーを追加。短縮形 `[Id]` はコンポーネントとして解釈しキーワード形へ正規化して往復保全、空白入り表示名は `"表示名" as id` 形式で保全。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで関係追加・右クリックで要素/関係の追加削除・ダブルクリックで id/種別/表示名・関係種別/ラベルを編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に COMPONENT 判定を追加 (`component` キーワード / 短縮形 `[Id]` を先取り判定。`[*]` は識別子でないので状態図と混同しない)。「新規」COMPONENT テンプレートは境界・`database` 等を外したフラット構成へ簡素化。
+    * パッケージ境界・`database`/`node`/`cloud` 等・空白入り `[名前]`・一般コメントは未対応として編集をロックしテキストを保全。
+    * テスト: `ComponentSketchCodecTest` (往復・別名/短縮形正規化・境界/コメントのロック・3 関係種別・改名の 7 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に COMPONENT の判定・編集・Undo/Redo 同期を追加 (`[*]` を短縮形と混同しないことも固定)。
+    * 目的: 「あらゆる図解化を支援する」ため、図形操作でもコンポーネント図を作れるようにするため。
+
 * **ユースケース図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`UseCaseNode` / `UseCaseRelation` / `UseCaseSketchModel` / `UseCaseSketchCodec` / `UseCaseSketchCanvas` / `UseCaseSketchEditor` / `UseCaseSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
     * **背景**: 状態遷移図に続き、ユースケース図もテキスト専用 (Design タブは編集ロック) だった。
     * アクターを棒人間、ユースケースを楕円で描き、関連 (`-->`) / 依存 (`..>`、include/extend) / 汎化 (`--|>`) の 3 種で結ぶデザイナーを追加。空白を含む表示名は `"表示名" as id` 形式で往復保全。
