@@ -49,6 +49,8 @@ public class Setting {
     private int styleNodeSep = 0;
     private int styleRankSep = 0;
     private String styleCustomSkinparam = "";
+    /** 図下部中央のキャプション文字列（空で非表示、全図種共通）。 */
+    private String styleCaption = "";
     /** シーケンス図に JavaDoc / コメントを note として表示するか。 */
     private boolean sequenceShowComments = true;
     /** シーケンス図のコメント表示スタイル ("INLINE" | "NOTE")。 */
@@ -287,6 +289,7 @@ public class Setting {
         s.setNodeSep(styleNodeSep);
         s.setRankSep(styleRankSep);
         s.setCustomSkinparam(styleCustomSkinparam);
+        s.setCaption(styleCaption);
         return s;
     }
 
@@ -303,6 +306,7 @@ public class Setting {
         styleNodeSep = s.getNodeSep();
         styleRankSep = s.getRankSep();
         styleCustomSkinparam = s.getCustomSkinparam();
+        styleCaption = s.getCaption();
     }
 
     /**
@@ -332,6 +336,7 @@ public class Setting {
         props.setProperty("style.nodeSep", Integer.toString(styleNodeSep));
         props.setProperty("style.rankSep", Integer.toString(styleRankSep));
         props.setProperty("style.customSkinparam", styleCustomSkinparam);
+        props.setProperty("style.caption", styleCaption);
         props.setProperty("sequence.showComments", Boolean.toString(sequenceShowComments));
         props.setProperty("sequence.commentStyle", sequenceCommentStyle);
         props.setProperty("sequence.commentPlacement", sequenceCommentPlacement);
@@ -430,6 +435,7 @@ public class Setting {
         s.styleNodeSep = parseIntSafe(props.getProperty("style.nodeSep"), 0);
         s.styleRankSep = parseIntSafe(props.getProperty("style.rankSep"), 0);
         s.styleCustomSkinparam = stringOrEmpty(props.getProperty("style.customSkinparam"));
+        s.styleCaption = stringOrEmpty(props.getProperty("style.caption"));
         s.sequenceShowComments = parseBooleanSafe(
                 props.getProperty("sequence.showComments"), true);
         s.sequenceCommentStyle = stringOrDefault(

@@ -73,6 +73,7 @@ public final class StyleSettingsDialog extends JDialog {
     private final JSpinner rankSepSpinner =
             new JSpinner(new SpinnerNumberModel(0, 0, 200, 5));
     private final JTextArea customSkinparamArea = new JTextArea(6, 32);
+    private final JTextField captionField = new JTextField(24);
     private final JCheckBox sequenceShowCommentsCheckbox =
             new JCheckBox(Messages.get("style.seq.showComments"));
     private final JComboBox<String> sequenceCommentStyleCombo =
@@ -337,6 +338,11 @@ public final class StyleSettingsDialog extends JDialog {
         form.add(spacingPanel, c);
         c.gridwidth = 1;
         row++;
+
+        // 図キャプション (全図種の下部中央に出すブランディング/文脈テキスト)
+        captionField.setText(initial.getCaption());
+        captionField.setToolTipText(Messages.get("style.tip.caption"));
+        row = addLabeledRow(form, c, row, "style.label.caption", captionField);
 
         // カスタム skinparam
         c.gridx = 0; c.gridy = row; c.weightx = 0; c.anchor = GridBagConstraints.NORTHWEST;
@@ -666,6 +672,7 @@ public final class StyleSettingsDialog extends JDialog {
         nodeSepSpinner.setValue(d.getNodeSep());
         rankSepSpinner.setValue(d.getRankSep());
         customSkinparamArea.setText(d.getCustomSkinparam());
+        captionField.setText(d.getCaption());
         sequenceShowCommentsCheckbox.setSelected(true);
         sequenceCommentStyleCombo.setSelectedItem("INLINE");
         sequenceCommentStyleCombo.setEnabled(true);
@@ -740,6 +747,7 @@ public final class StyleSettingsDialog extends JDialog {
         s.setNodeSep(((Number) nodeSepSpinner.getValue()).intValue());
         s.setRankSep(((Number) rankSepSpinner.getValue()).intValue());
         s.setCustomSkinparam(customSkinparamArea.getText());
+        s.setCaption(captionField.getText());
         Object styleSel = sequenceCommentStyleCombo.getSelectedItem();
         PlantUmlClassDiagram.CommentStyle cs = "NOTE".equals(styleSel)
                 ? PlantUmlClassDiagram.CommentStyle.NOTE

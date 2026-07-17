@@ -67,6 +67,8 @@ public final class DiagramStyle {
     private int nodeSep = 0;
     private int rankSep = 0;
     private String customSkinparam = "";
+    /** 図の下部中央に出すキャプション文字列（空で非表示）。全図種共通のブランディング/文脈付与用。 */
+    private String caption = "";
 
     /** 全フィールド未指定の既定スタイル。 */
     public static DiagramStyle defaults() {
@@ -102,6 +104,7 @@ public final class DiagramStyle {
         s.nodeSep = this.nodeSep;
         s.rankSep = this.rankSep;
         s.customSkinparam = this.customSkinparam;
+        s.caption = this.caption;
         return s;
     }
 
@@ -144,6 +147,9 @@ public final class DiagramStyle {
     public void setCustomSkinparam(String customSkinparam) {
         this.customSkinparam = customSkinparam == null ? "" : customSkinparam;
     }
+
+    public String getCaption() { return caption; }
+    public void setCaption(String caption) { this.caption = caption == null ? "" : caption; }
 
     /**
      * PlantUML に挿入する {@code !theme} / {@code skinparam} 等のプレリュード行を返す。
@@ -229,6 +235,12 @@ public final class DiagramStyle {
                 sb.append('\n');
             }
         }
+        if (!caption.isEmpty()) {
+            // 図下部中央のキャプション。改行と <> & をタグ誤認しないよう 1 行化 + エスケープする。
+            String oneLine = caption.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ');
+            sb.append("caption ")
+              .append(PlantUmlCommentFormatter.escapeLabel(oneLine)).append('\n');
+        }
         return sb.toString();
     }
 
@@ -246,12 +258,13 @@ public final class DiagramStyle {
                 && direction == that.direction
                 && lineType == that.lineType
                 && shadowing == that.shadowing
-                && Objects.equals(customSkinparam, that.customSkinparam);
+                && Objects.equals(customSkinparam, that.customSkinparam)
+                && Objects.equals(caption, that.caption);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(theme, backgroundColor, fontName, fontSize, direction,
-                lineType, shadowing, nodeSep, rankSep, customSkinparam);
+                lineType, shadowing, nodeSep, rankSep, customSkinparam, caption);
     }
 }
