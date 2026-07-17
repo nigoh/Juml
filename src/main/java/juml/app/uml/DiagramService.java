@@ -552,6 +552,8 @@ public final class DiagramService {
             o.excludeExternalLibraries = s.isClassDiagramExcludeExternal();
             o.markExternalSupertypes = s.isClassDiagramMarkExternalSupertypes();
             o.colorCodeRelations = s.isClassDiagramColorCodeRelations();
+            o.hideEmptyMembers = s.isClassDiagramHideEmptyMembers();
+            o.hideUnlinkedClasses = s.isClassDiagramHideUnlinked();
             o.commentMaxLength = s.getClassDiagramCommentMaxLength();
             String csv = s.getClassDiagramHiddenAnnotations();
             if (csv != null) {

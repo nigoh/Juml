@@ -365,6 +365,8 @@ public class SettingTest {
         s.setClassDiagramPublicOnly(true);
         s.setClassDiagramExcludeExternal(true);
         s.setClassDiagramColorCodeRelations(true);
+        s.setClassDiagramHideEmptyMembers(true);
+        s.setClassDiagramHideUnlinked(true);
         s.setClassDiagramCommentMaxLength(0);
         s.setClassDiagramHiddenAnnotations("Override,Nullable,NonNull");
 
@@ -380,9 +382,29 @@ public class SettingTest {
         assertTrue(loaded.isClassDiagramPublicOnly());
         assertTrue(loaded.isClassDiagramExcludeExternal());
         assertTrue(loaded.isClassDiagramColorCodeRelations());
+        assertTrue(loaded.isClassDiagramHideEmptyMembers());
+        assertTrue(loaded.isClassDiagramHideUnlinked());
         assertEquals(0, loaded.getClassDiagramCommentMaxLength());
         assertEquals("Override,Nullable,NonNull",
                 loaded.getClassDiagramHiddenAnnotations());
+    }
+
+    @org.junit.Test
+    public void testClassDiagramDensityTogglesDefaultOffAndBackCompat() throws java.io.IOException {
+        // 新既定は false。旧 XML (キー無し) を読んでも false へフォールバックする。
+        Setting fresh = new Setting();
+        assertFalse(fresh.isClassDiagramHideEmptyMembers());
+        assertFalse(fresh.isClassDiagramHideUnlinked());
+
+        java.util.Properties p = new java.util.Properties();
+        java.io.File legacy = java.io.File.createTempFile("cd-legacy", ".xml");
+        legacy.deleteOnExit();
+        try (java.io.OutputStream os = new java.io.FileOutputStream(legacy)) {
+            p.storeToXML(os, "legacy without density keys");
+        }
+        Setting loaded = Setting.loadFromFile(legacy);
+        assertFalse(loaded.isClassDiagramHideEmptyMembers());
+        assertFalse(loaded.isClassDiagramHideUnlinked());
     }
 
     @org.junit.Test

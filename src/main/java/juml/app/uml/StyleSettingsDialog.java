@@ -111,6 +111,10 @@ public final class StyleSettingsDialog extends JDialog {
             new JCheckBox(Messages.get("style.class.markExternalSupertypes"));
     private final JCheckBox classColorCodeRelationsCheckbox =
             new JCheckBox(Messages.get("style.class.colorCodeRelations"));
+    private final JCheckBox classHideEmptyMembersCheckbox =
+            new JCheckBox(Messages.get("style.class.hideEmptyMembers"));
+    private final JCheckBox classHideUnlinkedCheckbox =
+            new JCheckBox(Messages.get("style.class.hideUnlinked"));
     private final JSpinner classCommentMaxLengthSpinner =
             new JSpinner(new SpinnerNumberModel(80, 0, 500, 10));
     private final JTextField classHiddenAnnotationsField = new JTextField(24);
@@ -134,6 +138,10 @@ public final class StyleSettingsDialog extends JDialog {
         public final int commentMaxLength;
         /** 表示しないアノテーション名集合 (大括弧なし、例: {"Override", "Nullable"})。 */
         public final java.util.Set<String> hiddenAnnotations;
+        /** メンバーの無いコンパートメント (空のフィールド欄/メソッド欄) を隠すか。 */
+        public final boolean hideEmptyMembers;
+        /** どの関連線とも繋がらない孤立クラスを取り除くか (remove @unlinked)。 */
+        public final boolean hideUnlinked;
 
         /** 後方互換コンストラクタ ({@code colorCodeRelations=false})。 */
         public ClassDiagramPrefs(boolean showFields, boolean showMethods,
@@ -145,12 +153,25 @@ public final class StyleSettingsDialog extends JDialog {
                     markExternalSupertypes, false, commentMaxLength, hiddenAnnotations);
         }
 
+        /** 後方互換コンストラクタ ({@code hideEmptyMembers=false, hideUnlinked=false})。 */
         public ClassDiagramPrefs(boolean showFields, boolean showMethods,
                                   boolean showAnnotations, boolean publicOnly,
                                   boolean excludeExternal, boolean markExternalSupertypes,
                                   boolean colorCodeRelations,
                                   int commentMaxLength,
                                   java.util.Set<String> hiddenAnnotations) {
+            this(showFields, showMethods, showAnnotations, publicOnly, excludeExternal,
+                    markExternalSupertypes, colorCodeRelations, commentMaxLength,
+                    hiddenAnnotations, false, false);
+        }
+
+        public ClassDiagramPrefs(boolean showFields, boolean showMethods,
+                                  boolean showAnnotations, boolean publicOnly,
+                                  boolean excludeExternal, boolean markExternalSupertypes,
+                                  boolean colorCodeRelations,
+                                  int commentMaxLength,
+                                  java.util.Set<String> hiddenAnnotations,
+                                  boolean hideEmptyMembers, boolean hideUnlinked) {
             this.showFields = showFields;
             this.showMethods = showMethods;
             this.showAnnotations = showAnnotations;
@@ -163,6 +184,8 @@ public final class StyleSettingsDialog extends JDialog {
                     ? java.util.Collections.emptySet()
                     : java.util.Collections.unmodifiableSet(
                             new java.util.LinkedHashSet<>(hiddenAnnotations));
+            this.hideEmptyMembers = hideEmptyMembers;
+            this.hideUnlinked = hideUnlinked;
         }
 
         /** カンマ区切り文字列に整形 (CSV)。 */
@@ -191,35 +214,6 @@ public final class StyleSettingsDialog extends JDialog {
             hidden.add("Override");
             hidden.add("SuppressWarnings");
             return new ClassDiagramPrefs(true, true, true, false, false, false, false, 80, hidden);
-        }
-    }
-
-    /** アクティビティ図向け Setting 永続化用 DTO (不変)。 */
-    public static final class ActivityDiagramPrefs {
-        /** ラムダ/匿名クラスのコールバック本体を partition ブロックに展開する。 */
-        public final boolean expandInlineCallbacks;
-        /** ローカル変数宣言をアクションノードとして表示する。 */
-        public final boolean showLocalVars;
-        /** 代入・インクリメント文をアクションノードとして表示する。 */
-        public final boolean showAssignments;
-        /** メソッド呼び出しの引数を表示する (例: helper.done(label))。 */
-        public final boolean showCallArguments;
-        /** メソッド本体内のインラインコメントを note として表示する。 */
-        public final boolean showInlineComments;
-
-        public ActivityDiagramPrefs(boolean expandInlineCallbacks, boolean showLocalVars,
-                                     boolean showAssignments, boolean showCallArguments,
-                                     boolean showInlineComments) {
-            this.expandInlineCallbacks = expandInlineCallbacks;
-            this.showLocalVars = showLocalVars;
-            this.showAssignments = showAssignments;
-            this.showCallArguments = showCallArguments;
-            this.showInlineComments = showInlineComments;
-        }
-
-        /** 既定値 (PlantUmlActivityDiagram.Options の既定 = すべて表示)。 */
-        public static ActivityDiagramPrefs defaults() {
-            return new ActivityDiagramPrefs(true, true, true, true, true);
         }
     }
 
@@ -585,6 +579,12 @@ public final class StyleSettingsDialog extends JDialog {
         classColorCodeRelationsCheckbox.setSelected(cp.colorCodeRelations);
         classColorCodeRelationsCheckbox.setToolTipText(
                 Messages.get("style.tip.colorCodeRelations"));
+        classHideEmptyMembersCheckbox.setSelected(cp.hideEmptyMembers);
+        classHideEmptyMembersCheckbox.setToolTipText(
+                Messages.get("style.tip.hideEmptyMembers"));
+        classHideUnlinkedCheckbox.setSelected(cp.hideUnlinked);
+        classHideUnlinkedCheckbox.setToolTipText(
+                Messages.get("style.tip.hideUnlinked"));
         classCommentMaxLengthSpinner.setValue(cp.commentMaxLength);
         classHiddenAnnotationsField.setText(cp.hiddenAnnotationsCsv());
         classHiddenAnnotationsField.setToolTipText(Messages.get("style.tip.hiddenAnnotations"));
@@ -613,6 +613,9 @@ public final class StyleSettingsDialog extends JDialog {
         row = addWideRow(form, c, row, classMarkExternalSupertypesCheckbox);
         // 関係線の色分け (継承=緑/実装=青/利用=灰破線)。大規模図で依存線を追いやすくする。
         row = addWideRow(form, c, row, classColorCodeRelationsCheckbox);
+        // 密度削減トグル: 空メンバー欄を畳む / 孤立クラスを取り除く。
+        row = addWideRow(form, c, row, classHideEmptyMembersCheckbox);
+        row = addWideRow(form, c, row, classHideUnlinkedCheckbox);
 
         ((JSpinner.DefaultEditor) classCommentMaxLengthSpinner.getEditor()).getTextField()
                 .setToolTipText(Messages.get("style.tip.commentMaxLength"));
@@ -771,6 +774,8 @@ public final class StyleSettingsDialog extends JDialog {
         classExcludeExternalCheckbox.setSelected(cp.excludeExternal);
         classMarkExternalSupertypesCheckbox.setSelected(cp.markExternalSupertypes);
         classColorCodeRelationsCheckbox.setSelected(cp.colorCodeRelations);
+        classHideEmptyMembersCheckbox.setSelected(cp.hideEmptyMembers);
+        classHideUnlinkedCheckbox.setSelected(cp.hideUnlinked);
         classCommentMaxLengthSpinner.setValue(cp.commentMaxLength);
         classHiddenAnnotationsField.setText(cp.hiddenAnnotationsCsv());
         callGraphMaxDepthSpinner.setValue(4);
@@ -838,7 +843,9 @@ public final class StyleSettingsDialog extends JDialog {
                 classMarkExternalSupertypesCheckbox.isSelected(),
                 classColorCodeRelationsCheckbox.isSelected(),
                 ((Number) classCommentMaxLengthSpinner.getValue()).intValue(),
-                ClassDiagramPrefs.parseCsv(classHiddenAnnotationsField.getText()));
+                ClassDiagramPrefs.parseCsv(classHiddenAnnotationsField.getText()),
+                classHideEmptyMembersCheckbox.isSelected(),
+                classHideUnlinkedCheckbox.isSelected());
         ActivityDiagramPrefs activityPrefs = new ActivityDiagramPrefs(
                 activityExpandCallbacksCheckbox.isSelected(),
                 activityShowLocalVarsCheckbox.isSelected(),

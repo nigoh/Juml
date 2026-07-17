@@ -238,7 +238,7 @@ public class DialogKeyboardTest {
                 PlantUmlClassDiagram.CommentStyle.class,
                 PlantUmlSequenceDiagram.CommentPlacement.class,
                 boolean.class, int.class, boolean.class,
-                StyleSettingsDialog.ActivityDiagramPrefs.class,
+                ActivityDiagramPrefs.class,
                 StyleSettingsDialog.ClassDiagramPrefs.class, int.class);
         ctor.setAccessible(true);
         StyleSettingsDialog dlg = GuiActionRunner.execute(() -> {
@@ -248,7 +248,7 @@ public class DialogKeyboardTest {
                         PlantUmlClassDiagram.CommentStyle.INLINE,
                         PlantUmlSequenceDiagram.CommentPlacement.AT_CALL_SITE,
                         true, 5, false,
-                        StyleSettingsDialog.ActivityDiagramPrefs.defaults(),
+                        ActivityDiagramPrefs.defaults(),
                         StyleSettingsDialog.ClassDiagramPrefs.defaults(), 3);
             } catch (Exception e) {
                 throw new RuntimeException(e);

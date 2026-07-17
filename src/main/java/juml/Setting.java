@@ -93,6 +93,10 @@ public class Setting {
     private int classDiagramCommentMaxLength = 0;
     /** 非表示アノテーション名の CSV (例: "Override,SuppressWarnings")。 */
     private String classDiagramHiddenAnnotations = "Override,SuppressWarnings";
+    /** メンバーの無いコンパートメント (空のフィールド欄/メソッド欄) を隠すか (hide empty members)。 */
+    private boolean classDiagramHideEmptyMembers = false;
+    /** どの関連線とも繋がらない孤立クラスを描画後に取り除くか (remove @unlinked)。 */
+    private boolean classDiagramHideUnlinked = false;
 
     /** コールグラフの最大追跡階層数 (1〜10)。 */
     private int callGraphMaxDepth = 4;
@@ -212,6 +216,14 @@ public class Setting {
     public String getClassDiagramHiddenAnnotations() { return classDiagramHiddenAnnotations; }
     public void setClassDiagramHiddenAnnotations(String v) {
         this.classDiagramHiddenAnnotations = v == null ? "" : v;
+    }
+    public boolean isClassDiagramHideEmptyMembers() { return classDiagramHideEmptyMembers; }
+    public void setClassDiagramHideEmptyMembers(boolean v) {
+        this.classDiagramHideEmptyMembers = v;
+    }
+    public boolean isClassDiagramHideUnlinked() { return classDiagramHideUnlinked; }
+    public void setClassDiagramHideUnlinked(boolean v) {
+        this.classDiagramHideUnlinked = v;
     }
 
     public int getCallGraphMaxDepth() { return callGraphMaxDepth; }
@@ -354,6 +366,10 @@ public class Setting {
         props.setProperty("classDiagram.commentMaxLength.migrated", "true");
         props.setProperty("classDiagram.hiddenAnnotations",
                 classDiagramHiddenAnnotations);
+        props.setProperty("classDiagram.hideEmptyMembers",
+                Boolean.toString(classDiagramHideEmptyMembers));
+        props.setProperty("classDiagram.hideUnlinked",
+                Boolean.toString(classDiagramHideUnlinked));
         props.setProperty("callGraph.maxDepth", Integer.toString(callGraphMaxDepth));
         props.setProperty("app.lookAndFeel", lookAndFeel);
         props.setProperty("app.restoreLastProjectOnStartup",
@@ -456,6 +472,10 @@ public class Setting {
         s.classDiagramHiddenAnnotations = stringOrDefault(
                 props.getProperty("classDiagram.hiddenAnnotations"),
                 "Override,SuppressWarnings");
+        s.classDiagramHideEmptyMembers = parseBooleanSafe(
+                props.getProperty("classDiagram.hideEmptyMembers"), false);
+        s.classDiagramHideUnlinked = parseBooleanSafe(
+                props.getProperty("classDiagram.hideUnlinked"), false);
         s.callGraphMaxDepth = parseIntSafe(props.getProperty("callGraph.maxDepth"), 4);
         s.lookAndFeel = stringOrDefault(props.getProperty("app.lookAndFeel"), "FLATLAF_LIGHT");
         s.restoreLastProjectOnStartup = parseBooleanSafe(

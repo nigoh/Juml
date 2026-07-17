@@ -29,11 +29,23 @@ public class UmlOverridesFocusColorTest {
         PlantUmlClassDiagram.Options o = apply("-c");
         assertFalse(o.colorCodeRelations);
         assertEquals("", o.focusClass);
+        assertFalse(o.hideEmptyMembers);
+        assertFalse(o.hideUnlinkedClasses);
     }
 
     @Test
     public void colorRelationsFlagEnablesColorCoding() {
         assertTrue(apply("-c", "--color-relations").colorCodeRelations);
+    }
+
+    @Test
+    public void hideEmptyMembersFlagEnablesDirective() {
+        assertTrue(apply("-c", "--hide-empty-members").hideEmptyMembers);
+    }
+
+    @Test
+    public void hideUnlinkedFlagEnablesDirective() {
+        assertTrue(apply("-c", "--hide-unlinked").hideUnlinkedClasses);
     }
 
     @Test

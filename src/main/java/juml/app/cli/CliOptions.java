@@ -57,6 +57,8 @@ public final class CliOptions {
     public final Option noVisibilityIcons = new Option(null, "no-visibility-icons", false);
     public final Option excludePackage = new Option(null, "exclude-package", true);
     public final Option colorRelations = new Option(null, "color-relations", false);
+    public final Option hideEmptyMembers = new Option(null, "hide-empty-members", false);
+    public final Option hideUnlinked = new Option(null, "hide-unlinked", false);
     public final Option focus = new Option(null, "focus", true);
     public final Option relation = new Option(null, "relation", true);
     public final Option mode = new Option(null, "mode", true);
@@ -106,7 +108,8 @@ public final class CliOptions {
             sequenceDiagrams, jetpack, perFolder,
             preset, noFields, noMethods, publicOnly,
             excludeExternal, markExternalSupertypes, noVisibilityIcons,
-            excludePackage, colorRelations, focus, relation, mode,
+            excludePackage, colorRelations, hideEmptyMembers, hideUnlinked,
+            focus, relation, mode,
             interactiveSvg, hiddenAnnotations, commentMaxLength,
             impact, impactDepth, refFind,
             vhalFlow, aidlBinding, erDiagram, dataFlow,
@@ -216,6 +219,10 @@ public final class CliOptions {
                 + " listed kinds (CSV).");
         System.err.println("  --color-relations: Color-code class-diagram relations"
                 + " (inherit=green / implement=blue / use=gray dashed).");
+        System.err.println("  --hide-empty-members: Collapse empty field/method"
+                + " compartments in the class diagram (hide empty members).");
+        System.err.println("  --hide-unlinked: Drop classes with no relation line from the"
+                + " class diagram (remove @unlinked) to keep only connected structure.");
         System.err.println("  --focus FQN: Focus the class diagram on a class; emphasize it"
                 + " and its 1-hop neighbors, dim the rest (FQN or simple name).");
         System.err.println("  --mode headers-only|full: Use the lightweight headers-only"

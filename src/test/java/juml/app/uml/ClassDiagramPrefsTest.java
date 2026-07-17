@@ -44,6 +44,26 @@ public class ClassDiagramPrefsTest {
     }
 
     @Test
+    public void densityTogglesDefaultOffAndAreRetainedBy11ArgCtor() {
+        // 既定値 (8/9 引数コンストラクタ経由) は false
+        StyleSettingsDialog.ClassDiagramPrefs def =
+                StyleSettingsDialog.ClassDiagramPrefs.defaults();
+        assertFalse(def.hideEmptyMembers);
+        assertFalse(def.hideUnlinked);
+        StyleSettingsDialog.ClassDiagramPrefs nineArg =
+                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+                        false, false, false, false, 80, null);
+        assertFalse("9 引数コンストラクタは密度トグルを false にする", nineArg.hideEmptyMembers);
+        assertFalse(nineArg.hideUnlinked);
+        // 11 引数コンストラクタは両フラグを保持する
+        StyleSettingsDialog.ClassDiagramPrefs full =
+                new StyleSettingsDialog.ClassDiagramPrefs(true, true, true,
+                        false, false, false, false, 80, null, true, true);
+        assertTrue(full.hideEmptyMembers);
+        assertTrue(full.hideUnlinked);
+    }
+
+    @Test
     public void parseCsvSplitsAndTrims() {
         Set<String> result = StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
                 "Override, Nullable ,NonNull, ,Keep");

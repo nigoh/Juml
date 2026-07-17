@@ -619,18 +619,20 @@ public class UmlMainFrame extends JFrame {
                         setting.isClassDiagramColorCodeRelations(),
                         setting.getClassDiagramCommentMaxLength(),
                         StyleSettingsDialog.ClassDiagramPrefs.parseCsv(
-                                setting.getClassDiagramHiddenAnnotations()))
+                                setting.getClassDiagramHiddenAnnotations()),
+                        setting.isClassDiagramHideEmptyMembers(),
+                        setting.isClassDiagramHideUnlinked())
                 : StyleSettingsDialog.ClassDiagramPrefs.defaults();
         int curSeqMaxDepth = setting != null ? setting.getSequenceMaxDepth() : 5;
         boolean curSeqShowArgs = setting != null && setting.isSequenceShowCallArguments();
-        StyleSettingsDialog.ActivityDiagramPrefs curActivity = setting != null
-                ? new StyleSettingsDialog.ActivityDiagramPrefs(
+        ActivityDiagramPrefs curActivity = setting != null
+                ? new ActivityDiagramPrefs(
                         setting.isActivityExpandInlineCallbacks(),
                         setting.isActivityShowLocalVars(),
                         setting.isActivityShowAssignments(),
                         setting.isActivityShowCallArguments(),
                         setting.isActivityShowInlineComments())
-                : StyleSettingsDialog.ActivityDiagramPrefs.defaults();
+                : ActivityDiagramPrefs.defaults();
         int curCallGraphDepth = setting != null ? setting.getCallGraphMaxDepth() : 4;
         StyleSettingsDialog.Result edited = StyleSettingsDialog.showDialog(
                 this, PlantUmlRenderer.getStyle(), curShow, curStyle,
@@ -672,6 +674,8 @@ public class UmlMainFrame extends JFrame {
                     setting.setClassDiagramExcludeExternal(cp.excludeExternal);
                     setting.setClassDiagramMarkExternalSupertypes(cp.markExternalSupertypes);
                     setting.setClassDiagramColorCodeRelations(cp.colorCodeRelations);
+                    setting.setClassDiagramHideEmptyMembers(cp.hideEmptyMembers);
+                    setting.setClassDiagramHideUnlinked(cp.hideUnlinked);
                     setting.setClassDiagramCommentMaxLength(cp.commentMaxLength);
                     setting.setClassDiagramHiddenAnnotations(cp.hiddenAnnotationsCsv());
                 }

@@ -101,6 +101,18 @@ public final class PlantUmlClassDiagram {
         public boolean groupConstants = true;
         /** ネストした型と外側の型を含有エッジ ({@code Outer +-- Inner}) で結ぶ。既定 false。 */
         public boolean showNestedContainment = false;
+        /**
+         * メンバーの無いコンパートメント (フィールド欄 / メソッド欄) を隠す
+         * ({@code hide empty members})。マーカー IF・定数ホルダ等の空欄を畳んで縦の
+         * ノイズを減らす。既定 false (従来出力を維持)。
+         */
+        public boolean hideEmptyMembers = false;
+        /**
+         * どの関連線とも繋がっていない孤立クラスを描画後に取り除く
+         * ({@code remove @unlinked})。巨大な自動生成図で「関係のある構造だけ」を見たいときに使う。
+         * 既定 false (従来出力を維持)。
+         */
+        public boolean hideUnlinkedClasses = false;
         /** 図全体に出すクラスの最大数 (0 以下で無制限)。超過時は先頭から切り詰める。 */
         public int maxClasses = 0;
         /** 図末尾に出す警告メッセージ (PlantUML の {@code footer} 行)。null/空で出力しない。 */
@@ -250,6 +262,10 @@ public final class PlantUmlClassDiagram {
             out.append("title ").append(PlantUmlCommentFormatter.escapeLabel(o.title)).append('\n');
         }
         VisibilityIconStyle.appendSkinparams(out, o.showVisibility && o.visibilityIcons);
+        if (o.hideEmptyMembers) {
+            // メンバーの無いフィールド欄/メソッド欄を畳む (マーカー IF・定数ホルダのノイズ抑制)。
+            out.append("hide empty members\n");
+        }
         // NOTE 表示時のコメント色を skinparam で指定 (INLINE 時は <color:..> タグで個別色付けするため出力しない)。
         if (o.showComments && o.commentStyle == CommentStyle.NOTE
                 && o.commentColor != null && !o.commentColor.isEmpty()) {
@@ -334,21 +350,34 @@ public final class PlantUmlClassDiagram {
                 }
             }
         }
+        if (o.hideUnlinkedClasses) {
+            // 全関連線を出し終えた後で、どの線とも繋がらない孤立クラスをレイアウト解決時に除去する。
+            // legend/footer は要素ではないため影響を受けない。
+            out.append("remove @unlinked\n");
+        }
         if (o.includeLegend) {
             PlantUmlClassLegend.emit(out, classes, o);
         }
-        // フッタ警告: maxClasses で切り詰めた場合の自動メッセージを優先
+        appendFooter(out, o, originalTotal, classes.size());
+        out.append("@enduml\n");
+        return out.toString();
+    }
+
+    /**
+     * フッタ警告行を出力する。{@code maxClasses} での切り詰め時は自動メッセージを、
+     * 明示指定 ({@code o.footerWarning}) があればそれを優先する。
+     */
+    private static void appendFooter(StringBuilder out, Options o,
+                                     int originalTotal, int shownCount) {
         String footer = o.footerWarning;
         if ((footer == null || footer.isEmpty())
-                && o.maxClasses > 0 && originalTotal > classes.size()) {
-            footer = "showing " + classes.size() + " of " + originalTotal + " classes";
+                && o.maxClasses > 0 && originalTotal > shownCount) {
+            footer = "showing " + shownCount + " of " + originalTotal + " classes";
         }
         if (footer != null && !footer.isEmpty()) {
             // footer テキストの < をチルダエスケープしてタグ誤認を防ぐ
             out.append("footer ").append(PlantUmlCommentFormatter.escapeText(footer)).append('\n');
         }
-        out.append("@enduml\n");
-        return out.toString();
     }
 
     static boolean hasVisibleAnnotation(List<String> annotations, Options o) {
