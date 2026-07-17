@@ -2391,7 +2391,7 @@ public final class DiagramTabPane {
                                 String generated =
                                         juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
                                 sourcePanel.highlightErrorLine(
-                                        PumlSourcePanel.editorLineForError(
+                                        PumlErrorLineMapper.editorLineForError(
                                                 editorPuml, generated, genLine));
                             }
                         }

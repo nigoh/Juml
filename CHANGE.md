@@ -4,6 +4,45 @@ Change log
 2.1
 --------
 
+* **コンポーネント図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`ComponentNode` / `ComponentRelation` / `ComponentSketchModel` / `ComponentSketchCodec` / `ComponentSketchCanvas` / `ComponentSketchEditor` / `ComponentSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 状態遷移図・ユースケース図に続き、コンポーネント図もテキスト専用だった。これで図形デザイナーはクラス・シーケンス・アクティビティ・状態・ユースケース・コンポーネントの 6 図種に対応する。
+    * コンポーネントを UML コンポーネントアイコン付き矩形、インターフェースを円で描き、矢印 (`-->`) / 依存 (`..>`) / 接続 (`--`) の 3 種で結ぶデザイナーを追加。短縮形 `[Id]` はコンポーネントとして解釈しキーワード形へ正規化して往復保全、空白入り表示名は `"表示名" as id` 形式で保全。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで関係追加・右クリックで要素/関係の追加削除・ダブルクリックで id/種別/表示名・関係種別/ラベルを編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に COMPONENT 判定を追加 (`component` キーワード / 短縮形 `[Id]` を先取り判定。`[*]` は識別子でないので状態図と混同しない)。「新規」COMPONENT テンプレートは境界・`database` 等を外したフラット構成へ簡素化。
+    * パッケージ境界・`database`/`node`/`cloud` 等・空白入り `[名前]`・一般コメントは未対応として編集をロックしテキストを保全。
+    * テスト: `ComponentSketchCodecTest` (往復・別名/短縮形正規化・境界/コメントのロック・3 関係種別・改名の 7 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に COMPONENT の判定・編集・Undo/Redo 同期を追加 (`[*]` を短縮形と混同しないことも固定)。
+    * 目的: 「あらゆる図解化を支援する」ため、図形操作でもコンポーネント図を作れるようにするため。
+
+* **ユースケース図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`UseCaseNode` / `UseCaseRelation` / `UseCaseSketchModel` / `UseCaseSketchCodec` / `UseCaseSketchCanvas` / `UseCaseSketchEditor` / `UseCaseSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 状態遷移図に続き、ユースケース図もテキスト専用 (Design タブは編集ロック) だった。
+    * アクターを棒人間、ユースケースを楕円で描き、関連 (`-->`) / 依存 (`..>`、include/extend) / 汎化 (`--|>`) の 3 種で結ぶデザイナーを追加。空白を含む表示名は `"表示名" as id` 形式で往復保全。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで関係追加・右クリックで要素/関係の追加削除・ダブルクリックで id/種別/表示名・関係種別/ラベルを編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に USECASE 判定を追加。`usecase` キーワードは他図種と衝突しないため 1 行でもあればユースケース図と確定する (`actor` はシーケンス図と共有するため単独では判定しない)。「新規」USECASE テンプレートは境界・向き指定を外したフラット構成へ簡素化。
+    * 境界 (`rectangle X { … }`)・向き指定・短縮記法・一般コメントは未対応として編集をロックしテキストを保全 (クラス図コーデックと同じ契約)。
+    * テスト: `UseCaseSketchCodecTest` (往復・別名保全・境界/向き/コメントのロック・汎化・改名の 9 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に USECASE の判定・編集・Undo/Redo 同期を追加 (actor 単独ではシーケンス図判定を維持することも固定)。
+    * 目的: 「あらゆる図解化を支援する」ため、図形操作でもユースケース図を作れるようにするため。
+
+* **状態遷移図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`StateNode` / `StateTransition` / `StateSketchModel` / `StateSketchCodec` / `StateSketchCanvas` / `StateSketchEditor` / `StateSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
+    * **背景**: 図形デザイナーはクラス図・シーケンス図・アクティビティ図の 3 種のみグラフィカル編集でき、状態遷移図はテキスト専用 (Design タブは編集ロック) だった。
+    * 状態を角丸ボックスで描き遷移を矢印で結ぶ状態遷移図デザイナーを追加。初期/終了の擬似状態 `[*]` は接続状態から導出した位置に小円/二重丸として描画。
+    * ドラッグ移動 (グリッド吸着)・2 クリックで遷移追加・右クリックで「初期/終了状態にする」「状態/遷移の削除」・ダブルクリックで状態改名/遷移ラベル編集。Undo/Redo とテキスト同期は既存の `SketchPane` 機構を流用。
+    * `SketchDiagramType` に STATE 判定を追加 (`state X` 宣言 / `[*] -->` / `--> [*]` を状態遷移図と判定。素の `A --> B` はクラス図の関連と曖昧なため判定材料にしない)。「新規」STATE テンプレートは、デザイナーが扱えるフラット構成へ簡素化 (複合状態はテキストで追加でき従来どおり編集ロックで保全)。
+    * 対応構文は基本要素に限定し、複合状態 (`state X { … }`) や一般コメントは未対応として編集をロックしテキストを保全 (クラス図コーデックと同じ契約)。
+    * テスト: `StateSketchCodecTest` (往復・擬似状態・複合ロック・改名/削除の 10 ケース) と `SketchPaneTest` / `SketchDiagramTypeTest` に STATE の判定・編集・Undo/Redo 同期を追加。
+    * 目的: 「あらゆる図解化を支援する」ため、テキストだけでなく図形操作でも状態遷移図を作れるようにするため。
+
+* **新規 UML エディタの自由度を大幅強化 — テキストを「最強のコードエディタ」化 + 図種テンプレート網羅** (`PumlSourcePanel` / `PlantUmlHighlighter` / `LineNumberGutter` / `PumlSnippets` / `PumlCompletion` / `BracketMatcher` / `PumlErrorLineMapper` / `SourceFindBar` / `PumlTemplate` / `MenuBarBuilder` ほか)
+    * **背景**: 「新規」で作れる図が UML 7 種に限られ、自由編集エディタは素の `JTextArea` (ハイライトも行番号も補完も無し) だった。テキストは全図種の真実源なので、ここを強くすると図解全体が楽になる。
+    * **図種テンプレート網羅**: クラス/シーケンス等の 7 種から 18 種へ拡充 (オブジェクト・配置・タイミング・ER・JSON・YAML・マインドマップ・WBS・ガント・ワイヤフレーム(salt)・ArchiMate)。カテゴリ別サブメニュー化し、全テンプレートが同梱 Smetana エンジンで描画されることをテストで固定。
+    * **コードペイン化**: `JTextArea` → シンタックスハイライト付き `JTextPane`。`@start/@end`・図種キーワード・矢印・文字列・コメント・ステレオタイプ・色リテラルを着色。行番号ガター (読み取り専用ソースビューアと共有) と現在行ハイライトを追加。着色は属性変更のみで行い、dirty 判定や Undo 履歴を汚さない。
+    * **図種別スニペットパレット**: クラス/シーケンス/アクティビティ/状態/共通の 26 断片を「Insert」ポップアップから挿入 (`${caret}` で挿入後のキャレット位置を指定)。
+    * **検索/置換・コメント切替・ブロックインデント**: Ctrl+F 検索・Ctrl+H 置換 (`SourceFindBar` を置換対応へ一般化)、Ctrl+/ で行コメント切替、Tab/Shift+Tab で選択行インデント (複数行は 1 手で Undo)。
+    * **入力補完**: Ctrl+Space で PlantUML キーワード + 本文識別子の前方一致補完。
+    * **対応括弧強調**: キャレット隣の括弧と対応括弧を枠で囲む (入れ子の多い package/クラス本体/複合状態/JSON で有効)。ドキュメントは変更しない。
+    * **設計判断 (据え置き)**: 図形デザイナー (Design タブ) のコーデックがコメント行で編集をロックする挙動は「GUI 編集でコメントを失わないための意図的な保護」であり既存テストで固定されているため、無言で反転せず今回は据え置いた (要望あれば別途対応)。
+    * テスト: `PlantUmlHighlighterTest` / `PumlSnippetsTest` / `PumlCompletionTest` / `BracketMatcherTest` (純ロジック, headless) と `PumlSourcePanelHighlightTest` / `PumlSourcePanelEditTest` / `PumlSourcePanelCompletionTest` (GUI, headless-skip) を新設。既存のスニペット/エラー行/検索バー/ソースビューアのテストは全て非破壊。checkstyle FileLength 対応として純ロジックを `BracketMatcher` / `PumlErrorLineMapper` へ分離。
+    * 目的: 「umlを作る際のエディタの自由度をとにかく高め、あらゆる図解化を支援する最強のエディタにする」要望に対し、まず全図種の土台であるテキスト編集体験を一段引き上げるため。
+
 * **メソッド呼び出しの引数を図に表示できるように** (`JavaMethodInfo.Call` / `ExpressionAdapter` / `PlantUmlActivityDiagram` / `PlantUmlSequenceDiagram` / `SeqEmitters` / GUI 設定系)
     * **背景**: 図中の呼び出しが `helper.done()` のように常に引数省略で描かれ、「処理を事細かく確認したい」用途で情報が足りなかった (シーケンス図は定数シンボルの第 1 引数のみ表示)。
     * 抽出時に呼び出し引数の元ソースを `Call.argsLabel` として保持 (カンマ結合。ラムダ/匿名クラス引数は本体を inlineMethods が持つため λ 記号に畳む)。`this(...)`/`super(...)` の委譲引数も対象。

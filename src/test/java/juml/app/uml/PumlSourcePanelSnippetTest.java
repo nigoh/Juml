@@ -38,6 +38,36 @@ public class PumlSourcePanelSnippetTest {
     }
 
     @Test
+    public void insertSnippet_caretMarker_isStrippedAndCaretPlaced() {
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> {
+            panel.setEditable(true);
+            panel.setText("");
+            panel.insertSnippet("X" + PumlSnippets.CARET + "Y");
+        });
+        assertEquals("マーカーは取り除かれる", "XY",
+                GuiActionRunner.execute(panel::getText));
+        assertEquals("キャレットはマーカー位置 (X の後) に置かれる", 1,
+                (int) GuiActionRunner.execute(panel::caretForTest));
+    }
+
+    @Test
+    public void insertSnippet_paletteBodies_insertAndStripMarkers() {
+        // カタログの各スニペットが挿入でき、マーカーが残らないこと。
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        for (PumlSnippets.Snippet s : PumlSnippets.all()) {
+            GuiActionRunner.execute(() -> {
+                panel.setEditable(true);
+                panel.setText("");
+                panel.insertSnippet(s.body());
+            });
+            String text = GuiActionRunner.execute(panel::getText);
+            assertFalse("マーカーが残ってはいけない: " + s.displayName(),
+                    text.contains(PumlSnippets.CARET));
+        }
+    }
+
+    @Test
     public void insertSnippet_whenReadOnly_isIgnored() {
         PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> {

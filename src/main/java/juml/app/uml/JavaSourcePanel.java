@@ -23,18 +23,13 @@ import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
@@ -120,7 +115,7 @@ public final class JavaSourcePanel extends JPanel {
 
         scroll = new JScrollPane(noWrap);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
-        gutter = new LineNumberGutter();
+        gutter = new LineNumberGutter(textPane, () -> currentFile != null);
         scroll.setRowHeaderView(gutter);
 
         pathLabel = new JLabel(" ");
@@ -723,81 +718,6 @@ public final class JavaSourcePanel extends JPanel {
 
         static LoadResult error(String error) {
             return new LoadResult(null, null, false, error);
-        }
-    }
-
-    /**
-     * {@link #textPane} の行に合わせて行番号を描画する row header。
-     * 各行の y 座標は {@code modelToView2D} で取得するため、フォントや行高の差異が
-     * あっても本文と整列する。
-     */
-    private final class LineNumberGutter extends JComponent {
-
-        void refresh() {
-            revalidate();
-            repaint();
-        }
-
-        private int lineCount() {
-            return textPane.getDocument().getDefaultRootElement().getElementCount();
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            FontMetrics fm = getFontMetrics(textPane.getFont());
-            int digits = Math.max(3, String.valueOf(Math.max(lineCount(), 1)).length());
-            int w = fm.charWidth('0') * digits + 14;
-            int h = Math.max(textPane.getHeight(), textPane.getPreferredSize().height);
-            return new Dimension(w, h);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            Graphics2D g2 = (Graphics2D) g;
-            Rectangle clip = g2.getClipBounds();
-            g2.setColor(EditorColors.gutterBackground());
-            g2.fillRect(clip.x, clip.y, clip.width, clip.height);
-
-            Element root = textPane.getDocument().getDefaultRootElement();
-            int lines = root.getElementCount();
-            if (lines <= 0) {
-                return;
-            }
-            Font f = textPane.getFont();
-            g2.setFont(f);
-            FontMetrics fm = g2.getFontMetrics(f);
-            int w = getWidth();
-            int caretLine = currentFile != null
-                    ? root.getElementIndex(textPane.getCaretPosition()) : -1;
-
-            int startLine = 0;
-            try {
-                int off = textPane.viewToModel2D(new Point2D.Double(0, clip.y));
-                startLine = Math.max(0, root.getElementIndex(off));
-            } catch (RuntimeException ignored) {
-                startLine = 0;
-            }
-            for (int line = startLine; line < lines; line++) {
-                Element el = root.getElement(line);
-                Rectangle2D r;
-                try {
-                    r = textPane.modelToView2D(el.getStartOffset());
-                } catch (BadLocationException ex) {
-                    break;
-                }
-                if (r == null) {
-                    break;
-                }
-                int top = (int) r.getY();
-                if (top > clip.y + clip.height) {
-                    break;
-                }
-                String num = String.valueOf(line + 1);
-                int sw = fm.stringWidth(num);
-                g2.setColor(line == caretLine ? EditorColors.text() : EditorColors.gutterForeground());
-                g2.drawString(num, w - sw - 8, top + fm.getAscent());
-            }
         }
     }
 }

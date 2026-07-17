@@ -38,10 +38,28 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
-    public void detect_stateTemplate_defaultsToClass() {
-        // 状態遷移図は専用エディタが無いため既定 (クラス図コーデックが編集ロックで保全)。
-        assertEquals(SketchDiagramType.CLASS,
+    public void detect_stateTemplate_isState() {
+        // 状態遷移図テンプレートは専用デザイナーで扱えるよう STATE と判定される。
+        assertEquals(SketchDiagramType.STATE,
                 SketchDiagramType.detect(PumlTemplate.STATE.body()));
+    }
+
+    @Test
+    public void detect_stateDeclaration_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\nstate Idle\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_initialTransition_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\n[*] --> Idle\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_finalTransition_isState() {
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\nRunning --> [*]\n@enduml\n"));
     }
 
     @Test
@@ -55,6 +73,46 @@ public class SketchDiagramTypeTest {
         // "-->" はクラス図の関連と曖昧なためシーケンス判定の材料にしない。
         assertEquals(SketchDiagramType.CLASS,
                 SketchDiagramType.detect("@startuml\nA --> B\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_usecaseTemplate_isUseCase() {
+        assertEquals(SketchDiagramType.USECASE,
+                SketchDiagramType.detect(PumlTemplate.USECASE.body()));
+    }
+
+    @Test
+    public void detect_usecaseKeyword_isUseCase() {
+        assertEquals(SketchDiagramType.USECASE,
+                SketchDiagramType.detect("@startuml\nactor User\nusecase UC1\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_actorWithoutUsecase_staysSequence() {
+        // actor はシーケンス図と共有。usecase キーワードが無ければユースケース図と誤判定しない。
+        assertEquals(SketchDiagramType.SEQUENCE,
+                SketchDiagramType.detect(PumlTemplate.SEQUENCE.body()));
+    }
+
+    @Test
+    public void detect_componentTemplate_isComponent() {
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
+    }
+
+    @Test
+    public void detect_componentKeywordOrBracket_isComponent() {
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect("@startuml\ncomponent UI\n@enduml\n"));
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect("@startuml\n[UI]\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_stateInitialBracket_isNotComponent() {
+        // [*] は識別子でないのでコンポーネント短縮形と混同せず状態図のまま。
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect("@startuml\n[*] --> Idle\n@enduml\n"));
     }
 
     @Test

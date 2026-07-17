@@ -8,33 +8,33 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 /**
- * {@link PumlSourcePanel#editorLineForError(int, int)} の行番号写像 (純関数, headless)。
+ * {@link PumlErrorLineMapper#editorLineForError(int, int)} の行番号写像 (純関数, headless)。
  *
  * <p>PlantUML は prelude (!pragma layout / skinparam 等) を {@code @startuml} 直後へ
  * 挿入した「生成ソース」の行番号を返すため、エディタ上の行へ戻すには挿入行数を引く。
  * 実測: エディタ行 3 の構文エラーが、挿入 2 行を含む生成ソースでは行 5 と報告される。</p>
  */
-public class PumlSourcePanelErrorLineTest {
+public class PumlErrorLineMapperTest {
 
     @Test
     public void subtractsInjectedLines() {
         // 生成ソースの行 5 - 挿入 2 行 = エディタ行 3。
-        assertEquals(3, PumlSourcePanel.editorLineForError(5, 2));
+        assertEquals(3, PumlErrorLineMapper.editorLineForError(5, 2));
     }
 
     @Test
     public void startumlLineIsUnchanged() {
-        assertEquals(1, PumlSourcePanel.editorLineForError(1, 2));
+        assertEquals(1, PumlErrorLineMapper.editorLineForError(1, 2));
     }
 
     @Test
     public void noInjectionKeepsLineNumber() {
-        assertEquals(4, PumlSourcePanel.editorLineForError(4, 0));
+        assertEquals(4, PumlErrorLineMapper.editorLineForError(4, 0));
     }
 
     @Test
     public void clampsToFirstLineWhenErrorFallsInInjectedPrelude() {
-        assertEquals(1, PumlSourcePanel.editorLineForError(2, 5));
+        assertEquals(1, PumlErrorLineMapper.editorLineForError(2, 5));
     }
 
     // ── 内容ベースの写像 (editorLineForError(String, String, int)) ──
@@ -48,7 +48,7 @@ public class PumlSourcePanelErrorLineTest {
         String editor = "@startuml\nA -> B\nC -> D\n@enduml";
         String generated = "@startuml\n!pragma layout smetana\nskinparam x y\nA -> B\nC -> D\n@enduml";
         assertEquals(5, findLine(generated, "C -> D"));
-        assertEquals(3, PumlSourcePanel.editorLineForError(editor, generated, 5));
+        assertEquals(3, PumlErrorLineMapper.editorLineForError(editor, generated, 5));
     }
 
     /**
@@ -62,7 +62,7 @@ public class PumlSourcePanelErrorLineTest {
         String editor = "@startuml\nA -> B\ntop to bottom direction\n@enduml";
         String generated = "@startuml\nprelude1\nprelude2\nA -> B\n@enduml";
         // エラーは生成行 4 ("A -> B") → エディタ行 2 に写像されるべき。
-        assertEquals(2, PumlSourcePanel.editorLineForError(editor, generated, 4));
+        assertEquals(2, PumlErrorLineMapper.editorLineForError(editor, generated, 4));
     }
 
     /** {@code @startuml} が 1 行目でないケースでも内容一致で正しく写像する。 */
@@ -71,7 +71,7 @@ public class PumlSourcePanelErrorLineTest {
         String editor = "' header comment\n@startuml\nA -> B\n@enduml";
         String generated = "' header comment\n@startuml\nprelude\nA -> B\n@enduml";
         // 生成行 4 ("A -> B") → エディタ行 3。
-        assertEquals(3, PumlSourcePanel.editorLineForError(editor, generated, 4));
+        assertEquals(3, PumlErrorLineMapper.editorLineForError(editor, generated, 4));
     }
 
     /** prelude 由来の行 (エディタに存在しない) は行数差の数値補正へフォールバックする。 */
@@ -80,7 +80,7 @@ public class PumlSourcePanelErrorLineTest {
         String editor = "@startuml\nA -> B\n@enduml";
         String generated = "@startuml\n!pragma layout smetana\nA -> B\n@enduml";
         // 生成行 2 (prelude) はエディタに無い → 数値補正 (挿入1) で行 1 付近へ。
-        int mapped = PumlSourcePanel.editorLineForError(editor, generated, 2);
+        int mapped = PumlErrorLineMapper.editorLineForError(editor, generated, 2);
         assertEquals(1, mapped);
     }
 
@@ -97,9 +97,9 @@ public class PumlSourcePanelErrorLineTest {
         // generated: 1:@startuml 2:!pragma 3:skinparam 4:class A { 5:} 6:class B { 7:} 8:@enduml
         // editor:    1:@startuml 2:class A { 3:} 4:class B { 5:} 6:@enduml
         assertEquals("最初の '}' (生成行5) はエディタ行 3 に写像されるべき (下方の行 5 でなく)",
-                3, PumlSourcePanel.editorLineForError(editor, generated, 5));
+                3, PumlErrorLineMapper.editorLineForError(editor, generated, 5));
         assertEquals("2 個目の '}' (生成行7) はエディタ行 5 に写像されるべき",
-                5, PumlSourcePanel.editorLineForError(editor, generated, 7));
+                5, PumlErrorLineMapper.editorLineForError(editor, generated, 7));
     }
 
     /**
@@ -118,14 +118,14 @@ public class PumlSourcePanelErrorLineTest {
         // gen 行 6 = 上側の "%%zz"。正解はエディタ行 4 (前=} / 後=%%zz)。
         // net injected=1 → expected=5 なので数値距離だけだと下側 (行5) を選んでしまう。
         assertEquals("前後コンテキストで上側の複製 (エディタ行4) を選ぶべき",
-                4, PumlSourcePanel.editorLineForError(editor, generated, 6));
+                4, PumlErrorLineMapper.editorLineForError(editor, generated, 6));
     }
 
     /** null 入力・範囲外でも例外を投げず安全な行番号を返す。 */
     @Test
     public void contentMapping_nullAndOutOfRangeAreSafe() {
-        assertEquals(3, PumlSourcePanel.editorLineForError(null, "x", 3));
-        assertEquals(1, PumlSourcePanel.editorLineForError("a\nb", "a\nb", 0));
+        assertEquals(3, PumlErrorLineMapper.editorLineForError(null, "x", 3));
+        assertEquals(1, PumlErrorLineMapper.editorLineForError("a\nb", "a\nb", 0));
     }
 
     private static int findLine(String text, String needle) {
