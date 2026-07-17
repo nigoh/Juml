@@ -25,6 +25,7 @@ import javax.swing.text.Highlighter;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
+import javax.swing.undo.CompoundEdit;
 import javax.swing.undo.UndoManager;
 import javax.swing.undo.UndoableEdit;
 import java.awt.BorderLayout;
@@ -56,6 +57,8 @@ public class PumlSourcePanel extends JPanel {
     private final JButton copyButton;
     /** 図種別スニペットを挿入するパレットボタン (編集モードのみ表示)。 */
     private final JButton snippetButton;
+    /** ソース内検索/置換バー (Ctrl+F / Ctrl+H)。 */
+    private final SourceFindBar findBar;
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
 
@@ -97,8 +100,16 @@ public class PumlSourcePanel extends JPanel {
         gutter = new LineNumberGutter(textPane, () -> true);
         scroll.setRowHeaderView(gutter);
 
+        // ソース内検索/置換バー (既定は非表示)。テキストが真実源なので置換も可能にする。
+        findBar = new SourceFindBar(textPane, () -> {
+            revalidate();
+            repaint();
+        }, true);
+
         add(bar, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
+        add(findBar, BorderLayout.SOUTH);
+        installFindKeys();
 
         highlightTimer = new Timer(120, e -> applyHighlight());
         highlightTimer.setRepeats(false);
@@ -399,6 +410,34 @@ public class PumlSourcePanel extends JPanel {
         return textPane.getCaretPosition();
     }
 
+    /** テスト用: 選択範囲を設定する (コメント切替/インデントの検証に使う)。 */
+    void selectRangeForTest(int a, int b) {
+        textPane.setSelectionStart(a);
+        textPane.setSelectionEnd(b);
+    }
+
+    /** テスト用: 選択行の行コメントを切り替える。 */
+    void toggleCommentForTest() {
+        toggleComment();
+    }
+
+    /** テスト用: 選択行をインデント/アウトデントする。 */
+    void indentSelectionForTest(boolean outdent) {
+        indentSelection(outdent);
+    }
+
+    /** テスト用: 検索/置換バーで全置換する。 */
+    void replaceAllForTest(String query, String with) {
+        findBar.replaceAllForTest(query, with);
+    }
+
+    /** テスト用: 直近の編集を 1 手戻す (複合編集の一括 Undo を検証)。 */
+    void undoForTest() {
+        if (undoManager != null && undoManager.canUndo()) {
+            undoManager.undo();
+        }
+    }
+
     /**
      * テスト用: エラー行ハイライトの件数。常時付く現在行ハイライトは数えない
      * (現在行はキャレット追従の装飾で、エラー行強調とは別責務のため)。
@@ -506,6 +545,14 @@ public class PumlSourcePanel extends JPanel {
 
     /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */
     private UndoManager undoManager;
+    /**
+     * 複数行のコメント切替・インデントを 1 回の Undo で戻すためのグルーピング。
+     * null 以外の間、ドキュメント編集はこの複合編集へ束ねる。
+     */
+    private CompoundEdit activeCompound;
+
+    /** インデント 1 段分 (スペース 2 つ)。 */
+    private static final String INDENT = "  ";
 
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
@@ -539,8 +586,14 @@ public class PumlSourcePanel extends JPanel {
                         == DocumentEvent.EventType.CHANGE) {
                 return; // 属性変更 (ハイライト) は取り消し対象にしない
             }
+            // コメント切替・インデント中はまとめて 1 手にする。
+            if (activeCompound != null) {
+                activeCompound.addEdit(edit);
+                return;
+            }
             undoManager.addEdit(edit);
         });
+        installEditorActions();
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         javax.swing.InputMap im = textPane.getInputMap();
         javax.swing.ActionMap am = textPane.getActionMap();
@@ -564,6 +617,188 @@ public class PumlSourcePanel extends JPanel {
                 }
             }
         });
+    }
+
+    /** Ctrl(⌘)+F で検索、Ctrl(⌘)+H で置換バーを開く (リードオンリーでも検索は可能)。 */
+    private void installFindKeys() {
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.InputMap im = textPane.getInputMap();
+        javax.swing.ActionMap am = textPane.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_F, menuMask),
+                "juml-find");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_H, menuMask),
+                "juml-replace");
+        am.put("juml-find", action(findBar::activate));
+        am.put("juml-replace", action(() -> {
+            if (textPane.isEditable()) {
+                findBar.activateWithReplace();
+            } else {
+                findBar.activate();
+            }
+        }));
+    }
+
+    /**
+     * コード編集の最低限のショートカットを配線する: {@code Ctrl(⌘)+/} で行コメント切替、
+     * {@code Tab}/{@code Shift+Tab} で選択行のインデント/アウトデント。多重呼び出しでも
+     * 同じアクションを上書きするだけなので安全。
+     */
+    private void installEditorActions() {
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.InputMap im = textPane.getInputMap();
+        javax.swing.ActionMap am = textPane.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_SLASH, menuMask),
+                "juml-comment");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_TAB, 0),
+                "juml-indent");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_TAB,
+                java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outdent");
+        am.put("juml-comment", action(this::toggleComment));
+        am.put("juml-indent", action(() -> indentOrTab(false)));
+        am.put("juml-outdent", action(() -> indentSelection(true)));
+    }
+
+    private static javax.swing.AbstractAction action(Runnable r) {
+        return new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                r.run();
+            }
+        };
+    }
+
+    /** 複数行選択なら選択行をインデント、そうでなければキャレット位置へ 1 段分を挿入する。 */
+    private void indentOrTab(boolean outdent) {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        Element root = textPane.getDocument().getDefaultRootElement();
+        int a = Math.min(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        int b = Math.max(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        if (root.getElementIndex(a) != root.getElementIndex(b)) {
+            indentSelection(outdent);
+        } else {
+            insertSnippet(INDENT);
+        }
+    }
+
+    /** 選択範囲にかかる各行の行頭へ 1 段分の字下げを挿入/除去する (1 手で戻せる)。 */
+    private void indentSelection(boolean outdent) {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        StyledDocument doc = textPane.getStyledDocument();
+        Element root = doc.getDefaultRootElement();
+        int a = Math.min(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        int b = Math.max(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        int first = root.getElementIndex(a);
+        int last = root.getElementIndex(b);
+        // 選択が次行の行頭ちょうどで終わる場合、その行は対象に含めない。
+        if (last > first && b == root.getElement(last).getStartOffset()) {
+            last--;
+        }
+        final int firstLine = first;
+        final int lastLine = last;
+        runAsCompound(() -> {
+            for (int ln = lastLine; ln >= firstLine; ln--) {
+                int ls = root.getElement(ln).getStartOffset();
+                String t = lineText(root, ln);
+                try {
+                    if (outdent) {
+                        int remove = 0;
+                        while (remove < INDENT.length() && remove < t.length()
+                                && t.charAt(remove) == ' ') {
+                            remove++;
+                        }
+                        if (remove > 0) {
+                            doc.remove(ls, remove);
+                        }
+                    } else if (!t.isEmpty() && !t.equals("\n")) {
+                        doc.insertString(ls, INDENT, null);
+                    }
+                } catch (BadLocationException ignored) {
+                    // 範囲外は無視。
+                }
+            }
+        });
+    }
+
+    /** 選択行 (無選択なら現在行) の行コメント ({@code '}) を一括で切り替える (1 手で戻せる)。 */
+    private void toggleComment() {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        StyledDocument doc = textPane.getStyledDocument();
+        Element root = doc.getDefaultRootElement();
+        int a = Math.min(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        int b = Math.max(textPane.getSelectionStart(), textPane.getSelectionEnd());
+        int first = root.getElementIndex(a);
+        int last = root.getElementIndex(b);
+        if (last > first && b == root.getElement(last).getStartOffset()) {
+            last--;
+        }
+        // 対象の非空行がすべて既にコメントなら「解除」、そうでなければ「付与」。
+        boolean allCommented = true;
+        for (int ln = first; ln <= last; ln++) {
+            String trimmed = lineText(root, ln).stripLeading();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("'")) {
+                allCommented = false;
+                break;
+            }
+        }
+        final int firstLine = first;
+        final int lastLine = last;
+        final boolean uncomment = allCommented;
+        runAsCompound(() -> {
+            for (int ln = lastLine; ln >= firstLine; ln--) {
+                int ls = root.getElement(ln).getStartOffset();
+                String t = lineText(root, ln);
+                int indent = t.length() - t.stripLeading().length();
+                if (t.stripLeading().isEmpty()) {
+                    continue; // 空行は触らない
+                }
+                try {
+                    if (uncomment) {
+                        int at = ls + indent; // ' の位置
+                        int len = (indent + 1 < t.length() && t.charAt(indent + 1) == ' ') ? 2 : 1;
+                        doc.remove(at, len);
+                    } else {
+                        doc.insertString(ls + indent, "' ", null);
+                    }
+                } catch (BadLocationException ignored) {
+                    // 範囲外は無視。
+                }
+            }
+        });
+    }
+
+    /** 指定行 (0 始まり) のテキスト (改行含む) を返す。取得失敗時は空文字。 */
+    private String lineText(Element root, int lineIndex) {
+        Element el = root.getElement(lineIndex);
+        try {
+            return textPane.getDocument().getText(el.getStartOffset(),
+                    el.getEndOffset() - el.getStartOffset());
+        } catch (BadLocationException ex) {
+            return "";
+        }
+    }
+
+    /** {@code mutation} 内のドキュメント編集を 1 個の複合編集にまとめ、Ctrl+Z で一括して戻せるようにする。 */
+    private void runAsCompound(Runnable mutation) {
+        if (undoManager == null) {
+            mutation.run();
+            return;
+        }
+        activeCompound = new CompoundEdit();
+        try {
+            mutation.run();
+        } finally {
+            CompoundEdit ce = activeCompound;
+            activeCompound = null;
+            ce.end();
+            if (ce.canUndo()) {
+                undoManager.addEdit(ce);
+            }
+        }
     }
 
     /** エディタのテキスト領域へ入力フォーカスを移す (タブを開いた直後に呼ぶ)。 */
