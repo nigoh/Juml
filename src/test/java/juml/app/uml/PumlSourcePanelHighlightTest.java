@@ -58,6 +58,30 @@ public class PumlSourcePanelHighlightTest {
     }
 
     @Test
+    public void bracketMatch_highlightsPairAtCaret() {
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> {
+            panel.setEditable(true);
+            panel.setText("class A {\n}\n");
+            // "{" は index 8。その直後 (caret 9) にキャレットを置くと対応 "}" と 2 件強調。
+            panel.selectRangeForTest(9, 9);
+        });
+        assertEquals("対応括弧は 2 件強調される", 2,
+                (int) GuiActionRunner.execute(panel::bracketMatchCountForTest));
+    }
+
+    @Test
+    public void bracketMatch_noBracketAtCaret_hasNoHighlight() {
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> {
+            panel.setEditable(true);
+            panel.setText("class A\n");
+            panel.selectRangeForTest(2, 2);
+        });
+        assertEquals(0, (int) GuiActionRunner.execute(panel::bracketMatchCountForTest));
+    }
+
+    @Test
     public void emptyText_hasNoColoredRuns() {
         PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> {

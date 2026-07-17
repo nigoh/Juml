@@ -126,7 +126,10 @@ public class PumlSourcePanel extends JPanel {
                 // 属性変更 (ハイライト自身) は無視する (再ハイライトの無限ループを防ぐ)。
             }
         });
-        textPane.addCaretListener(e -> updateCurrentLineHighlight());
+        textPane.addCaretListener(e -> {
+            updateCurrentLineHighlight();
+            updateBracketMatch();
+        });
     }
 
     private void onStructuralChange() {
@@ -190,6 +193,7 @@ public class PumlSourcePanel extends JPanel {
         currentLineTag = null;
         errorHighlightTag = null;
         highlightedErrorLine = 0;
+        bracketTags.clear();
         replaceDocText(text);
         textPane.setCaretPosition(0);
         copyButton.setEnabled(!text.isEmpty());
@@ -283,6 +287,53 @@ public class PumlSourcePanel extends JPanel {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // 対応括弧の強調
+    // -------------------------------------------------------------------------
+
+    private final java.util.List<Object> bracketTags = new java.util.ArrayList<>();
+
+    /** キャレット隣の括弧とその対応括弧を枠で囲む (無ければ消すだけ)。ドキュメントは変更しない。 */
+    private void updateBracketMatch() {
+        Highlighter h = textPane.getHighlighter();
+        if (h == null) {
+            return;
+        }
+        for (Object t : bracketTags) {
+            h.removeHighlight(t);
+        }
+        bracketTags.clear();
+        int[] pair = BracketMatcher.matchingBrackets(getText(), textPane.getCaretPosition());
+        if (pair == null) {
+            return;
+        }
+        try {
+            bracketTags.add(h.addHighlight(pair[0], pair[0] + 1, BRACKET_PAINTER));
+            bracketTags.add(h.addHighlight(pair[1], pair[1] + 1, BRACKET_PAINTER));
+        } catch (BadLocationException ignored) {
+            // 範囲外は無視。
+        }
+    }
+
+    /** 対応括弧を枠線で囲むペインター (色はテーマで描画時解決)。 */
+    private static final Highlighter.HighlightPainter BRACKET_PAINTER =
+            (g, p0, p1, bounds, c) -> {
+                try {
+                    Rectangle2D r = c.modelToView2D(p0);
+                    Rectangle2D r2 = c.modelToView2D(p1);
+                    if (r == null || r2 == null) {
+                        return;
+                    }
+                    g.setColor(EditorColors.isDark()
+                            ? new Color(0x6A, 0x8A, 0xAA) : new Color(0x80, 0xA0, 0xC8));
+                    int w = Math.max(1, (int) (r2.getX() - r.getX()));
+                    g.drawRect((int) r.getX(), (int) r.getY(), w,
+                            Math.max(1, (int) Math.ceil(r.getHeight()) - 1));
+                } catch (BadLocationException ignored) {
+                    // 無視。
+                }
+            };
+
     /** 行全体 (ビュー幅いっぱい) を塗る現在行ハイライトペインター。 */
     private static final Highlighter.HighlightPainter CURRENT_LINE_PAINTER =
             (g, p0, p1, bounds, c) -> {
@@ -323,6 +374,7 @@ public class PumlSourcePanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             applyHighlight();
             updateCurrentLineHighlight();
+            updateBracketMatch();
             if (line > 0) {
                 highlightErrorLine(line);
             }
@@ -432,6 +484,11 @@ public class PumlSourcePanel extends JPanel {
         findBar.replaceAllForTest(query, with);
     }
 
+    /** テスト用: 現在の対応括弧ハイライト数 (対応があれば 2、無ければ 0)。 */
+    int bracketMatchCountForTest() {
+        return bracketTags.size();
+    }
+
     /** テスト用: 現在キャレット位置での補完候補件数。 */
     int completionCandidateCountForTest() {
         String text = getText();
@@ -460,98 +517,11 @@ public class PumlSourcePanel extends JPanel {
     int highlightCountForTest() {
         int n = 0;
         for (Highlighter.Highlight h : textPane.getHighlighter().getHighlights()) {
-            if (h.getPainter() != CURRENT_LINE_PAINTER) {
+            if (h.getPainter() != CURRENT_LINE_PAINTER && h.getPainter() != BRACKET_PAINTER) {
                 n++;
             }
         }
         return n;
-    }
-
-    /**
-     * PlantUML が報告した「生成ソースの行番号」を、スタイル prelude 挿入分
-     * ({@code injectedLines}) を差し引いてエディタ上の行番号へ写像する (純関数)。
-     * 挿入は {@code @startuml} 直後に入るため、行 1 (= @startuml) はそのまま。
-     */
-    public static int editorLineForError(int errorLine, int injectedLines) {
-        if (errorLine <= 1 || injectedLines <= 0) {
-            return errorLine;
-        }
-        return Math.max(1, errorLine - injectedLines);
-    }
-
-    /**
-     * PlantUML が報告した「生成ソースの行番号」を、エディタ上の行番号へ写像する (純関数)。
-     *
-     * <p>{@link juml.core.formats.uml.PlantUmlRenderer#injectLayout} は
-     * {@code @startuml} 直後に prelude を<em>挿入</em>するだけでなく、スタイルで向きを明示した
-     * 場合に本文の {@code ... direction} 行を任意位置から<em>除去</em>する。挿入と除去の
-     * 「純差分」を一律に引く旧実装は、除去行がエラーより下にある場合や {@code @startuml} が
-     * 1 行目でない場合に 1 行ずれていた。ここでは生成行の内容をエディタ側から探して
-     * (期待位置に最も近いものを採用) 正確に対応付ける。一致が無い prelude 由来の行などは
-     * 行数差による数値補正へフォールバックする。</p>
-     */
-    public static int editorLineForError(String editorPuml, String generatedPuml, int errorLine) {
-        if (editorPuml == null || generatedPuml == null || errorLine <= 0) {
-            return Math.max(1, errorLine);
-        }
-        String[] gen = generatedPuml.split("\n", -1);
-        String[] edit = editorPuml.split("\n", -1);
-        if (errorLine > gen.length) {
-            return Math.min(Math.max(1, errorLine), edit.length);
-        }
-        // prelude 挿入分を差し引いた「エディタ上の期待位置」。距離の基準を生成行番号の
-        // ままにすると、同一内容の行 ("}" や重複する関連行など PlantUML で頻出) がある
-        // 場合に、常に正解より下の複製行が選ばれる下方バイアスが出る。
-        int injected = Math.max(0, gen.length - edit.length);
-        int expected = Math.max(1, errorLine - injected);
-        String target = gen[errorLine - 1].trim();
-        if (!target.isEmpty()) {
-            // 同一内容の行が複数あるとき、数値距離 (expected) だけだと direction 行の除去などで
-            // expected がずれて隣接する誤った複製を選びうる。まず前後の行内容 (near context) が
-            // 生成側の errorLine 周辺と一致する候補を優先し、同点は expected への距離で決める。
-            String prevCtx = nonEmptyNeighbor(gen, errorLine - 1, -1);
-            String nextCtx = nonEmptyNeighbor(gen, errorLine - 1, +1);
-            int best = -1;
-            int bestScore = Integer.MIN_VALUE;
-            int bestDist = Integer.MAX_VALUE;
-            for (int i = 0; i < edit.length; i++) {
-                if (!edit[i].trim().equals(target)) {
-                    continue;
-                }
-                int ctx = 0;
-                if (prevCtx != null && prevCtx.equals(nonEmptyNeighbor(edit, i, -1))) {
-                    ctx++;
-                }
-                if (nextCtx != null && nextCtx.equals(nonEmptyNeighbor(edit, i, +1))) {
-                    ctx++;
-                }
-                int dist = Math.abs((i + 1) - expected);
-                if (ctx > bestScore || (ctx == bestScore && dist < bestDist)) {
-                    bestScore = ctx;
-                    bestDist = dist;
-                    best = i + 1;
-                }
-            }
-            if (best > 0) {
-                return best;
-            }
-        }
-        // 内容一致なし (prelude 由来の行や空行): 挿入行数を行数差で推定して数値補正する。
-        return editorLineForError(errorLine, injected);
-    }
-
-    /**
-     * {@code lines[from]} から {@code dir} 方向 (+1/-1) に進み、最初の非空行の trim 内容を返す。
-     * 端に達したら null。重複行のタイブレークで前後コンテキストを比較するために使う。
-     */
-    private static String nonEmptyNeighbor(String[] lines, int from, int dir) {
-        for (int i = from + dir; i >= 0 && i < lines.length; i += dir) {
-            String t = lines[i].trim();
-            if (!t.isEmpty()) {
-                return t;
-            }
-        }
-        return null;
     }
 
     // -------------------------------------------------------------------------
