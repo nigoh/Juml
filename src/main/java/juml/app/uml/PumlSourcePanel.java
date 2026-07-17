@@ -35,6 +35,7 @@ import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.geom.Rectangle2D;
+import java.util.List;
 
 /**
  * PlantUML テキストを表示・編集するコードペイン。既定はリードオンリー
@@ -431,6 +432,20 @@ public class PumlSourcePanel extends JPanel {
         findBar.replaceAllForTest(query, with);
     }
 
+    /** テスト用: 現在キャレット位置での補完候補件数。 */
+    int completionCandidateCountForTest() {
+        String text = getText();
+        String prefix = PumlCompletion.wordPrefix(text, textPane.getCaretPosition());
+        return PumlCompletion.candidates(prefix, text).size();
+    }
+
+    /** テスト用: 打ちかけ語の続きを補完挿入する (ポップアップ選択と同等)。 */
+    void applyCompletionForTest(String candidate) {
+        int at = textPane.getCaretPosition();
+        String prefix = PumlCompletion.wordPrefix(getText(), at);
+        insertCompletion(at, prefix, candidate);
+    }
+
     /** テスト用: 直近の編集を 1 手戻す (複合編集の一括 Undo を検証)。 */
     void undoForTest() {
         if (undoManager != null && undoManager.canUndo()) {
@@ -653,9 +668,64 @@ public class PumlSourcePanel extends JPanel {
                 "juml-indent");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_TAB,
                 java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outdent");
+        // Ctrl+Space で入力補完 (Mac の Cmd+Space=Spotlight を避け全 OS で Ctrl に統一)。
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_SPACE,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK), "juml-complete");
         am.put("juml-comment", action(this::toggleComment));
         am.put("juml-indent", action(() -> indentOrTab(false)));
         am.put("juml-outdent", action(() -> indentSelection(true)));
+        am.put("juml-complete", action(this::showCompletion));
+    }
+
+    /**
+     * キャレット直前の語を接頭辞に、PlantUML キーワードと本文識別子の候補ポップアップを出す。
+     * 候補が無ければ何もしない。選択すると打ちかけの語の続きを挿入する。
+     */
+    private void showCompletion() {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        String text = getText();
+        final int at = textPane.getCaretPosition();
+        final String prefix = PumlCompletion.wordPrefix(text, at);
+        List<String> candidates = PumlCompletion.candidates(prefix, text);
+        if (candidates.isEmpty()) {
+            return;
+        }
+        JPopupMenu menu = new JPopupMenu();
+        for (String c : candidates) {
+            JMenuItem item = new JMenuItem(c);
+            item.addActionListener(e -> insertCompletion(at, prefix, c));
+            menu.add(item);
+        }
+        try {
+            Rectangle2D r = textPane.modelToView2D(at);
+            if (r != null) {
+                menu.show(textPane, (int) r.getX(), (int) (r.getY() + r.getHeight()));
+            } else {
+                menu.show(textPane, 0, 0);
+            }
+        } catch (BadLocationException ignored) {
+            // 位置解決に失敗したら補完を諦める (致命的でない)。
+        }
+    }
+
+    /** 打ちかけの語 {@code prefix} の続き (候補の残り) をキャレット位置 {@code at} へ挿入する。 */
+    private void insertCompletion(int at, String prefix, String candidate) {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        String remainder = candidate.length() >= prefix.length()
+                ? candidate.substring(prefix.length()) : candidate;
+        StyledDocument doc = textPane.getStyledDocument();
+        int pos = Math.min(at, doc.getLength());
+        try {
+            doc.insertString(pos, remainder, null);
+            textPane.setCaretPosition(Math.min(pos + remainder.length(), doc.getLength()));
+        } catch (BadLocationException ignored) {
+            return;
+        }
+        textPane.requestFocusInWindow();
     }
 
     private static javax.swing.AbstractAction action(Runnable r) {
