@@ -51,6 +51,10 @@ public class Setting {
     private String styleCustomSkinparam = "";
     /** 図下部中央のキャプション文字列（空で非表示、全図種共通）。 */
     private String styleCaption = "";
+    /** モノクロ描画 ("DEFAULT" | "ON" | "REVERSE")。 */
+    private String styleMonochrome = DiagramStyle.Monochrome.DEFAULT.name();
+    /** ボックスの角丸半径 (px、0 で指定なし)。 */
+    private int styleRoundCorner = 0;
     /** シーケンス図に JavaDoc / コメントを note として表示するか。 */
     private boolean sequenceShowComments = true;
     /** シーケンス図のコメント表示スタイル ("INLINE" | "NOTE")。 */
@@ -290,6 +294,8 @@ public class Setting {
         s.setRankSep(styleRankSep);
         s.setCustomSkinparam(styleCustomSkinparam);
         s.setCaption(styleCaption);
+        s.setMonochrome(parseMonochrome(styleMonochrome));
+        s.setRoundCorner(styleRoundCorner);
         return s;
     }
 
@@ -307,6 +313,8 @@ public class Setting {
         styleRankSep = s.getRankSep();
         styleCustomSkinparam = s.getCustomSkinparam();
         styleCaption = s.getCaption();
+        styleMonochrome = s.getMonochrome().name();
+        styleRoundCorner = s.getRoundCorner();
     }
 
     /**
@@ -337,6 +345,8 @@ public class Setting {
         props.setProperty("style.rankSep", Integer.toString(styleRankSep));
         props.setProperty("style.customSkinparam", styleCustomSkinparam);
         props.setProperty("style.caption", styleCaption);
+        props.setProperty("style.monochrome", styleMonochrome);
+        props.setProperty("style.roundCorner", Integer.toString(styleRoundCorner));
         props.setProperty("sequence.showComments", Boolean.toString(sequenceShowComments));
         props.setProperty("sequence.commentStyle", sequenceCommentStyle);
         props.setProperty("sequence.commentPlacement", sequenceCommentPlacement);
@@ -436,6 +446,9 @@ public class Setting {
         s.styleRankSep = parseIntSafe(props.getProperty("style.rankSep"), 0);
         s.styleCustomSkinparam = stringOrEmpty(props.getProperty("style.customSkinparam"));
         s.styleCaption = stringOrEmpty(props.getProperty("style.caption"));
+        s.styleMonochrome = stringOrDefault(props.getProperty("style.monochrome"),
+                DiagramStyle.Monochrome.DEFAULT.name());
+        s.styleRoundCorner = parseIntSafe(props.getProperty("style.roundCorner"), 0);
         s.sequenceShowComments = parseBooleanSafe(
                 props.getProperty("sequence.showComments"), true);
         s.sequenceCommentStyle = stringOrDefault(
@@ -578,6 +591,17 @@ public class Setting {
             return DiagramStyle.Shadowing.valueOf(name);
         } catch (IllegalArgumentException e) {
             return DiagramStyle.Shadowing.DEFAULT;
+        }
+    }
+
+    private static DiagramStyle.Monochrome parseMonochrome(String name) {
+        if (name == null || name.isEmpty()) {
+            return DiagramStyle.Monochrome.DEFAULT;
+        }
+        try {
+            return DiagramStyle.Monochrome.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return DiagramStyle.Monochrome.DEFAULT;
         }
     }
 }

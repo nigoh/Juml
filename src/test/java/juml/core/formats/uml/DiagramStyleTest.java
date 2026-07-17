@@ -89,6 +89,30 @@ public class DiagramStyleTest {
     }
 
     @Test
+    public void monochromeEmitsSkinparamAndSurvivesCopy() {
+        DiagramStyle s = new DiagramStyle();
+        assertEquals("", s.toPlantUmlPrelude()); // 既定 (DEFAULT) は空
+        s.setMonochrome(DiagramStyle.Monochrome.ON);
+        assertEquals("skinparam monochrome true\n", s.toPlantUmlPrelude());
+        s.setMonochrome(DiagramStyle.Monochrome.REVERSE);
+        assertEquals("skinparam monochrome reverse\n", s.toPlantUmlPrelude());
+        assertEquals(s, s.copy());
+        assertEquals(DiagramStyle.Monochrome.REVERSE, s.copy().getMonochrome());
+    }
+
+    @Test
+    public void roundCornerEmitsSkinparamWhenPositive() {
+        DiagramStyle s = new DiagramStyle();
+        assertEquals("", s.toPlantUmlPrelude()); // 0 は出力しない
+        s.setRoundCorner(15);
+        assertEquals("skinparam roundcorner 15\n", s.toPlantUmlPrelude());
+        assertEquals(s, s.copy());
+        // 負値は 0 にクランプ (出力なしに戻る)
+        s.setRoundCorner(-5);
+        assertEquals("", s.toPlantUmlPrelude());
+    }
+
+    @Test
     public void spacingEmitsNodesepAndRanksep() {
         DiagramStyle s = new DiagramStyle();
         s.setNodeSep(40);

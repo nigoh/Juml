@@ -140,6 +140,8 @@ public class SettingTest {
         style.setRankSep(65);
         style.setCustomSkinparam("skinparam shadowing false\n");
         style.setCaption("Acme Corp — Confidential");
+        style.setMonochrome(DiagramStyle.Monochrome.REVERSE);
+        style.setRoundCorner(15);
         original.setStyle(style);
 
         File file = tempFolder.newFile("settings-style.xml");
@@ -158,6 +160,8 @@ public class SettingTest {
         assertEquals(65, out.getRankSep());
         assertEquals("skinparam shadowing false\n", out.getCustomSkinparam());
         assertEquals("Acme Corp — Confidential", out.getCaption());
+        assertEquals(DiagramStyle.Monochrome.REVERSE, out.getMonochrome());
+        assertEquals(15, out.getRoundCorner());
     }
 
     @Test

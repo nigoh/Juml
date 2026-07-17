@@ -68,6 +68,10 @@ public final class StyleSettingsDialog extends JDialog {
             new JComboBox<>(new String[] { "Default", "Polyline", "Ortho", "Spline" });
     private final JComboBox<String> shadowingCombo =
             new JComboBox<>(new String[] { "Default", "On", "Off" });
+    private final JComboBox<String> monochromeCombo =
+            new JComboBox<>(new String[] { "Default", "On", "Reverse" });
+    private final JSpinner roundCornerSpinner =
+            new JSpinner(new SpinnerNumberModel(0, 0, 40, 1));
     private final JSpinner nodeSepSpinner =
             new JSpinner(new SpinnerNumberModel(0, 0, 200, 5));
     private final JSpinner rankSepSpinner =
@@ -318,6 +322,17 @@ public final class StyleSettingsDialog extends JDialog {
         shadowingCombo.setSelectedIndex(shadowingIndex(initial.getShadowing()));
         shadowingCombo.setToolTipText(Messages.get("style.tip.shadowing"));
         row = addLabeledRow(form, c, row, "style.label.shadowing", shadowingCombo);
+
+        // モノクロ (印刷向けグレースケール)
+        monochromeCombo.setSelectedIndex(monochromeIndex(initial.getMonochrome()));
+        monochromeCombo.setToolTipText(Messages.get("style.tip.monochrome"));
+        row = addLabeledRow(form, c, row, "style.label.monochrome", monochromeCombo);
+
+        // 角丸 (ボックスの roundcorner 半径)
+        roundCornerSpinner.setValue(initial.getRoundCorner());
+        ((JSpinner.DefaultEditor) roundCornerSpinner.getEditor()).getTextField()
+                .setToolTipText(Messages.get("style.tip.roundCorner"));
+        row = addLabeledRow(form, c, row, "style.label.roundCorner", roundCornerSpinner);
 
         // 要素間隔 (nodesep / ranksep)
         c.gridx = 0; c.gridy = row; c.weightx = 0;
@@ -622,6 +637,22 @@ public final class StyleSettingsDialog extends JDialog {
         }
     }
 
+    private static int monochromeIndex(DiagramStyle.Monochrome m) {
+        switch (m) {
+            case ON: return 1;
+            case REVERSE: return 2;
+            default: return 0;
+        }
+    }
+
+    private static DiagramStyle.Monochrome monochromeFromIndex(int i) {
+        switch (i) {
+            case 1: return DiagramStyle.Monochrome.ON;
+            case 2: return DiagramStyle.Monochrome.REVERSE;
+            default: return DiagramStyle.Monochrome.DEFAULT;
+        }
+    }
+
     /**
      * 「可読性優先」: 影なし・直交線・余白広めの推奨スタイルを各コントロールへ適用する。
      * あわせてクラス図の関係線色分け (継承=緑/実装=青/利用=灰破線) も有効化し、
@@ -632,6 +663,8 @@ public final class StyleSettingsDialog extends JDialog {
         themeCombo.setSelectedItem(r.getTheme());
         lineTypeCombo.setSelectedIndex(lineTypeIndex(r.getLineType()));
         shadowingCombo.setSelectedIndex(shadowingIndex(r.getShadowing()));
+        monochromeCombo.setSelectedIndex(monochromeIndex(r.getMonochrome()));
+        roundCornerSpinner.setValue(r.getRoundCorner());
         nodeSepSpinner.setValue(r.getNodeSep());
         rankSepSpinner.setValue(r.getRankSep());
         classColorCodeRelationsCheckbox.setSelected(true);
@@ -669,6 +702,8 @@ public final class StyleSettingsDialog extends JDialog {
         dirDefault.setSelected(true);
         lineTypeCombo.setSelectedIndex(lineTypeIndex(d.getLineType()));
         shadowingCombo.setSelectedIndex(shadowingIndex(d.getShadowing()));
+        monochromeCombo.setSelectedIndex(monochromeIndex(d.getMonochrome()));
+        roundCornerSpinner.setValue(d.getRoundCorner());
         nodeSepSpinner.setValue(d.getNodeSep());
         rankSepSpinner.setValue(d.getRankSep());
         customSkinparamArea.setText(d.getCustomSkinparam());
@@ -744,6 +779,8 @@ public final class StyleSettingsDialog extends JDialog {
         }
         s.setLineType(lineTypeFromIndex(lineTypeCombo.getSelectedIndex()));
         s.setShadowing(shadowingFromIndex(shadowingCombo.getSelectedIndex()));
+        s.setMonochrome(monochromeFromIndex(monochromeCombo.getSelectedIndex()));
+        s.setRoundCorner(((Number) roundCornerSpinner.getValue()).intValue());
         s.setNodeSep(((Number) nodeSepSpinner.getValue()).intValue());
         s.setRankSep(((Number) rankSepSpinner.getValue()).intValue());
         s.setCustomSkinparam(customSkinparamArea.getText());
