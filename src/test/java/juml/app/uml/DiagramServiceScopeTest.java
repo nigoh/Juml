@@ -163,4 +163,51 @@ public class DiagramServiceScopeTest {
         assertTrue("public class remains", puml.contains("PublicCls"));
         assertFalse("non-public class hidden", puml.contains("PkgCls"));
     }
+
+    // --- INHERITANCE: 既定クラス数上限 (Smetana 描画クラッシュ対策) ---
+
+    private List<JavaClassInfo> manyClasses(int n) {
+        List<JavaClassInfo> l = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            l.add(cls("com.big", "Cls" + i));
+        }
+        return l;
+    }
+
+    /** 出力中の {@code class "..."} 宣言行数 (= 実際に描画されたクラス数)。 */
+    private static long classDeclarationLineCount(String puml) {
+        return puml.lines().filter(l -> l.trim().startsWith("class \"")).count();
+    }
+
+    @Test
+    public void testInheritanceDiagramCapsAtDefaultMaxClassesWhenScopeUnset() {
+        // scope で maxClasses が明示されない大規模プロジェクトでは、既定上限
+        // (120) で先頭から切り詰められること。修正前は上限が未配線で、130 件全部が
+        // Smetana レイアウトに渡され描画クラッシュ (mincross ArrayIndexOutOfBounds)
+        // していた。
+        DiagramRequest req = new DiagramRequest(DiagramKind.INHERITANCE);
+        String puml = DiagramService.generatePuml(req, null, manyClasses(130), null);
+
+        assertTrue(puml, puml.contains("@startuml"));
+        assertTrue(puml, puml.contains("@enduml"));
+        long shown = classDeclarationLineCount(puml);
+        assertTrue("既定上限 120 以下に切り詰められるべき (実際: " + shown + "):\n" + puml,
+                shown <= 120);
+        assertTrue("切り詰め時はフッタ警告が出るべき:\n" + puml,
+                puml.contains("showing 120 of 130"));
+    }
+
+    @Test
+    public void testInheritanceDiagramRespectsExplicitScopeMaxClasses() {
+        // scope に明示的な maxClasses があれば、既定上限 (120) ではなくそちらを尊重する。
+        DiagramScope scope = DiagramScope.builder().maxClasses(50).build();
+        DiagramRequest req = new DiagramRequest(
+                DiagramKind.INHERITANCE, null, null, false, scope);
+        String puml = DiagramService.generatePuml(req, null, manyClasses(130), null);
+
+        long shown = classDeclarationLineCount(puml);
+        assertTrue("明示 maxClasses=50 が尊重されるべき (実際: " + shown + "):\n" + puml,
+                shown <= 50);
+        assertTrue(puml, puml.contains("showing 50 of 130"));
+    }
 }

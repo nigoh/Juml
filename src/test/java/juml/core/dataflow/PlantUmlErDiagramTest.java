@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.core.dataflow;
+
+import org.junit.Test;
+import juml.core.formats.uml.JavaClassInfo;
+import juml.core.formats.uml.JavaStructureExtractor;
+import juml.util.ErrorListener;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * {@link PlantUmlErDiagram} のユニットテスト。
+ *
+ * <p>Room {@code @Entity} クラス群から ER 図 (PlantUML entity ブロック) を
+ * 生成できることと、列の型表記 (特にジェネリクス) が壊れず表示されることを確認する。</p>
+ */
+public class PlantUmlErDiagramTest {
+
+    private static List<JavaClassInfo> parse(String... sources) {
+        List<JavaClassInfo> all = new ArrayList<>();
+        for (String src : sources) {
+            all.addAll(JavaStructureExtractor.extract(src, ErrorListener.silent()));
+        }
+        return all;
+    }
+
+    @Test
+    public void testEmptyResultRendersEmptyDiagram() {
+        RoomAnalyzer.Result result = new RoomAnalyzer.Result();
+        String puml = PlantUmlErDiagram.render(result);
+        assertTrue(puml, puml.contains("@startuml"));
+        assertTrue(puml, puml.contains("@enduml"));
+        assertFalse(puml, puml.contains("entity \""));
+    }
+
+    @Test
+    public void testSimpleEntityRendersColumnsAndPrimaryKey() {
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"users\")\n"
+                + "public class User {\n"
+                + "  @PrimaryKey\n"
+                + "  public long id;\n"
+                + "  public String name;\n"
+                + "}\n";
+        RoomAnalyzer.Result result = new RoomAnalyzer().analyze(parse(src));
+        String puml = PlantUmlErDiagram.render(result);
+        assertTrue(puml, puml.contains("entity \"User"));
+        assertTrue("primary key marker (*) should be present:\n" + puml,
+                puml.contains("* id : long"));
+        assertTrue(puml, puml.contains("name : String"));
+    }
+
+    @Test
+    public void testForeignKeyEdgeRendered() {
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"posts\", foreignKeys = {\n"
+                + "  @ForeignKey(entity = User.class, parentColumns = \"id\","
+                + " childColumns = \"userId\")\n"
+                + "})\n"
+                + "public class Post {\n"
+                + "  @PrimaryKey public long id;\n"
+                + "  public long userId;\n"
+                + "}\n"
+                + "@Entity(tableName = \"users\")\n"
+                + "class User {\n"
+                + "  @PrimaryKey public long id;\n"
+                + "}\n";
+        RoomAnalyzer.Result result = new RoomAnalyzer().analyze(parse(src));
+        String puml = PlantUmlErDiagram.render(result);
+        assertTrue("FK edge should link Post and User entities:\n" + puml,
+                puml.contains("}o--||"));
+        assertTrue(puml, puml.contains(": FK"));
+    }
+
+    // ============================================================
+    // 回帰: simpleType がジェネリクスを壊す (List<String> → String>)
+    // ============================================================
+
+    @Test
+    public void testGenericFieldTypeCollapsesToSimpleGenericNotation() {
+        // 修正前: simpleType は型全体の最後のドットで単純に切っていたため、
+        // "java.util.List<java.lang.String>" は "java.lang.String" 内の最後のドットで
+        // 切られ "String>" に壊れていた (List<...> が丸ごと失われる)。
+        // 修正: <...> を分離し、生型と各型引数を再帰的に単純化してから畳む
+        // (splitTopLevelArgs でカンマ分割 → List<String> のように正しく再構築)。
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"tags\")\n"
+                + "public class Tag {\n"
+                + "  @PrimaryKey\n"
+                + "  public long id;\n"
+                + "  public java.util.List<java.lang.String> names;\n"
+                + "}\n";
+        RoomAnalyzer.Result result = new RoomAnalyzer().analyze(parse(src));
+        String puml = PlantUmlErDiagram.render(result);
+
+        assertTrue("names 列は List<String> と表示されるべき:\n" + puml,
+                puml.contains("names : List<String>"));
+        // 修正前の壊れた表示 ("names : String>") が残っていないこと
+        assertFalse("names 列が String> に壊れてはいけない:\n" + puml,
+                puml.contains("names : String>"));
+    }
+
+    @Test
+    public void testNestedGenericFieldTypePreservesStructure() {
+        // 境界: 入れ子ジェネリクス (Map<String, List<Integer>>) でもトップレベルの
+        // カンマだけで型引数を分割できること (splitTopLevelArgs の depth 管理)。
+        String src = "package com.x;\n"
+                + "@Entity(tableName = \"counters\")\n"
+                + "public class Counter {\n"
+                + "  @PrimaryKey\n"
+                + "  public long id;\n"
+                + "  public java.util.Map<java.lang.String, "
+                + "java.util.List<java.lang.Integer>> counts;\n"
+                + "}\n";
+        RoomAnalyzer.Result result = new RoomAnalyzer().analyze(parse(src));
+        String puml = PlantUmlErDiagram.render(result);
+
+        assertTrue("counts 列は Map<String, List<Integer>> と表示されるべき:\n" + puml,
+                puml.contains("counts : Map<String, List<Integer>>"));
+        // 修正前の壊れた表示 (最後のドットだけで切って "Integer>>" になる) が
+        // 残っていないこと
+        assertFalse("counts 列が Integer>> に壊れてはいけない:\n" + puml,
+                puml.contains("counts : Integer>>"));
+    }
+}

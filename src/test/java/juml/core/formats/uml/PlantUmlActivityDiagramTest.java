@@ -516,16 +516,19 @@ public class PlantUmlActivityDiagramTest {
     }
 
     @Test
-    public void testAssignmentWithCallHoistsCallBeforeAction() {
-        // 代入の値式に含まれる呼び出しは兄弟 Call として代入の前に出る
+    public void testAssignmentWithCallDoesNotDoubleDrawHoistedCall() {
+        // 代入の値式に含まれる呼び出しは兄弟 Call として内部的に持ち上げられるが
+        // (シーケンス図/コールグラフはこれを消費する)、アクティビティ図では代入の
+        // 全文表示ノード (:total = helper.calc();) と重ねて別ノードとして描かない。
+        // (以前は :helper.calc(); が単独ノードとしても出て、同じ呼び出しが 2 回
+        // 描かれ回数を誤認させていた。isHoisted 修正の回帰確認。)
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { int total; void run() { total = helper.calc(); } }");
         String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
-        int callIdx = puml.indexOf(":helper.calc();");
-        int asgIdx = puml.indexOf(":total = helper.calc();");
-        assertTrue("値式の呼び出しが出ること: " + puml, callIdx >= 0);
-        assertTrue("代入ノードが出ること: " + puml, asgIdx >= 0);
-        assertTrue("呼び出しが代入より先に出ること: " + puml, callIdx < asgIdx);
+        assertFalse("helper.calc() が単独ノードとして重複描画されてはいけない: " + puml,
+                puml.contains(":helper.calc();"));
+        assertTrue("代入の全文表示ノードは出ること: " + puml,
+                puml.contains(":total = helper.calc();"));
     }
 
     @Test
@@ -583,5 +586,38 @@ public class PlantUmlActivityDiagramTest {
                         + " } }");
         String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
         assertTrue(puml, puml.contains("braceless else comment"));
+    }
+
+    // ============================================================
+    // 回帰: 値式から持ち上げた Call の二重描画 (isHoisted)
+    // ============================================================
+
+    @Test
+    public void testHoistedCallsFromValueExpressionsAreNotDoubleDrawn() {
+        // 修正前: ローカル変数初期化子・入れ子呼び出しの引数式から持ち上げた Call が
+        // 親の文 (String s = svc.getName(); / int n = a(b(c())); ) と別に、単独の
+        // アクションノードとしても描画されていた (同じ呼び出しが 2 回出て回数を誤認させる)。
+        // 修正: StatementAdapter/ExpressionAdapter.emitHoistedCalls が持ち上げた Call に
+        // JavaMethodInfo.Call#isHoisted を立て、walkStatements 側でスキップするようにした。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class S{ String svc; void m(){ String s = svc.getName();"
+                        + " int n = a(b(c())); }"
+                        + " String a(int x){return null;} int b(int x){return 0;}"
+                        + " int c(){return 0;} }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "S", "m", null);
+
+        // (a) svc.getName() は単独ノードとして重複描画されないが、ローカル変数宣言の
+        // 全文表示ノードは 1 つ出る
+        assertFalse("svc.getName() が単独ノードとして重複描画されてはいけない:\n" + puml,
+                puml.contains(":svc.getName();"));
+        assertTrue("String s = svc.getName(); は 1 つ描かれるべき:\n" + puml,
+                puml.contains(":String s = svc.getName();"));
+
+        // (b) 入れ子呼び出し a(b(c())) から持ち上げた b()/c() も単独ノードとして
+        // 重複描画されない
+        assertFalse(":c(); が単独ノードとして重複描画されてはいけない:\n" + puml,
+                puml.contains(":c();"));
+        assertFalse(":b(c()); が単独ノードとして重複描画されてはいけない:\n" + puml,
+                puml.contains(":b(c());"));
     }
 }

@@ -853,4 +853,50 @@ public class PlantUmlSequenceDiagramTest {
     // PlantUmlSequenceDiagramInlineCommentAndOverloadTest に、
     // 呼び出し引数表示 (showCallArguments) の検証は
     // PlantUmlSequenceCallArgumentsTest に分離 (FileLength 対策)。
+
+    // ============================================================
+    // 回帰: 入れ子の同名高階呼び出し (outer.forEach(x -> inner.forEach(...)))
+    // ============================================================
+
+    @Test
+    public void testNestedIdenticalHigherOrderLambdasDoNotFalseCycle() {
+        // 修正前: 内側/外側どちらも SAM 名が汎用 (<inline>) で inlineLabel が
+        // call.getMethodName() ("forEach") にフォールバックするため、再帰検出キーが
+        // "A$forEach.forEach" で外側・内側ラムダとも衝突していた。外側 forEach を
+        // 展開中にスタックへ積んだキーと、内側 forEach のキーが同一になり、内側が
+        // 偽の "recursive call" と誤判定されて handle() 呼び出しごと消えていた。
+        // 修正: キーに System.identityHashCode(inline) を足し、別ラムダ (別オブジェクト)
+        // は別キーとして扱うようにした。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "import java.util.*; class A { java.util.List<String> outer;"
+                        + " java.util.Map<String,String> inner;"
+                        + " void f(){ outer.forEach(x -> inner.forEach((k,v)->handle(k))); }"
+                        + " void handle(String s){} }");
+        String puml = PlantUmlSequenceDiagram.generate(infos, "A", "f", null);
+        assertFalse("入れ子の同名高階呼び出しが偽の recursive call と誤判定されてはいけない:\n"
+                        + puml,
+                puml.contains("recursive call"));
+        assertTrue("内側ラムダの handle() 呼び出しが失われてはいけない:\n" + puml,
+                puml.contains("handle"));
+    }
+
+    // ============================================================
+    // 回帰: ACTIVITY の「持ち上げ Call 二重描画」修正が SEQUENCE に影響しないこと
+    // ============================================================
+
+    @Test
+    public void testHoistedLocalVarInitializerCallStillAppearsInSequenceDiagram() {
+        // アクティビティ図では isHoisted な Call (ローカル変数初期化子・代入・
+        // return/throw/yield から持ち上げた呼び出し) をスキップするよう修正したが、
+        // シーケンス図/コールグラフは isHoisted に関係なく Call を消費し続けるべき。
+        // ここでは svc.getName() がシーケンス図から消えていないことを確認する。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class S{ String svc; void m(){ String s = svc.getName();"
+                        + " int n = a(b(c())); }"
+                        + " String a(int x){return null;} int b(int x){return 0;}"
+                        + " int c(){return 0;} }");
+        String puml = PlantUmlSequenceDiagram.generate(infos, "S", "m", null);
+        assertTrue("getName() 呼び出しがシーケンス図から消えてはいけない (回帰防止):\n" + puml,
+                puml.contains("getName"));
+    }
 }

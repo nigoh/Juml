@@ -226,6 +226,70 @@ public class PlantUmlNavigationGraphDiagramTest {
                 puml.contains("<<include>>"));
     }
 
+    // ---- 回帰: 参照キー衝突時の state エイリアス重複宣言 ----
+
+    @Test
+    public void testDuplicateAliasCollisionEmitsStateOnce() {
+        // idRef (android:id 由来) が衝突する 2 Destination を用意する。修正前は
+        // buildAliasMap で両方が同じエイリアス (D0) に解決されるにもかかわらず
+        // emitDestination がガードなしで両方に対して呼ばれ、`state "..." as D0` が
+        // 2 回宣言されて PlantUML の構文エラーで一方の Destination が消えていた。
+        AndroidNavigationGraphInfo info = new AndroidNavigationGraphInfo();
+        info.setFileName("dup_nav.xml");
+
+        NavigationDestination first = new NavigationDestination();
+        first.setKind(NavigationDestination.Kind.FRAGMENT);
+        first.setId("@+id/homeFragment");
+        first.setIdRef("homeFragment");
+        first.setLabel("Home");
+        info.getDestinations().add(first);
+
+        NavigationDestination second = new NavigationDestination();
+        second.setKind(NavigationDestination.Kind.FRAGMENT);
+        second.setId("@+id/homeFragment"); // 参照キーが衝突
+        second.setIdRef("homeFragment");
+        second.setLabel("Home Duplicate");
+        info.getDestinations().add(second);
+
+        PlantUmlNavigationGraphDiagram.Options opts = new PlantUmlNavigationGraphDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlNavigationGraphDiagram.generate(info, opts);
+
+        long stateD0Count = puml.lines()
+                .filter(l -> l.trim().startsWith("state \"") && l.contains(" as D0"))
+                .count();
+        assertEquals("同一エイリアス (D0) の state 宣言は 1 回だけであるべき:\n" + puml,
+                1, stateD0Count);
+    }
+
+    @Test
+    public void testNonCollidingDestinationsBothEmitted() {
+        // 衝突しない Destination まで誤って畳まれていないことの安全確認 (over-suppress 防止)。
+        AndroidNavigationGraphInfo info = new AndroidNavigationGraphInfo();
+        info.setFileName("two_nav.xml");
+
+        NavigationDestination a = new NavigationDestination();
+        a.setKind(NavigationDestination.Kind.FRAGMENT);
+        a.setId("@+id/a");
+        a.setIdRef("a");
+        a.setLabel("A");
+        info.getDestinations().add(a);
+
+        NavigationDestination b = new NavigationDestination();
+        b.setKind(NavigationDestination.Kind.FRAGMENT);
+        b.setId("@+id/b");
+        b.setIdRef("b");
+        b.setLabel("B");
+        info.getDestinations().add(b);
+
+        PlantUmlNavigationGraphDiagram.Options opts = new PlantUmlNavigationGraphDiagram.Options();
+        opts.includeLegend = false;
+        String puml = PlantUmlNavigationGraphDiagram.generate(info, opts);
+
+        long stateCount = puml.lines().filter(l -> l.trim().startsWith("state \"")).count();
+        assertEquals("衝突しない 2 Destination は両方出力されるべき:\n" + puml, 2, stateCount);
+    }
+
     private static AndroidNavigationGraphInfo parseSimpleSample() throws IOException {
         String xml = readSample("simple_nav.xml");
         AndroidNavigationGraphInfo info = AndroidNavigationGraphParser.parse(xml);

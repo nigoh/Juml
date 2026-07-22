@@ -531,4 +531,71 @@ public class DiagramServiceTest {
                     expected.getMessage().contains("project root"));
         }
     }
+
+    // --- PACKAGE 図: Stage A (lazyDetails) ヘッダからの依存エッジ復元 ---
+
+    private void writeJavaFile(File f, String content) throws java.io.IOException {
+        File parent = f.getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        try (java.io.Writer w = new java.io.OutputStreamWriter(
+                new java.io.FileOutputStream(f), java.nio.charset.StandardCharsets.UTF_8)) {
+            w.write(content);
+        }
+    }
+
+    @Test
+    public void testPackageDiagramPromotesStageAHeadersForDependencyEdges()
+            throws java.io.IOException {
+        // AOSP 級プロジェクトの lazyDetails ロードでは getClasses() が Stage A
+        // (ヘッダのみ、fields/imports は空) を返す。修正前は generatePackageDiagram が
+        // promoteToDetailed を呼んでおらず、Stage A のまま渡すとフィールド型由来の
+        // パッケージ依存エッジが一切出なくなっていた (大規模プロジェクトで見た目上
+        // パッケージ図が「エッジなし」になる回帰)。
+        writeJavaFile(new File(tmp.getRoot(), "src/pkg/a/A.java"),
+                "package pkg.a; import pkg.b.B; public class A { private B b; }");
+        writeJavaFile(new File(tmp.getRoot(), "src/pkg/b/B.java"),
+                "package pkg.b; public class B {}");
+
+        ProjectAnalysisCache cache = new ProjectAnalysisCache();
+        ProjectAnalysisCache.LoadOptions opts = new ProjectAnalysisCache.LoadOptions();
+        opts.lazyDetails = true;
+        opts.useDiskCache = false; // ディスクキャッシュ非依存で純粋に Stage A 経路を見る
+        cache.load(tmp.getRoot(), juml.util.ErrorListener.silent(), null, null, opts);
+
+        // 前提条件: Stage A (ヘッダのみ) でロードされていること
+        JavaClassInfo stageA = cache.getClasses().stream()
+                .filter(c -> "A".equals(c.getSimpleName()))
+                .findFirst().orElse(null);
+        assertNotNull("前提: クラス A が見つかるべき", stageA);
+        assertFalse("前提: getClasses() は Stage A (ヘッダのみ) であるべき",
+                stageA.isDetailed());
+
+        String puml = DiagramService.generatePuml(
+                new DiagramRequest(DiagramKind.PACKAGE), cache);
+
+        assertTrue(puml, puml.contains("package \"pkg.a"));
+        assertTrue(puml, puml.contains("package \"pkg.b"));
+        assertTrue("Stage A でも promoteToDetailed によりフィールド型依存エッジが"
+                        + "出るべき:\n" + puml,
+                puml.contains(" --> "));
+    }
+
+    @Test
+    public void testPackageDiagramWithoutIndexHeaderOnlyHasNoDependencyEdges() {
+        // index が渡されない (Stage B へ昇格する手段が無い) 場合は、ヘッダのみ
+        // (fields 空) のまま描画される既存挙動を維持すること。
+        List<JavaClassInfo> headersOnly = new ArrayList<>();
+        headersOnly.addAll(JavaStructureExtractor.extractHeadersOnly(
+                "package pkg.a; import pkg.b.B; public class A { private B b; }", null));
+        headersOnly.addAll(JavaStructureExtractor.extractHeadersOnly(
+                "package pkg.b; public class B {}", null));
+
+        String puml = DiagramService.generatePuml(
+                new DiagramRequest(DiagramKind.PACKAGE), sampleAnalysis(), headersOnly);
+        assertFalse("index なし (昇格不可) では Stage A のまま依存エッジは出ない"
+                        + " (既存挙動維持):\n" + puml,
+                puml.contains(" --> "));
+    }
 }

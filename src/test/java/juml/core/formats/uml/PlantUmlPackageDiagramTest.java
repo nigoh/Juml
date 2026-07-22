@@ -184,4 +184,110 @@ public class PlantUmlPackageDiagramTest {
         assertTrue("param type ref should produce arrow:\n" + puml,
                 puml.contains(" --> "));
     }
+
+    // ---- 回帰: 参照元クラスの import を単純名解決より優先する (resolvePackage) ----
+
+    @Test
+    public void testImportPrioritizedOverAmbiguousSimpleName() {
+        // com.a.Foo と com.b.Foo が同じ単純名 "Foo" を持つ。修正前は resolvePackage が
+        // 走査順で最初に登録されたパッケージ (pkgBySimple.putIfAbsent 由来、ここでは
+        // com.a) を常に選んでしまい、com.c.Bar が明示的に import com.b.Foo していても
+        // 誤って com.c -> com.a のエッジになっていた。修正後は参照元クラスの import
+        // マップを優先し、正しく com.c -> com.b になる。
+        //
+        // この検証は superclass (extends) 参照。extends/implements は addRef に単純名の
+        // まま渡り resolvePackage の import 優先が直接効く。フィールド/戻り値/引数型は
+        // pickUsageTarget が KnownTypeIndex#suffixMatch で先に FQN 化するため、別途
+        // usageTargetWithImport が import を再優先する
+        // (testImportPrioritizedForFieldAndMethodTypes で検証)。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract("package com.a; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract("package com.b; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.c; import com.b.Foo; class Bar extends Foo {}"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+
+        String aliasA = packageAlias(puml, "com.a");
+        String aliasB = packageAlias(puml, "com.b");
+        String aliasC = packageAlias(puml, "com.c");
+        assertNotNull("com.a のパッケージノードが見つかるべき:\n" + puml, aliasA);
+        assertNotNull("com.b のパッケージノードが見つかるべき:\n" + puml, aliasB);
+        assertNotNull("com.c のパッケージノードが見つかるべき:\n" + puml, aliasC);
+
+        assertTrue("import で指定した com.b への依存エッジが出るべき:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasB));
+        assertFalse("import 先ではない com.a への誤ったエッジが出てはいけない:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasA));
+    }
+
+    @Test
+    public void testImportPrioritizedForFieldAndMethodTypes() {
+        // フィールド/戻り値/引数の型でも import を優先する回帰。pickUsageTarget は
+        // KnownTypeIndex#suffixMatch で曖昧な単純名 "Foo" を辞書順最小 (com.a.Foo) へ
+        // 確定させてしまうため、com.z.Foo を import していても修正前は com.c -> com.a に
+        // なっていた。usageTargetWithImport が解決結果の単純名を import マップと再照合し、
+        // 明示 import 先が既知クラスならそちらを優先する。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract("package com.a; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract("package com.z; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.c; import com.z.Foo; class Bar {"
+                        + " private Foo f; Foo make() { return null; } void take(Foo x) {} }"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+
+        String aliasA = packageAlias(puml, "com.a");
+        String aliasZ = packageAlias(puml, "com.z");
+        String aliasC = packageAlias(puml, "com.c");
+        assertNotNull(aliasA);
+        assertNotNull(aliasZ);
+        assertNotNull(aliasC);
+        assertTrue("フィールド/シグネチャ型でも import 先 com.z への依存が出るべき:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasZ));
+        assertFalse("辞書順最小 com.a への誤ったエッジが出てはいけない:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasA));
+    }
+
+    @Test
+    public void testImportPointingToUnknownClassFallsBackToSimpleNameHeuristic() {
+        // import 先が既知クラス一覧に無い場合 (未解析の依存先など) は、
+        // 例外を投げずに従来の単純名ヒューリスティックへフォールバックすること
+        // (resolvePackage の importedPkg == null → 継続分岐の回帰)。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract("package com.a; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.c; import com.zzz.Foo; class Bar extends Foo {}"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+
+        String aliasA = packageAlias(puml, "com.a");
+        String aliasC = packageAlias(puml, "com.c");
+        assertNotNull(aliasA);
+        assertNotNull(aliasC);
+        // import 先 (com.zzz.Foo) は既知クラスに無いため、単純名一致の com.a へ
+        // フォールバックする (クラッシュせず既存挙動を維持)。
+        assertTrue("フォールバックで com.a への依存エッジが出るべき:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasA));
+    }
+
+    /**
+     * {@code package "<pkgName>\n<n> class(es)" as <alias> {} } 宣言からエイリアスを取り出す。
+     * ラベル内の改行は PlantUML クオート内表記のため、生成コードと同じ 2 文字の
+     * リテラル {@code \n} (バックスラッシュ + n) がそのまま出力される点に注意。
+     */
+    private static String packageAlias(String puml, String pkgName) {
+        String marker = "package \"" + pkgName + "\\n";
+        int idx = puml.indexOf(marker);
+        if (idx < 0) {
+            return null;
+        }
+        int asIdx = puml.indexOf(" as ", idx);
+        if (asIdx < 0) {
+            return null;
+        }
+        int start = asIdx + 4;
+        int end = start;
+        while (end < puml.length() && Character.isLetterOrDigit(puml.charAt(end))) {
+            end++;
+        }
+        return puml.substring(start, end);
+    }
 }
