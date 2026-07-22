@@ -351,6 +351,36 @@ public class PlantUmlActivityDiagramTest {
     }
 
     @Test
+    public void testHoistedLocalVarCallSurvivesWhenLocalVarsHidden() {
+        // Round 2 回帰: showLocalVars=false のとき LocalVar 行は隠すが、初期化子から持ち上げた
+        // 呼び出し (getData()) まで消してはいけない。持ち上げ Call のスキップは host 文が本文を
+        // 描くときだけ有効で、host 非表示なら本文を描いて呼び出しを残す (hoistedHostRendersText)。
+        PlantUmlActivityDiagram.Options o = new PlantUmlActivityDiagram.Options();
+        o.showLocalVars = false;
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run() { String result = getData(); } String getData(){return null;} }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", o);
+        assertFalse("LocalVar 行は隠れるべき: " + puml, puml.contains("String result"));
+        assertTrue("初期化子の呼び出し getData() は消えず本文として残るべき: " + puml,
+                puml.contains(":getData();"));
+    }
+
+    @Test
+    public void testHoistedValueExpressionCallbackBodyExpands() {
+        // Round 2 回帰: 値式 (ローカル変数初期化子・return 等) に埋め込んだラムダの本体は
+        // expandInlineCallbacks 既定 ON で partition 展開されるべき。持ち上げ Call を丸ごと
+        // スキップすると emitCall の展開が呼ばれず、コールバック本体 (step()) が消えていた。
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class A { void run(){ Runnable r = wrap(() -> step()); } "
+                        + "Runnable wrap(Runnable x){return x;} void step(){} }");
+        String puml = PlantUmlActivityDiagram.generate(infos, "A", "run", null);
+        // ラベル文字列ではなく、展開されたアクションノード :step(); が出ることを確認する
+        // (レジェンドにも "partition" 語はあるため、展開ノードの有無で判定する)。
+        assertTrue("値式内ラムダ本体 step() が partition 展開されるべき: " + puml,
+                puml.contains(":step();"));
+    }
+
+    @Test
     public void testGenericLocalVarAppearsInDiagram() {
         List<JavaClassInfo> infos = JavaStructureExtractor.extract(
                 "class A { void run() { List<String> items = getList(); } }");

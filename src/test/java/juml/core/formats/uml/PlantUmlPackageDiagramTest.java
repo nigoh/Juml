@@ -248,6 +248,31 @@ public class PlantUmlPackageDiagramTest {
     }
 
     @Test
+    public void testFullyQualifiedFieldTypeNotOverriddenByImport() {
+        // Round 2 回帰: フィールド型が完全修飾 (com.a.Foo f) で書かれている場合、Java では
+        // FQN 参照が import より優先され com.a.Foo を指す。usageTargetWithImport が単純名だけを
+        // 見て import 先 (com.z.Foo) へ張り替えると誤結線になる。明示 FQN は上書きしない
+        // (resolvePackage の FQN-first と一貫)。
+        List<JavaClassInfo> infos = new java.util.ArrayList<>();
+        infos.addAll(JavaStructureExtractor.extract("package com.a; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract("package com.z; class Foo {}"));
+        infos.addAll(JavaStructureExtractor.extract(
+                "package com.c; import com.z.Foo; class Bar { com.a.Foo f; }"));
+        String puml = PlantUmlPackageDiagram.generate(infos);
+
+        String aliasA = packageAlias(puml, "com.a");
+        String aliasZ = packageAlias(puml, "com.z");
+        String aliasC = packageAlias(puml, "com.c");
+        assertNotNull(aliasA);
+        assertNotNull(aliasZ);
+        assertNotNull(aliasC);
+        assertTrue("明示 FQN の com.a への依存が出るべき:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasA));
+        assertFalse("import 先 com.z への誤ったエッジが出てはいけない:\n" + puml,
+                puml.contains(aliasC + " --> " + aliasZ));
+    }
+
+    @Test
     public void testImportPointingToUnknownClassFallsBackToSimpleNameHeuristic() {
         // import 先が既知クラス一覧に無い場合 (未解析の依存先など) は、
         // 例外を投げずに従来の単純名ヒューリスティックへフォールバックすること

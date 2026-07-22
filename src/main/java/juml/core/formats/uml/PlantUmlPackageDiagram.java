@@ -198,6 +198,12 @@ public final class PlantUmlPackageDiagram {
         if (target == null || importMap == null) {
             return target;
         }
+        // 明示的な完全修飾参照 (rawType に解決先 FQN がそのまま書かれている場合。配列や
+        // ジェネリクス引数内も含む) は、Java でも import より優先されるため import で
+        // 上書きしない。resolvePackage の FQN-first (pkgByQn 先引き) と規則を一致させる。
+        if (rawType != null && target.indexOf('.') >= 0 && rawType.contains(target)) {
+            return target;
+        }
         int dot = target.lastIndexOf('.');
         String simple = dot >= 0 ? target.substring(dot + 1) : target;
         String importedFqn = importMap.get(simple);
