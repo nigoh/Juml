@@ -54,7 +54,22 @@ public final class DiagramTabPane {
     private final int fixedSuffix;
     private final Map<String, DiagramTab> openTabs = new LinkedHashMap<>();
     /** 閉じたタブの再オープン用スタック (Ctrl+Shift+T)。各要素は軽量な再オープンクロージャ。 */
-    private final Deque<Runnable> closedTabs = new ArrayDeque<>();
+    private final Deque<ClosedTabEntry> closedTabs = new ArrayDeque<>();
+
+    /**
+     * 閉じたタブ履歴の 1 エントリ。図タブの再オープン ({@code openDiagram}) は
+     * プロジェクト読込済みが前提のため、その要否を持たせて実行前に判定できるようにする
+     * (読込中に実行すると無言 no-op になり、履歴だけが消費されてしまう)。
+     */
+    private static final class ClosedTabEntry {
+        final boolean needsProject;
+        final Runnable reopen;
+
+        ClosedTabEntry(boolean needsProject, Runnable reopen) {
+            this.needsProject = needsProject;
+            this.reopen = reopen;
+        }
+    }
     /** 再オープン履歴の上限。古い履歴を捨ててメモリを抑える。 */
     private static final int MAX_CLOSED_HISTORY = 10;
     /** 図タブのメモリ抑制 (LRU クローズ / 描画解放) を担う協調オブジェクト。 */
@@ -63,6 +78,11 @@ public final class DiagramTabPane {
     private final NavigationHistory navHistory = new NavigationHistory();
     /** UML に重ねる付箋メモのロード/保存配線を担うヘルパ。 */
     private DiagramNotesBinder notesBinder = new DiagramNotesBinder(this::reportStatus);
+    /**
+     * エディタタブの自動保存 (下書き) ストア。編集の 3 秒後にスナップショットし、
+     * クラッシュ時の未保存編集を次回起動で復元できるようにする。正常保存・クローズで削除。
+     */
+    private DraftStore drafts = DraftStore.createDefault();
     /**
      * この {@link #notesBinder} を自分で所有しているか。別ウィンドウが
      * {@link #useSharedNotesBinder} で共有バインダを注入した場合は false になり、
@@ -339,6 +359,12 @@ public final class DiagramTabPane {
     public SvgPreviewPanel activePreviewPanel() {
         DiagramTab t = activeTab();
         return t != null ? t.previewPanel : null;
+    }
+
+    /** フォーカス中タブの表示ラベル (エクスポート提案ファイル名などに使う)。無ければ null。 */
+    public String activeTabLabel() {
+        DiagramTab t = activeTab();
+        return t != null ? t.label : null;
     }
 
     /** フォーカス中タブの描画済み PlantUML テキスト (未描画/無しは null)。 */
@@ -647,6 +673,8 @@ public final class DiagramTabPane {
         tabs.setSelectedIndex(insertAt);
         if (markDirty) {
             tab.dirty = true; // 復元した未保存内容は dirty のまま扱う
+            // 復元直後の内容も下書きへ即時保存する (再クラッシュしても失わない)。
+            tab.saveDraft();
         }
         refreshTabLabels();
         tab.startRender();
@@ -768,10 +796,16 @@ public final class DiagramTabPane {
         }
         tab.editorFile = target;
         tab.dirty = false;
+        // 正常保存できたので下書きは不要。保留中の自動保存も止める
+        // (止めないと保存後にタイマが発火して下書きが復活し、次回起動で偽の復元を促す)。
+        tab.stopDraftTimer();
+        String draftKeyBeforeMigrate = tab.key;
         // Save As で保存先が変わったらタブキーもファイルパス基準へ移行する。
         // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
         // タブが重複生成される (dedup の一貫性が崩れる)。
         migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
+        drafts.delete(draftKeyBeforeMigrate);
+        drafts.delete(tab.key);
         // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
         int idx = tabs.indexOfComponent(tab);
@@ -1493,6 +1527,14 @@ public final class DiagramTabPane {
         if (tab.renderDebounce != null) {
             tab.renderDebounce.stop(); // クローズ後のデバウンス発火 (無駄な再描画) を止める
         }
+        if (tab.isEditor()) {
+            // 意図してタブを閉じた (保存 or 破棄済み) ので下書きは消す。閉じたタブは
+            // Ctrl+Shift+T の再オープン履歴が担い、下書き復元の対象にしない。
+            tab.stopDraftTimer();
+            drafts.delete(liveKey);
+            // 補完ポップアップの JWindow は階層外リソースなので明示的に破棄する。
+            tab.sourcePanel.disposeEditorResources();
+        }
         tab.previewPanel.notes().setOnChange(null);
         int index = tabs.indexOfComponent(tab);
         if (index >= 0) {
@@ -1532,13 +1574,29 @@ public final class DiagramTabPane {
      * {@link javax.swing.JOptionPane} の YES/NO/CANCEL 相当の値を返す。
      */
     boolean confirmDiscardAllEdits(java.util.function.ToIntFunction<String> ask) {
+        java.util.List<DiagramTab> discarded = new ArrayList<>();
         for (DiagramTab t : new ArrayList<>(openTabs.values())) {
             if (t.isEditor() && t.dirty) {
                 tabs.setSelectedComponent(t); // どのタブの確認かユーザーに見せる
-                if (!confirmDiscardEdits(t, ask)) {
+                int choice = ask.applyAsInt(t.label);
+                if (choice == javax.swing.JOptionPane.YES_OPTION) {
+                    if (!savePumlEditor(t, false)) {
+                        return false; // 保存キャンセル → 終了中止 (破棄済みタブは無し)
+                    }
+                } else if (choice == javax.swing.JOptionPane.NO_OPTION) {
+                    discarded.add(t);
+                } else {
+                    // キャンセル → 終了中止。ここまで NO を選んだタブの下書きは
+                    // まだ消していないので、開いたままのタブのクラッシュ保護は無傷。
                     return false;
                 }
             }
+        }
+        // 全タブの確認が通った = 終了が確定。破棄を選んだタブの下書きをここで消す
+        // (残すと正常終了なのに次回起動で偽のクラッシュ復元プロンプトが出る)。
+        for (DiagramTab t : discarded) {
+            t.stopDraftTimer();
+            drafts.delete(t.key);
         }
         return true;
     }
@@ -1565,6 +1623,11 @@ public final class DiagramTabPane {
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
         }
+        // NO (破棄): 下書きの削除はここでは行わない。破棄が「確定」するのはタブが実際に
+        // 閉じるとき (closeTab が削除する) か、終了時に全タブの確認が通ったとき
+        // (confirmDiscardAllEdits が最後にまとめて削除する)。ここで即削除すると、
+        // 終了経路で後続タブの Cancel により終了が中止された場合に、開いたままの
+        // dirty タブからクラッシュ復元保護だけが失われる。
         return choice == javax.swing.JOptionPane.NO_OPTION;
     }
 
@@ -1574,18 +1637,55 @@ public final class DiagramTabPane {
             final String text = tab.sourcePanel.getText();
             final java.io.File file = tab.editorFile;
             final boolean wasDirty = tab.dirty;
-            closedTabs.push(() -> openPumlEditor(text, file, wasDirty));
+            closedTabs.push(new ClosedTabEntry(false,
+                    () -> openPumlEditor(text, file, wasDirty)));
         } else {
             final String key = tab.key;
             final String label = tab.label;
             final TreeNodeIcon icon = tab.icon;
             final DiagramRequest spec = tab.spec;
             final TreeNodeOpenRequest treeSync = tab.treeSync;
-            closedTabs.push(() -> openDiagram(key, label, icon, spec, treeSync));
+            closedTabs.push(new ClosedTabEntry(true,
+                    () -> openDiagram(key, label, icon, spec, treeSync)));
         }
         while (closedTabs.size() > MAX_CLOSED_HISTORY) {
             closedTabs.removeLast();
         }
+    }
+
+    /** テスト用: 下書きストアを差し替える (一時ディレクトリで自動保存を検証するため)。 */
+    void setDraftStoreForTest(DraftStore store) {
+        this.drafts = store;
+    }
+
+    /** 前回異常終了で残った未保存編集の下書き一覧 (復元プロンプト用)。 */
+    public java.util.List<DraftStore.Draft> pendingDrafts() {
+        return drafts.loadAll();
+    }
+
+    /**
+     * 下書きをエディタタブとして復元する (未保存状態のまま)。復元後は新しいタブの
+     * 自動保存が引き継ぐため、元の下書きは先に消してから開く (同一キーの上書き順序対策)。
+     */
+    public void restoreDraft(DraftStore.Draft draft) {
+        drafts.delete(draft.tabKey);
+        openPumlEditor(draft.text, draft.file, true);
+    }
+
+    /**
+     * 指定の下書きだけを破棄する (復元プロンプトで辞退したとき)。全消しにしないのは、
+     * 別インスタンスが同じ drafts フォルダを使っている場合に、そちらの生きている
+     * 下書きを巻き添えで消さないため。
+     */
+    public void discardDrafts(java.util.List<DraftStore.Draft> list) {
+        for (DraftStore.Draft d : list) {
+            drafts.delete(d.tabKey);
+        }
+    }
+
+    /** すべての下書きを破棄する (テスト・明示的な全消し用)。 */
+    public void discardAllDrafts() {
+        drafts.deleteAll();
     }
 
     /**
@@ -1593,12 +1693,19 @@ public final class DiagramTabPane {
      * {@link #openDiagram} 側でフォーカスのみ移す。履歴が空なら案内ステータスを出す。
      */
     public void reopenLastClosedTab() {
-        Runnable reopen = closedTabs.poll();
-        if (reopen != null) {
-            reopen.run();
-        } else {
+        ClosedTabEntry entry = closedTabs.peek();
+        if (entry == null) {
             reportStatus(Messages.get("status.noClosedTab"));
+            return;
         }
+        if (entry.needsProject && !cache.isLoaded()) {
+            // プロジェクト読込中/未読込では openDiagram が無言 no-op になるため、
+            // 履歴を消費せず案内だけ出す (読込完了後に再度 Ctrl+Shift+T で復元できる)。
+            reportStatus(Messages.get("status.reopenNeedsProject"));
+            return;
+        }
+        closedTabs.poll();
+        entry.reopen.run();
     }
 
     /** Alt+Left: 直前にフォーカスしていたタブに戻る。 */
@@ -1710,6 +1817,8 @@ public final class DiagramTabPane {
         private boolean dirty;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
+        /** 自由編集エディタ: 編集の 3 秒後に下書きへ自動保存するタイマ。 */
+        private javax.swing.Timer draftTimer;
         /** 自由編集エディタ: GUI 図形デザイナー (Design サブタブ)。非エディタタブでは null。 */
         private juml.app.uml.sketch.SketchPane sketchPane;
         /** メソッド図の SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH 切替バー (メソッド図以外では非表示)。 */
@@ -1732,6 +1841,12 @@ public final class DiagramTabPane {
         private final SvgPreviewPanel previewPanel = new SvgPreviewPanel();
         /** 表示中の図に対するインクリメンタル検索バー (Ctrl+F)。 */
         private final DiagramFindBar findBar = new DiagramFindBar(previewPanel, this::revalidate);
+        /**
+         * ライブプレビューの描画失敗時に、直前の正常な図の上端へ重ねる警告バナー。
+         * エディタタブでは打ちかけの構文エラーのたびに図をエラーカードへ置き換えると
+         * 編集リズムが壊れるため、最後に成功した図を表示し続けてバナーで失敗を知らせる。
+         */
+        private final JLabel liveErrorBanner = new JLabel();
         private final PumlSourcePanel sourcePanel  = new PumlSourcePanel();
         /** 実際の Java/Kotlin ソースを表示するパネル (VS Code 風)。 */
         private final JavaSourcePanel javaSourcePanel = new JavaSourcePanel();
@@ -1779,6 +1894,10 @@ public final class DiagramTabPane {
 
             // 図プレビュー (スクロール) + 下端の図内検索バーを 1 枚の "view" カードにまとめる。
             JPanel viewPanel = new JPanel(new java.awt.BorderLayout());
+            liveErrorBanner.setOpaque(true);
+            liveErrorBanner.setBorder(javax.swing.BorderFactory.createEmptyBorder(4, 8, 4, 8));
+            liveErrorBanner.setVisible(false);
+            viewPanel.add(liveErrorBanner, java.awt.BorderLayout.NORTH);
             viewPanel.add(new JScrollPane(previewPanel), java.awt.BorderLayout.CENTER);
             viewPanel.add(findBar, java.awt.BorderLayout.SOUTH);
             viewCards.add(viewPanel, "view");
@@ -2014,10 +2133,15 @@ public final class DiagramTabPane {
             // デバウンス: 連続キー入力のたびに PlantUML 描画が走らないよう 600ms 待つ。
             renderDebounce = new javax.swing.Timer(600, e -> startRender());
             renderDebounce.setRepeats(false);
+            // 自動保存: 編集が落ち着いて 3 秒後に下書きへスナップショットする
+            // (クラッシュ・強制終了で未保存編集が失われないように)。
+            draftTimer = new javax.swing.Timer(3000, e -> saveDraft());
+            draftTimer.setRepeats(false);
             // リスナー登録は初期 setText の後 (初期化を dirty 扱いにしない)。
             sourcePanel.setOnTextChange(() -> {
                 markEditorDirty();
                 renderDebounce.restart();
+                draftTimer.restart();
             });
             // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
             // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
@@ -2049,6 +2173,23 @@ public final class DiagramTabPane {
             if (!dirty) {
                 dirty = true;
                 refreshTabLabels();
+            }
+        }
+
+        /** 現在の編集内容を下書きへスナップショットする (自動保存)。 */
+        void saveDraft() {
+            // dirty でないタブは退避しない: ディスク同期などプログラム起因の setText でも
+            // タイマは走るため、無条件に書くとクリーンなタブの下書きが残って
+            // 次回起動で偽のクラッシュ復元プロンプトが出る。
+            if (isEditor() && dirty) {
+                drafts.save(key, sourcePanel.getText(), editorFile, label);
+            }
+        }
+
+        /** 自動保存タイマを止める (正常保存・クローズ後の下書き復活を防ぐ)。 */
+        void stopDraftTimer() {
+            if (draftTimer != null) {
+                draftTimer.stop();
             }
         }
 
@@ -2322,6 +2463,7 @@ public final class DiagramTabPane {
             previewPanel.setLinkAreas(null);
             previewPanel.setTextItems(java.util.Collections.emptyList());
             findBar.reset();
+            liveErrorBanner.setVisible(false);
             renderedSvgXml = null;
             renderReleased = true;
             // 解放後の再描画では全体表示から始めたい (解放前のズームは失われている) ので、
@@ -2340,7 +2482,11 @@ public final class DiagramTabPane {
                 sourcePanel.clearErrorHighlight();
             }
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
-            showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
+            // エディタタブに正常描画済みの図があれば、それを表示したまま裏で再描画する
+            // (毎回「描画中…」カードへ切り替えるとライブプレビューがちらつくため)。
+            if (!keepsLastGoodPreview()) {
+                showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
+            }
             final DiagramRequest dreq = spec;
             // エディタタブはテキストが真実源: EDT 上でスナップショットしてから背景描画する。
             final String editorPuml = isEditor() ? sourcePanel.getText() : null;
@@ -2375,41 +2521,7 @@ public final class DiagramTabPane {
                         return;
                     }
                     if (error != null) {
-                        // エディタタブでは編集中テキストを描画結果で上書きしない。
-                        if (pumlOnError != null && !isEditor()) {
-                            sourcePanel.setText(pumlOnError);
-                        }
-                        // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を
-                        // 補正して) エディタ上で赤く強調し、原因箇所へ誘導する。
-                        if (isEditor() && editorPuml != null
-                                && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
-                            int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
-                                    .getErrorLine();
-                            if (genLine > 0) {
-                                // 生成テキストとエディタテキストを直接付き合わせ、prelude 挿入・
-                                // direction 行除去に関わらず正確な行へ写像する (#42)。
-                                String generated =
-                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
-                                sourcePanel.highlightErrorLine(
-                                        PumlErrorLineMapper.editorLineForError(
-                                                editorPuml, generated, genLine));
-                            }
-                        }
-                        previewPanel.setSvgGraphicsNode(null, 0, 0);
-                        renderedPuml = pumlOnError;
-                        renderedSvgXml = null;
-                        if (isActive()) {
-                            mirrorToState();
-                        }
-                        // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
-                        // (ユーザがそのまま報告できるようにする)。
-                        juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
-                        java.io.File dumped = RenderFailureLog.dump(
-                                label, pumlOnError, error, isEditor());
-                        copyableFailureText = buildFailureText(code, error, dumped);
-                        showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
-                        setStatus(label + ": " + code.tag() + " "
-                                + Messages.get("status.renderFailed") + " " + failureReason(error));
+                        onRenderError(error, pumlOnError, editorPuml);
                         return;
                     }
                     try {
@@ -2427,6 +2539,7 @@ public final class DiagramTabPane {
                             setStatus(label + ": " + Messages.get("status.noDiagramShort"));
                             return;
                         }
+                        liveErrorBanner.setVisible(false);
                         previewPanel.setSvgGraphicsNode(r.svg.getRoot(),
                                 r.svg.getWidth(), r.svg.getHeight());
                         previewPanel.setLinkAreas(r.svg.getLinkAreas());
@@ -2469,6 +2582,157 @@ public final class DiagramTabPane {
 
         private String failureReason(Throwable error) {
             return DiagramFailureMessage.reason(error);
+        }
+
+        /**
+         * 描画失敗/再描画中に「直前の正常な図」を表示し続けるべきか。
+         * エディタタブで一度でも正常描画できていれば true (打ちかけ構文エラーで
+         * 図が消えると編集リズムが壊れるため)。
+         */
+        private boolean keepsLastGoodPreview() {
+            return isEditor() && renderedSvgXml != null;
+        }
+
+        /**
+         * 描画失敗時の後処理 (エラー行強調・ログ保存・失敗提示)。keep-last-good が使えるなら
+         * 直前の正常な図を保持したまま上端バナーで知らせ、そうでなければ従来の失敗カードを出す。
+         */
+        private void onRenderError(Throwable error, String pumlOnError, String editorPuml) {
+            // エディタタブでは編集中テキストを描画結果で上書きしない。
+            if (pumlOnError != null && !isEditor()) {
+                sourcePanel.setText(pumlOnError);
+            }
+            // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を補正して)
+            // エディタ上で赤く強調し、原因箇所へ誘導する。
+            int editorLine = -1;
+            if (isEditor() && editorPuml != null
+                    && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
+                int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                        .getErrorLine();
+                if (genLine > 0) {
+                    // 生成テキストとエディタテキストを直接付き合わせ、prelude 挿入・
+                    // direction 行除去に関わらず正確な行へ写像する (#42)。
+                    String generated =
+                            juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
+                    editorLine = PumlErrorLineMapper.editorLineForError(
+                            editorPuml, generated, genLine);
+                    sourcePanel.highlightErrorLine(editorLine);
+                }
+            }
+            // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
+            // (ユーザがそのまま報告できるようにする)。
+            juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
+            java.io.File dumped = RenderFailureLog.dump(label, pumlOnError, error, isEditor());
+            copyableFailureText = buildFailureText(code, error, dumped);
+            if (keepsLastGoodPreview()) {
+                // 直前の正常な図を保持したまま、上端バナー + エラー行強調 +
+                // ステータスで失敗を提示する (編集リズムを壊さない)。
+                showLiveErrorBanner(code, error, editorLine);
+                setStatus(label + ": " + code.tag() + " "
+                        + Messages.get("status.renderFailed") + " " + failureReason(error));
+                return;
+            }
+            previewPanel.setSvgGraphicsNode(null, 0, 0);
+            renderedPuml = pumlOnError;
+            renderedSvgXml = null;
+            if (isActive()) {
+                mirrorToState();
+            }
+            showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
+            setStatus(label + ": " + code.tag() + " "
+                    + Messages.get("status.renderFailed") + " " + failureReason(error));
+        }
+
+        /**
+         * 直前の正常な図の上端に失敗バナーを表示する (エディタのライブプレビュー用)。
+         * {@code editorLine} が正なら「行 N」をエディタ基準の行番号で示す (生成ソースの
+         * 行番号ではなく、ユーザーが見ているエディタの行に合わせる)。
+         */
+        private void showLiveErrorBanner(juml.util.ErrorCode code, Throwable error,
+                                         int editorLine) {
+            boolean dark = EditorColors.isDark();
+            liveErrorBanner.setBackground(dark ? new Color(0x5A, 0x1D, 0x1D)
+                    : new Color(0xFD, 0xEC, 0xEA));
+            liveErrorBanner.setForeground(dark ? new Color(0xFF, 0xB4, 0xAB)
+                    : new Color(0xB7, 0x1C, 0x1C));
+            liveErrorBanner.setText(liveErrorText(code, error, editorLine));
+            liveErrorBanner.setToolTipText(liveErrorBanner.getText());
+            // スクリーンリーダーが失敗を読み上げられるよう accessible name も更新する
+            // (色だけに頼らず、テキストとして失敗内容を伝える)。
+            liveErrorBanner.getAccessibleContext().setAccessibleName(liveErrorBanner.getText());
+            liveErrorBanner.setVisible(true);
+            showPreviewCard();
+        }
+
+        /**
+         * ライブ失敗バナーの文言を組み立てる。エディタ行が分かるときは「行 N」を先頭に置く。
+         * バナーは「どこが・何が」を素早く伝えるための短い手掛かりに徹し、エラー行自体は
+         * エディタ上で赤く強調される。PlantUML が失敗画像へ echo する生成ソース (prelude・
+         * skinparam 等) は原因と無関係なノイズなので、簡潔な診断だけを残す。全文は失敗カード
+         * (「エラー詳細をコピー」) 側に残る。
+         */
+        private String liveErrorText(juml.util.ErrorCode code, Throwable error, int editorLine) {
+            StringBuilder sb = new StringBuilder(code.tag()).append(' ');
+            if (editorLine > 0) {
+                sb.append(java.text.MessageFormat.format(
+                        Messages.get("tab.liveError.line"), editorLine)).append(' ');
+            }
+            String diag = liveErrorDiagnostic(error, editorLine);
+            if (!diag.isEmpty()) {
+                sb.append(diag).append(' ');
+            }
+            sb.append("— ").append(Messages.get("tab.liveError.keep"));
+            return sb.toString();
+        }
+
+        /** バナー診断語として拾う、実際の診断を示すキーワード (小文字比較)。 */
+        private static final String[] DIAGNOSTIC_KEYWORDS = {
+            "error", "syntax", "cannot", "unexpected", "expected", "missing",
+            "unknown", "invalid", "unrecognized", "not found", "duplicate", "illegal",
+        };
+
+        /**
+         * バナー用の簡潔な診断語を返す。PlantUML の失敗画像は「エラー」だけでなく周辺の
+         * 生成ソース行 (ユーザーの正常なクラス定義や injected prelude) まで echo するため、
+         * 実際の診断キーワードを含むセグメントだけを拾う。拾えなければ、行番号があるときは空
+         * (行番号 + エディタ上の赤帯で十分)、無ければ総称語 (構文エラー) を返す。全文は
+         * 失敗カード側に残る。
+         */
+        private String liveErrorDiagnostic(Throwable error, int editorLine) {
+            String detail = error instanceof juml.core.formats.uml.PlantUmlRenderFailedException
+                    ? ((juml.core.formats.uml.PlantUmlRenderFailedException) error).getErrorDetail()
+                    : failureReason(error);
+            if (detail == null || detail.isEmpty()) {
+                return editorLine > 0 ? "" : failureReason(error);
+            }
+            java.util.List<String> keep = new java.util.ArrayList<>();
+            for (String seg : detail.split("\\s*\\|\\s*")) {
+                String s = seg.trim();
+                if (!s.isEmpty() && looksDiagnostic(s)) {
+                    keep.add(s);
+                }
+            }
+            if (keep.isEmpty()) {
+                return editorLine > 0 ? "" : Messages.get("tab.liveError.syntax");
+            }
+            String joined = String.join(" | ", keep);
+            return joined.length() > 120 ? joined.substring(0, 119) + "…" : joined;
+        }
+
+        /** セグメントが実際の診断 (エラー語を含む) か。単なる echo されたソース行は false。 */
+        private boolean looksDiagnostic(String s) {
+            String lower = s.toLowerCase(java.util.Locale.ROOT);
+            for (String kw : DIAGNOSTIC_KEYWORDS) {
+                if (lower.contains(kw)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /** テスト用: ライブエラーバナーが表示中か。 */
+        boolean liveErrorBannerVisibleForTest() {
+            return liveErrorBanner.isVisible();
         }
 
         private String esc(String s) {

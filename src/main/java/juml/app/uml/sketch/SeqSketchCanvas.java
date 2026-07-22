@@ -66,6 +66,8 @@ final class SeqSketchCanvas extends JPanel {
     private final Listener listener;
 
     private SeqItem selectedItem;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
     private SeqParticipant selectedParticipant;
     /** メッセージ追加モードの矢印種別 (null = 選択/移動モード)。 */
     private SeqItem.Arrow messageMode;
@@ -74,6 +76,12 @@ final class SeqSketchCanvas extends JPanel {
     /** ドラッグ中のマウス位置 (並べ替えのゴースト描画用。null = ドラッグ中でない)。 */
     private Point dragPoint;
     private boolean draggedSinceMousePress;
+    /**
+     * 左ボタン押下で並べ替えドラッグを許可した状態か。中ボタンパン (SketchViewport) 中も
+     * mouseDragged は届くため、これが無いと直前に選択した要素がパン終了地点へ
+     * 並べ替えられてしまう (他キャンバスの dragOffset ガードに相当)。
+     */
+    private boolean leftDragArmed;
 
     SeqSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -94,7 +102,8 @@ final class SeqSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || messageMode != null) {
+                if (e.getClickCount() != 2 || !editable || messageMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selectedItem != null) {
@@ -233,7 +242,7 @@ final class SeqSketchCanvas extends JPanel {
         for (SeqParticipant p : model.getParticipants()) {
             w += colWidth(p);
         }
-        return new Dimension(Math.max(400, w), Math.max(300, bottomY() + 60));
+        return view.scaled(new Dimension(Math.max(400, w), Math.max(300, bottomY() + 60)));
     }
 
     // -------------------------------------------------------------------------
@@ -303,9 +312,14 @@ final class SeqSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             // 右クリックは選択のみ更新し、ポップアップはトリガー時点 (press/release) で 1 回出す。
-            selectAt(e.getPoint());
+            selectAt(mp);
             repaint();
             if (e.isPopupTrigger()) {
                 showPopup(e);
@@ -313,12 +327,15 @@ final class SeqSketchCanvas extends JPanel {
             return;
         }
         if (messageMode != null) {
-            handleMessageClick(columnAt(e.getX()));
+            handleMessageClick(columnAt(mp.x));
             return;
         }
-        selectAt(e.getPoint());
+        selectAt(mp);
         draggedSinceMousePress = false;
         dragPoint = null;
+        // 左押下で並べ替えドラッグを許可する (中ボタンパン中の mouseDragged が
+        // 選択済み要素の並べ替えとして確定されるのを防ぐアーミング)。
+        leftDragArmed = true;
         repaint();
     }
 
@@ -351,18 +368,19 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || messageMode != null
+        if (!editable || !leftDragArmed || messageMode != null
                 || (selectedItem == null && selectedParticipant == null)) {
             return;
         }
-        dragPoint = e.getPoint();
+        dragPoint = view.toModel(e.getPoint());
         draggedSinceMousePress = true;
         repaint();
     }
 
     private void handleRelease(MouseEvent e) {
+        leftDragArmed = false;
         if (e.isPopupTrigger()) {
-            selectAt(e.getPoint());
+            selectAt(view.toModel(e.getPoint()));
             repaint();
             showPopup(e);
             return;
@@ -373,10 +391,11 @@ final class SeqSketchCanvas extends JPanel {
         }
         draggedSinceMousePress = false;
         boolean changed = false;
+        Point mp = view.toModel(e.getPoint());
         if (selectedItem != null) {
-            changed = dropMessageAt(e.getY());
+            changed = dropMessageAt(mp.y);
         } else if (selectedParticipant != null) {
-            changed = dropParticipantAt(e.getX());
+            changed = dropParticipantAt(mp.x);
         }
         dragPoint = null;
         if (changed) {
@@ -489,6 +508,7 @@ final class SeqSketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             int[] xs = centers();
             paintLifelines(g2, xs);
             paintActivationBars(g2, xs);
@@ -503,15 +523,23 @@ final class SeqSketchCanvas extends JPanel {
                 paintHeader(g2, i);
             }
             paintDragGhost(g2);
+        } finally {
+            g2.dispose();
+        }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
             if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
+                SketchBanner.paint(overlay, this, unsupported);
             } else if (messageMode != null) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(messageSource == null
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(messageSource == null
                         ? "sketch.seq.hint.pickSource" : "sketch.seq.hint.pickTarget"), 8, 14);
             }
         } finally {
-            g2.dispose();
+            overlay.dispose();
         }
     }
 
@@ -666,7 +694,9 @@ final class SeqSketchCanvas extends JPanel {
             int row = Math.max(0, Math.round((dragPoint.y - firstRowY()) / (float) ROW_H));
             int y = firstRowY() + Math.min(row, Math.max(0, messageCount() - 1)) * ROW_H;
             g2.setStroke(new BasicStroke(2f));
-            g2.drawLine(MARGIN_X / 2, y, getWidth() - MARGIN_X / 2, y);
+            // getWidth() はビュー座標なので、スケール適用中のモデル座標系へ換算する。
+            int modelWidth = (int) Math.ceil(getWidth() / view.zoom());
+            g2.drawLine(MARGIN_X / 2, y, modelWidth - MARGIN_X / 2, y);
         } else if (selectedParticipant != null) {
             g2.setStroke(new BasicStroke(2f));
             g2.drawLine(dragPoint.x, HEAD_TOP, dragPoint.x, bottomY() + 20);

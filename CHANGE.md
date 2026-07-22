@@ -4,6 +4,75 @@ Change log
 2.1
 --------
 
+* **GUI 実起動スクリーンショット + a11y/操作性監査で確定したバグ・改善を修正** (`PlantUmlRenderer` / `DiagramTabPane` / `UmlMainFrame` / `GotoLineBar` / `PumlCompletionPopup` / `ExportController` / `SketchViewport`)
+    * **背景**: Xvfb 上で `UmlMainFrame` を実起動して主要画面 (ウェルカム/エディタ/補完/keep-last-good 失敗/デザイナー、ライト+ダーク) を PNG 採取し、`gui-auditor` のコード監査と突き合わせて、実際に使えない/使いにくい箇所を洗い出した。
+    * **[Critical] 下書き復元プロンプトを Esc / ウィンドウクローズで閉じると全下書きが無警告削除されていた** (`UmlMainFrame.promptDraftRecovery`): `showConfirmDialog` は Esc/×で `CLOSED_OPTION` を返し、それが `else`(破棄) に落ちていた。クラッシュ保護が最も自然な離脱操作でデータ消失を招く重大バグ。明示的な「いいえ」(`NO_OPTION`) のときだけ破棄し、Esc/×では下書きを保持して次回また尋ねる非破壊デフォルトへ修正 (注入シーム化して回帰テスト `DraftRecoveryPromptTest`)。
+    * **失敗バナー/ステータスの `&#160;` エンティティ生表示とノイズを解消** (`PlantUmlRenderer.extractErrorDetail`): PlantUML のエラー SVG は診断テキストを HTML エンティティ符号化するため `&#160;` が生表示されていた。数値/名前付きエンティティをデコードし、バージョン表記・更新催促 (「N 日前」「consider upgrading」等) を除去。バナー・ステータス欄・エラーカードすべてが読みやすくなる。
+    * **keep-last-good 失敗バナーが「生成ソースの行番号」を表示してエディタ行数と食い違っていた** (`DiagramTabPane.showLiveErrorBanner`): 生成ソースの行 14 を表示していたが、ユーザーのエディタは 13 行。エディタ基準の「行 12」を表示し、診断は PlantUML が echo する周辺ソース行を除いてキーワードを含む実診断だけに絞り、1 行に収まる簡潔なバナーへ (全文は失敗カードに残す)。
+    * **[a11y] スクリーンリーダー対応の穴を既存規約に合わせて補修**: `GotoLineBar` の入力欄に `setLabelFor` + accessible name、失敗バナーに accessible name、補完ポップアップの選択候補・件数をフォーカスのあるエディタの accessible description へアナウンス (フォーカスを奪わない `JWindow` 候補リストの読み上げ穴を補う)。
+    * **[操作性] 図形デザイナーのズーム/パン/微調整を発見可能に** (`SketchViewport`): 全 6 キャンバスにホバーツールチップ (Ctrl+ホイール ズーム / 中ドラッグ パン / Ctrl+0 リセット / 矢印キー 微調整) を追加し、UI 上に無かったズームリセット手段 (`Ctrl+0`) を追加。縮小しすぎて図を見失っても等倍へ戻せる。
+    * **[プライバシー] 「PlantUML サーバー URL をコピー」に外部送信の警告ツールチップを追加** (`ExportController`): 図全文が公開サーバー plantuml.com へ渡る旨を明示し、クローズド環境での意図しない情報共有を防ぐ。
+    * テスト: `PlantUmlRendererErrorDetectionTest` (エンティティデコード・バージョン/更新催促除外・decodeEntities 4 ケース)、`DraftRecoveryPromptTest` (Esc 非破壊・明示 NO 破棄・下書きなし no-op)。GUI スクショ採取ハーネス `AccessibilityShotIT` を追加 (合否ではなく実画面確認用、headless-skip)。
+    * 目的: 「実際に動かしてアクセシビリティ・操作性のバグを確認」の要望に対し、実起動スクショで目視確認しながらデータ消失級の重大バグと a11y/発見可能性の穴を塞ぐため。
+
+* **bug-hunt ワークフロー (5 レンズ並列発見 → 敵対的検証) で確定した 9 バグ + UX 2 件を修正** (`SeqSketchCanvas` / `PumlEditorKeys` / `PumlCompletionPopup` / `PumlSourcePanel` / `DiagramTabPane` / `DraftStore` / 全キャンバス)
+    * **[high] 中ボタンパンが選択メッセージ/参加者の並べ替えとして確定される (Seq)**: パン中も届く mouseDragged が並べ替えドラッグ扱いになっていた。左押下でのみドラッグを許可する leftDragArmed ガードを追加 (他キャンバスの dragOffset ガード相当)。左ドラッグの並べ替えは非破壊 (`SeqSketchCanvasPanGuardTest`)。
+    * **[med] 選択範囲があるとき Enter / `( { "` が選択を置換しない**: 既定エディタの選択置換挙動からの退行。Enter は選択削除 + 自動インデント、開き文字は選択を対で囲む (VS Code の surround)、閉じ文字は選択を置換するよう `newlineFor`/`typedOpenFor`/`typedCloseFor` を追加。
+    * **[med] 終了時「破棄」でも下書きが残り偽のクラッシュ復元プロンプトが出る**: 破棄 (NO) 選択時に下書き削除 + 自動保存タイマ停止。クリーンなタブのスナップショットも抑止 (dirty ガード)。
+    * **[med] DraftStore の非アトミック書き込み**: 書き込み途中のクラッシュ/ディスクフルで壊れた下書きを復元し得た。一時ファイル + アトミック置換へ変更。
+    * **[low] 陳腐化した補完ポップアップの確定が誤った文字列を挿入**: 別語へキャレット移動してもポップアップが残り、無関係な残余 (`looss`) が挿入された。接頭辞不一致で自動クローズ + 確定時の接頭辞検証の二重ガード。
+    * **[low] 補完ポップアップの JWindow リーク**: タブクローズで破棄されず残っていた。`disposeEditorResources` を配線。スクロール/ウィンドウ移動への非追従も ancestorMoved で自動クローズ。
+    * **[low] 開いた引用符を閉じると `"` が二重挿入**: 行内の引用符が奇数個 (開いたまま) のときは閉じと解釈しペア挿入しない。
+    * **[low] 複数インスタンスの下書き衝突を軽減**: 復元辞退時は提示した下書きだけを破棄し、他インスタンスの生きている下書きを巻き添えにしない (既知の制限として Javadoc に明記)。
+    * **[ux] 中ボタンダブルクリックが編集ダイアログを開く**: 全 6 キャンバスの mouseClicked に左ボタンガードを追加。
+    * テスト: 上記すべてに回帰テストを追加 (`PumlEditorKeysTest` 選択置換 7 ケース、`SeqSketchCanvasPanGuardTest`、`DiagramTabPaneDraftTest` 終了破棄・限定破棄、`DraftStoreTest` 一時ファイル、`SettingTest` lastExportDirectory round-trip)。
+    * **Round 2 (再監査) で 3 件、Round 3 で 2 件を追加検出・修正**: (R2-1) 補完確定の陳腐化ガードが case-sensitive で、case-insensitive 候補 ("CLA"→"class") の確定が無反応になる回帰 → 接頭辞ごと候補で置換する方式へ。(R2-2) 終了確認で「破棄」→ 後続タブ「キャンセル」時に、開いたままの dirty タブから下書き保護だけが失われる部分コミット → 削除を全確認通過後へ遅延。(R2-3) プロジェクト読込中の Ctrl+Shift+T が閉じタブ履歴を無言消費 → needsProject 付きエントリで peek 判定 + 案内 (`status.reopenNeedsProject`)。(R3-1) 補完確定の remove+insert が Undo 2 手に分裂し Ctrl+Z 1 回で接頭辞ごと消える → 複合編集 1 手化。(R3-2) 語中キャレットで確定すると "classa" のような残余崩れ → 語の終端まで置換 (`PumlCompletion.wordEnd`)。ほか UX 2 件 (補完ポップアップの毎キーちらつき / ズーム中のドラッグゴースト幅)。
+    * 目的: 大きな機能追加の直後に「発見 → 敵対的検証 → 修正 → 再監査」のサイクルを回し、確定バグゼロの品質で出荷するため。
+
+* **エディタタブに自動保存 (下書き) とクラッシュ復旧を追加** (`DraftStore` 新規、`DiagramTabPane` / `UmlMainFrame` / `ErrorCode CFG-004`)
+    * **背景**: 手書き PlantUML は一次成果物なのに、クラッシュ・強制終了で未保存編集が丸ごと失われていた (draw.io / Mermaid Live では当然の保護)。
+    * 編集が落ち着いて 3 秒後に `<設定フォルダ>/drafts/` へタブキー単位でスナップショット (本文 + メタ情報)。正常保存・タブクローズで下書きは削除される (残っている = 異常終了の痕跡)。
+    * 次回起動時に残存下書きを検出して「未保存の編集を復元しますか?」と確認し、「はい」で各下書きをエディタタブとして復元 (未保存状態のまま。保存されるまで新キーで保護継続)、「いいえ」で破棄する。
+    * テスト: `DraftStoreTest` (round-trip・上書き・削除・日本語 7 ケース) と `DiagramTabPaneDraftTest` (即時退避・保存で削除・復元 round-trip・再保護 5 ケース)。
+    * 目的: 「最強のエディタ」の前提となる編集内容の信頼性 (絶対に失わない) を確保するため。
+
+* **図形デザイナー全 6 図種にキャンバスズーム (Ctrl+ホイール) と中ボタンパンを追加** (`SketchViewport` 新規、全 `*SketchCanvas`)
+    * **背景**: プレビュー側にはズームがあるのに、デザイナーは等倍固定で、10 要素を超える図の俯瞰も細部の拡大もできなかった。
+    * `Ctrl+ホイール` で 0.25x〜3.0x のズーム、中ボタンドラッグで JScrollPane ビューポートのパン。通常ホイールのスクロールは親へ転送して従来どおり。
+    * 描画はモデル座標のままスケール変換し、マウス座標は `toModel` で逆変換 (ドラッグ移動・ダブルクリック編集・右クリック追加位置がズーム中も正確)。編集不可バナーとモードヒントはズームに依らず等倍で描く。
+    * テスト: `SketchViewportTest` (クランプ・逆変換・サイズ拡縮) と `SketchCanvasZoomTest` (推奨サイズ追従・縮小描画スモーク)。
+    * 目的: 大きな図でも「引いて全体、寄って詳細」を 1 キャンバスで行えるようにするため。
+
+* **図形デザイナーの選択要素を矢印キーで精密移動 (nudge) できるように** (`SketchNudge` 新規、クラス/状態/ユースケース/コンポーネントの各キャンバス)
+    * マウスドラッグでは難しい 1px 単位の微調整を矢印キーで、`Shift` 押下でグリッド (8px) 単位の整列移動を行える。移動のたびにテキストへ同期し Undo 履歴にも積まれる。
+    * テスト: `SketchNudgeTest` (移動量計算) と `SketchCanvasNudgeTest` (移動・原点クランプ・未選択/編集不可ガード)。
+    * 目的: 図の整列品質を上げ、ドラッグ+グリッド吸着だけでは詰めきれない配置を可能にするため。
+
+* **PlantUML テキストエディタを VS Code 級の編集キーに強化** (`PumlEditorKeys` / `PumlCompletionPopup` 新規、`PumlSourcePanel`)
+    * **Enter 自動インデント**: 現在行のインデントを維持し、`{` で終わる行やブロックキーワード行 (`alt`/`loop`/`if`/`fork` 等) の直後は 1 段深くする。`{` と `}` の間での Enter は閉じ括弧を送り出してキャレットを中間行へ置く。
+    * **自動閉じペア**: `(` `{` `"` の入力で対応する閉じ文字をペア挿入しキャレットを間に置く。閉じ文字の入力は直後の同文字を通過 (オーバータイプ)。
+    * **行操作**: `Alt+Up/Down` で行 (選択ブロック) の移動、`Shift+Alt+Up/Down` で複製、`Ctrl+Shift+K` で削除。すべて 1 手で Undo できる複合編集。
+    * **入力追従補完**: 2 文字打つと候補ポップアップが自動表示され、入力継続で絞り込み。`Enter`/`Tab` 確定・`Esc` 解除・`Up/Down` 選択。`Ctrl+Space` の明示起動は 1 文字から。
+    * **Ctrl+G 行ジャンプ**: 読み取り専用ビューアと同じ `GotoLineBar` をエディタにも配線 (エラーカードの行番号からすぐ飛べる)。
+    * テスト: `PumlEditorKeysTest` (純ロジック 24 ケース、EOF 境界含む) と `PumlSourcePanelEditorKeysTest` (統合 7 ケース)。
+    * 目的: テキストは全図種の真実源なので、打鍵効率を VS Code 級へ引き上げて図解全体を加速するため。
+
+* **ライブプレビューが編集中に消えない「最後の正常描画を保持」方式へ** (`DiagramTabPane`)
+    * **背景**: エディタで入力途中の構文エラーが起きるたびに図がエラーカードへ置き換わり、再描画のたびに「描画中…」カードでちらついて編集リズムが壊れていた。
+    * 一度でも正常描画できたエディタタブは、再描画中も失敗時も直前の正常な図を表示し続ける。失敗はプレビュー上端の警告バナー (テーマ連動) + 既存のエラー行赤帯 + ステータスバーで提示し、修正すると図が更新されバナーが消える。
+    * 初回描画の失敗 (直前の正常図が無い) は従来どおり詳細エラーカードを表示する。「エラー詳細をコピー」の報告テキストは両方式で従来どおり保全。
+    * 目的: 編集中の一時的なエラーで作業文脈 (図) を奪わない、モダンなライブプレビュー体験にするため。
+
+* **図を URL 1 本で共有できる「PlantUML サーバー URL をコピー」を追加** (`PlantUmlUrlSharer` 新規、`ExportController` / `ErrorCode EXP-007`)
+    * エクスポートメニューに「PlantUML サーバー URL をコピー」を追加。PlantUML 標準の deflate エンコードで plantuml.com の SVG 表示 URL を生成しクリップボードへコピーする。
+    * テスト: `PlantUmlUrlSharerTest` (URL 形式・エンコード round-trip・日本語)。
+    * 目的: チャットやチケットに図を URL 1 本で貼れる、PlantUML エコシステムの中核体験を取り込むため。
+
+* **エクスポート保存ダイアログが前回の保存先とファイル名を提案するように** (`ExportController` / `Setting`)
+    * 保存チューザは前回エクスポートしたディレクトリ (`app.lastExportDirectory`) から開き、アクティブタブ名から作った安全なファイル名 (`My_Class_(クラス図).svg` など) を初期入力する。一覧系 (Markdown/CSV/xlsx) の保存もディレクトリを記憶する。
+    * テスト: `ExportSuggestNameTest` (ファイル名整形の純関数)。
+    * 目的: 毎回ホームディレクトリ + 空ファイル名から始まる日常エクスポートの摩擦をなくすため。
+
 * **コンポーネント図を図形デザイナー (Design タブ) でグラフィカル編集できるように** (`ComponentNode` / `ComponentRelation` / `ComponentSketchModel` / `ComponentSketchCodec` / `ComponentSketchCanvas` / `ComponentSketchEditor` / `ComponentSketchDialogs` 新規、`SketchDiagramType` / `SketchPane` / `PumlTemplate` 更新)
     * **背景**: 状態遷移図・ユースケース図に続き、コンポーネント図もテキスト専用だった。これで図形デザイナーはクラス・シーケンス・アクティビティ・状態・ユースケース・コンポーネントの 6 図種に対応する。
     * コンポーネントを UML コンポーネントアイコン付き矩形、インターフェースを円で描き、矢印 (`-->`) / 依存 (`..>`) / 接続 (`--`) の 3 種で結ぶデザイナーを追加。短縮形 `[Id]` はコンポーネントとして解釈しキーワード形へ正規化して往復保全、空白入り表示名は `"表示名" as id` 形式で保全。

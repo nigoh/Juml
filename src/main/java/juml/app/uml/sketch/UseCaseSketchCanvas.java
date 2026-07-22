@@ -61,6 +61,8 @@ final class UseCaseSketchCanvas extends JPanel {
     private final Listener listener;
 
     private UseCaseNode selected;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
     private UseCaseRelation.Kind relationMode;
     private UseCaseNode relationSource;
     private boolean snapToGrid = true;
@@ -86,14 +88,15 @@ final class UseCaseSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || relationMode != null) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {
                     listener.editNodeRequested(selected);
                     return;
                 }
-                UseCaseRelation rel = relationAt(e.getPoint());
+                UseCaseRelation rel = relationAt(view.toModel(e.getPoint()));
                 if (rel != null) {
                     listener.editRelationRequested(rel);
                 }
@@ -112,9 +115,27 @@ final class UseCaseSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
                     setRelationMode(null);
                     listener.relationModeCancelled();
+                } else if (editable && selected != null && relationMode == null) {
+                    int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
+                    if (d != null) {
+                        nudgeSelected(d[0], d[1]);
+                        e.consume();
+                    }
                 }
             }
         });
+    }
+
+    /** 選択要素を相対移動する (矢印キーの微調整。Shift でグリッド単位)。 */
+    void nudgeSelected(int dx, int dy) {
+        if (!editable || selected == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, selected.getX() + dx),
+                Math.max(0, selected.getY() + dy));
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 
     void setModel(UseCaseSketchModel model, boolean editable, List<String> unsupported) {
@@ -173,7 +194,12 @@ final class UseCaseSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        UseCaseNode hit = nodeAt(e.getPoint());
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
+        UseCaseNode hit = nodeAt(mp);
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             selected = hit;
             repaint();
@@ -189,7 +215,7 @@ final class UseCaseSketchCanvas extends JPanel {
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
-            dragOffset = new Point(e.getX() - hit.getX(), e.getY() - hit.getY());
+            dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
     }
@@ -215,8 +241,9 @@ final class UseCaseSketchCanvas extends JPanel {
         if (!editable || relationMode != null || selected == null || dragOffset == null) {
             return;
         }
-        selected.moveTo(Math.max(0, e.getX() - dragOffset.x),
-                Math.max(0, e.getY() - dragOffset.y));
+        Point mp = view.toModel(e.getPoint());
+        selected.moveTo(Math.max(0, mp.x - dragOffset.x),
+                Math.max(0, mp.y - dragOffset.y));
         draggedSinceMousePress = true;
         revalidate();
         repaint();
@@ -224,7 +251,7 @@ final class UseCaseSketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         if (e.isPopupTrigger()) {
-            showPopup(e, nodeAt(e.getPoint()));
+            showPopup(e, nodeAt(view.toModel(e.getPoint())));
             return;
         }
         if (draggedSinceMousePress) {
@@ -254,7 +281,8 @@ final class UseCaseSketchCanvas extends JPanel {
             });
             addRelationDeleteMenu(menu, hit);
         } else {
-            final Point at = e.getPoint();
+            // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
+            final Point at = view.toModel(e.getPoint());
             addItem(menu, "sketch.uc.menu.addActorHere",
                     () -> addNode(UseCaseNode.Kind.ACTOR, at));
             addItem(menu, "sketch.uc.menu.addUseCaseHere",
@@ -323,7 +351,7 @@ final class UseCaseSketchCanvas extends JPanel {
             w = Math.max(w, r.x + r.width + 80);
             h = Math.max(h, r.y + r.height + 80);
         }
-        return new Dimension(w, h);
+        return view.scaled(new Dimension(w, h));
     }
 
     @Override
@@ -333,21 +361,30 @@ final class UseCaseSketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             for (UseCaseRelation r : model.getRelations()) {
                 paintRelation(g2, r);
             }
             for (UseCaseNode n : model.getNodes()) {
                 paintNode(g2, n);
             }
+        } finally {
+            g2.dispose();
+        }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
             if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
+                SketchBanner.paint(overlay, this, unsupported);
             } else if (relationMode != null) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(relationSource == null
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(relationSource == null
                         ? "sketch.uc.hint.pickSource" : "sketch.uc.hint.pickTarget"), 8, 14);
             }
         } finally {
-            g2.dispose();
+            overlay.dispose();
         }
     }
 

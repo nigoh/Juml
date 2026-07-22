@@ -64,6 +64,8 @@ final class SketchCanvas extends JPanel {
     private boolean editable;
     private List<String> unsupported = List.of();
     private final Listener listener;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
 
     private SketchClass selected;
     /** 関係追加モードの矢印種別 (null = 選択/移動モード)。 */
@@ -98,7 +100,8 @@ final class SketchCanvas extends JPanel {
             @Override public void mouseClicked(MouseEvent e) {
                 // 関係追加モード中はクリックで端点を置く操作なので、ダブルクリック編集は無効化する
                 // (旧 selected の編集ダイアログが不意に開いて関係描画が中断するのを防ぐ)。
-                if (e.getClickCount() != 2 || !editable || relationMode != null) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {
@@ -106,7 +109,7 @@ final class SketchCanvas extends JPanel {
                     return;
                 }
                 // クラス外のダブルクリック: 近くの関係線があればその場で編集する。
-                SketchRelation rel = relationAt(e.getPoint());
+                SketchRelation rel = relationAt(view.toModel(e.getPoint()));
                 if (rel != null) {
                     listener.editRelationRequested(rel);
                 }
@@ -128,9 +131,27 @@ final class SketchCanvas extends JPanel {
                     // ツールバーのモード表示も戻すためリスナーへ通知する。
                     setRelationMode(null);
                     listener.relationModeCancelled();
+                } else if (editable && selected != null && relationMode == null) {
+                    int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
+                    if (d != null) {
+                        nudgeSelected(d[0], d[1]);
+                        e.consume();
+                    }
                 }
             }
         });
+    }
+
+    /** 選択クラスを相対移動する (矢印キーの微調整。Shift でグリッド単位)。 */
+    void nudgeSelected(int dx, int dy) {
+        if (!editable || selected == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, selected.getX() + dx),
+                Math.max(0, selected.getY() + dy));
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 
     /** 表示・編集対象のモデルを差し替える。 */
@@ -194,7 +215,12 @@ final class SketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        SketchClass hit = classAt(e.getPoint());
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
+        SketchClass hit = classAt(mp);
         // 右ボタン押下は選択/関係クリックとして扱わず消費する。ただしポップアップの表示は
         // プラットフォームごとのトリガー時点で 1 回だけ行う (Linux は press, Windows/Mac は
         // release)。press で isRightMouseButton も見て showPopup すると、release の
@@ -214,7 +240,7 @@ final class SketchCanvas extends JPanel {
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
-            dragOffset = new Point(e.getX() - hit.getX(), e.getY() - hit.getY());
+            dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
     }
@@ -241,8 +267,9 @@ final class SketchCanvas extends JPanel {
         if (!editable || relationMode != null || selected == null || dragOffset == null) {
             return;
         }
-        selected.moveTo(Math.max(0, e.getX() - dragOffset.x),
-                Math.max(0, e.getY() - dragOffset.y));
+        Point mp = view.toModel(e.getPoint());
+        selected.moveTo(Math.max(0, mp.x - dragOffset.x),
+                Math.max(0, mp.y - dragOffset.y));
         draggedSinceMousePress = true;
         revalidate();
         repaint();
@@ -250,7 +277,7 @@ final class SketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         if (e.isPopupTrigger()) {
-            showPopup(e, classAt(e.getPoint()));
+            showPopup(e, classAt(view.toModel(e.getPoint())));
             return;
         }
         if (draggedSinceMousePress) {
@@ -286,7 +313,8 @@ final class SketchCanvas extends JPanel {
             addRelationDeleteMenu(menu, hit);
         } else {
             JMenuItem add = new JMenuItem(Messages.get("sketch.menu.addClassHere"));
-            final Point at = e.getPoint();
+            // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
+            final Point at = view.toModel(e.getPoint());
             add.addActionListener(a -> listener.addClassRequested(at));
             menu.add(add);
         }
@@ -356,7 +384,7 @@ final class SketchCanvas extends JPanel {
             w = Math.max(w, r.x + r.width + 60);
             h = Math.max(h, r.y + r.height + 60);
         }
-        return new Dimension(w, h);
+        return view.scaled(new Dimension(w, h));
     }
 
     @Override
@@ -366,22 +394,41 @@ final class SketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             for (SketchRelation r : model.getRelations()) {
                 paintRelation(g2, r);
             }
             for (SketchClass c : model.getClasses()) {
                 paintClass(g2, c);
             }
-            if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
-            } else if (relationMode != null) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(relationSource == null
-                        ? "sketch.hint.pickSource" : "sketch.hint.pickTarget"), 8, 14);
-            }
         } finally {
             g2.dispose();
         }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            if (!editable) {
+                SketchBanner.paint(overlay, this, unsupported);
+            } else if (relationMode != null) {
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(relationSource == null
+                        ? "sketch.hint.pickSource" : "sketch.hint.pickTarget"), 8, 14);
+            }
+        } finally {
+            overlay.dispose();
+        }
+    }
+
+    /** テスト用: 現在のズーム倍率。 */
+    double zoomForTest() {
+        return view.zoom();
+    }
+
+    /** テスト用: ズーム倍率を直接設定する (Ctrl+ホイール相当)。 */
+    void setZoomForTest(double z) {
+        view.setZoom(z);
     }
 
     private void paintClass(Graphics2D g2, SketchClass c) {

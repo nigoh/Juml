@@ -59,6 +59,8 @@ final class ComponentSketchCanvas extends JPanel {
     private final Listener listener;
 
     private ComponentNode selected;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
     private ComponentRelation.Kind relationMode;
     private ComponentNode relationSource;
     private boolean snapToGrid = true;
@@ -84,14 +86,15 @@ final class ComponentSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || relationMode != null) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {
                     listener.editNodeRequested(selected);
                     return;
                 }
-                ComponentRelation rel = relationAt(e.getPoint());
+                ComponentRelation rel = relationAt(view.toModel(e.getPoint()));
                 if (rel != null) {
                     listener.editRelationRequested(rel);
                 }
@@ -110,9 +113,27 @@ final class ComponentSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
                     setRelationMode(null);
                     listener.relationModeCancelled();
+                } else if (editable && selected != null && relationMode == null) {
+                    int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
+                    if (d != null) {
+                        nudgeSelected(d[0], d[1]);
+                        e.consume();
+                    }
                 }
             }
         });
+    }
+
+    /** 選択要素を相対移動する (矢印キーの微調整。Shift でグリッド単位)。 */
+    void nudgeSelected(int dx, int dy) {
+        if (!editable || selected == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, selected.getX() + dx),
+                Math.max(0, selected.getY() + dy));
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 
     void setModel(ComponentSketchModel model, boolean editable, List<String> unsupported) {
@@ -171,7 +192,12 @@ final class ComponentSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        ComponentNode hit = nodeAt(e.getPoint());
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
+        ComponentNode hit = nodeAt(mp);
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             selected = hit;
             repaint();
@@ -187,7 +213,7 @@ final class ComponentSketchCanvas extends JPanel {
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
-            dragOffset = new Point(e.getX() - hit.getX(), e.getY() - hit.getY());
+            dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
     }
@@ -213,8 +239,9 @@ final class ComponentSketchCanvas extends JPanel {
         if (!editable || relationMode != null || selected == null || dragOffset == null) {
             return;
         }
-        selected.moveTo(Math.max(0, e.getX() - dragOffset.x),
-                Math.max(0, e.getY() - dragOffset.y));
+        Point mp = view.toModel(e.getPoint());
+        selected.moveTo(Math.max(0, mp.x - dragOffset.x),
+                Math.max(0, mp.y - dragOffset.y));
         draggedSinceMousePress = true;
         revalidate();
         repaint();
@@ -222,7 +249,7 @@ final class ComponentSketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         if (e.isPopupTrigger()) {
-            showPopup(e, nodeAt(e.getPoint()));
+            showPopup(e, nodeAt(view.toModel(e.getPoint())));
             return;
         }
         if (draggedSinceMousePress) {
@@ -252,7 +279,8 @@ final class ComponentSketchCanvas extends JPanel {
             });
             addRelationDeleteMenu(menu, hit);
         } else {
-            final Point at = e.getPoint();
+            // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
+            final Point at = view.toModel(e.getPoint());
             addItem(menu, "sketch.comp.menu.addComponentHere",
                     () -> addNode(ComponentNode.Kind.COMPONENT, at));
             addItem(menu, "sketch.comp.menu.addInterfaceHere",
@@ -321,7 +349,7 @@ final class ComponentSketchCanvas extends JPanel {
             w = Math.max(w, r.x + r.width + 80);
             h = Math.max(h, r.y + r.height + 80);
         }
-        return new Dimension(w, h);
+        return view.scaled(new Dimension(w, h));
     }
 
     @Override
@@ -331,6 +359,7 @@ final class ComponentSketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             for (ComponentRelation r : model.getRelations()) {
                 paintRelation(g2, r);
             }

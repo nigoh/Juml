@@ -422,6 +422,12 @@ public class UmlMainFrame extends JFrame {
         // 動的タブマネージャ (fixedSuffix=FIXED_UTILITY_TABS で末尾ユーティリティタブの手前に挿入)
         tabPane = new DiagramTabPane(mainTabs, FIXED_UTILITY_TABS, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
+        // エクスポート保存ダイアログの提案ファイル名にアクティブタブ名を使う。
+        exportController.setBaseNameSupplier(() ->
+                tabPane != null ? tabPane.activeTabLabel() : null);
+        // 前回異常終了で残った未保存編集 (自動保存の下書き) があれば復元を促す。
+        // ウィンドウ表示後に出すため遅延実行する。
+        javax.swing.SwingUtilities.invokeLater(this::promptDraftRecovery);
         // References (逆参照) の行ダブルクリック → 参照箇所のソースへジャンプ。
         referencesPanel.setOnOpenSite(site -> tabPane.openSourceSite(
                 site.getCallerFqn(), site.getFile(), site.getLineHint()));
@@ -1156,6 +1162,45 @@ public class UmlMainFrame extends JFrame {
     }
 
     // --- 状態管理 -------------------------------------------------------------
+
+    /**
+     * 前回異常終了時に自動保存された未保存編集 (下書き) があれば復元を促す。
+     * 「はい」で各下書きをエディタタブとして開き (未保存状態のまま)、「いいえ」で破棄する。
+     */
+    private void promptDraftRecovery() {
+        promptDraftRecovery(count -> javax.swing.JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(Messages.get("puml.draft.restoreAsk"), count),
+                Messages.get("puml.draft.restoreTitle"),
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.QUESTION_MESSAGE));
+    }
+
+    /**
+     * 復元プロンプトの「聞き方」を注入できる版 (テスト用)。{@code ask} は下書き件数を受け取り
+     * {@link javax.swing.JOptionPane} の YES/NO/CLOSED 相当の値を返す。
+     *
+     * @return 下書きがあり尋ねたら true、無くて何もしなければ false
+     */
+    boolean promptDraftRecovery(java.util.function.IntUnaryOperator ask) {
+        java.util.List<DraftStore.Draft> pending = tabPane.pendingDrafts();
+        if (pending.isEmpty()) {
+            return false;
+        }
+        int choice = ask.applyAsInt(pending.size());
+        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+            for (DraftStore.Draft d : pending) {
+                tabPane.restoreDraft(d);
+            }
+        } else if (choice == javax.swing.JOptionPane.NO_OPTION) {
+            // 「いいえ」を明示したときだけ破棄する。提示した下書きだけを消し、
+            // 別インスタンスの下書きは巻き添えにしない。
+            tabPane.discardDrafts(pending);
+        }
+        // Esc / ウィンドウクローズ (CLOSED_OPTION) は破棄しない: 下書きは保持し、
+        // 次回起動でまた尋ねる。クラッシュ保護が最も自然な離脱操作でデータ消失を
+        // 招かないための非破壊デフォルト。
+        return true;
+    }
 
     /** アクティブタブのズーム率 (1.0 = 100%) をステータスバーのズームラベルへ反映する。 */
     private void updateZoomLabelFromValue(double zoom) {

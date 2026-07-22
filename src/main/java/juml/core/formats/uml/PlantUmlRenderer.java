@@ -433,14 +433,11 @@ public final class PlantUmlRenderer {
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("<text[^>]*>([^<]+)</text>").matcher(svg);
         while (m.find() && sb.length() < 500) {
-            String t = m.group(1).trim();
-            if (t.isEmpty()) {
-                continue;
-            }
-            // エラー画像のバナー文言 (ジョーク文含む) はノイズなので除外する
-            if (t.startsWith("An error has occured")
-                    || t.contains("plan comes together")
-                    || t.startsWith("Diagram size")) {
+            // PlantUML のエラー SVG はテキストノードを HTML エンティティ (&#160; 等) で
+            // 符号化するため、表示前にデコードする。素の &#160; がそのまま出ると
+            // 失敗バナー/ステータス欄に "&#160;" と生表示されてしまう。
+            String t = decodeEntities(m.group(1)).trim();
+            if (t.isEmpty() || isErrorImageNoise(t)) {
                 continue;
             }
             if (sb.length() > 0) {
@@ -449,6 +446,73 @@ public final class PlantUmlRenderer {
             sb.append(t);
         }
         return sb.toString();
+    }
+
+    /**
+     * エラー画像に含まれるノイズ (ジョークのバナー文言・PlantUML のバージョン表記や
+     * 「N 日前のバージョンです」という更新催促) を判定する。実際の診断
+     * ([From string (line N)]・失敗行・Syntax Error 等) だけを残すため除外する。
+     */
+    private static boolean isErrorImageNoise(String t) {
+        if (t.startsWith("An error has occured")
+                || t.contains("plan comes together")
+                || t.startsWith("Diagram size")) {
+            return true;
+        }
+        // バージョン表記 ("PlantUML 1.2026.2") と更新催促 (「N 日前のバージョンです」
+        // 「consider upgrading from https://plantuml.com/download」等) は原因と無関係で、
+        // 長文なので失敗メッセージを埋もれさせる。表記ゆれに広めに対応する。
+        String lower = t.toLowerCase(java.util.Locale.ROOT);
+        if (t.matches("(?i)^PlantUML\\s+[0-9].*")
+                || lower.contains("version of plantuml is")
+                || lower.contains("download the latest")
+                || lower.contains("consider upgrading")
+                || lower.contains("plantuml.com/download")
+                || lower.matches(".*\\bdays? old\\b.*")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * よく使われる HTML エンティティ (数値参照 &#NNN; / &#xHH; と主要な名前付き参照) を
+     * デコードする。PlantUML エラー SVG のテキスト表示用で、完全な HTML パーサではない。
+     */
+    static String decodeEntities(String s) {
+        if (s == null || s.indexOf('&') < 0) {
+            return s == null ? "" : s;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("&(#x?[0-9A-Fa-f]+|[a-zA-Z]+);").matcher(s);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String ref = m.group(1);
+            String rep;
+            if (ref.startsWith("#")) {
+                try {
+                    int cp = ref.startsWith("#x") || ref.startsWith("#X")
+                            ? Integer.parseInt(ref.substring(2), 16)
+                            : Integer.parseInt(ref.substring(1));
+                    rep = new String(Character.toChars(cp));
+                } catch (RuntimeException ex) {
+                    rep = m.group(0); // 不正な参照はそのまま残す
+                }
+            } else {
+                switch (ref) {
+                    case "nbsp": rep = " "; break;
+                    case "lt":   rep = "<"; break;
+                    case "gt":   rep = ">"; break;
+                    case "amp":  rep = "&"; break;
+                    case "quot": rep = "\""; break;
+                    case "apos": rep = "'"; break;
+                    default:     rep = m.group(0); break; // 未知の名前付き参照は保全
+                }
+            }
+            m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(rep));
+        }
+        m.appendTail(out);
+        // 非改行スペース (nbsp) は通常スペースへ畳んで trim/連結を素直にする。
+        return out.toString().replace(' ', ' ');
     }
 
     /** 診断テキスト中の {@code [From string (line N)} から行番号を取り出す。無ければ -1。 */

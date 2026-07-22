@@ -123,6 +123,8 @@ public class Setting {
     private int renderedTabs = 4;
     /** タブ内の上下分割 (プレビュー / ソース) の既定比率 (0.0〜1.0)。 */
     private double tabSplitRatio = 0.7;
+    /** 最後に図をエクスポートしたディレクトリ (空 = 未記憶。次回チューザの初期位置に使う)。 */
+    private String lastExportDirectory = "";
     /** 図の描画完了時に自動で全体表示 (Fit) するか。大きい図が毎回小さく開くのを防ぐ。 */
     private boolean autoFitOnRender = true;
 
@@ -279,6 +281,10 @@ public class Setting {
     }
     public boolean isAutoFitOnRender() { return autoFitOnRender; }
     public void setAutoFitOnRender(boolean v) { this.autoFitOnRender = v; }
+    public String getLastExportDirectory() { return lastExportDirectory; }
+    public void setLastExportDirectory(String v) {
+        this.lastExportDirectory = v != null ? v : "";
+    }
 
     /** 永続化済みの値から {@link DiagramStyle} を組み立てて返す。 */
     public DiagramStyle getStyle() {
@@ -403,6 +409,7 @@ public class Setting {
         props.setProperty("app.renderedTabs", Integer.toString(renderedTabs));
         props.setProperty("app.tabSplitRatio", Double.toString(tabSplitRatio));
         props.setProperty("app.autoFitOnRender", Boolean.toString(autoFitOnRender));
+        props.setProperty("app.lastExportDirectory", lastExportDirectory);
 
         try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f))) {
             props.storeToXML(bos, "Juml Settings");
@@ -517,6 +524,8 @@ public class Setting {
         s.tabSplitRatio = parseDoubleSafe(props.getProperty("app.tabSplitRatio"), 0.7);
         s.autoFitOnRender = parseBooleanSafe(
                 props.getProperty("app.autoFitOnRender"), true);
+        s.lastExportDirectory = stringOrDefault(
+                props.getProperty("app.lastExportDirectory"), "");
 
         return s;
     }

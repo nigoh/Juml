@@ -50,6 +50,9 @@ final class GotoLineBar extends JPanel {
 
         JLabel lbl = new JLabel(Messages.get("source.goto.label") + ":");
         field = new JTextField(10);
+        // スクリーンリーダーが「何を入力する欄か」を読み上げられるようラベルを関連付ける。
+        lbl.setLabelFor(field);
+        field.getAccessibleContext().setAccessibleName(Messages.get("source.goto.label"));
         info = new JLabel(" ");
         Color infoFg = javax.swing.UIManager.getColor("Label.disabledForeground");
         info.setForeground(infoFg != null ? infoFg : new Color(0x777777));

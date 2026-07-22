@@ -64,6 +64,22 @@ final class PumlCompletion {
     }
 
     /**
+     * キャレット位置から語の終端 (排他端) を返す。語中で補完を確定したとき、
+     * キャレット後方の語の残り (例: {@code cl|a} の {@code a}) も含めて候補で
+     * 置換するために使う ({@code classa} のような残余崩れを防ぐ)。
+     */
+    static int wordEnd(String text, int caret) {
+        if (text == null) {
+            return Math.max(0, caret);
+        }
+        int i = Math.max(0, Math.min(caret, text.length()));
+        while (i < text.length() && isWordChar(text.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    /**
      * {@code prefix} に前方一致する候補を、キーワード → 本文識別子の順で重複なく返す。
      * {@code prefix} 自身と完全一致する候補は除く (打ち終わっているため)。空 prefix は候補なし。
      */

@@ -25,6 +25,8 @@ final class ExportController {
     private final JLabel status;
     /** アクティブ図タブのプレビュー供給元 (付箋をエクスポートに含めるため)。null 可。 */
     private final java.util.function.Supplier<SvgPreviewPanel> activePreview;
+    /** 保存ダイアログの提案ファイル名の元になるアクティブタブ名の供給元。null を返してよい。 */
+    private java.util.function.Supplier<String> baseNameSupplier = () -> null;
 
     ExportController(Frame parent, DiagramState state, JLabel status) {
         this(parent, state, status, () -> null);
@@ -58,7 +60,104 @@ final class ExportController {
         JMenuItem copySvg = new JMenuItem(Messages.get("export.copySvg"));
         copySvg.addActionListener(e -> copySvgToClipboard());
         popup.add(copySvg);
+        JMenuItem copyUrl = new JMenuItem(Messages.get("export.copyUrl"));
+        // 図全文が外部の公開サーバー (plantuml.com) へ渡る URL になることを明示する
+        // (クローズド環境での意図しない情報共有を防ぐため)。
+        copyUrl.setToolTipText(Messages.get("export.copyUrl.tip"));
+        copyUrl.addActionListener(e -> copyShareUrl());
+        popup.add(copyUrl);
         return popup;
+    }
+
+    /** 提案ファイル名の元になるアクティブタブ名の供給元を設定する。 */
+    void setBaseNameSupplier(java.util.function.Supplier<String> supplier) {
+        this.baseNameSupplier = supplier != null ? supplier : () -> null;
+    }
+
+    /**
+     * 現在の図の PlantUML 共有 URL (公式サーバーの SVG 表示) をクリップボードへコピーする。
+     * URL 1 本で図を共有できる (PlantUML エコシステム標準のエンコード)。
+     */
+    private void copyShareUrl() {
+        if (state.currentPuml == null || state.currentPuml.isEmpty()) {
+            JOptionPane.showMessageDialog(parent,
+                    Messages.get("export.noDiagram"),
+                    Messages.get("export.title"), JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        try {
+            String url = PlantUmlUrlSharer.buildUrl(state.currentPuml);
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new java.awt.datatransfer.StringSelection(url), null);
+            status.setText(Messages.get("export.urlCopied"));
+        } catch (Exception ex) {
+            juml.util.AppLog.error(juml.util.ErrorCode.EXP_007, "ExportController",
+                    "PlantUML share URL copy failed", ex);
+            JOptionPane.showMessageDialog(parent,
+                    Messages.get("export.urlFailed") + ex.getMessage(),
+                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * 前回のエクスポート先ディレクトリと、アクティブタブ名から作った提案ファイル名を
+     * 保存チューザへ適用する。設定未初期化 (単体テスト等) では何もしない。
+     */
+    private void initChooser(JFileChooser fc, String ext) {
+        File dir = applyLastDirectory(fc);
+        String base = suggestBaseName(baseNameSupplier.get());
+        if (base != null) {
+            File parent = dir != null ? dir : fc.getCurrentDirectory();
+            fc.setSelectedFile(new File(parent,
+                    ext != null ? base + "." + ext : base));
+        }
+    }
+
+    /** 前回のエクスポート先ディレクトリだけをチューザへ適用する (一覧系の保存用)。 */
+    private File applyLastDirectory(JFileChooser fc) {
+        try {
+            String saved = juml.SettingManager.getInstance().getSetting()
+                    .getLastExportDirectory();
+            if (saved != null && !saved.isEmpty()) {
+                File d = new File(saved);
+                if (d.isDirectory()) {
+                    fc.setCurrentDirectory(d);
+                    return d;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // SettingManager 未初期化 (テスト) や破損時は既定位置のまま。
+        }
+        return null;
+    }
+
+    /**
+     * タブ名などの表示ラベルをファイル名として安全な形へ整形する。
+     * 使えない文字は {@code _} に置換し、空になれば null (提案しない)。
+     */
+    static String suggestBaseName(String label) {
+        if (label == null) {
+            return null;
+        }
+        String cleaned = label.trim()
+                .replaceAll("[\\\\/:*?\"<>|]", "_")
+                .replaceAll("\\s+", "_");
+        return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    /** 承認されたファイルの親ディレクトリを次回チューザの初期位置として記憶する。 */
+    private void rememberExportDirectory(File chosen) {
+        File parent = chosen != null ? chosen.getParentFile() : null;
+        if (parent == null) {
+            return;
+        }
+        try {
+            juml.SettingManager sm = juml.SettingManager.getInstance();
+            sm.getSetting().setLastExportDirectory(parent.getAbsolutePath());
+            sm.save();
+        } catch (RuntimeException ignored) {
+            // SettingManager 未初期化 (テスト) では記憶しない。
+        }
     }
 
     /** 指定フォーマットで保存ダイアログを開きエクスポートする。 */
@@ -80,6 +179,7 @@ final class ExportController {
         fc.setDialogTitle(Messages.get("export.saveDiagramAs") + " " + ext.toUpperCase());
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new FileNameExtensionFilter(filterDesc, ext));
+        initChooser(fc, ext);
         int r = fc.showSaveDialog(parent);
         if (r != JFileChooser.APPROVE_OPTION) {
             return;
@@ -91,6 +191,7 @@ final class ExportController {
         if (!DialogUtils.confirmOverwrite(parent, chosen)) {
             return;
         }
+        rememberExportDirectory(chosen);
         exportToFile(fmt, chosen);
     }
 
@@ -201,6 +302,7 @@ final class ExportController {
         fc.addChoosableFileFilter(png);
         fc.addChoosableFileFilter(puml);
         fc.setFileFilter(svg);
+        initChooser(fc, "svg");
         int r = fc.showSaveDialog(parent);
         if (r != JFileChooser.APPROVE_OPTION) {
             return;
@@ -221,6 +323,7 @@ final class ExportController {
         if (!DialogUtils.confirmOverwrite(parent, chosen)) {
             return;
         }
+        rememberExportDirectory(chosen);
         exportToFile(fmt, chosen);
     }
 
@@ -243,6 +346,7 @@ final class ExportController {
         fc.addChoosableFileFilter(mdFilter);
         fc.addChoosableFileFilter(csvFilter);
         fc.setFileFilter(mdFilter);
+        applyLastDirectory(fc);
         int r = fc.showSaveDialog(parent);
         if (r != JFileChooser.APPROVE_OPTION) {
             return;
@@ -258,6 +362,7 @@ final class ExportController {
         if (!DialogUtils.confirmOverwrite(parent, chosen)) {
             return;
         }
+        rememberExportDirectory(chosen);
         try {
             juml.app.cli.CliOutput.writeText(chosen, asCsv ? csv : markdown);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
@@ -282,6 +387,7 @@ final class ExportController {
         fc.setDialogTitle(dialogTitle);
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new FileNameExtensionFilter("Excel workbook (*.xlsx)", "xlsx"));
+        applyLastDirectory(fc);
         int r = fc.showSaveDialog(parent);
         if (r != JFileChooser.APPROVE_OPTION) {
             return;
@@ -293,6 +399,7 @@ final class ExportController {
         if (!DialogUtils.confirmOverwrite(parent, chosen)) {
             return;
         }
+        rememberExportDirectory(chosen);
         try (java.io.OutputStream os = new java.io.FileOutputStream(chosen)) {
             juml.core.formats.uml.MemberWorkbookExporter.write(classes, os);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());

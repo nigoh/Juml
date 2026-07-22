@@ -61,6 +61,8 @@ final class ActivitySketchCanvas extends JPanel {
     private final Listener listener;
 
     private ActivityNode selected;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
 
     // relayout() が再計算するレイアウト結果。
     private final Map<ActivityNode, Rectangle> bounds = new LinkedHashMap<>();
@@ -85,14 +87,15 @@ final class ActivitySketchCanvas extends JPanel {
 
             @Override public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
-                    selected = nodeAt(e.getPoint());
+                    selected = nodeAt(view.toModel(e.getPoint()));
                     repaint();
                     showPopup(e);
                 }
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || selected == null) {
+                if (e.getClickCount() != 2 || !editable || selected == null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected.getKind() == ActivityNode.Kind.ACTION
@@ -166,7 +169,11 @@ final class ActivitySketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        selected = nodeAt(e.getPoint());
+        // 中ボタンはパン (SketchViewport) 専用。選択として扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        selected = nodeAt(view.toModel(e.getPoint()));
         repaint();
         if (e.isPopupTrigger()) {
             showPopup(e);
@@ -403,7 +410,7 @@ final class ActivitySketchCanvas extends JPanel {
     @Override
     public Dimension getPreferredSize() {
         relayout();
-        return new Dimension(extentX, extentY);
+        return view.scaled(new Dimension(extentX, extentY));
     }
 
     // -------------------------------------------------------------------------
@@ -418,6 +425,7 @@ final class ActivitySketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             g2.setColor(new Color(0x37474F));
             g2.setStroke(new BasicStroke(1.2f));
             for (int[] e : edges) {
@@ -436,11 +444,19 @@ final class ActivitySketchCanvas extends JPanel {
             for (Map.Entry<ActivityNode, Rectangle> entry : bounds.entrySet()) {
                 paintNode(g2, entry.getKey(), entry.getValue());
             }
-            if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
-            }
         } finally {
             g2.dispose();
+        }
+        // バナーはズームに依らず読める大きさで描く (スケール適用外)。
+        if (!editable) {
+            Graphics2D overlay = (Graphics2D) g.create();
+            try {
+                overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                SketchBanner.paint(overlay, this, unsupported);
+            } finally {
+                overlay.dispose();
+            }
         }
     }
 

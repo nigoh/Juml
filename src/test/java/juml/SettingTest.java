@@ -126,6 +126,32 @@ public class SettingTest {
     }
 
     @Test
+    public void testLastExportDirectoryRoundTrip() throws IOException {
+        assertEquals("既定は未記憶 (空)", "", new Setting().getLastExportDirectory());
+        Setting original = new Setting();
+        original.setLastExportDirectory("/home/user/exports");
+        File file = tempFolder.newFile("settings-exportdir.xml");
+        original.saveToFile(file);
+        assertEquals("保存 → 読込でエクスポート先が保持される", "/home/user/exports",
+                Setting.loadFromFile(file).getLastExportDirectory());
+        // null は空へ正規化される (NPE 防止)。
+        original.setLastExportDirectory(null);
+        assertEquals("", original.getLastExportDirectory());
+    }
+
+    @Test
+    public void testLastExportDirectoryDefaultsEmptyWhenKeyMissing() throws IOException {
+        Setting original = new Setting();
+        File file = tempFolder.newFile("settings-exportdir-legacy.xml");
+        original.saveToFile(file);
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(file.toPath());
+        lines.removeIf(l -> l.contains("app.lastExportDirectory"));
+        java.nio.file.Files.write(file.toPath(), lines);
+        assertEquals("キーが無ければ既定 (空)", "",
+                Setting.loadFromFile(file).getLastExportDirectory());
+    }
+
+    @Test
     public void testStyleRoundTrip() throws IOException {
         Setting original = new Setting();
         DiagramStyle style = new DiagramStyle();
