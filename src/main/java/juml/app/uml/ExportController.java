@@ -61,6 +61,9 @@ final class ExportController {
         copySvg.addActionListener(e -> copySvgToClipboard());
         popup.add(copySvg);
         JMenuItem copyUrl = new JMenuItem(Messages.get("export.copyUrl"));
+        // 図全文が外部の公開サーバー (plantuml.com) へ渡る URL になることを明示する
+        // (クローズド環境での意図しない情報共有を防ぐため)。
+        copyUrl.setToolTipText(Messages.get("export.copyUrl.tip"));
         copyUrl.addActionListener(e -> copyShareUrl());
         popup.add(copyUrl);
         return popup;

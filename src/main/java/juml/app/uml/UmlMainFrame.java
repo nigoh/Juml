@@ -1168,24 +1168,38 @@ public class UmlMainFrame extends JFrame {
      * 「はい」で各下書きをエディタタブとして開き (未保存状態のまま)、「いいえ」で破棄する。
      */
     private void promptDraftRecovery() {
-        java.util.List<DraftStore.Draft> pending = tabPane.pendingDrafts();
-        if (pending.isEmpty()) {
-            return;
-        }
-        int choice = javax.swing.JOptionPane.showConfirmDialog(this,
-                java.text.MessageFormat.format(
-                        Messages.get("puml.draft.restoreAsk"), pending.size()),
+        promptDraftRecovery(count -> javax.swing.JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(Messages.get("puml.draft.restoreAsk"), count),
                 Messages.get("puml.draft.restoreTitle"),
                 javax.swing.JOptionPane.YES_NO_OPTION,
-                javax.swing.JOptionPane.QUESTION_MESSAGE);
+                javax.swing.JOptionPane.QUESTION_MESSAGE));
+    }
+
+    /**
+     * 復元プロンプトの「聞き方」を注入できる版 (テスト用)。{@code ask} は下書き件数を受け取り
+     * {@link javax.swing.JOptionPane} の YES/NO/CLOSED 相当の値を返す。
+     *
+     * @return 下書きがあり尋ねたら true、無くて何もしなければ false
+     */
+    boolean promptDraftRecovery(java.util.function.IntUnaryOperator ask) {
+        java.util.List<DraftStore.Draft> pending = tabPane.pendingDrafts();
+        if (pending.isEmpty()) {
+            return false;
+        }
+        int choice = ask.applyAsInt(pending.size());
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             for (DraftStore.Draft d : pending) {
                 tabPane.restoreDraft(d);
             }
-        } else {
-            // 提示した下書きだけを破棄する (別インスタンスの下書きを巻き添えにしない)。
+        } else if (choice == javax.swing.JOptionPane.NO_OPTION) {
+            // 「いいえ」を明示したときだけ破棄する。提示した下書きだけを消し、
+            // 別インスタンスの下書きは巻き添えにしない。
             tabPane.discardDrafts(pending);
         }
+        // Esc / ウィンドウクローズ (CLOSED_OPTION) は破棄しない: 下書きは保持し、
+        // 次回起動でまた尋ねる。クラッシュ保護が最も自然な離脱操作でデータ消失を
+        // 招かないための非破壊デフォルト。
+        return true;
     }
 
     /** アクティブタブのズーム率 (1.0 = 100%) をステータスバーのズームラベルへ反映する。 */

@@ -257,6 +257,66 @@ public class PlantUmlRendererErrorDetectionTest {
     }
 
     @Test
+    public void testExtractErrorDetailDecodesHtmlEntities() {
+        // PlantUML エラー SVG のテキストは HTML エンティティ符号化されている。
+        // &#160; (nbsp) がそのまま "&#160;" と生表示されず、デコード (空白) されること。
+        String svg = "<svg>"
+                + "<text>[From string (line 3) ]</text>"
+                + "<text>a &#160; b</text>"
+                + "<text>x &lt;T&gt; &amp; y</text>"
+                + "</svg>";
+        String detail = PlantUmlRenderer.extractErrorDetail(svg.getBytes(StandardCharsets.UTF_8));
+        assertFalse("生の &#160; が残ってはならない: " + detail, detail.contains("&#160;"));
+        assertFalse("生の &lt; が残ってはならない: " + detail, detail.contains("&lt;"));
+        assertTrue("< にデコードされるはず: " + detail, detail.contains("<T>"));
+        assertTrue("& にデコードされるはず: " + detail, detail.contains("& y"));
+    }
+
+    @Test
+    public void testExtractErrorDetailExcludesVersionNag() {
+        // PlantUML のバージョン表記と「N 日前のバージョン」催促はノイズとして除外する。
+        String svg = "<svg>"
+                + "<text>[From string (line 5) ]</text>"
+                + "<text>Syntax Error?</text>"
+                + "<text>PlantUML 1.2026.2</text>"
+                + "<text>&#160;</text>"
+                + "<text>This version of PlantUML is 185 days old, so you should "
+                + "download the latest version.</text>"
+                + "</svg>";
+        String detail = PlantUmlRenderer.extractErrorDetail(svg.getBytes(StandardCharsets.UTF_8));
+        assertTrue("実際の診断は残すはず: " + detail, detail.contains("Syntax Error"));
+        assertFalse("バージョン表記は除外: " + detail, detail.contains("PlantUML 1.2026"));
+        assertFalse("更新催促は除外: " + detail, detail.contains("days old"));
+        assertFalse("lone nbsp は空になり連結されない: " + detail, detail.contains("| |"));
+    }
+
+    @Test
+    public void testExtractErrorDetailExcludesUpgradePrompts() {
+        // 「consider upgrading from https://plantuml.com/download」等の更新催促も除外する。
+        String svg = "<svg>"
+                + "<text>[From string (line 5) ]</text>"
+                + "<text>Syntax Error?</text>"
+                + "<text>consider upgrading from https://plantuml.com/download</text>"
+                + "</svg>";
+        String detail = PlantUmlRenderer.extractErrorDetail(svg.getBytes(StandardCharsets.UTF_8));
+        assertTrue("診断は残すはず: " + detail, detail.contains("Syntax Error"));
+        assertFalse("更新催促 (consider upgrading) は除外: " + detail,
+                detail.contains("consider upgrading"));
+        assertFalse("plantuml.com/download は除外: " + detail,
+                detail.contains("plantuml.com/download"));
+    }
+
+    @Test
+    public void testDecodeEntitiesNumericAndNamed() {
+        assertEquals("A B", PlantUmlRenderer.decodeEntities("A&#160;B").replace(' ', ' '));
+        assertEquals("<a>", PlantUmlRenderer.decodeEntities("&lt;a&gt;"));
+        assertEquals("m&m", PlantUmlRenderer.decodeEntities("m&amp;m"));
+        assertEquals("no entities", PlantUmlRenderer.decodeEntities("no entities"));
+        // 未知の名前付き参照は保全する。
+        assertEquals("&foo;", PlantUmlRenderer.decodeEntities("&foo;"));
+    }
+
+    @Test
     public void testExtractErrorLineReturnsLineNumber() {
         // "[From string (line 7) ]" を含む detail 文字列から行番号 7 を返すことを確認する。
         String detail = "[From string (line 7) ] | bad line content";

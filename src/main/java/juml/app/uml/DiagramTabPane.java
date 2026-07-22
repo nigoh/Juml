@@ -2521,50 +2521,7 @@ public final class DiagramTabPane {
                         return;
                     }
                     if (error != null) {
-                        // エディタタブでは編集中テキストを描画結果で上書きしない。
-                        if (pumlOnError != null && !isEditor()) {
-                            sourcePanel.setText(pumlOnError);
-                        }
-                        // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を
-                        // 補正して) エディタ上で赤く強調し、原因箇所へ誘導する。
-                        if (isEditor() && editorPuml != null
-                                && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
-                            int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
-                                    .getErrorLine();
-                            if (genLine > 0) {
-                                // 生成テキストとエディタテキストを直接付き合わせ、prelude 挿入・
-                                // direction 行除去に関わらず正確な行へ写像する (#42)。
-                                String generated =
-                                        juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
-                                sourcePanel.highlightErrorLine(
-                                        PumlErrorLineMapper.editorLineForError(
-                                                editorPuml, generated, genLine));
-                            }
-                        }
-                        // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
-                        // (ユーザがそのまま報告できるようにする)。
-                        juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
-                        java.io.File dumped = RenderFailureLog.dump(
-                                label, pumlOnError, error, isEditor());
-                        copyableFailureText = buildFailureText(code, error, dumped);
-                        if (keepsLastGoodPreview()) {
-                            // 直前の正常な図を保持したまま、上端バナー + エラー行強調 +
-                            // ステータスで失敗を提示する (編集リズムを壊さない)。
-                            showLiveErrorBanner(code, error);
-                            setStatus(label + ": " + code.tag() + " "
-                                    + Messages.get("status.renderFailed") + " "
-                                    + failureReason(error));
-                            return;
-                        }
-                        previewPanel.setSvgGraphicsNode(null, 0, 0);
-                        renderedPuml = pumlOnError;
-                        renderedSvgXml = null;
-                        if (isActive()) {
-                            mirrorToState();
-                        }
-                        showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
-                        setStatus(label + ": " + code.tag() + " "
-                                + Messages.get("status.renderFailed") + " " + failureReason(error));
+                        onRenderError(error, pumlOnError, editorPuml);
                         return;
                     }
                     try {
@@ -2636,18 +2593,141 @@ public final class DiagramTabPane {
             return isEditor() && renderedSvgXml != null;
         }
 
-        /** 直前の正常な図の上端に失敗バナーを表示する (エディタのライブプレビュー用)。 */
-        private void showLiveErrorBanner(juml.util.ErrorCode code, Throwable error) {
+        /**
+         * 描画失敗時の後処理 (エラー行強調・ログ保存・失敗提示)。keep-last-good が使えるなら
+         * 直前の正常な図を保持したまま上端バナーで知らせ、そうでなければ従来の失敗カードを出す。
+         */
+        private void onRenderError(Throwable error, String pumlOnError, String editorPuml) {
+            // エディタタブでは編集中テキストを描画結果で上書きしない。
+            if (pumlOnError != null && !isEditor()) {
+                sourcePanel.setText(pumlOnError);
+            }
+            // エディタタブ: PlantUML が報告した失敗行を (prelude 挿入分を補正して)
+            // エディタ上で赤く強調し、原因箇所へ誘導する。
+            int editorLine = -1;
+            if (isEditor() && editorPuml != null
+                    && error instanceof juml.core.formats.uml.PlantUmlRenderFailedException) {
+                int genLine = ((juml.core.formats.uml.PlantUmlRenderFailedException) error)
+                        .getErrorLine();
+                if (genLine > 0) {
+                    // 生成テキストとエディタテキストを直接付き合わせ、prelude 挿入・
+                    // direction 行除去に関わらず正確な行へ写像する (#42)。
+                    String generated =
+                            juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
+                    editorLine = PumlErrorLineMapper.editorLineForError(
+                            editorPuml, generated, genLine);
+                    sourcePanel.highlightErrorLine(editorLine);
+                }
+            }
+            // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
+            // (ユーザがそのまま報告できるようにする)。
+            juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
+            java.io.File dumped = RenderFailureLog.dump(label, pumlOnError, error, isEditor());
+            copyableFailureText = buildFailureText(code, error, dumped);
+            if (keepsLastGoodPreview()) {
+                // 直前の正常な図を保持したまま、上端バナー + エラー行強調 +
+                // ステータスで失敗を提示する (編集リズムを壊さない)。
+                showLiveErrorBanner(code, error, editorLine);
+                setStatus(label + ": " + code.tag() + " "
+                        + Messages.get("status.renderFailed") + " " + failureReason(error));
+                return;
+            }
+            previewPanel.setSvgGraphicsNode(null, 0, 0);
+            renderedPuml = pumlOnError;
+            renderedSvgXml = null;
+            if (isActive()) {
+                mirrorToState();
+            }
+            showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
+            setStatus(label + ": " + code.tag() + " "
+                    + Messages.get("status.renderFailed") + " " + failureReason(error));
+        }
+
+        /**
+         * 直前の正常な図の上端に失敗バナーを表示する (エディタのライブプレビュー用)。
+         * {@code editorLine} が正なら「行 N」をエディタ基準の行番号で示す (生成ソースの
+         * 行番号ではなく、ユーザーが見ているエディタの行に合わせる)。
+         */
+        private void showLiveErrorBanner(juml.util.ErrorCode code, Throwable error,
+                                         int editorLine) {
             boolean dark = EditorColors.isDark();
             liveErrorBanner.setBackground(dark ? new Color(0x5A, 0x1D, 0x1D)
                     : new Color(0xFD, 0xEC, 0xEA));
             liveErrorBanner.setForeground(dark ? new Color(0xFF, 0xB4, 0xAB)
                     : new Color(0xB7, 0x1C, 0x1C));
-            liveErrorBanner.setText(code.tag() + " " + failureReason(error)
-                    + " — " + Messages.get("tab.liveError.keep"));
+            liveErrorBanner.setText(liveErrorText(code, error, editorLine));
             liveErrorBanner.setToolTipText(liveErrorBanner.getText());
+            // スクリーンリーダーが失敗を読み上げられるよう accessible name も更新する
+            // (色だけに頼らず、テキストとして失敗内容を伝える)。
+            liveErrorBanner.getAccessibleContext().setAccessibleName(liveErrorBanner.getText());
             liveErrorBanner.setVisible(true);
             showPreviewCard();
+        }
+
+        /**
+         * ライブ失敗バナーの文言を組み立てる。エディタ行が分かるときは「行 N」を先頭に置く。
+         * バナーは「どこが・何が」を素早く伝えるための短い手掛かりに徹し、エラー行自体は
+         * エディタ上で赤く強調される。PlantUML が失敗画像へ echo する生成ソース (prelude・
+         * skinparam 等) は原因と無関係なノイズなので、簡潔な診断だけを残す。全文は失敗カード
+         * (「エラー詳細をコピー」) 側に残る。
+         */
+        private String liveErrorText(juml.util.ErrorCode code, Throwable error, int editorLine) {
+            StringBuilder sb = new StringBuilder(code.tag()).append(' ');
+            if (editorLine > 0) {
+                sb.append(java.text.MessageFormat.format(
+                        Messages.get("tab.liveError.line"), editorLine)).append(' ');
+            }
+            String diag = liveErrorDiagnostic(error, editorLine);
+            if (!diag.isEmpty()) {
+                sb.append(diag).append(' ');
+            }
+            sb.append("— ").append(Messages.get("tab.liveError.keep"));
+            return sb.toString();
+        }
+
+        /** バナー診断語として拾う、実際の診断を示すキーワード (小文字比較)。 */
+        private static final String[] DIAGNOSTIC_KEYWORDS = {
+            "error", "syntax", "cannot", "unexpected", "expected", "missing",
+            "unknown", "invalid", "unrecognized", "not found", "duplicate", "illegal",
+        };
+
+        /**
+         * バナー用の簡潔な診断語を返す。PlantUML の失敗画像は「エラー」だけでなく周辺の
+         * 生成ソース行 (ユーザーの正常なクラス定義や injected prelude) まで echo するため、
+         * 実際の診断キーワードを含むセグメントだけを拾う。拾えなければ、行番号があるときは空
+         * (行番号 + エディタ上の赤帯で十分)、無ければ総称語 (構文エラー) を返す。全文は
+         * 失敗カード側に残る。
+         */
+        private String liveErrorDiagnostic(Throwable error, int editorLine) {
+            String detail = error instanceof juml.core.formats.uml.PlantUmlRenderFailedException
+                    ? ((juml.core.formats.uml.PlantUmlRenderFailedException) error).getErrorDetail()
+                    : failureReason(error);
+            if (detail == null || detail.isEmpty()) {
+                return editorLine > 0 ? "" : failureReason(error);
+            }
+            java.util.List<String> keep = new java.util.ArrayList<>();
+            for (String seg : detail.split("\\s*\\|\\s*")) {
+                String s = seg.trim();
+                if (!s.isEmpty() && looksDiagnostic(s)) {
+                    keep.add(s);
+                }
+            }
+            if (keep.isEmpty()) {
+                return editorLine > 0 ? "" : Messages.get("tab.liveError.syntax");
+            }
+            String joined = String.join(" | ", keep);
+            return joined.length() > 120 ? joined.substring(0, 119) + "…" : joined;
+        }
+
+        /** セグメントが実際の診断 (エラー語を含む) か。単なる echo されたソース行は false。 */
+        private boolean looksDiagnostic(String s) {
+            String lower = s.toLowerCase(java.util.Locale.ROOT);
+            for (String kw : DIAGNOSTIC_KEYWORDS) {
+                if (lower.contains(kw)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /** テスト用: ライブエラーバナーが表示中か。 */

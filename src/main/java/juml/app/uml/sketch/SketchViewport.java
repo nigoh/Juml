@@ -76,6 +76,24 @@ final class SketchViewport {
         };
         target.addMouseListener(pan);
         target.addMouseMotionListener(pan);
+
+        // 発見可能性: 操作方法をホバー툴チップで明示する (ズーム/パン/微調整には
+        // メニュー項目が無いため、キーだけ知っている人以外にも届くようにする)。
+        target.setToolTipText(juml.util.Messages.get("sketch.viewport.tip"));
+
+        // ズームリセット (Ctrl+0): 縮小しすぎて図が見失われても等倍へ戻せるようにする。
+        // UI 上にリセット手段が無いと MIN_ZOOM まで縮めたとき戻し方が分からなくなる。
+        int menuMask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        javax.swing.InputMap im =
+                target.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        javax.swing.ActionMap am = target.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_0, menuMask),
+                "sketch-zoom-reset");
+        am.put("sketch-zoom-reset", new javax.swing.AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                setZoom(1.0);
+            }
+        });
     }
 
     private void onWheel(MouseWheelEvent e) {

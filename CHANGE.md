@@ -4,6 +4,17 @@ Change log
 2.1
 --------
 
+* **GUI 実起動スクリーンショット + a11y/操作性監査で確定したバグ・改善を修正** (`PlantUmlRenderer` / `DiagramTabPane` / `UmlMainFrame` / `GotoLineBar` / `PumlCompletionPopup` / `ExportController` / `SketchViewport`)
+    * **背景**: Xvfb 上で `UmlMainFrame` を実起動して主要画面 (ウェルカム/エディタ/補完/keep-last-good 失敗/デザイナー、ライト+ダーク) を PNG 採取し、`gui-auditor` のコード監査と突き合わせて、実際に使えない/使いにくい箇所を洗い出した。
+    * **[Critical] 下書き復元プロンプトを Esc / ウィンドウクローズで閉じると全下書きが無警告削除されていた** (`UmlMainFrame.promptDraftRecovery`): `showConfirmDialog` は Esc/×で `CLOSED_OPTION` を返し、それが `else`(破棄) に落ちていた。クラッシュ保護が最も自然な離脱操作でデータ消失を招く重大バグ。明示的な「いいえ」(`NO_OPTION`) のときだけ破棄し、Esc/×では下書きを保持して次回また尋ねる非破壊デフォルトへ修正 (注入シーム化して回帰テスト `DraftRecoveryPromptTest`)。
+    * **失敗バナー/ステータスの `&#160;` エンティティ生表示とノイズを解消** (`PlantUmlRenderer.extractErrorDetail`): PlantUML のエラー SVG は診断テキストを HTML エンティティ符号化するため `&#160;` が生表示されていた。数値/名前付きエンティティをデコードし、バージョン表記・更新催促 (「N 日前」「consider upgrading」等) を除去。バナー・ステータス欄・エラーカードすべてが読みやすくなる。
+    * **keep-last-good 失敗バナーが「生成ソースの行番号」を表示してエディタ行数と食い違っていた** (`DiagramTabPane.showLiveErrorBanner`): 生成ソースの行 14 を表示していたが、ユーザーのエディタは 13 行。エディタ基準の「行 12」を表示し、診断は PlantUML が echo する周辺ソース行を除いてキーワードを含む実診断だけに絞り、1 行に収まる簡潔なバナーへ (全文は失敗カードに残す)。
+    * **[a11y] スクリーンリーダー対応の穴を既存規約に合わせて補修**: `GotoLineBar` の入力欄に `setLabelFor` + accessible name、失敗バナーに accessible name、補完ポップアップの選択候補・件数をフォーカスのあるエディタの accessible description へアナウンス (フォーカスを奪わない `JWindow` 候補リストの読み上げ穴を補う)。
+    * **[操作性] 図形デザイナーのズーム/パン/微調整を発見可能に** (`SketchViewport`): 全 6 キャンバスにホバーツールチップ (Ctrl+ホイール ズーム / 中ドラッグ パン / Ctrl+0 リセット / 矢印キー 微調整) を追加し、UI 上に無かったズームリセット手段 (`Ctrl+0`) を追加。縮小しすぎて図を見失っても等倍へ戻せる。
+    * **[プライバシー] 「PlantUML サーバー URL をコピー」に外部送信の警告ツールチップを追加** (`ExportController`): 図全文が公開サーバー plantuml.com へ渡る旨を明示し、クローズド環境での意図しない情報共有を防ぐ。
+    * テスト: `PlantUmlRendererErrorDetectionTest` (エンティティデコード・バージョン/更新催促除外・decodeEntities 4 ケース)、`DraftRecoveryPromptTest` (Esc 非破壊・明示 NO 破棄・下書きなし no-op)。GUI スクショ採取ハーネス `AccessibilityShotIT` を追加 (合否ではなく実画面確認用、headless-skip)。
+    * 目的: 「実際に動かしてアクセシビリティ・操作性のバグを確認」の要望に対し、実起動スクショで目視確認しながらデータ消失級の重大バグと a11y/発見可能性の穴を塞ぐため。
+
 * **bug-hunt ワークフロー (5 レンズ並列発見 → 敵対的検証) で確定した 9 バグ + UX 2 件を修正** (`SeqSketchCanvas` / `PumlEditorKeys` / `PumlCompletionPopup` / `PumlSourcePanel` / `DiagramTabPane` / `DraftStore` / 全キャンバス)
     * **[high] 中ボタンパンが選択メッセージ/参加者の並べ替えとして確定される (Seq)**: パン中も届く mouseDragged が並べ替えドラッグ扱いになっていた。左押下でのみドラッグを許可する leftDragArmed ガードを追加 (他キャンバスの dragOffset ガード相当)。左ドラッグの並べ替えは非破壊 (`SeqSketchCanvasPanGuardTest`)。
     * **[med] 選択範囲があるとき Enter / `( { "` が選択を置換しない**: 既定エディタの選択置換挙動からの退行。Enter は選択削除 + 自動インデント、開き文字は選択を対で囲む (VS Code の surround)、閉じ文字は選択を置換するよう `newlineFor`/`typedOpenFor`/`typedCloseFor` を追加。

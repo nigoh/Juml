@@ -158,6 +158,10 @@ final class PumlCompletionPopup {
         ensureWindow();
         list.setSelectedIndex(0);
         list.setVisibleRowCount(Math.min(VISIBLE_ROWS, model.size()));
+        // スクリーンリーダー向けに、候補件数と先頭候補をエディタの accessible name へ
+        // 反映する (フォーカスを奪わない JWindow の候補リストは単独では読み上げられない
+        // ため、フォーカスのあるエディタ側で件数・選択候補をアナウンスできるようにする)。
+        announceSelection();
         window.pack();
         Point at = popupLocation(caret);
         if (at == null) {
@@ -212,6 +216,7 @@ final class PumlCompletionPopup {
     void hide() {
         if (window != null && window.isVisible()) {
             window.setVisible(false);
+            clearAnnouncement();
         }
     }
 
@@ -311,6 +316,27 @@ final class PumlCompletionPopup {
         int idx = Math.max(0, Math.min(size - 1, list.getSelectedIndex() + delta));
         list.setSelectedIndex(idx);
         list.ensureIndexIsVisible(idx);
+        announceSelection();
+    }
+
+    /**
+     * 現在の選択候補と件数をエディタの accessible name へ反映する
+     * (フォーカスを持つエディタ経由でスクリーンリーダーへ選択変化を伝える)。
+     */
+    private void announceSelection() {
+        if (list == null || model.isEmpty()) {
+            return;
+        }
+        String sel = list.getSelectedValue();
+        String announce = java.text.MessageFormat.format(
+                juml.util.Messages.get("puml.completion.a11y"),
+                sel != null ? sel : "", list.getSelectedIndex() + 1, model.size());
+        pane.getAccessibleContext().setAccessibleDescription(announce);
+    }
+
+    /** 補完ポップアップを閉じたら、エディタの補完アナウンスもクリアする。 */
+    private void clearAnnouncement() {
+        pane.getAccessibleContext().setAccessibleDescription(null);
     }
 
     /** テスト用: 現在表示中の候補数 (非表示なら 0)。 */
