@@ -54,7 +54,22 @@ public final class DiagramTabPane {
     private final int fixedSuffix;
     private final Map<String, DiagramTab> openTabs = new LinkedHashMap<>();
     /** 閉じたタブの再オープン用スタック (Ctrl+Shift+T)。各要素は軽量な再オープンクロージャ。 */
-    private final Deque<Runnable> closedTabs = new ArrayDeque<>();
+    private final Deque<ClosedTabEntry> closedTabs = new ArrayDeque<>();
+
+    /**
+     * 閉じたタブ履歴の 1 エントリ。図タブの再オープン ({@code openDiagram}) は
+     * プロジェクト読込済みが前提のため、その要否を持たせて実行前に判定できるようにする
+     * (読込中に実行すると無言 no-op になり、履歴だけが消費されてしまう)。
+     */
+    private static final class ClosedTabEntry {
+        final boolean needsProject;
+        final Runnable reopen;
+
+        ClosedTabEntry(boolean needsProject, Runnable reopen) {
+            this.needsProject = needsProject;
+            this.reopen = reopen;
+        }
+    }
     /** 再オープン履歴の上限。古い履歴を捨ててメモリを抑える。 */
     private static final int MAX_CLOSED_HISTORY = 10;
     /** 図タブのメモリ抑制 (LRU クローズ / 描画解放) を担う協調オブジェクト。 */
@@ -1559,13 +1574,29 @@ public final class DiagramTabPane {
      * {@link javax.swing.JOptionPane} の YES/NO/CANCEL 相当の値を返す。
      */
     boolean confirmDiscardAllEdits(java.util.function.ToIntFunction<String> ask) {
+        java.util.List<DiagramTab> discarded = new ArrayList<>();
         for (DiagramTab t : new ArrayList<>(openTabs.values())) {
             if (t.isEditor() && t.dirty) {
                 tabs.setSelectedComponent(t); // どのタブの確認かユーザーに見せる
-                if (!confirmDiscardEdits(t, ask)) {
+                int choice = ask.applyAsInt(t.label);
+                if (choice == javax.swing.JOptionPane.YES_OPTION) {
+                    if (!savePumlEditor(t, false)) {
+                        return false; // 保存キャンセル → 終了中止 (破棄済みタブは無し)
+                    }
+                } else if (choice == javax.swing.JOptionPane.NO_OPTION) {
+                    discarded.add(t);
+                } else {
+                    // キャンセル → 終了中止。ここまで NO を選んだタブの下書きは
+                    // まだ消していないので、開いたままのタブのクラッシュ保護は無傷。
                     return false;
                 }
             }
+        }
+        // 全タブの確認が通った = 終了が確定。破棄を選んだタブの下書きをここで消す
+        // (残すと正常終了なのに次回起動で偽のクラッシュ復元プロンプトが出る)。
+        for (DiagramTab t : discarded) {
+            t.stopDraftTimer();
+            drafts.delete(t.key);
         }
         return true;
     }
@@ -1592,14 +1623,12 @@ public final class DiagramTabPane {
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
         }
-        if (choice == javax.swing.JOptionPane.NO_OPTION) {
-            // ユーザーが明示的に「破棄」したので下書きも消す。残すと正常終了なのに
-            // 次回起動で「前回異常終了の未保存編集」として破棄済み内容が復活してしまう。
-            tab.stopDraftTimer();
-            drafts.delete(tab.key);
-            return true;
-        }
-        return false;
+        // NO (破棄): 下書きの削除はここでは行わない。破棄が「確定」するのはタブが実際に
+        // 閉じるとき (closeTab が削除する) か、終了時に全タブの確認が通ったとき
+        // (confirmDiscardAllEdits が最後にまとめて削除する)。ここで即削除すると、
+        // 終了経路で後続タブの Cancel により終了が中止された場合に、開いたままの
+        // dirty タブからクラッシュ復元保護だけが失われる。
+        return choice == javax.swing.JOptionPane.NO_OPTION;
     }
 
     private void pushClosedTab(DiagramTab tab) {
@@ -1608,14 +1637,16 @@ public final class DiagramTabPane {
             final String text = tab.sourcePanel.getText();
             final java.io.File file = tab.editorFile;
             final boolean wasDirty = tab.dirty;
-            closedTabs.push(() -> openPumlEditor(text, file, wasDirty));
+            closedTabs.push(new ClosedTabEntry(false,
+                    () -> openPumlEditor(text, file, wasDirty)));
         } else {
             final String key = tab.key;
             final String label = tab.label;
             final TreeNodeIcon icon = tab.icon;
             final DiagramRequest spec = tab.spec;
             final TreeNodeOpenRequest treeSync = tab.treeSync;
-            closedTabs.push(() -> openDiagram(key, label, icon, spec, treeSync));
+            closedTabs.push(new ClosedTabEntry(true,
+                    () -> openDiagram(key, label, icon, spec, treeSync)));
         }
         while (closedTabs.size() > MAX_CLOSED_HISTORY) {
             closedTabs.removeLast();
@@ -1662,12 +1693,19 @@ public final class DiagramTabPane {
      * {@link #openDiagram} 側でフォーカスのみ移す。履歴が空なら案内ステータスを出す。
      */
     public void reopenLastClosedTab() {
-        Runnable reopen = closedTabs.poll();
-        if (reopen != null) {
-            reopen.run();
-        } else {
+        ClosedTabEntry entry = closedTabs.peek();
+        if (entry == null) {
             reportStatus(Messages.get("status.noClosedTab"));
+            return;
         }
+        if (entry.needsProject && !cache.isLoaded()) {
+            // プロジェクト読込中/未読込では openDiagram が無言 no-op になるため、
+            // 履歴を消費せず案内だけ出す (読込完了後に再度 Ctrl+Shift+T で復元できる)。
+            reportStatus(Messages.get("status.reopenNeedsProject"));
+            return;
+        }
+        closedTabs.poll();
+        entry.reopen.run();
     }
 
     /** Alt+Left: 直前にフォーカスしていたタブに戻る。 */

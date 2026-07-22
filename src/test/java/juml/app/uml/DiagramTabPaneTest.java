@@ -173,6 +173,30 @@ public class DiagramTabPaneTest {
     }
 
     @Test
+    public void reopenClosedDiagramTab_whileProjectUnloaded_keepsHistory() {
+        juml.core.formats.uml.JavaClassInfo ci = classInfo("com.example.KeepHist");
+        TreeNodeOpenRequest req = TreeNodeOpenRequest.classNode(ci);
+        GuiActionRunner.execute(() -> pane.addOrFocusTab(req));
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+        assertEquals(1, (int) GuiActionRunner.execute(() -> pane.closedTabHistorySize()));
+
+        // プロジェクト未ロード (再読込中/キャンセル後相当) では openDiagram が no-op に
+        // なるため、履歴を消費せず案内だけ出す。
+        cache.clear();
+        int before = GuiActionRunner.execute(() -> tabs.getTabCount());
+        GuiActionRunner.execute(() -> pane.reopenLastClosedTab());
+        assertEquals("未ロード中はタブを復元しない", before,
+                (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+        assertEquals("履歴は消費されず残るはず", 1,
+                (int) GuiActionRunner.execute(() -> pane.closedTabHistorySize()));
+
+        // 読み込みが完了すれば同じ履歴から復元できる。
+        cache.setLoadedRootForTest(new java.io.File(System.getProperty("java.io.tmpdir")));
+        GuiActionRunner.execute(() -> pane.reopenLastClosedTab());
+        assertEquals(before + 1, (int) GuiActionRunner.execute(() -> tabs.getTabCount()));
+    }
+
+    @Test
     public void reopenLastClosedTab_whenHistoryEmpty_isNoOp() {
         // 閉じた履歴がない状態で呼んでもタブ数は変わらず例外も出ない。
         int before = GuiActionRunner.execute(() -> tabs.getTabCount());

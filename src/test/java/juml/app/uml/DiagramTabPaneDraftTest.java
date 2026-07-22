@@ -101,6 +101,25 @@ public class DiagramTabPaneDraftTest {
     }
 
     @Test
+    public void exitDiscardThenCancel_keepsDraftOfDiscardedTab() {
+        // タブ A で「破棄 (NO)」→ タブ B で「キャンセル」= 終了中止。
+        // A は開いたまま dirty のままなので、クラッシュ復元用の下書きも残るべき。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML + "' B\n", null, true));
+        assertEquals(2, store.loadAll().size());
+        java.util.concurrent.atomic.AtomicInteger asked =
+                new java.util.concurrent.atomic.AtomicInteger();
+        boolean canExit = GuiActionRunner.execute(() ->
+                pane.confirmDiscardAllEdits(label ->
+                        asked.getAndIncrement() == 0
+                                ? javax.swing.JOptionPane.NO_OPTION
+                                : javax.swing.JOptionPane.CANCEL_OPTION));
+        assertTrue("キャンセルで終了は中止されるはず", !canExit);
+        assertEquals("終了が中止されたら下書きは 1 件も消えないはず",
+                2, store.loadAll().size());
+    }
+
+    @Test
     public void discardAllDrafts_leavesNothing() {
         store.save("k1", PUML, null, "a");
         store.save("k2", PUML, null, "b");

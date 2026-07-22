@@ -53,8 +53,12 @@ final class PumlCompletionPopup {
     private JList<String> list;
     /** プログラム起因のドキュメント変更 (確定挿入など) 中は自動表示を抑止する。 */
     private boolean suppressAutoShow;
-    /** 現在の候補リストを生成した接頭辞。キャレット移動での陳腐化検出に使う。 */
-    private String shownPrefix = "";
+    /**
+     * 現在の候補リストを生成した語の開始オフセット。キャレットが別の語へ移った
+     * (= 語頭が変わった) ことの検出に使う。接頭辞文字列の比較にしないのは、同じ語内の
+     * タイプ継続でも接頭辞は毎キー変わり、hide → 再 show のちらつきになるため。
+     */
+    private int shownWordStart = -1;
 
     PumlCompletionPopup(JTextComponent pane, BiConsumer<String, String> onAccept) {
         this.pane = pane;
@@ -70,13 +74,15 @@ final class PumlCompletionPopup {
                 // 属性変更 (シンタックスハイライト) では反応しない。
             }
         });
-        // クリック等でキャレットだけ動いたとき、古い位置の候補を出しっぱなしにしない。
-        // 候補を生成した接頭辞と一致しなくなったら隠す (別の語の途中へ移動した場合、
-        // 残ったまま確定すると無関係な残余が挿入されるため)。タイプ継続の再表示は
-        // DocumentListener 経由の更新が担う。
+        // クリック等でキャレットが別の語へ動いたとき、古い位置の候補を出しっぱなしにしない
+        // (残ったまま確定すると無関係な語への誤挿入になる)。同じ語内のタイプ継続では
+        // 語頭が変わらないため隠さず、DocumentListener 経由の更新が絞り込みを行う。
         pane.addCaretListener(e -> {
-            if (isVisible()
-                    && !PumlCompletion.wordPrefix(text(), e.getDot()).equals(shownPrefix)) {
+            if (!isVisible()) {
+                return;
+            }
+            String prefix = PumlCompletion.wordPrefix(text(), e.getDot());
+            if (e.getDot() - prefix.length() != shownWordStart) {
                 hide();
             }
         });
@@ -148,7 +154,7 @@ final class PumlCompletionPopup {
         for (String c : candidates) {
             model.addElement(c);
         }
-        shownPrefix = prefix;
+        shownWordStart = caret - prefix.length();
         ensureWindow();
         list.setSelectedIndex(0);
         list.setVisibleRowCount(Math.min(VISIBLE_ROWS, model.size()));

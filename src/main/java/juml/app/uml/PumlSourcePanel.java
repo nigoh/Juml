@@ -675,23 +675,26 @@ public class PumlSourcePanel extends JPanel {
                 insertCompletion(textPane.getCaretPosition(), prefix, candidate));
     }
 
-    /** 打ちかけの語 {@code prefix} の続き (候補の残り) をキャレット位置 {@code at} へ挿入する。 */
+    /** 打ちかけの語 {@code prefix} (キャレット直前) を候補で置換する。 */
     private void insertCompletion(int at, String prefix, String candidate) {
         if (!textPane.isEditable()) {
             return;
         }
-        // 候補が現在の接頭辞と対応しない (キャレット移動などで陳腐化した) 確定は無視する。
-        // substring だけだと無関係な残余が挿入される。
-        if (!candidate.startsWith(prefix)) {
+        // 候補生成 (PumlCompletion.matches) は大文字小文字を区別しないため、検証も
+        // case-insensitive で行う ("CLA" → "class" の確定を黙殺しない)。対応しない
+        // 確定 (陳腐化ポップアップ由来) は無視する。
+        if (!candidate.toLowerCase(java.util.Locale.ROOT)
+                .startsWith(prefix.toLowerCase(java.util.Locale.ROOT))) {
             return;
         }
-        String remainder = candidate.length() >= prefix.length()
-                ? candidate.substring(prefix.length()) : candidate;
         StyledDocument doc = textPane.getStyledDocument();
-        int pos = Math.min(at, doc.getLength());
+        int end = Math.min(at, doc.getLength());
+        int start = Math.max(0, end - prefix.length());
         try {
-            doc.insertString(pos, remainder, null);
-            textPane.setCaretPosition(Math.min(pos + remainder.length(), doc.getLength()));
+            // 接頭辞ごと候補で置換し、大文字小文字のゆらぎも候補どおりに揃える。
+            doc.remove(start, end - start);
+            doc.insertString(start, candidate, null);
+            textPane.setCaretPosition(Math.min(start + candidate.length(), doc.getLength()));
         } catch (BadLocationException ignored) {
             return;
         }

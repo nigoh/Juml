@@ -102,6 +102,15 @@ public class PumlSourcePanelEditorKeysTest {
     }
 
     @Test
+    public void caseInsensitiveCompletion_replacesPrefixWithCandidate() {
+        // 候補生成は case-insensitive ("CLA" → "class") なので、確定も同じ基準で受理し、
+        // 接頭辞ごと候補で置換して大文字小文字を候補どおりに揃える。
+        PumlSourcePanel panel = editable("CLA", 3);
+        GuiActionRunner.execute(() -> panel.applyCompletionForTest("class"));
+        assertEquals("class", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
     public void editorActions_doNothingWhenReadOnly() {
         PumlSourcePanel readOnly = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> readOnly.setText("class A\n"));

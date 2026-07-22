@@ -694,7 +694,9 @@ final class SeqSketchCanvas extends JPanel {
             int row = Math.max(0, Math.round((dragPoint.y - firstRowY()) / (float) ROW_H));
             int y = firstRowY() + Math.min(row, Math.max(0, messageCount() - 1)) * ROW_H;
             g2.setStroke(new BasicStroke(2f));
-            g2.drawLine(MARGIN_X / 2, y, getWidth() - MARGIN_X / 2, y);
+            // getWidth() はビュー座標なので、スケール適用中のモデル座標系へ換算する。
+            int modelWidth = (int) Math.ceil(getWidth() / view.zoom());
+            g2.drawLine(MARGIN_X / 2, y, modelWidth - MARGIN_X / 2, y);
         } else if (selectedParticipant != null) {
             g2.setStroke(new BasicStroke(2f));
             g2.drawLine(dragPoint.x, HEAD_TOP, dragPoint.x, bottomY() + 20);
