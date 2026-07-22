@@ -37,7 +37,9 @@ import java.lang.reflect.Method;
  */
 public class AccessibilityShotIT {
 
-    private static final String OUT_DIR = "/home/user/Juml/build/screenshots/";
+    // 出力先はビルドディレクトリ相対で解決する (CI のチェックアウト先でも書ける)。
+    private static final String OUT_DIR =
+            System.getProperty("user.dir") + "/build/screenshots/";
     private FrameFixture window;
     private Robot robot;
 
@@ -136,13 +138,22 @@ public class AccessibilityShotIT {
     // スクショ
     // ------------------------------------------------------------------
 
-    private void shot(String name) throws Exception {
+    private void shot(String name) {
         // JWindow ポップアップやダイアログも含めるため画面全体を採取する。
-        java.awt.Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
-        BufferedImage img = robot.createScreenCapture(new Rectangle(0, 0, d.width, d.height));
-        File out = new File(OUT_DIR + name + ".png");
-        ImageIO.write(img, "png", out);
-        System.out.println("[AccessibilityShot] " + out.getName() + " " + out.length() + "B");
+        // これは合否判定ではなく目視レビュー用の画像採取ハーネスなので、書き出しに
+        // 失敗しても (CI で書き込み不可・エンコーダ差異など) テストは落とさない
+        // (既存の録画 IT と同じ非致命方針)。
+        try {
+            java.awt.Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
+            BufferedImage img = robot.createScreenCapture(new Rectangle(0, 0, d.width, d.height));
+            File out = new File(OUT_DIR + name + ".png");
+            if (ImageIO.write(img, "png", out)) {
+                System.out.println("[AccessibilityShot] " + out.getName() + " "
+                        + out.length() + "B");
+            }
+        } catch (Exception ex) {
+            System.err.println("[AccessibilityShot] 書き出し失敗 " + name + ": " + ex.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------
