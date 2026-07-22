@@ -163,13 +163,27 @@ final class PumlEditorKeys {
     /**
      * 開き文字のタイプ: 直後が行末・空白・閉じ括弧なら閉じ文字とペアで挿入して
      * 間にキャレットを置く。そうでなければ 1 文字だけ挿入する。
-     * 引用符は直後が同じ引用符ならオーバータイプ (挿入せず通過) する。
+     * 引用符は直後が同じ引用符ならオーバータイプ (挿入せず通過) し、行内に
+     * 閉じられていない引用符があるとき (= 閉じの入力) は単独で挿入する。
      */
     static Edit typedOpen(String text, int caret, char open) {
         char close = closingFor(open);
         char next = caret < text.length() ? text.charAt(caret) : '\n';
-        if (open == '"' && next == '"') {
-            return new Edit(caret, caret, "", caret + 1, caret + 1);
+        if (open == '"') {
+            if (next == '"') {
+                return new Edit(caret, caret, "", caret + 1, caret + 1);
+            }
+            // 行内でキャレットより前の引用符が奇数個 = 開いたまま。この入力は
+            // 「閉じ」なのでペア挿入せず 1 文字だけ入れる (`"label` + `"` → `"label"`)。
+            int count = 0;
+            for (int i = lineStart(text, caret); i < caret; i++) {
+                if (text.charAt(i) == '"') {
+                    count++;
+                }
+            }
+            if (count % 2 == 1) {
+                return new Edit(caret, caret, "\"", caret + 1, caret + 1);
+            }
         }
         boolean pair = next == '\n' || next == ' ' || next == '\t'
                 || next == ')' || next == '}' || next == ']';
@@ -177,6 +191,39 @@ final class PumlEditorKeys {
             return new Edit(caret, caret, "" + open + close, caret + 1, caret + 1);
         }
         return new Edit(caret, caret, String.valueOf(open), caret + 1, caret + 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // 純ロジック: 選択範囲を考慮した入力 (既定エディタの「選択置換」挙動を保つ)
+    // -------------------------------------------------------------------------
+
+    /** Enter: 選択があれば選択を削除してから自動インデント改行を挿入する。 */
+    static Edit newlineFor(String text, int selStart, int selEnd) {
+        if (selEnd > selStart) {
+            String remaining = text.substring(0, selStart) + text.substring(selEnd);
+            Edit e = newlineAt(remaining, selStart);
+            return new Edit(selStart, selEnd, e.replacement, e.selStart, e.selEnd);
+        }
+        return newlineAt(text, selEnd);
+    }
+
+    /** 開き文字: 選択があれば選択テキストを対で囲む (VS Code の surround 挙動)。 */
+    static Edit typedOpenFor(String text, int selStart, int selEnd, char open) {
+        if (selEnd > selStart) {
+            String inner = text.substring(selStart, selEnd);
+            return new Edit(selStart, selEnd, open + inner + closingFor(open),
+                    selStart + 1, selEnd + 1);
+        }
+        return typedOpen(text, selEnd, open);
+    }
+
+    /** 閉じ文字: 選択があれば選択を置換して挿入する。 */
+    static Edit typedCloseFor(String text, int selStart, int selEnd, char close) {
+        if (selEnd > selStart) {
+            return new Edit(selStart, selEnd, String.valueOf(close),
+                    selStart + 1, selStart + 1);
+        }
+        return typedClose(text, selEnd, close);
     }
 
     /** 閉じ文字のタイプ: 直後が同じ閉じ文字ならオーバータイプ、そうでなければ挿入。 */
@@ -315,7 +362,7 @@ final class PumlEditorKeys {
 
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "juml-newline");
         am.put("juml-newline", act(pane, compound,
-                (text, sel) -> newlineAt(text, sel[1])));
+                (text, sel) -> newlineFor(text, sel[0], sel[1])));
 
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, InputEvent.ALT_DOWN_MASK),
                 "juml-line-up");
@@ -351,8 +398,8 @@ final class PumlEditorKeys {
                                   boolean opening) {
         im.put(KeyStroke.getKeyStroke(ch), key);
         am.put(key, act(pane, compound, (text, sel) -> opening
-                ? typedOpen(text, sel[1], ch)
-                : typedClose(text, sel[1], ch)));
+                ? typedOpenFor(text, sel[0], sel[1], ch)
+                : typedCloseFor(text, sel[0], sel[1], ch)));
     }
 
     /** 編集計算 (text, {selStart, caret}) → Edit。null なら何もしない。 */

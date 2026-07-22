@@ -94,7 +94,8 @@ final class ActivitySketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || selected == null) {
+                if (e.getClickCount() != 2 || !editable || selected == null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected.getKind() == ActivityNode.Kind.ACTION

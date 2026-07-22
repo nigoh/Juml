@@ -124,6 +124,64 @@ public class PumlEditorKeysTest {
         assertEquals(")", e.replacement);
     }
 
+    @Test
+    public void typedOpen_quoteClosesOpenQuoteWithoutPairing() {
+        // 行内に開いたままの引用符があるとき、この入力は「閉じ」なのでペア挿入しない。
+        PumlEditorKeys.Edit e = PumlEditorKeys.typedOpen("\"label\n", 6, '"');
+        assertEquals("\"", e.replacement);
+    }
+
+    @Test
+    public void typedOpen_quoteAfterClosedPairOpensNewPair() {
+        // 直前のペアが閉じていれば次の入力は新しい開き引用符としてペア挿入する。
+        PumlEditorKeys.Edit e = PumlEditorKeys.typedOpen("\"a\" \n", 4, '"');
+        assertEquals("\"\"", e.replacement);
+    }
+
+    // -------------------------------------------------------------------------
+    // 選択範囲の置換 (既定エディタ挙動の維持)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void newlineFor_replacesSelection() {
+        String text = "  foo bar\n";
+        // "foo" を選択して Enter → 選択が消え、インデント維持の改行に置換される。
+        PumlEditorKeys.Edit e = PumlEditorKeys.newlineFor(text, 2, 5);
+        assertEquals("  \n   bar\n", applied(text, e));
+    }
+
+    @Test
+    public void typedOpenFor_wrapsSelectionInPair() {
+        String text = "note Hello here\n";
+        PumlEditorKeys.Edit e = PumlEditorKeys.typedOpenFor(text, 5, 10, '(');
+        assertEquals("note (Hello) here\n", applied(text, e));
+        // 選択は囲まれた内側テキストを指し続ける。
+        assertEquals(6, e.selStart);
+        assertEquals(11, e.selEnd);
+    }
+
+    @Test
+    public void typedOpenFor_wrapsSelectionInQuotes() {
+        String text = "label x\n";
+        PumlEditorKeys.Edit e = PumlEditorKeys.typedOpenFor(text, 6, 7, '"');
+        assertEquals("label \"x\"\n", applied(text, e));
+    }
+
+    @Test
+    public void typedCloseFor_replacesSelection() {
+        String text = "(abc\n";
+        PumlEditorKeys.Edit e = PumlEditorKeys.typedCloseFor(text, 1, 4, ')');
+        assertEquals("()\n", applied(text, e));
+        assertEquals(2, e.selStart);
+    }
+
+    @Test
+    public void selectionlessVariants_delegateToCaretBehavior() {
+        assertEquals("\n", PumlEditorKeys.newlineFor("x", 1, 1).replacement);
+        assertEquals("()", PumlEditorKeys.typedOpenFor("x ", 2, 2, '(').replacement);
+        assertEquals("", PumlEditorKeys.typedCloseFor("()", 1, 1, ')').replacement);
+    }
+
     // -------------------------------------------------------------------------
     // 行移動
     // -------------------------------------------------------------------------

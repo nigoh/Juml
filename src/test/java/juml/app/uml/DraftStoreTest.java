@@ -94,4 +94,19 @@ public class DraftStoreTest {
         store.save("k", text, null, "日本語.puml");
         assertEquals(text, store.loadAll().get(0).text);
     }
+
+    @Test
+    public void save_leavesNoTemporaryFiles() throws Exception {
+        // アトミック書き込みの一時ファイル (.tmp) が置換後に残らないこと。
+        File dir = tmp.newFolder("drafts");
+        DraftStore store = new DraftStore(dir);
+        store.save("k", TEXT, null, "a");
+        store.save("k", TEXT + "x", null, "a");
+        String[] names = dir.list();
+        assertEquals("本文 + メタの 2 ファイルだけのはず: " + java.util.Arrays.toString(names),
+                2, names.length);
+        for (String n : names) {
+            assertTrue("一時ファイルが残ってはならない: " + n, !n.endsWith(".tmp"));
+        }
+    }
 }

@@ -76,6 +76,12 @@ final class SeqSketchCanvas extends JPanel {
     /** ドラッグ中のマウス位置 (並べ替えのゴースト描画用。null = ドラッグ中でない)。 */
     private Point dragPoint;
     private boolean draggedSinceMousePress;
+    /**
+     * 左ボタン押下で並べ替えドラッグを許可した状態か。中ボタンパン (SketchViewport) 中も
+     * mouseDragged は届くため、これが無いと直前に選択した要素がパン終了地点へ
+     * 並べ替えられてしまう (他キャンバスの dragOffset ガードに相当)。
+     */
+    private boolean leftDragArmed;
 
     SeqSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -96,7 +102,8 @@ final class SeqSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || messageMode != null) {
+                if (e.getClickCount() != 2 || !editable || messageMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selectedItem != null) {
@@ -326,6 +333,9 @@ final class SeqSketchCanvas extends JPanel {
         selectAt(mp);
         draggedSinceMousePress = false;
         dragPoint = null;
+        // 左押下で並べ替えドラッグを許可する (中ボタンパン中の mouseDragged が
+        // 選択済み要素の並べ替えとして確定されるのを防ぐアーミング)。
+        leftDragArmed = true;
         repaint();
     }
 
@@ -358,7 +368,7 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || messageMode != null
+        if (!editable || !leftDragArmed || messageMode != null
                 || (selectedItem == null && selectedParticipant == null)) {
             return;
         }
@@ -368,6 +378,7 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
+        leftDragArmed = false;
         if (e.isPopupTrigger()) {
             selectAt(view.toModel(e.getPoint()));
             repaint();

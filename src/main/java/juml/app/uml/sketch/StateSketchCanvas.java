@@ -90,7 +90,8 @@ final class StateSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || transitionMode) {
+                if (e.getClickCount() != 2 || !editable || transitionMode
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {

@@ -88,7 +88,8 @@ final class UseCaseSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || relationMode != null) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {

@@ -100,7 +100,8 @@ final class SketchCanvas extends JPanel {
             @Override public void mouseClicked(MouseEvent e) {
                 // 関係追加モード中はクリックで端点を置く操作なので、ダブルクリック編集は無効化する
                 // (旧 selected の編集ダイアログが不意に開いて関係描画が中断するのを防ぐ)。
-                if (e.getClickCount() != 2 || !editable || relationMode != null) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null
+                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {

@@ -1517,6 +1517,8 @@ public final class DiagramTabPane {
             // Ctrl+Shift+T の再オープン履歴が担い、下書き復元の対象にしない。
             tab.stopDraftTimer();
             drafts.delete(liveKey);
+            // 補完ポップアップの JWindow は階層外リソースなので明示的に破棄する。
+            tab.sourcePanel.disposeEditorResources();
         }
         tab.previewPanel.notes().setOnChange(null);
         int index = tabs.indexOfComponent(tab);
@@ -1590,7 +1592,14 @@ public final class DiagramTabPane {
         if (choice == javax.swing.JOptionPane.YES_OPTION) {
             return savePumlEditor(tab, false); // 保存キャンセル時は閉じない
         }
-        return choice == javax.swing.JOptionPane.NO_OPTION;
+        if (choice == javax.swing.JOptionPane.NO_OPTION) {
+            // ユーザーが明示的に「破棄」したので下書きも消す。残すと正常終了なのに
+            // 次回起動で「前回異常終了の未保存編集」として破棄済み内容が復活してしまう。
+            tab.stopDraftTimer();
+            drafts.delete(tab.key);
+            return true;
+        }
+        return false;
     }
 
     private void pushClosedTab(DiagramTab tab) {
@@ -1632,7 +1641,18 @@ public final class DiagramTabPane {
         openPumlEditor(draft.text, draft.file, true);
     }
 
-    /** すべての下書きを破棄する (復元プロンプトで辞退したとき)。 */
+    /**
+     * 指定の下書きだけを破棄する (復元プロンプトで辞退したとき)。全消しにしないのは、
+     * 別インスタンスが同じ drafts フォルダを使っている場合に、そちらの生きている
+     * 下書きを巻き添えで消さないため。
+     */
+    public void discardDrafts(java.util.List<DraftStore.Draft> list) {
+        for (DraftStore.Draft d : list) {
+            drafts.delete(d.tabKey);
+        }
+    }
+
+    /** すべての下書きを破棄する (テスト・明示的な全消し用)。 */
     public void discardAllDrafts() {
         drafts.deleteAll();
     }
@@ -2120,7 +2140,10 @@ public final class DiagramTabPane {
 
         /** 現在の編集内容を下書きへスナップショットする (自動保存)。 */
         void saveDraft() {
-            if (isEditor()) {
+            // dirty でないタブは退避しない: ディスク同期などプログラム起因の setText でも
+            // タイマは走るため、無条件に書くとクリーンなタブの下書きが残って
+            // 次回起動で偽のクラッシュ復元プロンプトが出る。
+            if (isEditor() && dirty) {
                 drafts.save(key, sourcePanel.getText(), editorFile, label);
             }
         }

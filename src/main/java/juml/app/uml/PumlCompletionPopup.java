@@ -53,6 +53,8 @@ final class PumlCompletionPopup {
     private JList<String> list;
     /** プログラム起因のドキュメント変更 (確定挿入など) 中は自動表示を抑止する。 */
     private boolean suppressAutoShow;
+    /** 現在の候補リストを生成した接頭辞。キャレット移動での陳腐化検出に使う。 */
+    private String shownPrefix = "";
 
     PumlCompletionPopup(JTextComponent pane, BiConsumer<String, String> onAccept) {
         this.pane = pane;
@@ -69,8 +71,12 @@ final class PumlCompletionPopup {
             }
         });
         // クリック等でキャレットだけ動いたとき、古い位置の候補を出しっぱなしにしない。
+        // 候補を生成した接頭辞と一致しなくなったら隠す (別の語の途中へ移動した場合、
+        // 残ったまま確定すると無関係な残余が挿入されるため)。タイプ継続の再表示は
+        // DocumentListener 経由の更新が担う。
         pane.addCaretListener(e -> {
-            if (isVisible() && PumlCompletion.wordPrefix(text(), e.getDot()).isEmpty()) {
+            if (isVisible()
+                    && !PumlCompletion.wordPrefix(text(), e.getDot()).equals(shownPrefix)) {
                 hide();
             }
         });
@@ -79,7 +85,27 @@ final class PumlCompletionPopup {
                 hide();
             }
         });
+        // スクロールやウィンドウ移動で位置がずれたポップアップを出しっぱなしにしない
+        // (JWindow はエディタに追従しないため、古いスクリーン座標に浮き続ける)。
+        pane.addAncestorListener(new javax.swing.event.AncestorListener() {
+            @Override public void ancestorMoved(javax.swing.event.AncestorEvent event) {
+                hide();
+            }
+            @Override public void ancestorAdded(javax.swing.event.AncestorEvent event) {
+            }
+            @Override public void ancestorRemoved(javax.swing.event.AncestorEvent event) {
+                hide();
+            }
+        });
         installKeys();
+    }
+
+    /** ポップアップウィンドウを破棄する (エディタタブのクローズ時に呼ぶ)。 */
+    void dispose() {
+        if (window != null) {
+            window.dispose();
+            window = null;
+        }
     }
 
     /** ドキュメント変更通知の中からは UI を触れないため、イベント後に更新する。 */
@@ -122,6 +148,7 @@ final class PumlCompletionPopup {
         for (String c : candidates) {
             model.addElement(c);
         }
+        shownPrefix = prefix;
         ensureWindow();
         list.setSelectedIndex(0);
         list.setVisibleRowCount(Math.min(VISIBLE_ROWS, model.size()));

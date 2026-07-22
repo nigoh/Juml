@@ -1183,7 +1183,8 @@ public class UmlMainFrame extends JFrame {
                 tabPane.restoreDraft(d);
             }
         } else {
-            tabPane.discardAllDrafts();
+            // 提示した下書きだけを破棄する (別インスタンスの下書きを巻き添えにしない)。
+            tabPane.discardDrafts(pending);
         }
     }
 

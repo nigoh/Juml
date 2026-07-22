@@ -107,4 +107,29 @@ public class DiagramTabPaneDraftTest {
         GuiActionRunner.execute(() -> pane.discardAllDrafts());
         assertTrue(store.loadAll().isEmpty());
     }
+
+    @Test
+    public void discardDrafts_deletesOnlyListedDrafts() {
+        store.save("k1", PUML, null, "a");
+        store.save("k2", PUML, null, "b");
+        List<DraftStore.Draft> listed = store.loadAll().stream()
+                .filter(d -> d.tabKey.equals("k1")).toList();
+        GuiActionRunner.execute(() -> pane.discardDrafts(listed));
+        List<DraftStore.Draft> remaining = store.loadAll();
+        assertEquals("提示した下書きだけが消え、他は残るはず", 1, remaining.size());
+        assertEquals("k2", remaining.get(0).tabKey);
+    }
+
+    @Test
+    public void exitDiscard_deletesDraft() {
+        // 編集ありのエディタタブを開く (markDirty=true で下書きも即時退避される)。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertEquals(1, store.loadAll().size());
+        // 終了時の未保存確認で「破棄 (NO)」を選ぶ → 下書きも消え、
+        // 次回起動で偽のクラッシュ復元プロンプトが出ない。
+        boolean canExit = GuiActionRunner.execute(() ->
+                pane.confirmDiscardAllEdits(label -> javax.swing.JOptionPane.NO_OPTION));
+        assertTrue("破棄を選んだので終了は続行できるはず", canExit);
+        assertTrue("破棄した編集の下書きは残らないはず", store.loadAll().isEmpty());
+    }
 }

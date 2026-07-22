@@ -4,6 +4,19 @@ Change log
 2.1
 --------
 
+* **bug-hunt ワークフロー (5 レンズ並列発見 → 敵対的検証) で確定した 9 バグ + UX 2 件を修正** (`SeqSketchCanvas` / `PumlEditorKeys` / `PumlCompletionPopup` / `PumlSourcePanel` / `DiagramTabPane` / `DraftStore` / 全キャンバス)
+    * **[high] 中ボタンパンが選択メッセージ/参加者の並べ替えとして確定される (Seq)**: パン中も届く mouseDragged が並べ替えドラッグ扱いになっていた。左押下でのみドラッグを許可する leftDragArmed ガードを追加 (他キャンバスの dragOffset ガード相当)。左ドラッグの並べ替えは非破壊 (`SeqSketchCanvasPanGuardTest`)。
+    * **[med] 選択範囲があるとき Enter / `( { "` が選択を置換しない**: 既定エディタの選択置換挙動からの退行。Enter は選択削除 + 自動インデント、開き文字は選択を対で囲む (VS Code の surround)、閉じ文字は選択を置換するよう `newlineFor`/`typedOpenFor`/`typedCloseFor` を追加。
+    * **[med] 終了時「破棄」でも下書きが残り偽のクラッシュ復元プロンプトが出る**: 破棄 (NO) 選択時に下書き削除 + 自動保存タイマ停止。クリーンなタブのスナップショットも抑止 (dirty ガード)。
+    * **[med] DraftStore の非アトミック書き込み**: 書き込み途中のクラッシュ/ディスクフルで壊れた下書きを復元し得た。一時ファイル + アトミック置換へ変更。
+    * **[low] 陳腐化した補完ポップアップの確定が誤った文字列を挿入**: 別語へキャレット移動してもポップアップが残り、無関係な残余 (`looss`) が挿入された。接頭辞不一致で自動クローズ + 確定時の接頭辞検証の二重ガード。
+    * **[low] 補完ポップアップの JWindow リーク**: タブクローズで破棄されず残っていた。`disposeEditorResources` を配線。スクロール/ウィンドウ移動への非追従も ancestorMoved で自動クローズ。
+    * **[low] 開いた引用符を閉じると `"` が二重挿入**: 行内の引用符が奇数個 (開いたまま) のときは閉じと解釈しペア挿入しない。
+    * **[low] 複数インスタンスの下書き衝突を軽減**: 復元辞退時は提示した下書きだけを破棄し、他インスタンスの生きている下書きを巻き添えにしない (既知の制限として Javadoc に明記)。
+    * **[ux] 中ボタンダブルクリックが編集ダイアログを開く**: 全 6 キャンバスの mouseClicked に左ボタンガードを追加。
+    * テスト: 上記すべてに回帰テストを追加 (`PumlEditorKeysTest` 選択置換 7 ケース、`SeqSketchCanvasPanGuardTest`、`DiagramTabPaneDraftTest` 終了破棄・限定破棄、`DraftStoreTest` 一時ファイル、`SettingTest` lastExportDirectory round-trip)。
+    * 目的: 大きな機能追加の直後に「発見 → 敵対的検証 → 修正 → 再監査」のサイクルを回し、確定バグゼロの品質で出荷するため。
+
 * **エディタタブに自動保存 (下書き) とクラッシュ復旧を追加** (`DraftStore` 新規、`DiagramTabPane` / `UmlMainFrame` / `ErrorCode CFG-004`)
     * **背景**: 手書き PlantUML は一次成果物なのに、クラッシュ・強制終了で未保存編集が丸ごと失われていた (draw.io / Mermaid Live では当然の保護)。
     * 編集が落ち着いて 3 秒後に `<設定フォルダ>/drafts/` へタブキー単位でスナップショット (本文 + メタ情報)。正常保存・タブクローズで下書きは削除される (残っている = 異常終了の痕跡)。

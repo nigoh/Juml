@@ -85,6 +85,23 @@ public class PumlSourcePanelEditorKeysTest {
     }
 
     @Test
+    public void typedOpenParen_withSelection_wrapsSelection() {
+        PumlSourcePanel panel = editable("note Hello here\n", 0);
+        GuiActionRunner.execute(() -> panel.selectRangeForTest(5, 10));
+        GuiActionRunner.execute(() -> panel.performEditorActionForTest("juml-open-paren"));
+        assertEquals("note (Hello) here\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void staleCompletion_withMismatchedPrefix_insertsNothing() {
+        // キャレット位置の接頭辞 "loo" と候補 "class" が対応しない確定は無視される
+        // (陳腐化したポップアップからの誤挿入ガード)。
+        PumlSourcePanel panel = editable("loo", 3);
+        GuiActionRunner.execute(() -> panel.applyCompletionForTest("class"));
+        assertEquals("loo", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
     public void editorActions_doNothingWhenReadOnly() {
         PumlSourcePanel readOnly = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> readOnly.setText("class A\n"));

@@ -24,7 +24,14 @@ import java.util.Properties;
  * 正常な保存・タブクローズ時には下書きを削除する (残っている = 異常終了の痕跡)。</p>
  *
  * <p>1 下書き = 本文 ({@code <hash>.puml}) + メタ情報 ({@code <hash>.properties};
- * タブキー・保存先ファイル・表示ラベル)。ファイル名はタブキーの SHA-1 で衝突を避ける。</p>
+ * タブキー・保存先ファイル・表示ラベル)。ファイル名はタブキーの SHA-1 で衝突を避ける。
+ * 書き込みは一時ファイル経由のアトミック置換で行い、書き込み途中のクラッシュで
+ * 壊れた下書きを復元してしまわないようにする。</p>
+ *
+ * <p>既知の制限: 複数の Juml インスタンスが同じ設定フォルダを共有すると、Untitled の
+ * タブキー (連番) が衝突して互いの下書きを上書きし得る。軽減策として、復元プロンプトの
+ * 辞退時は「そのとき提示した下書き」だけを破棄する (他インスタンスの生きている下書きを
+ * 巻き添えにしない)。</p>
  */
 final class DraftStore {
 
@@ -65,7 +72,7 @@ final class DraftStore {
                 throw new IOException("cannot create drafts dir: " + dir);
             }
             String base = hash(tabKey);
-            Files.write(new File(dir, base + ".puml").toPath(),
+            writeAtomically(new File(dir, base + ".puml"),
                     text.getBytes(StandardCharsets.UTF_8));
             Properties meta = new Properties();
             meta.setProperty("tabKey", tabKey);
@@ -73,12 +80,30 @@ final class DraftStore {
             if (editorFile != null) {
                 meta.setProperty("file", editorFile.getAbsolutePath());
             }
-            try (var os = Files.newOutputStream(new File(dir, base + ".properties").toPath())) {
-                meta.store(os, "Juml editor draft");
-            }
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            meta.store(buf, "Juml editor draft");
+            writeAtomically(new File(dir, base + ".properties"), buf.toByteArray());
         } catch (IOException ex) {
             AppLog.warn(ErrorCode.CFG_004, "DraftStore",
                     "draft snapshot failed: " + tabKey, ex);
+        }
+    }
+
+    /**
+     * 一時ファイルへ書いてからアトミックに置き換える。書き込み途中でクラッシュや
+     * ディスクフルが起きても、壊れかけの内容が正規の下書きとして残らない。
+     */
+    private static void writeAtomically(File target, byte[] bytes) throws IOException {
+        java.nio.file.Path tmp = target.toPath().resolveSibling(target.getName() + ".tmp");
+        Files.write(tmp, bytes);
+        try {
+            Files.move(tmp, target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+            // アトミック移動非対応のファイルシステムでは通常置換にフォールバックする。
+            Files.move(tmp, target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
