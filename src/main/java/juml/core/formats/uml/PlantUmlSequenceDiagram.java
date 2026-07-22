@@ -602,7 +602,10 @@ public final class PlantUmlSequenceDiagram {
                 participants.add(inlineName);
                 participantMethods.computeIfAbsent(inlineName, k -> new LinkedHashSet<>())
                         .add(inlineLabel);
-                String inlineKey = inlineName + "." + inlineLabel;
+                // 再帰検出キーにコールバック本体の identity を含める。名前だけ (A$forEach.forEach)
+                // だと入れ子の同名高階ラムダ (outer.forEach(x -> inner.forEach(...))) が同一キーになり、
+                // 内側が偽の "recursive call" 判定で消える。identity を足せば別ラムダは別キーになる。
+                String inlineKey = inlineName + "." + inlineLabel + "#" + System.identityHashCode(inline);
                 if (stack.contains(inlineKey)) {
                     body.append(indent).append("note over ").append(quote(inlineName))
                             .append(" : recursive call (")

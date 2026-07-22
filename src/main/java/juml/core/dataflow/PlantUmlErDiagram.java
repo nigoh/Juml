@@ -113,10 +113,57 @@ public final class PlantUmlErDiagram {
         return sb.toString();
     }
 
+    /**
+     * 完全修飾型を単純名へ畳む。ジェネリクスは生型と各型引数を再帰的に単純化する
+     * (例: {@code java.util.List<java.lang.String>} → {@code List<String>})。
+     * 単純に最後のドット以降を取ると {@code String>} のように壊れるため、
+     * {@code <...>} を分離してから畳む。
+     */
     private static String simpleType(String type) {
-        if (type == null) return "";
-        int dot = type.lastIndexOf('.');
-        return dot < 0 ? type : type.substring(dot + 1);
+        if (type == null) {
+            return "";
+        }
+        String t = type.trim();
+        int lt = t.indexOf('<');
+        if (lt < 0) {
+            int dot = t.lastIndexOf('.');
+            return dot < 0 ? t : t.substring(dot + 1);
+        }
+        int gt = t.lastIndexOf('>');
+        if (gt < lt) {
+            gt = t.length();
+        }
+        String rawSimple = simpleType(t.substring(0, lt));
+        String args = t.substring(lt + 1, gt);
+        StringBuilder sb = new StringBuilder(rawSimple).append('<');
+        java.util.List<String> parts = splitTopLevelArgs(args);
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(simpleType(parts.get(i)));
+        }
+        return sb.append('>').toString();
+    }
+
+    /** ジェネリクス引数を、入れ子の {@code <>} を跨がないトップレベルのカンマで分割する。 */
+    private static java.util.List<String> splitTopLevelArgs(String args) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int depth = 0;
+        int start = 0;
+        for (int i = 0; i < args.length(); i++) {
+            char c = args.charAt(i);
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                out.add(args.substring(start, i));
+                start = i + 1;
+            }
+        }
+        out.add(args.substring(start));
+        return out;
     }
 
     private static String escape(String s) {

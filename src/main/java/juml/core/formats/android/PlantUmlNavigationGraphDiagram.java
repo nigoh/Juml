@@ -75,8 +75,16 @@ public final class PlantUmlNavigationGraphDiagram {
             }
             out.append('\n');
 
+            // 同一エイリアスの state 宣言は 1 回だけにする。参照キー (idRef/id) が衝突する
+            // Destination 同士は同じエイリアスへ畳まれるため、素朴に全 Destination を出すと
+            // `state "..." as D0` が重複宣言され、PlantUML 上で片方の Destination が消える。
+            java.util.Set<String> emittedAliases = new java.util.HashSet<>();
             for (NavigationDestination dest : info.getDestinations()) {
-                emitDestination(out, dest, o, aliasMap);
+                String k = dest.getIdRef() != null ? dest.getIdRef() : dest.getId();
+                String al = aliasMap.get(k);
+                if (al != null && emittedAliases.add(al)) {
+                    emitDestination(out, dest, o, aliasMap);
+                }
             }
             out.append('\n');
 

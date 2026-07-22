@@ -203,7 +203,13 @@ public final class PlantUmlActivityDiagram {
         for (JavaMethodInfo.Statement s : stmts) {
             ended = false;
             if (s instanceof JavaMethodInfo.Call) {
-                emitCall((JavaMethodInfo.Call) s, out, indent, ctx);
+                // 値式 (ローカル変数初期化子・代入値・return/throw 等) から持ち上げた Call は
+                // 親の文が全文表示するため、別ノードとして重ねて描かない (同じ呼び出しが
+                // 2 度出て回数を誤認させるのを防ぐ)。シーケンス図・コールグラフはこの Call を
+                // 引き続き消費する。
+                if (!((JavaMethodInfo.Call) s).isHoisted()) {
+                    emitCall((JavaMethodInfo.Call) s, out, indent, ctx);
+                }
             } else if (s instanceof JavaMethodInfo.Return) {
                 ended = emitReturn((JavaMethodInfo.Return) s, out, indent, opts);
             } else if (s instanceof JavaMethodInfo.Throw) {

@@ -176,15 +176,15 @@ final class StatementAdapter {
             emitTry((TryStmt) s, out, ctx, owner);
         } else if (s instanceof ReturnStmt) {
             Expression e = ((ReturnStmt) s).getExpression().orElse(null);
-            emitExprValue(e, out, ctx, owner);
+            emitExprValue(e, out, ctx, owner, true);
             out.add(new JavaMethodInfo.Return(e == null ? "" : ctx.comments.raw(e)));
         } else if (s instanceof ThrowStmt) {
             Expression e = ((ThrowStmt) s).getExpression();
-            emitExprValue(e, out, ctx, owner);
+            emitExprValue(e, out, ctx, owner, true);
             out.add(new JavaMethodInfo.Throw(e == null ? "" : ctx.comments.raw(e)));
         } else if (s instanceof YieldStmt) {
             Expression e = ((YieldStmt) s).getExpression();
-            emitExprValue(e, out, ctx, owner);
+            emitExprValue(e, out, ctx, owner, true);
             out.add(new JavaMethodInfo.Yield(e == null ? "" : ctx.comments.raw(e)));
         } else if (s instanceof BreakStmt) {
             out.add(new JavaMethodInfo.Break(
@@ -246,7 +246,7 @@ final class StatementAdapter {
         // total = a; や counter++; のような「値の更新」がアクティビティ図から
         // まるごと欠落し、直前コメントだけが浮いてしまう。
         if (ex instanceof AssignExpr || isIncDecStatement(ex)) {
-            emitExprValue(ex, out, ctx, owner);
+            emitExprValue(ex, out, ctx, owner, true);
             out.add(new JavaMethodInfo.Assignment(ctx.comments.raw(ex)));
             return;
         }
@@ -341,9 +341,19 @@ final class StatementAdapter {
         return result;
     }
 
-    /** switch 式を Block 化しつつ、式中の呼び出しを兄弟 Call として持ち上げる。 */
+    /** switch 式を Block 化しつつ、式中の呼び出しを兄弟 Call として持ち上げる (プレーン呼び出し文用)。 */
     private static void emitExprValue(Expression ex, List<JavaMethodInfo.Statement> out,
                                       JpContext ctx, JavaClassInfo owner) {
+        emitExprValue(ex, out, ctx, owner, false);
+    }
+
+    /**
+     * switch 式を Block 化しつつ、式中の呼び出しを兄弟 Call として持ち上げる。
+     * {@code hoist=true} のとき (return/throw/yield/代入など、続く文が値の全文を描く文脈)
+     * は持ち上げた Call に「持ち上げ」フラグを立て、アクティビティ図での重複描画を防ぐ。
+     */
+    private static void emitExprValue(Expression ex, List<JavaMethodInfo.Statement> out,
+                                      JpContext ctx, JavaClassInfo owner, boolean hoist) {
         if (ex == null) {
             return;
         }
@@ -352,7 +362,11 @@ final class StatementAdapter {
         for (SwitchExpr se : topLevelSwitchExprs(ex)) {
             emitSwitch(se, se.getSelector(), se.getEntries(), out, ctx, owner);
         }
-        ExpressionAdapter.emitCalls(ex, out, ctx);
+        if (hoist) {
+            ExpressionAdapter.emitHoistedCalls(ex, out, ctx);
+        } else {
+            ExpressionAdapter.emitCalls(ex, out, ctx);
+        }
     }
 
     private static void emitLocalVar(VariableDeclarator v, List<JavaMethodInfo.Statement> out,
@@ -378,7 +392,7 @@ final class StatementAdapter {
             for (SwitchExpr se : topLevelSwitchExprs(init)) {
                 emitSwitch(se, se.getSelector(), se.getEntries(), out, ctx, null);
             }
-            ExpressionAdapter.emitCalls(init, out, ctx);
+            ExpressionAdapter.emitHoistedCalls(init, out, ctx);
         }
         lv = new JavaMethodInfo.LocalVar(type, name,
                 init == null ? "" : ctx.comments.raw(init));
