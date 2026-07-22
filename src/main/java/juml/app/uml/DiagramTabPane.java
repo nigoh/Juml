@@ -64,6 +64,11 @@ public final class DiagramTabPane {
     /** UML に重ねる付箋メモのロード/保存配線を担うヘルパ。 */
     private DiagramNotesBinder notesBinder = new DiagramNotesBinder(this::reportStatus);
     /**
+     * エディタタブの自動保存 (下書き) ストア。編集の 3 秒後にスナップショットし、
+     * クラッシュ時の未保存編集を次回起動で復元できるようにする。正常保存・クローズで削除。
+     */
+    private DraftStore drafts = DraftStore.createDefault();
+    /**
      * この {@link #notesBinder} を自分で所有しているか。別ウィンドウが
      * {@link #useSharedNotesBinder} で共有バインダを注入した場合は false になり、
      * {@link #shutdown()} で共有 IO スレッドを止めない (所有者 = メインが止める)。
@@ -653,6 +658,8 @@ public final class DiagramTabPane {
         tabs.setSelectedIndex(insertAt);
         if (markDirty) {
             tab.dirty = true; // 復元した未保存内容は dirty のまま扱う
+            // 復元直後の内容も下書きへ即時保存する (再クラッシュしても失わない)。
+            tab.saveDraft();
         }
         refreshTabLabels();
         tab.startRender();
@@ -774,10 +781,16 @@ public final class DiagramTabPane {
         }
         tab.editorFile = target;
         tab.dirty = false;
+        // 正常保存できたので下書きは不要。保留中の自動保存も止める
+        // (止めないと保存後にタイマが発火して下書きが復活し、次回起動で偽の復元を促す)。
+        tab.stopDraftTimer();
+        String draftKeyBeforeMigrate = tab.key;
         // Save As で保存先が変わったらタブキーもファイルパス基準へ移行する。
         // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
         // タブが重複生成される (dedup の一貫性が崩れる)。
         migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
+        drafts.delete(draftKeyBeforeMigrate);
+        drafts.delete(tab.key);
         // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
         int idx = tabs.indexOfComponent(tab);
@@ -1499,6 +1512,12 @@ public final class DiagramTabPane {
         if (tab.renderDebounce != null) {
             tab.renderDebounce.stop(); // クローズ後のデバウンス発火 (無駄な再描画) を止める
         }
+        if (tab.isEditor()) {
+            // 意図してタブを閉じた (保存 or 破棄済み) ので下書きは消す。閉じたタブは
+            // Ctrl+Shift+T の再オープン履歴が担い、下書き復元の対象にしない。
+            tab.stopDraftTimer();
+            drafts.delete(liveKey);
+        }
         tab.previewPanel.notes().setOnChange(null);
         int index = tabs.indexOfComponent(tab);
         if (index >= 0) {
@@ -1592,6 +1611,30 @@ public final class DiagramTabPane {
         while (closedTabs.size() > MAX_CLOSED_HISTORY) {
             closedTabs.removeLast();
         }
+    }
+
+    /** テスト用: 下書きストアを差し替える (一時ディレクトリで自動保存を検証するため)。 */
+    void setDraftStoreForTest(DraftStore store) {
+        this.drafts = store;
+    }
+
+    /** 前回異常終了で残った未保存編集の下書き一覧 (復元プロンプト用)。 */
+    public java.util.List<DraftStore.Draft> pendingDrafts() {
+        return drafts.loadAll();
+    }
+
+    /**
+     * 下書きをエディタタブとして復元する (未保存状態のまま)。復元後は新しいタブの
+     * 自動保存が引き継ぐため、元の下書きは先に消してから開く (同一キーの上書き順序対策)。
+     */
+    public void restoreDraft(DraftStore.Draft draft) {
+        drafts.delete(draft.tabKey);
+        openPumlEditor(draft.text, draft.file, true);
+    }
+
+    /** すべての下書きを破棄する (復元プロンプトで辞退したとき)。 */
+    public void discardAllDrafts() {
+        drafts.deleteAll();
     }
 
     /**
@@ -1716,6 +1759,8 @@ public final class DiagramTabPane {
         private boolean dirty;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
+        /** 自由編集エディタ: 編集の 3 秒後に下書きへ自動保存するタイマ。 */
+        private javax.swing.Timer draftTimer;
         /** 自由編集エディタ: GUI 図形デザイナー (Design サブタブ)。非エディタタブでは null。 */
         private juml.app.uml.sketch.SketchPane sketchPane;
         /** メソッド図の SEQUENCE ⇄ ACTIVITY ⇄ CALLGRAPH 切替バー (メソッド図以外では非表示)。 */
@@ -2030,10 +2075,15 @@ public final class DiagramTabPane {
             // デバウンス: 連続キー入力のたびに PlantUML 描画が走らないよう 600ms 待つ。
             renderDebounce = new javax.swing.Timer(600, e -> startRender());
             renderDebounce.setRepeats(false);
+            // 自動保存: 編集が落ち着いて 3 秒後に下書きへスナップショットする
+            // (クラッシュ・強制終了で未保存編集が失われないように)。
+            draftTimer = new javax.swing.Timer(3000, e -> saveDraft());
+            draftTimer.setRepeats(false);
             // リスナー登録は初期 setText の後 (初期化を dirty 扱いにしない)。
             sourcePanel.setOnTextChange(() -> {
                 markEditorDirty();
                 renderDebounce.restart();
+                draftTimer.restart();
             });
             // GUI 図形操作デザイナー (Design サブタブ)。テキストとの双方向同期:
             // Design 選択時にテキストを解析して復元し、キャンバス操作でテキストを再生成する。
@@ -2065,6 +2115,20 @@ public final class DiagramTabPane {
             if (!dirty) {
                 dirty = true;
                 refreshTabLabels();
+            }
+        }
+
+        /** 現在の編集内容を下書きへスナップショットする (自動保存)。 */
+        void saveDraft() {
+            if (isEditor()) {
+                drafts.save(key, sourcePanel.getText(), editorFile, label);
+            }
+        }
+
+        /** 自動保存タイマを止める (正常保存・クローズ後の下書き復活を防ぐ)。 */
+        void stopDraftTimer() {
+            if (draftTimer != null) {
+                draftTimer.stop();
             }
         }
 

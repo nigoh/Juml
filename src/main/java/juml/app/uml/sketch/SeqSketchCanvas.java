@@ -66,6 +66,8 @@ final class SeqSketchCanvas extends JPanel {
     private final Listener listener;
 
     private SeqItem selectedItem;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
     private SeqParticipant selectedParticipant;
     /** メッセージ追加モードの矢印種別 (null = 選択/移動モード)。 */
     private SeqItem.Arrow messageMode;
@@ -233,7 +235,7 @@ final class SeqSketchCanvas extends JPanel {
         for (SeqParticipant p : model.getParticipants()) {
             w += colWidth(p);
         }
-        return new Dimension(Math.max(400, w), Math.max(300, bottomY() + 60));
+        return view.scaled(new Dimension(Math.max(400, w), Math.max(300, bottomY() + 60)));
     }
 
     // -------------------------------------------------------------------------
@@ -303,9 +305,14 @@ final class SeqSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             // 右クリックは選択のみ更新し、ポップアップはトリガー時点 (press/release) で 1 回出す。
-            selectAt(e.getPoint());
+            selectAt(mp);
             repaint();
             if (e.isPopupTrigger()) {
                 showPopup(e);
@@ -313,10 +320,10 @@ final class SeqSketchCanvas extends JPanel {
             return;
         }
         if (messageMode != null) {
-            handleMessageClick(columnAt(e.getX()));
+            handleMessageClick(columnAt(mp.x));
             return;
         }
-        selectAt(e.getPoint());
+        selectAt(mp);
         draggedSinceMousePress = false;
         dragPoint = null;
         repaint();
@@ -355,14 +362,14 @@ final class SeqSketchCanvas extends JPanel {
                 || (selectedItem == null && selectedParticipant == null)) {
             return;
         }
-        dragPoint = e.getPoint();
+        dragPoint = view.toModel(e.getPoint());
         draggedSinceMousePress = true;
         repaint();
     }
 
     private void handleRelease(MouseEvent e) {
         if (e.isPopupTrigger()) {
-            selectAt(e.getPoint());
+            selectAt(view.toModel(e.getPoint()));
             repaint();
             showPopup(e);
             return;
@@ -373,10 +380,11 @@ final class SeqSketchCanvas extends JPanel {
         }
         draggedSinceMousePress = false;
         boolean changed = false;
+        Point mp = view.toModel(e.getPoint());
         if (selectedItem != null) {
-            changed = dropMessageAt(e.getY());
+            changed = dropMessageAt(mp.y);
         } else if (selectedParticipant != null) {
-            changed = dropParticipantAt(e.getX());
+            changed = dropParticipantAt(mp.x);
         }
         dragPoint = null;
         if (changed) {
@@ -489,6 +497,7 @@ final class SeqSketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             int[] xs = centers();
             paintLifelines(g2, xs);
             paintActivationBars(g2, xs);
@@ -503,15 +512,23 @@ final class SeqSketchCanvas extends JPanel {
                 paintHeader(g2, i);
             }
             paintDragGhost(g2);
+        } finally {
+            g2.dispose();
+        }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
             if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
+                SketchBanner.paint(overlay, this, unsupported);
             } else if (messageMode != null) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(messageSource == null
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(messageSource == null
                         ? "sketch.seq.hint.pickSource" : "sketch.seq.hint.pickTarget"), 8, 14);
             }
         } finally {
-            g2.dispose();
+            overlay.dispose();
         }
     }
 

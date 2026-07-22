@@ -425,6 +425,9 @@ public class UmlMainFrame extends JFrame {
         // エクスポート保存ダイアログの提案ファイル名にアクティブタブ名を使う。
         exportController.setBaseNameSupplier(() ->
                 tabPane != null ? tabPane.activeTabLabel() : null);
+        // 前回異常終了で残った未保存編集 (自動保存の下書き) があれば復元を促す。
+        // ウィンドウ表示後に出すため遅延実行する。
+        javax.swing.SwingUtilities.invokeLater(this::promptDraftRecovery);
         // References (逆参照) の行ダブルクリック → 参照箇所のソースへジャンプ。
         referencesPanel.setOnOpenSite(site -> tabPane.openSourceSite(
                 site.getCallerFqn(), site.getFile(), site.getLineHint()));
@@ -1159,6 +1162,30 @@ public class UmlMainFrame extends JFrame {
     }
 
     // --- 状態管理 -------------------------------------------------------------
+
+    /**
+     * 前回異常終了時に自動保存された未保存編集 (下書き) があれば復元を促す。
+     * 「はい」で各下書きをエディタタブとして開き (未保存状態のまま)、「いいえ」で破棄する。
+     */
+    private void promptDraftRecovery() {
+        java.util.List<DraftStore.Draft> pending = tabPane.pendingDrafts();
+        if (pending.isEmpty()) {
+            return;
+        }
+        int choice = javax.swing.JOptionPane.showConfirmDialog(this,
+                java.text.MessageFormat.format(
+                        Messages.get("puml.draft.restoreAsk"), pending.size()),
+                Messages.get("puml.draft.restoreTitle"),
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.QUESTION_MESSAGE);
+        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+            for (DraftStore.Draft d : pending) {
+                tabPane.restoreDraft(d);
+            }
+        } else {
+            tabPane.discardAllDrafts();
+        }
+    }
 
     /** アクティブタブのズーム率 (1.0 = 100%) をステータスバーのズームラベルへ反映する。 */
     private void updateZoomLabelFromValue(double zoom) {

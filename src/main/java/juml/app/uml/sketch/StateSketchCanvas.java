@@ -62,6 +62,8 @@ final class StateSketchCanvas extends JPanel {
     private final Listener listener;
 
     private StateNode selected;
+    /** ズーム (Ctrl+ホイール) と中ボタンパン。マウス座標は toModel で逆変換して使う。 */
+    private final SketchViewport view = new SketchViewport(this);
     /** 遷移追加モードか (true = 2 クリックで from→to を結ぶ)。 */
     private boolean transitionMode;
     private StateNode transitionSource;
@@ -95,7 +97,7 @@ final class StateSketchCanvas extends JPanel {
                     listener.editStateRequested(selected);
                     return;
                 }
-                StateTransition t = transitionAt(e.getPoint());
+                StateTransition t = transitionAt(view.toModel(e.getPoint()));
                 if (t != null) {
                     listener.editTransitionRequested(t);
                 }
@@ -193,7 +195,12 @@ final class StateSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        StateNode hit = stateAt(e.getPoint());
+        // 中ボタンはパン (SketchViewport) 専用。選択/ドラッグとして扱わない。
+        if (javax.swing.SwingUtilities.isMiddleMouseButton(e)) {
+            return;
+        }
+        Point mp = view.toModel(e.getPoint());
+        StateNode hit = stateAt(mp);
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             selected = hit;
             repaint();
@@ -209,7 +216,7 @@ final class StateSketchCanvas extends JPanel {
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
-            dragOffset = new Point(e.getX() - hit.getX(), e.getY() - hit.getY());
+            dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
     }
@@ -235,8 +242,9 @@ final class StateSketchCanvas extends JPanel {
         if (!editable || transitionMode || selected == null || dragOffset == null) {
             return;
         }
-        selected.moveTo(Math.max(0, e.getX() - dragOffset.x),
-                Math.max(0, e.getY() - dragOffset.y));
+        Point mp = view.toModel(e.getPoint());
+        selected.moveTo(Math.max(0, mp.x - dragOffset.x),
+                Math.max(0, mp.y - dragOffset.y));
         draggedSinceMousePress = true;
         revalidate();
         repaint();
@@ -244,7 +252,7 @@ final class StateSketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         if (e.isPopupTrigger()) {
-            showPopup(e, stateAt(e.getPoint()));
+            showPopup(e, stateAt(view.toModel(e.getPoint())));
             return;
         }
         if (draggedSinceMousePress) {
@@ -286,7 +294,8 @@ final class StateSketchCanvas extends JPanel {
             });
             addTransitionDeleteMenu(menu, hit);
         } else {
-            final Point at = e.getPoint();
+            // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
+            final Point at = view.toModel(e.getPoint());
             addItem(menu, "sketch.state.menu.addStateHere", () -> addState(at));
         }
         menu.show(this, e.getX(), e.getY());
@@ -347,7 +356,7 @@ final class StateSketchCanvas extends JPanel {
             w = Math.max(w, r.x + r.width + 80);
             h = Math.max(h, r.y + r.height + 80);
         }
-        return new Dimension(w, h);
+        return view.scaled(new Dimension(w, h));
     }
 
     @Override
@@ -357,21 +366,30 @@ final class StateSketchCanvas extends JPanel {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+            view.applyTransform(g2);
             for (StateTransition t : model.getTransitions()) {
                 paintTransition(g2, t);
             }
             for (StateNode s : model.getStates()) {
                 paintState(g2, s);
             }
+        } finally {
+            g2.dispose();
+        }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
             if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
+                SketchBanner.paint(overlay, this, unsupported);
             } else if (transitionMode) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(transitionSource == null
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(transitionSource == null
                         ? "sketch.state.hint.pickSource" : "sketch.state.hint.pickTarget"), 8, 14);
             }
         } finally {
-            g2.dispose();
+            overlay.dispose();
         }
     }
 
