@@ -30,10 +30,16 @@ public final class PlantUmlErDiagram {
 
         Map<String, RoomEntity> bySimple = new LinkedHashMap<>();
         Map<String, RoomEntity> byFqn = new LinkedHashMap<>();
+        Map<String, String> aliasByFqn = new LinkedHashMap<>();
         for (RoomEntity e : result.getEntities()) {
             String simple = e.getDisplayName();
             bySimple.put(simple, e);
             byFqn.put(e.getClassFqn(), e);
+            // エイリアスを FQN のサニタイズ (非英数字→_) で作ると非単射になり、区切り位置だけ
+            // 異なる FQN (com.x_foo.Bar と com.x.foo_Bar) が同一エイリアスへ畳まれて entity が
+            // 消え、FK も誤結線する。PACKAGE(P0..)/NAVIGATION(D0..) と同様に FQN ごとの連番
+            // エイリアスで一意化する。
+            aliasByFqn.putIfAbsent(e.getClassFqn(), "e" + aliasByFqn.size());
         }
 
         // Database グループ
@@ -47,7 +53,7 @@ public final class PlantUmlErDiagram {
             for (String entityRef : db.getEntityClasses()) {
                 RoomEntity e = resolveEntity(entityRef, bySimple, byFqn);
                 if (e != null && placed.add(e.getClassFqn())) {
-                    renderEntity(sb, e, "  ");
+                    renderEntity(sb, e, "  ", aliasByFqn);
                 }
             }
             sb.append("}\n");
@@ -55,7 +61,7 @@ public final class PlantUmlErDiagram {
         // Database に属さない孤立 Entity
         for (RoomEntity e : result.getEntities()) {
             if (placed.add(e.getClassFqn())) {
-                renderEntity(sb, e, "");
+                renderEntity(sb, e, "", aliasByFqn);
             }
         }
 
@@ -64,8 +70,8 @@ public final class PlantUmlErDiagram {
             for (String fkTarget : e.getForeignKeyTargets()) {
                 RoomEntity to = resolveEntity(fkTarget, bySimple, byFqn);
                 if (to == null) continue;
-                sb.append(alias(e)).append(" }o--|| ").append(alias(to))
-                        .append(" : FK\n");
+                sb.append(alias(e, aliasByFqn)).append(" }o--|| ")
+                        .append(alias(to, aliasByFqn)).append(" : FK\n");
             }
         }
         sb.append("@enduml\n");
@@ -86,12 +92,13 @@ public final class PlantUmlErDiagram {
         return bySimple.get(ref);
     }
 
-    private static void renderEntity(StringBuilder sb, RoomEntity e, String indent) {
+    private static void renderEntity(StringBuilder sb, RoomEntity e, String indent,
+                                     Map<String, String> aliasByFqn) {
         sb.append(indent).append("entity \"").append(escape(e.getDisplayName()));
         if (!e.getTableName().isEmpty()) {
             sb.append("\\n<<").append(escape(e.getTableName())).append(">>");
         }
-        sb.append("\" as ").append(alias(e)).append(" {\n");
+        sb.append("\" as ").append(alias(e, aliasByFqn)).append(" {\n");
         for (RoomEntity.Column col : e.getColumns()) {
             sb.append(indent).append("  ");
             sb.append(col.isPrimaryKey() ? "* " : "  ");
@@ -105,9 +112,15 @@ public final class PlantUmlErDiagram {
         sb.append(indent).append("}\n");
     }
 
-    private static String alias(RoomEntity e) {
+    /** 一意採番済みエイリアスを返す。未登録 (通常起きない) の場合のみサニタイズ名へフォールバック。 */
+    private static String alias(RoomEntity e, Map<String, String> aliasByFqn) {
+        String a = aliasByFqn.get(e.getClassFqn());
+        return a != null ? a : sanitizeAlias(e.getClassFqn());
+    }
+
+    private static String sanitizeAlias(String fqn) {
         StringBuilder sb = new StringBuilder("e_");
-        for (char c : e.getClassFqn().toCharArray()) {
+        for (char c : fqn.toCharArray()) {
             sb.append(Character.isLetterOrDigit(c) ? c : '_');
         }
         return sb.toString();

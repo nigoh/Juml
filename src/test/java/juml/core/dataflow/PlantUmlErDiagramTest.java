@@ -9,8 +9,12 @@ import juml.core.formats.uml.JavaStructureExtractor;
 import juml.util.ErrorListener;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -104,6 +108,36 @@ public class PlantUmlErDiagramTest {
         // 修正前の壊れた表示 ("names : String>") が残っていないこと
         assertFalse("names 列が String> に壊れてはいけない:\n" + puml,
                 puml.contains("names : String>"));
+    }
+
+    @Test
+    public void testAliasCollisionFromUnderscoreVsDotDoesNotDropEntity() {
+        // Round 3 回帰: alias() は FQN の非英数字を一律 '_' に潰す非単射写像だったため、
+        // 区切り位置だけ違う 2 つの FQN (com.x_foo.Bar と com.x.foo_Bar) が同一エイリアス
+        // (e_com_x_foo_Bar) へ畳まれ、entity 宣言が重複して片方が PlantUML 上で消え、FK も
+        // 誤結線していた。修正: FQN ごとに連番エイリアス (e0, e1, ...) を採番して一意化する。
+        String src1 = "package com.x_foo;\n"
+                + "@Entity(tableName = \"t1\")\n"
+                + "public class Bar { @PrimaryKey public long id; }\n";
+        String src2 = "package com.x;\n"
+                + "@Entity(tableName = \"t2\")\n"
+                + "public class foo_Bar { @PrimaryKey public long id; }\n";
+        RoomAnalyzer.Result result = new RoomAnalyzer().analyze(parse(src1, src2));
+        String puml = PlantUmlErDiagram.render(result);
+
+        // 2 つの entity が宣言され、それぞれ別エイリアスであること (衝突で畳まれない)。
+        Matcher m = Pattern.compile("entity \"[^\"]*\" as (\\w+) \\{").matcher(puml);
+        List<String> aliases = new ArrayList<>();
+        while (m.find()) {
+            aliases.add(m.group(1));
+        }
+        assertEquals("2 つの entity が宣言されるべき: " + aliases + "\n" + puml,
+                2, aliases.size());
+        assertEquals("エイリアスは一意であるべき (非単射衝突が無い): " + aliases + "\n" + puml,
+                2, new HashSet<>(aliases).size());
+        // 旧・非単射エイリアスがそのまま使われていないこと
+        assertFalse("非単射な旧エイリアス e_com_x_foo_Bar が使われてはいけない:\n" + puml,
+                puml.contains("e_com_x_foo_Bar"));
     }
 
     @Test
