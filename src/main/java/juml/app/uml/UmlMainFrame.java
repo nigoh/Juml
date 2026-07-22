@@ -542,7 +542,18 @@ public class UmlMainFrame extends JFrame {
             updateManifestSummary();
             gitPanel.setRepositoryRoot(root); // git リポジトリなら Git タブを有効化
             centerCards.showWorkspace();
-            controller.updateAvailableDiagrams(java.util.EnumSet.allOf(DiagramKind.class));
+            // AOSP 専用図種 (Soong / build.ninja / .intermediates) は入力が無いと空図しか
+            // 出せないため、プロジェクトに実入力があるときだけ有効化する (graceful degradation)。
+            java.util.EnumSet<DiagramKind> allowed = java.util.EnumSet.allOf(DiagramKind.class);
+            java.util.EnumSet<DiagramKind> aospAvailable =
+                    ProjectRootDiagrams.availableAospKinds(root);
+            for (DiagramKind aospKind : new DiagramKind[]{
+                    DiagramKind.SOONG, DiagramKind.BUILD_NINJA, DiagramKind.INTERMEDIATES}) {
+                if (!aospAvailable.contains(aospKind)) {
+                    allowed.remove(aospKind);
+                }
+            }
+            controller.updateAvailableDiagrams(allowed);
             controller.openDefaultDiagram();
             if (exportMenuItems != null) {
                 exportMenuItems.forEach(item -> item.setEnabled(true));

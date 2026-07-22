@@ -19,6 +19,50 @@ final class ProjectRootDiagrams {
     private ProjectRootDiagrams() {
     }
 
+    /** AOSP 入力検出時の走査上限 (巨大な非 AOSP ツリーでの過走査を防ぐ)。 */
+    private static final int AOSP_SCAN_VISIT_CAP = 200_000;
+
+    /**
+     * プロジェクトに AOSP 専用図種の入力 ({@code Android.bp} / {@code build.ninja} /
+     * {@code .intermediates}) が実在するかを軽量に検出し、描画可能な AOSP 図種の集合を返す。
+     *
+     * <p>これらの図種は入力が無いと「No … found」の空図しか出せないため、入力があるときだけ
+     * ツールバー/メニューで有効化する (graceful degradation)。1 回の境界付きツリー走査で
+     * 3 種すべてが見つかるか訪問上限に達したら早期終了する。</p>
+     */
+    static java.util.EnumSet<DiagramKind> availableAospKinds(java.io.File projectRoot) {
+        java.util.EnumSet<DiagramKind> found = java.util.EnumSet.noneOf(DiagramKind.class);
+        if (projectRoot == null || !projectRoot.isDirectory()) {
+            return found;
+        }
+        final int[] visits = {0};
+        try (java.util.stream.Stream<java.nio.file.Path> walk =
+                     java.nio.file.Files.walk(projectRoot.toPath(), 12)) {
+            java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                if (found.size() == 3 || ++visits[0] > AOSP_SCAN_VISIT_CAP) {
+                    break;
+                }
+                java.nio.file.Path p = it.next();
+                String name = p.getFileName() != null ? p.getFileName().toString() : "";
+                if (java.nio.file.Files.isDirectory(p)) {
+                    if (name.endsWith(".intermediates")) {
+                        found.add(DiagramKind.INTERMEDIATES);
+                    }
+                } else if (name.equals("Android.bp")) {
+                    found.add(DiagramKind.SOONG);
+                } else if (name.equals("build.ninja")) {
+                    found.add(DiagramKind.BUILD_NINJA);
+                }
+            }
+        } catch (java.io.IOException | RuntimeException ex) {
+            // 走査失敗時は「AOSP 入力なし」とみなす (空集合)。図が消えるだけで害はない。
+            juml.util.AppLog.warn(juml.util.ErrorCode.PRJ_001, "ProjectRootDiagrams",
+                    "AOSP capability scan failed: " + safeMessage(ex));
+        }
+        return found;
+    }
+
     static String screenFlow(java.io.File projectRoot) {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return "@startuml\ntitle Screen Flow\n"
