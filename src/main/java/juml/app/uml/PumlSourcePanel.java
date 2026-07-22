@@ -35,7 +35,6 @@ import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.geom.Rectangle2D;
-import java.util.List;
 
 /**
  * PlantUML テキストを表示・編集するコードペイン。既定はリードオンリー
@@ -60,6 +59,10 @@ public class PumlSourcePanel extends JPanel {
     private final JButton snippetButton;
     /** ソース内検索/置換バー (Ctrl+F / Ctrl+H)。 */
     private final SourceFindBar findBar;
+    /** 行ジャンプバー (Ctrl+G)。 */
+    private final GotoLineBar gotoBar;
+    /** 入力追従の補完ポップアップ (編集モードで生成)。 */
+    private PumlCompletionPopup completionPopup;
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
 
@@ -106,10 +109,15 @@ public class PumlSourcePanel extends JPanel {
             revalidate();
             repaint();
         }, true);
+        gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate, textPane);
 
         add(bar, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
-        add(findBar, BorderLayout.SOUTH);
+        JPanel south = new JPanel();
+        south.setLayout(new javax.swing.BoxLayout(south, javax.swing.BoxLayout.Y_AXIS));
+        south.add(findBar);
+        south.add(gotoBar);
+        add(south, BorderLayout.SOUTH);
         installFindKeys();
 
         highlightTimer = new Timer(120, e -> applyHighlight());
@@ -503,6 +511,24 @@ public class PumlSourcePanel extends JPanel {
         insertCompletion(at, prefix, candidate);
     }
 
+    /** テスト用: 名前付きエディタアクション (juml-newline 等) を実行する。 */
+    void performEditorActionForTest(String actionKey) {
+        javax.swing.Action a = textPane.getActionMap().get(actionKey);
+        if (a != null) {
+            a.actionPerformed(new java.awt.event.ActionEvent(textPane, 0, actionKey));
+        }
+    }
+
+    /** テスト用: キャレット位置を設定する。 */
+    void setCaretForTest(int pos) {
+        textPane.setCaretPosition(Math.max(0, Math.min(pos, getText().length())));
+    }
+
+    /** テスト用: 入力追従補完ポップアップ (編集モード以外は null)。 */
+    PumlCompletionPopup completionPopupForTest() {
+        return completionPopup;
+    }
+
     /** テスト用: 直近の編集を 1 手戻す (複合編集の一括 Undo を検証)。 */
     void undoForTest() {
         if (undoManager != null && undoManager.canUndo()) {
@@ -604,7 +630,7 @@ public class PumlSourcePanel extends JPanel {
         });
     }
 
-    /** Ctrl(⌘)+F で検索、Ctrl(⌘)+H で置換バーを開く (リードオンリーでも検索は可能)。 */
+    /** Ctrl(⌘)+F で検索、Ctrl(⌘)+H で置換、Ctrl(⌘)+G で行ジャンプ (リードオンリーでも可)。 */
     private void installFindKeys() {
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         javax.swing.InputMap im = textPane.getInputMap();
@@ -613,6 +639,8 @@ public class PumlSourcePanel extends JPanel {
                 "juml-find");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_H, menuMask),
                 "juml-replace");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_G, menuMask),
+                "juml-goto");
         am.put("juml-find", action(findBar::activate));
         am.put("juml-replace", action(() -> {
             if (textPane.isEditable()) {
@@ -621,6 +649,30 @@ public class PumlSourcePanel extends JPanel {
                 findBar.activate();
             }
         }));
+        am.put("juml-goto", action(this::showGotoBar));
+    }
+
+    /** 行ジャンプバーを現在行・総行数つきで開く。 */
+    private void showGotoBar() {
+        javax.swing.text.Element root = textPane.getDocument().getDefaultRootElement();
+        int current = root.getElementIndex(textPane.getCaretPosition()) + 1;
+        gotoBar.activate(current, root.getElementCount());
+    }
+
+    /** 指定行 (1 始まり) の行頭へキャレットを移して可視化する。範囲外はクランプする。 */
+    private void jumpToLine(int line) {
+        javax.swing.text.Element root = textPane.getDocument().getDefaultRootElement();
+        int li = Math.max(0, Math.min(line - 1, root.getElementCount() - 1));
+        int offset = root.getElement(li).getStartOffset();
+        textPane.setCaretPosition(offset);
+        try {
+            Rectangle2D r = textPane.modelToView2D(offset);
+            if (r != null) {
+                textPane.scrollRectToVisible(r.getBounds());
+            }
+        } catch (BadLocationException ignored) {
+            // 行が見えないだけで致命的でない。
+        }
     }
 
     /**
@@ -638,46 +690,15 @@ public class PumlSourcePanel extends JPanel {
                 "juml-indent");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_TAB,
                 java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outdent");
-        // Ctrl+Space で入力補完 (Mac の Cmd+Space=Spotlight を避け全 OS で Ctrl に統一)。
-        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_SPACE,
-                java.awt.event.InputEvent.CTRL_DOWN_MASK), "juml-complete");
         am.put("juml-comment", action(this::toggleComment));
         am.put("juml-indent", action(() -> indentOrTab(false)));
         am.put("juml-outdent", action(() -> indentSelection(true)));
-        am.put("juml-complete", action(this::showCompletion));
-    }
-
-    /**
-     * キャレット直前の語を接頭辞に、PlantUML キーワードと本文識別子の候補ポップアップを出す。
-     * 候補が無ければ何もしない。選択すると打ちかけの語の続きを挿入する。
-     */
-    private void showCompletion() {
-        if (!textPane.isEditable()) {
-            return;
-        }
-        String text = getText();
-        final int at = textPane.getCaretPosition();
-        final String prefix = PumlCompletion.wordPrefix(text, at);
-        List<String> candidates = PumlCompletion.candidates(prefix, text);
-        if (candidates.isEmpty()) {
-            return;
-        }
-        JPopupMenu menu = new JPopupMenu();
-        for (String c : candidates) {
-            JMenuItem item = new JMenuItem(c);
-            item.addActionListener(e -> insertCompletion(at, prefix, c));
-            menu.add(item);
-        }
-        try {
-            Rectangle2D r = textPane.modelToView2D(at);
-            if (r != null) {
-                menu.show(textPane, (int) r.getX(), (int) (r.getY() + r.getHeight()));
-            } else {
-                menu.show(textPane, 0, 0);
-            }
-        } catch (BadLocationException ignored) {
-            // 位置解決に失敗したら補完を諦める (致命的でない)。
-        }
+        // VS Code 相当の編集キー (Enter 自動インデント・自動閉じペア・行移動/複製/削除)。
+        PumlEditorKeys.install(textPane, this::runAsCompound);
+        // 入力追従補完 (Ctrl+Space の明示起動も内包)。Enter/Tab/Up/Down の委譲があるため
+        // PumlEditorKeys の後にインストールする。
+        completionPopup = new PumlCompletionPopup(textPane, (prefix, candidate) ->
+                insertCompletion(textPane.getCaretPosition(), prefix, candidate));
     }
 
     /** 打ちかけの語 {@code prefix} の続き (候補の残り) をキャレット位置 {@code at} へ挿入する。 */

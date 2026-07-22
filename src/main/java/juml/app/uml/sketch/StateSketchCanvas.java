@@ -114,9 +114,27 @@ final class StateSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && transitionMode) {
                     setTransitionMode(false);
                     listener.transitionModeCancelled();
+                } else if (editable && selected != null && !transitionMode) {
+                    int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
+                    if (d != null) {
+                        nudgeSelected(d[0], d[1]);
+                        e.consume();
+                    }
                 }
             }
         });
+    }
+
+    /** 選択状態を相対移動する (矢印キーの微調整。Shift でグリッド単位)。 */
+    void nudgeSelected(int dx, int dy) {
+        if (!editable || selected == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, selected.getX() + dx),
+                Math.max(0, selected.getY() + dy));
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 
     void setModel(StateSketchModel model, boolean editable, List<String> unsupported) {

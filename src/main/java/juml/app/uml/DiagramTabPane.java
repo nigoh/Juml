@@ -341,6 +341,12 @@ public final class DiagramTabPane {
         return t != null ? t.previewPanel : null;
     }
 
+    /** フォーカス中タブの表示ラベル (エクスポート提案ファイル名などに使う)。無ければ null。 */
+    public String activeTabLabel() {
+        DiagramTab t = activeTab();
+        return t != null ? t.label : null;
+    }
+
     /** フォーカス中タブの描画済み PlantUML テキスト (未描画/無しは null)。 */
     public String activeRenderedPuml() {
         DiagramTab t = activeTab();
@@ -1732,6 +1738,12 @@ public final class DiagramTabPane {
         private final SvgPreviewPanel previewPanel = new SvgPreviewPanel();
         /** 表示中の図に対するインクリメンタル検索バー (Ctrl+F)。 */
         private final DiagramFindBar findBar = new DiagramFindBar(previewPanel, this::revalidate);
+        /**
+         * ライブプレビューの描画失敗時に、直前の正常な図の上端へ重ねる警告バナー。
+         * エディタタブでは打ちかけの構文エラーのたびに図をエラーカードへ置き換えると
+         * 編集リズムが壊れるため、最後に成功した図を表示し続けてバナーで失敗を知らせる。
+         */
+        private final JLabel liveErrorBanner = new JLabel();
         private final PumlSourcePanel sourcePanel  = new PumlSourcePanel();
         /** 実際の Java/Kotlin ソースを表示するパネル (VS Code 風)。 */
         private final JavaSourcePanel javaSourcePanel = new JavaSourcePanel();
@@ -1779,6 +1791,10 @@ public final class DiagramTabPane {
 
             // 図プレビュー (スクロール) + 下端の図内検索バーを 1 枚の "view" カードにまとめる。
             JPanel viewPanel = new JPanel(new java.awt.BorderLayout());
+            liveErrorBanner.setOpaque(true);
+            liveErrorBanner.setBorder(javax.swing.BorderFactory.createEmptyBorder(4, 8, 4, 8));
+            liveErrorBanner.setVisible(false);
+            viewPanel.add(liveErrorBanner, java.awt.BorderLayout.NORTH);
             viewPanel.add(new JScrollPane(previewPanel), java.awt.BorderLayout.CENTER);
             viewPanel.add(findBar, java.awt.BorderLayout.SOUTH);
             viewCards.add(viewPanel, "view");
@@ -2322,6 +2338,7 @@ public final class DiagramTabPane {
             previewPanel.setLinkAreas(null);
             previewPanel.setTextItems(java.util.Collections.emptyList());
             findBar.reset();
+            liveErrorBanner.setVisible(false);
             renderedSvgXml = null;
             renderReleased = true;
             // 解放後の再描画では全体表示から始めたい (解放前のズームは失われている) ので、
@@ -2340,7 +2357,11 @@ public final class DiagramTabPane {
                 sourcePanel.clearErrorHighlight();
             }
             setStatus(Messages.get("status.rendering") + " " + label + " ...");
-            showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
+            // エディタタブに正常描画済みの図があれば、それを表示したまま裏で再描画する
+            // (毎回「描画中…」カードへ切り替えるとライブプレビューがちらつくため)。
+            if (!keepsLastGoodPreview()) {
+                showMessageCard("<b>" + Messages.get("status.rendering") + " " + esc(label) + " …</b>", true);
+            }
             final DiagramRequest dreq = spec;
             // エディタタブはテキストが真実源: EDT 上でスナップショットしてから背景描画する。
             final String editorPuml = isEditor() ? sourcePanel.getText() : null;
@@ -2395,18 +2416,27 @@ public final class DiagramTabPane {
                                                 editorPuml, generated, genLine));
                             }
                         }
-                        previewPanel.setSvgGraphicsNode(null, 0, 0);
-                        renderedPuml = pumlOnError;
-                        renderedSvgXml = null;
-                        if (isActive()) {
-                            mirrorToState();
-                        }
                         // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
                         // (ユーザがそのまま報告できるようにする)。
                         juml.util.ErrorCode code = RenderFailureLog.classify(error, isEditor());
                         java.io.File dumped = RenderFailureLog.dump(
                                 label, pumlOnError, error, isEditor());
                         copyableFailureText = buildFailureText(code, error, dumped);
+                        if (keepsLastGoodPreview()) {
+                            // 直前の正常な図を保持したまま、上端バナー + エラー行強調 +
+                            // ステータスで失敗を提示する (編集リズムを壊さない)。
+                            showLiveErrorBanner(code, error);
+                            setStatus(label + ": " + code.tag() + " "
+                                    + Messages.get("status.renderFailed") + " "
+                                    + failureReason(error));
+                            return;
+                        }
+                        previewPanel.setSvgGraphicsNode(null, 0, 0);
+                        renderedPuml = pumlOnError;
+                        renderedSvgXml = null;
+                        if (isActive()) {
+                            mirrorToState();
+                        }
                         showMessageCard(DiagramFailureMessage.forError(error, dumped, code));
                         setStatus(label + ": " + code.tag() + " "
                                 + Messages.get("status.renderFailed") + " " + failureReason(error));
@@ -2427,6 +2457,7 @@ public final class DiagramTabPane {
                             setStatus(label + ": " + Messages.get("status.noDiagramShort"));
                             return;
                         }
+                        liveErrorBanner.setVisible(false);
                         previewPanel.setSvgGraphicsNode(r.svg.getRoot(),
                                 r.svg.getWidth(), r.svg.getHeight());
                         previewPanel.setLinkAreas(r.svg.getLinkAreas());
@@ -2469,6 +2500,34 @@ public final class DiagramTabPane {
 
         private String failureReason(Throwable error) {
             return DiagramFailureMessage.reason(error);
+        }
+
+        /**
+         * 描画失敗/再描画中に「直前の正常な図」を表示し続けるべきか。
+         * エディタタブで一度でも正常描画できていれば true (打ちかけ構文エラーで
+         * 図が消えると編集リズムが壊れるため)。
+         */
+        private boolean keepsLastGoodPreview() {
+            return isEditor() && renderedSvgXml != null;
+        }
+
+        /** 直前の正常な図の上端に失敗バナーを表示する (エディタのライブプレビュー用)。 */
+        private void showLiveErrorBanner(juml.util.ErrorCode code, Throwable error) {
+            boolean dark = EditorColors.isDark();
+            liveErrorBanner.setBackground(dark ? new Color(0x5A, 0x1D, 0x1D)
+                    : new Color(0xFD, 0xEC, 0xEA));
+            liveErrorBanner.setForeground(dark ? new Color(0xFF, 0xB4, 0xAB)
+                    : new Color(0xB7, 0x1C, 0x1C));
+            liveErrorBanner.setText(code.tag() + " " + failureReason(error)
+                    + " — " + Messages.get("tab.liveError.keep"));
+            liveErrorBanner.setToolTipText(liveErrorBanner.getText());
+            liveErrorBanner.setVisible(true);
+            showPreviewCard();
+        }
+
+        /** テスト用: ライブエラーバナーが表示中か。 */
+        boolean liveErrorBannerVisibleForTest() {
+            return liveErrorBanner.isVisible();
         }
 
         private String esc(String s) {

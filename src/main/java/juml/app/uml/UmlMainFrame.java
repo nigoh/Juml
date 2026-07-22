@@ -422,6 +422,9 @@ public class UmlMainFrame extends JFrame {
         // 動的タブマネージャ (fixedSuffix=FIXED_UTILITY_TABS で末尾ユーティリティタブの手前に挿入)
         tabPane = new DiagramTabPane(mainTabs, FIXED_UTILITY_TABS, cache, state,
                 status::setText, this::updateZoomLabelFromValue);
+        // エクスポート保存ダイアログの提案ファイル名にアクティブタブ名を使う。
+        exportController.setBaseNameSupplier(() ->
+                tabPane != null ? tabPane.activeTabLabel() : null);
         // References (逆参照) の行ダブルクリック → 参照箇所のソースへジャンプ。
         referencesPanel.setOnOpenSite(site -> tabPane.openSourceSite(
                 site.getCallerFqn(), site.getFile(), site.getLineHint()));

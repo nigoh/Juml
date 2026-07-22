@@ -127,6 +127,8 @@ public enum ErrorCode {
     EXP_005(Area.EXP, "EXP-005"),
     /** PNG のバックグラウンド出力に失敗しました。 */
     EXP_006(Area.EXP, "EXP-006"),
+    /** PlantUML 共有 URL の生成・コピーに失敗しました。 */
+    EXP_007(Area.EXP, "EXP-007"),
 
     // ── NOTE ──
     /** ノート付き PNG の出力に失敗しました。 */
@@ -139,6 +141,8 @@ public enum ErrorCode {
     CFG_002(Area.CFG, "CFG-002"),
     /** プロジェクト履歴データベースの操作に失敗しました。 */
     CFG_003(Area.CFG, "CFG-003"),
+    /** エディタ下書き (自動保存) の読み書きに失敗しました。 */
+    CFG_004(Area.CFG, "CFG-004"),
 
     // ── SYS ──
     /** 標準エラー出力を検出しました（未分類）。 */

@@ -112,9 +112,27 @@ final class UseCaseSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
                     setRelationMode(null);
                     listener.relationModeCancelled();
+                } else if (editable && selected != null && relationMode == null) {
+                    int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
+                    if (d != null) {
+                        nudgeSelected(d[0], d[1]);
+                        e.consume();
+                    }
                 }
             }
         });
+    }
+
+    /** 選択要素を相対移動する (矢印キーの微調整。Shift でグリッド単位)。 */
+    void nudgeSelected(int dx, int dy) {
+        if (!editable || selected == null) {
+            return;
+        }
+        selected.moveTo(Math.max(0, selected.getX() + dx),
+                Math.max(0, selected.getY() + dy));
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 
     void setModel(UseCaseSketchModel model, boolean editable, List<String> unsupported) {
