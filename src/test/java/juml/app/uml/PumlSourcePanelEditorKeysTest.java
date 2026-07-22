@@ -111,6 +111,26 @@ public class PumlSourcePanelEditorKeysTest {
     }
 
     @Test
+    public void completionAccept_undoesInOneStepToPreAcceptText() {
+        // 確定 (接頭辞の remove + 候補の insert) は複合編集 1 手で、Ctrl+Z 1 回で
+        // 確定前のテキストへ戻る (分かれていると 1 回目の Undo で接頭辞ごと消える)。
+        PumlSourcePanel panel = editable("cla", 3);
+        GuiActionRunner.execute(() -> panel.applyCompletionForTest("class"));
+        assertEquals("class", GuiActionRunner.execute(panel::getText));
+        GuiActionRunner.execute(panel::undoForTest);
+        assertEquals("cla", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void midWordCompletion_replacesWholeWord() {
+        // 語中 ("cl|a") で確定してもキャレット後方の語の残りごと置換され、
+        // "classa" のような残余崩れにならない。
+        PumlSourcePanel panel = editable("cla", 2);
+        GuiActionRunner.execute(() -> panel.applyCompletionForTest("class"));
+        assertEquals("class", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
     public void editorActions_doNothingWhenReadOnly() {
         PumlSourcePanel readOnly = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> readOnly.setText("class A\n"));

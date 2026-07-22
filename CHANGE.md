@@ -15,6 +15,7 @@ Change log
     * **[low] 複数インスタンスの下書き衝突を軽減**: 復元辞退時は提示した下書きだけを破棄し、他インスタンスの生きている下書きを巻き添えにしない (既知の制限として Javadoc に明記)。
     * **[ux] 中ボタンダブルクリックが編集ダイアログを開く**: 全 6 キャンバスの mouseClicked に左ボタンガードを追加。
     * テスト: 上記すべてに回帰テストを追加 (`PumlEditorKeysTest` 選択置換 7 ケース、`SeqSketchCanvasPanGuardTest`、`DiagramTabPaneDraftTest` 終了破棄・限定破棄、`DraftStoreTest` 一時ファイル、`SettingTest` lastExportDirectory round-trip)。
+    * **Round 2 (再監査) で 3 件、Round 3 で 2 件を追加検出・修正**: (R2-1) 補完確定の陳腐化ガードが case-sensitive で、case-insensitive 候補 ("CLA"→"class") の確定が無反応になる回帰 → 接頭辞ごと候補で置換する方式へ。(R2-2) 終了確認で「破棄」→ 後続タブ「キャンセル」時に、開いたままの dirty タブから下書き保護だけが失われる部分コミット → 削除を全確認通過後へ遅延。(R2-3) プロジェクト読込中の Ctrl+Shift+T が閉じタブ履歴を無言消費 → needsProject 付きエントリで peek 判定 + 案内 (`status.reopenNeedsProject`)。(R3-1) 補完確定の remove+insert が Undo 2 手に分裂し Ctrl+Z 1 回で接頭辞ごと消える → 複合編集 1 手化。(R3-2) 語中キャレットで確定すると "classa" のような残余崩れ → 語の終端まで置換 (`PumlCompletion.wordEnd`)。ほか UX 2 件 (補完ポップアップの毎キーちらつき / ズーム中のドラッグゴースト幅)。
     * 目的: 大きな機能追加の直後に「発見 → 敵対的検証 → 修正 → 再監査」のサイクルを回し、確定バグゼロの品質で出荷するため。
 
 * **エディタタブに自動保存 (下書き) とクラッシュ復旧を追加** (`DraftStore` 新規、`DiagramTabPane` / `UmlMainFrame` / `ErrorCode CFG-004`)

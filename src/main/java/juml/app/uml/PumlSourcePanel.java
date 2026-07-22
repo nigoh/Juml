@@ -688,16 +688,23 @@ public class PumlSourcePanel extends JPanel {
             return;
         }
         StyledDocument doc = textPane.getStyledDocument();
-        int end = Math.min(at, doc.getLength());
-        int start = Math.max(0, end - prefix.length());
-        try {
-            // 接頭辞ごと候補で置換し、大文字小文字のゆらぎも候補どおりに揃える。
-            doc.remove(start, end - start);
-            doc.insertString(start, candidate, null);
-            textPane.setCaretPosition(Math.min(start + candidate.length(), doc.getLength()));
-        } catch (BadLocationException ignored) {
-            return;
-        }
+        int caret = Math.min(at, doc.getLength());
+        int start = Math.max(0, caret - prefix.length());
+        // 語中で確定した場合はキャレット後方の語の残り (例: "cl|a" の a) も含めて
+        // 置換する ("classa" のような残余崩れを防ぐ)。
+        int end = PumlCompletion.wordEnd(getText(), caret);
+        // remove + insert を 1 個の複合編集にまとめ、Ctrl+Z 1 回で確定前へ戻せるようにする
+        // (分かれていると 1 回目の Undo で接頭辞ごと消える)。
+        runAsCompound(() -> {
+            try {
+                // 接頭辞ごと候補で置換し、大文字小文字のゆらぎも候補どおりに揃える。
+                doc.remove(start, end - start);
+                doc.insertString(start, candidate, null);
+            } catch (BadLocationException ignored) {
+                // 競合編集で範囲がずれた場合は何もしない (致命的でない)。
+            }
+        });
+        textPane.setCaretPosition(Math.min(start + candidate.length(), doc.getLength()));
         textPane.requestFocusInWindow();
     }
 
