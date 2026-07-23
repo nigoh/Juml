@@ -63,6 +63,18 @@ public class PlantUmlHighlighterTest {
     }
 
     @Test
+    public void preprocessorDirectivesAndNewKeywordsGetSpans() {
+        // A3: 前処理ディレクティブ (! 始まり) と拡張キーワードが着色されること。
+        String t = "!theme plain\n!include foo.iuml\nswitch (x)\ncase (a)\nendswitch\nmap M {\n}\n";
+        List<Span> spans = PlantUmlHighlighter.highlight(t);
+        assertTrue("!theme はディレクティブ着色", colorOf(t, spans, "!theme") != null);
+        assertTrue("!include はディレクティブ着色", colorOf(t, spans, "!include") != null);
+        assertTrue("switch はキーワード着色", colorOf(t, spans, "switch") != null);
+        assertTrue("endswitch はキーワード着色", colorOf(t, spans, "endswitch") != null);
+        assertTrue("map はキーワード着色", colorOf(t, spans, "map") != null);
+    }
+
+    @Test
     public void nullAndEmptyAreSafe() {
         assertTrue(PlantUmlHighlighter.highlight(null).isEmpty());
         assertTrue(PlantUmlHighlighter.highlight("").isEmpty());
