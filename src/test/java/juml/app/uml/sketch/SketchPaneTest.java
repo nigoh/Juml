@@ -169,6 +169,40 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void loadFrom_objectTemplate_enablesObjectEditing() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.OBJECT.body()));
+        assertEquals("オブジェクト図として判定されるはず", SketchDiagramType.OBJECT,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("オブジェクト図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.objectsForTest().size()));
+        assertEquals(1, (int) GuiActionRunner.execute(
+                () -> pane.linksForTest().size()));
+    }
+
+    @Test
+    public void objectEdit_syncsTextAndUndoRedo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.OBJECT.body());
+        });
+        GuiActionRunner.execute(pane::addObjectForTest);
+        assertTrue("追加直後のテキストに新オブジェクトが載る: " + lastPuml.get(),
+                lastPuml.get().contains("object NewObject"));
+        GuiActionRunner.execute(pane::undo);
+        assertFalse("Undo 後のテキストからは新オブジェクトが消える: " + lastPuml.get(),
+                lastPuml.get().contains("object NewObject"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新オブジェクトが戻る: " + lastPuml.get(),
+                lastPuml.get().contains("object NewObject"));
+    }
+
+    @Test
     public void loadFrom_deploymentTemplate_disablesEditing() {
         // 専用エディタの無い図種 (配置図等) は従来どおり編集ロックで保全する。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
