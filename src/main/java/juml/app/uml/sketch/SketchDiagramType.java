@@ -9,10 +9,11 @@ import java.util.regex.Pattern;
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
  * <p>まず {@code usecase} / {@code component} キーワード (いずれも一意) があれば
- * ユースケース図 / コンポーネント図と確定する。次に ER 図固有のマーカー
- * (crow's-foot 関係演算子 {@code ||--o{} 等、または {@code entity "..." {} の列ブロック +
- * {@code hide circle}) があれば ER 図と確定する ({@code entity} 単独は他図種と共有するため
- * 判定材料にしない)。無ければ行単位の先勝ちで:
+ * ユースケース図 / コンポーネント図と確定する。次に一意マーカーを先取りで判定する:
+ * {@code object 名前} 宣言 → オブジェクト図、ER 図固有マーカー (crow's-foot 関係演算子
+ * {@code ||--o{} 等、または {@code entity "..." {} の列ブロック + {@code hide circle}) → ER 図、
+ * {@code node} / {@code artifact} / {@code cloud} 宣言 → 配置図 ({@code entity} / {@code database}
+ * はシーケンス図と共有するため単独では判定材料にしない)。無ければ行単位の先勝ちで:
  * アクティビティ図の構文 ({@code start} / {@code :action;} /
  * {@code if (...) then}) → 状態遷移図の構文 ({@code state X} / {@code [*] --> X}) →
  * クラス宣言 ({@code class} / {@code interface} / {@code enum}) → シーケンス図の構文
@@ -36,7 +37,9 @@ public enum SketchDiagramType {
     /** オブジェクト図。 */
     OBJECT,
     /** ER (エンティティ関連) 図。 */
-    ER;
+    ER,
+    /** 配置図 (デプロイ図)。 */
+    DEPLOYMENT;
 
     /**
      * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
@@ -56,6 +59,13 @@ public enum SketchDiagramType {
      */
     private static final Pattern OBJECT_LINE = Pattern.compile(
             "^object\\s+[A-Za-z_$].*$");
+    /**
+     * 配置図に固有の宣言行。{@code node} / {@code artifact} / {@code cloud} は他図種と
+     * 衝突しないため、これらが 1 行でもあれば配置図と確定できる。{@code database} は
+     * シーケンス図の参加者宣言と共有するため、単独では判定材料にしない。
+     */
+    private static final Pattern DEPLOYMENT_LINE = Pattern.compile(
+            "^(node|artifact|cloud)\\b.*$");
 
     /** アクティビティ図に固有の行 ({@code start} / {@code :action;} / {@code if} など)。 */
     private static final Pattern ACTIVITY_LINE = Pattern.compile(
@@ -128,6 +138,13 @@ public enum SketchDiagramType {
         }
         if (entityBlock && hideCircle) {
             return ER;
+        }
+        // node / artifact / cloud 宣言も配置図に固有なため先取りで判定する
+        // (database はシーケンス図の参加者と衝突するため主判定材料にしない)。
+        for (String raw : lines) {
+            if (DEPLOYMENT_LINE.matcher(raw.trim()).matches()) {
+                return DEPLOYMENT;
+            }
         }
         for (String raw : lines) {
             String line = raw.trim();

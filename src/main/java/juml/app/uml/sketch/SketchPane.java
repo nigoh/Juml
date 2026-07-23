@@ -41,6 +41,7 @@ public final class SketchPane extends JPanel {
     private final ComponentSketchEditor componentEditor = new ComponentSketchEditor();
     private final ObjectSketchEditor objectEditor = new ObjectSketchEditor();
     private final ErSketchEditor erEditor = new ErSketchEditor();
+    private final DeploySketchEditor deployEditor = new DeploySketchEditor();
     private SketchEditor active = classEditor;
     private SketchDiagramType activeType = SketchDiagramType.CLASS;
 
@@ -96,6 +97,7 @@ public final class SketchPane extends JPanel {
             case COMPONENT: return componentEditor;
             case OBJECT:   return objectEditor;
             case ER:       return erEditor;
+            case DEPLOYMENT: return deployEditor;
             default:       return classEditor;
         }
     }
@@ -320,6 +322,21 @@ public final class SketchPane extends JPanel {
     /** テスト用: 実際の編集経路で ER エンティティを追加し Undo 履歴も積む。 */
     void addErEntityForTest() {
         erEditor.addEntityForTest();
+    }
+
+    /** テスト用: 現在の解析済み配置図モデルのノード群。 */
+    List<DeploySketchModel.DeployNode> deployNodesForTest() {
+        return deployEditor.nodesForTest();
+    }
+
+    /** テスト用: 現在の解析済み配置図モデルのリンク群。 */
+    List<DeploySketchModel.DeployLink> deployLinksForTest() {
+        return deployEditor.linksForTest();
+    }
+
+    /** テスト用: 実際の編集経路で配置図ノードを追加し Undo 履歴も積む。 */
+    void addDeployNodeForTest(DeploySketchModel.DeployNode.Kind kind) {
+        deployEditor.addNodeForTest(kind);
     }
 
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */

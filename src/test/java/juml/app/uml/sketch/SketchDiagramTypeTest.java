@@ -122,6 +122,46 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void detect_deploymentSample_isDeployment() {
+        // node / artifact / cloud 宣言を含む代表的な配置図は DEPLOYMENT と判定される。
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect(String.join("\n",
+                        "@startuml",
+                        "node \"App Server\" as srv",
+                        "artifact webapp",
+                        "database \"PostgreSQL\" as db",
+                        "cloud CDN",
+                        "srv --> db : JDBC",
+                        "CDN --> srv",
+                        "@enduml", "")));
+    }
+
+    @Test
+    public void detect_deploymentTemplate_isDeployment() {
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect(PumlTemplate.DEPLOYMENT.body()));
+    }
+
+    @Test
+    public void detect_nodeArtifactCloudKeywords_areDeployment() {
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect("@startuml\nnode Srv\n@enduml\n"));
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect("@startuml\nartifact app\n@enduml\n"));
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect("@startuml\ncloud CDN\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_databaseParticipantWithoutNode_staysSequence() {
+        // database はシーケンス図の参加者宣言と共有するため、node/artifact/cloud が無ければ
+        // 配置図と誤判定せずシーケンス図のままにする。
+        assertEquals(SketchDiagramType.SEQUENCE,
+                SketchDiagramType.detect(
+                        "@startuml\ndatabase DB\nUser -> DB : query\n@enduml\n"));
+    }
+
+    @Test
     public void detect_erTemplate_isEr() {
         assertEquals(SketchDiagramType.ER,
                 SketchDiagramType.detect(PumlTemplate.ER.body()));
