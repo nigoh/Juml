@@ -6,7 +6,9 @@ package juml.app.uml.sketch;
 import juml.app.uml.sketch.DeploySketchModel.DeployLink;
 import juml.app.uml.sketch.DeploySketchModel.DeployNode;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,13 +18,16 @@ import java.util.regex.Pattern;
 /**
  * {@link DeploySketchModel} と PlantUML テキストの双方向変換。
  *
- * <p>対応構文は配置図の基本要素 (フラット構成) に限定する:
- * ノード宣言 8 種 ({@code node} / {@code artifact} / {@code database} / {@code cloud} /
- * {@code component} / {@code rectangle} / {@code folder} / {@code frame}) の素の id 形式
- * および {@code "表示名" as id} 形式、リンク 3 種 ({@code -->} / {@code ..>} / {@code --})
- * ({@code : label} 付き・自己リンク可)、レイアウト座標コメント ({@code '@pos id x y})。
- * 入れ子コンテナ ({@code node X { ... }})・引用符だけの宣言 ({@code node "..."})・
- * その他未対応構文は「未対応」として報告し編集をロックしテキストを守る。</p>
+ * <p>対応構文は配置図の要素一式: ノード宣言 8 種 ({@code node} / {@code artifact} /
+ * {@code database} / {@code cloud} / {@code component} / {@code rectangle} /
+ * {@code folder} / {@code frame}) の素の id 形式・{@code "表示名" as id} 形式・
+ * エイリアス無しの引用符宣言 ({@code node "表示名"})、それらの
+ * {@code node "X" as x { … }} 入れ子コンテナ (任意深さ)、リンク 3 種
+ * ({@code -->} / {@code ..>} / {@code --}) ({@code : label} 付き・自己リンク可・
+ * 端点はエイリアス/引用符ラベルのどちらでも可)、レイアウト座標コメント
+ * ({@code '@pos id x y})。入れ子ノードの座標は親の内側原点からの相対値として
+ * {@code '@pos} に保存する。往復不能な構文 (未知キーワードのブロック等) だけ
+ * 「未対応」として報告し編集をロックしてテキストを守る。</p>
  */
 public final class DeploySketchCodec {
 
@@ -30,13 +35,23 @@ public final class DeploySketchCodec {
     private static final String KW =
             "node|artifact|database|cloud|component|rectangle|folder|frame";
 
+    /** 別名 (id) として許される厳格な識別子。合成 id・リンク端点にも使う。 */
+    private static final String BARE_ID = "[A-Za-z_$][\\w$]*";
+    private static final Pattern BARE_ID_ONLY = Pattern.compile("^" + BARE_ID + "$");
+
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
-    private static final Pattern DECL = Pattern.compile(
-            "^(" + KW + ")\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern ALIAS = Pattern.compile(
-            "^(" + KW + ")\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
-    private static final String ENDPOINT = "[A-Za-z_$][\\w$]*";
+            "^(" + KW + ")\\s+\"([^\"]*)\"\\s+as\\s+(" + BARE_ID + ")\\s*$");
+    /** 引用符ラベルのみでエイリアス無し ({@code node "Web Server"})。id は合成する。 */
+    private static final Pattern ANON_QUOTED = Pattern.compile(
+            "^(" + KW + ")\\s+\"([^\"]*)\"\\s*$");
+    /** 素の宣言。id は {@code .}/{@code -} も許す緩い文字集合で受理し、
+     * 厳格な識別子でなければ (例: {@code app.war}) ラベルとして扱い id を合成する。 */
+    private static final Pattern DECL_LOOSE = Pattern.compile(
+            "^(" + KW + ")\\s+([A-Za-z_$][\\w$.-]*)\\s*$");
+    /** リンク端点: 素の識別子、または引用符付きラベル参照。 */
+    private static final String ENDPOINT = "(?:\"[^\"]*\"|" + BARE_ID + ")";
     private static final Pattern RELATION = Pattern.compile(
             "^(" + ENDPOINT + ")\\s*(-->|\\.\\.>|--)\\s*(" + ENDPOINT + ")"
                     + "(?:\\s*:\\s*(.*\\S))?\\s*$");
@@ -45,6 +60,8 @@ public final class DeploySketchCodec {
     private static final int GRID_Y = 120;
     private static final int GRID_COLS = 3;
     private static final int GRID_MARGIN = 50;
+    /** toPuml のブロック内インデント幅 (スペース 2 個/階層)。 */
+    private static final String INDENT_UNIT = "  ";
 
     private DeploySketchCodec() {
     }
@@ -66,93 +83,202 @@ public final class DeploySketchCodec {
         }
     }
 
+    /** 解析中の可変状態をまとめた作業用コンテキスト (parse 本体のメソッド長を抑える)。 */
+    private static final class ParseCtx {
+        final DeploySketchModel model = new DeploySketchModel();
+        final List<String> unsupported = new ArrayList<>();
+        final Map<String, int[]> positions = new HashMap<>();
+        /** 引用符ラベル → id の逆引き (エイリアス無し宣言をリンク端点から解決するため)。 */
+        final Map<String, String> labelToId = new HashMap<>();
+        /** 現在の入れ子コンテナ (先頭が最も内側)。空ならトップレベル。 */
+        final Deque<DeployNode> containerStack = new ArrayDeque<>();
+        /** 未対応ブロックの中にいるときの残り深さ (0 ならブロック外)。 */
+        int unknownBlockDepth;
+    }
+
     /** PlantUML テキストを配置図モデルへ解析する。 */
     public static ParseResult parse(String text) {
-        DeploySketchModel model = new DeploySketchModel();
-        List<String> unsupported = new ArrayList<>();
-        Map<String, int[]> positions = new HashMap<>();
+        ParseCtx ctx = new ParseCtx();
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
-            String line = raw.trim();
-            if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
-                if (!name.isEmpty()) {
-                    model.setDiagramName(name);
-                }
-                continue;
+            parseLine(ctx, raw.trim());
+        }
+        applyPositions(ctx.model.getNodes(), ctx.positions);
+        return new ParseResult(ctx.model, ctx.unsupported);
+    }
+
+    /** 1 行を解析してコンテキストへ反映する。 */
+    private static void parseLine(ParseCtx ctx, String line) {
+        if (line.startsWith("@startuml")) {
+            String name = line.substring("@startuml".length()).trim();
+            if (!name.isEmpty()) {
+                ctx.model.setDiagramName(name);
             }
-            if (line.isEmpty() || line.equals("@enduml")) {
-                continue;
+            return;
+        }
+        if (line.isEmpty() || line.equals("@enduml")) {
+            return;
+        }
+        if (ctx.unknownBlockDepth > 0) {
+            // 未対応ブロックの中: 中身をまるごと保全しつつ、対応する閉じ括弧まで深さを追う。
+            ctx.unsupported.add(line);
+            if (line.endsWith("{")) {
+                ctx.unknownBlockDepth++;
+            } else if (line.equals("}")) {
+                ctx.unknownBlockDepth--;
             }
-            Matcher pos = POS.matcher(line);
-            if (pos.matches()) {
-                Integer px = parseIntSafe(pos.group(2));
-                Integer py = parseIntSafe(pos.group(3));
-                if (px == null || py == null) {
-                    unsupported.add(line);
-                } else {
-                    positions.put(pos.group(1), new int[]{px, py});
-                }
-                continue;
+            return;
+        }
+        if (line.equals("}")) {
+            if (!ctx.containerStack.isEmpty()) {
+                ctx.containerStack.pop();
+            } else {
+                // 対応する開きの無い浮いた閉じ括弧: 往復できないため未対応として保全する。
+                ctx.unsupported.add(line);
             }
-            if (line.startsWith("'")) {
-                unsupported.add(line);
-                continue;
+            return;
+        }
+        Matcher pos = POS.matcher(line);
+        if (pos.matches()) {
+            parsePos(ctx, pos);
+            return;
+        }
+        if (line.startsWith("'")) {
+            ctx.unsupported.add(line);
+            return;
+        }
+        boolean opensBlock = line.endsWith("{");
+        String head = opensBlock ? line.substring(0, line.length() - 1).trim() : line;
+        DeployNode parent = ctx.containerStack.peek();
+        DeployNode declared = matchDeclarationHead(ctx, head, parent);
+        if (declared != null) {
+            if (opensBlock) {
+                declared.setContainer(true);
+                ctx.containerStack.push(declared);
             }
-            if (matchDeclaration(model, line)) {
-                continue;
-            }
+            return;
+        }
+        if (!opensBlock) {
             Matcher rel = RELATION.matcher(line);
             if (rel.matches()) {
-                DeployLink.Kind kind = DeployLink.Kind.fromArrow(rel.group(2));
-                String from = rel.group(1);
-                String to = rel.group(3);
-                obtainNode(model, from);
-                obtainNode(model, to);
-                model.getLinks().add(new DeployLink(from, kind, to, rel.group(4)));
-                continue;
+                parseRelation(ctx, rel);
+                return;
             }
-            // 入れ子コンテナ・引用符だけの宣言・他構文は往復できないため編集をロックする。
-            unsupported.add(line);
         }
-        applyPositions(model, positions);
-        return new ParseResult(model, unsupported);
+        // 未知のキーワード/構文は往復できないため編集をロックする。ブロックを開いていれば
+        // 対応する閉じ括弧まで丸ごと未対応として保全する。
+        ctx.unsupported.add(line);
+        if (opensBlock) {
+            ctx.unknownBlockDepth = 1;
+        }
     }
 
-    /** ノード宣言 (素 / 別名) にマッチしたらノードを追加し true を返す。 */
-    private static boolean matchDeclaration(DeploySketchModel model, String line) {
-        Matcher alias = ALIAS.matcher(line);
+    private static void parsePos(ParseCtx ctx, Matcher pos) {
+        Integer px = parseIntSafe(pos.group(2));
+        Integer py = parseIntSafe(pos.group(3));
+        if (px == null || py == null) {
+            ctx.unsupported.add(pos.group(0));
+        } else {
+            ctx.positions.put(pos.group(1), new int[]{px, py});
+        }
+    }
+
+    private static void parseRelation(ParseCtx ctx, Matcher rel) {
+        DeployLink.Kind kind = DeployLink.Kind.fromArrow(rel.group(2));
+        String from = resolveEndpoint(ctx, rel.group(1));
+        String to = resolveEndpoint(ctx, rel.group(3));
+        ctx.model.getLinks().add(new DeployLink(from, kind, to, rel.group(4)));
+    }
+
+    /**
+     * 宣言行の頭部 (末尾 {@code {} を除いた部分) をノード宣言としてマッチさせ、
+     * モデルへ反映する。マッチしなければ null。
+     */
+    private static DeployNode matchDeclarationHead(ParseCtx ctx, String head, DeployNode parent) {
+        Matcher alias = ALIAS.matcher(head);
         if (alias.matches()) {
-            obtain(model, DeployNode.Kind.fromKeyword(alias.group(1)),
-                    alias.group(3), alias.group(2));
-            return true;
+            DeployNode.Kind kind = DeployNode.Kind.fromKeyword(alias.group(1));
+            String label = alias.group(2);
+            String id = alias.group(3);
+            DeployNode n = declareNode(ctx.model, kind, id, label, parent);
+            ctx.labelToId.put(label, id);
+            return n;
         }
-        Matcher decl = DECL.matcher(line);
+        Matcher anon = ANON_QUOTED.matcher(head);
+        if (anon.matches()) {
+            DeployNode.Kind kind = DeployNode.Kind.fromKeyword(anon.group(1));
+            return declareAnon(ctx, kind, anon.group(2), parent);
+        }
+        Matcher decl = DECL_LOOSE.matcher(head);
         if (decl.matches()) {
-            obtain(model, DeployNode.Kind.fromKeyword(decl.group(1)),
-                    decl.group(2), null);
-            return true;
+            DeployNode.Kind kind = DeployNode.Kind.fromKeyword(decl.group(1));
+            String token = decl.group(2);
+            if (BARE_ID_ONLY.matcher(token).matches()) {
+                return declareNode(ctx.model, kind, token, null, parent);
+            }
+            // '.' や '-' を含む素の語 (例: app.war) は id として合成し直し、元の表記は
+            // 表示名として保つ (再生成時は引用符 + 明示エイリアス形式になる)。
+            return declareAnon(ctx, kind, token, parent);
         }
-        return false;
+        return null;
     }
 
-    private static void obtain(DeploySketchModel model, DeployNode.Kind kind,
-                               String id, String label) {
+    private static DeployNode declareAnon(ParseCtx ctx, DeployNode.Kind kind,
+                                          String label, DeployNode parent) {
+        String id = ctx.model.uniqueId(sanitizeBase(label));
+        DeployNode n = new DeployNode(kind, id, label, 0, 0);
+        if (parent != null) {
+            ctx.model.addChild(parent, n);
+        } else {
+            ctx.model.getNodes().add(n);
+        }
+        ctx.labelToId.put(label, id);
+        return n;
+    }
+
+    private static DeployNode declareNode(DeploySketchModel model, DeployNode.Kind kind,
+                                          String id, String label, DeployNode parent) {
         DeployNode n = model.findNode(id);
         if (n == null) {
-            model.getNodes().add(new DeployNode(kind, id, label, 0, 0));
+            n = new DeployNode(kind, id, label, 0, 0);
+            if (parent != null) {
+                model.addChild(parent, n);
+            } else {
+                model.getNodes().add(n);
+            }
         } else {
             n.setKind(kind);
             if (label != null) {
                 n.setLabel(label);
             }
         }
+        return n;
     }
 
-    /** リンクの端点用: 未宣言なら既定でノードとして暗黙生成する。 */
-    private static void obtainNode(DeploySketchModel model, String id) {
-        if (model.findNode(id) == null) {
-            model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, id, null, 0, 0));
+    /** リンク端点の記法 (素の id / 引用符ラベル) を id へ解決し、未宣言なら暗黙生成する。 */
+    private static String resolveEndpoint(ParseCtx ctx, String token) {
+        if (token.startsWith("\"")) {
+            String label = token.substring(1, token.length() - 1);
+            String id = ctx.labelToId.get(label);
+            if (id == null) {
+                id = ctx.model.uniqueId(sanitizeBase(label));
+                ctx.model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, id, label, 0, 0));
+                ctx.labelToId.put(label, id);
+            }
+            return id;
         }
+        if (ctx.model.findNode(token) == null) {
+            ctx.model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, token, null, 0, 0));
+        }
+        return token;
+    }
+
+    /** 表示名から合成 id のベースを作る (識別子として不正な文字を除去)。 */
+    private static String sanitizeBase(String label) {
+        String s = label.replaceAll("[^A-Za-z0-9_$]", "");
+        if (s.isEmpty() || !Character.isJavaIdentifierStart(s.charAt(0))) {
+            s = "N" + s;
+        }
+        return s;
     }
 
     private static Integer parseIntSafe(String s) {
@@ -163,9 +289,13 @@ public final class DeploySketchCodec {
         }
     }
 
-    private static void applyPositions(DeploySketchModel model, Map<String, int[]> positions) {
+    /**
+     * 明示座標 ({@code '@pos}) を反映し、無指定のノードは兄弟単位 (同じ階層) で
+     * 格子状に自動配置する。入れ子ノードの座標は親の内側原点からの相対値。
+     */
+    private static void applyPositions(List<DeployNode> siblings, Map<String, int[]> positions) {
         int auto = 0;
-        for (DeployNode n : model.getNodes()) {
+        for (DeployNode n : siblings) {
             int[] p = positions.get(n.getId());
             if (p != null) {
                 n.moveTo(p[0], p[1]);
@@ -174,6 +304,7 @@ public final class DeploySketchCodec {
                         GRID_MARGIN + (auto / GRID_COLS) * GRID_Y);
                 auto++;
             }
+            applyPositions(n.getChildren(), positions);
         }
     }
 
@@ -184,16 +315,7 @@ public final class DeploySketchCodec {
             sb.append(' ').append(model.getDiagramName());
         }
         sb.append('\n');
-        for (DeployNode n : model.getNodes()) {
-            sb.append(n.getKind().keyword()).append(' ');
-            if (n.getLabel() != null && !n.getLabel().isEmpty()
-                    && !n.getLabel().equals(n.getId())) {
-                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
-            } else {
-                sb.append(n.getId());
-            }
-            sb.append('\n');
-        }
+        appendNodes(sb, model.getNodes(), 0);
         if (!model.getLinks().isEmpty()) {
             sb.append('\n');
             for (DeployLink l : model.getLinks()) {
@@ -205,14 +327,37 @@ public final class DeploySketchCodec {
                 sb.append('\n');
             }
         }
-        if (!model.getNodes().isEmpty()) {
+        List<DeployNode> all = model.allNodes();
+        if (!all.isEmpty()) {
             sb.append('\n');
-            for (DeployNode n : model.getNodes()) {
+            for (DeployNode n : all) {
                 sb.append("'@pos ").append(n.getId()).append(' ')
                         .append(n.getX()).append(' ').append(n.getY()).append('\n');
             }
         }
         sb.append("@enduml\n");
         return sb.toString();
+    }
+
+    /** ノード宣言を (入れ子なら再帰的に) 書き出す。 */
+    private static void appendNodes(StringBuilder sb, List<DeployNode> list, int indent) {
+        String pad = INDENT_UNIT.repeat(indent);
+        for (DeployNode n : list) {
+            sb.append(pad).append(n.getKind().keyword()).append(' ');
+            boolean hasLabel = n.getLabel() != null && !n.getLabel().isEmpty()
+                    && !n.getLabel().equals(n.getId());
+            if (hasLabel) {
+                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
+            } else {
+                sb.append(n.getId());
+            }
+            if (n.isContainer()) {
+                sb.append(" {\n");
+                appendNodes(sb, n.getChildren(), indent + 1);
+                sb.append(pad).append("}\n");
+            } else {
+                sb.append('\n');
+            }
+        }
     }
 }
