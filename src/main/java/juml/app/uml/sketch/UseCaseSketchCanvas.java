@@ -54,6 +54,11 @@ final class UseCaseSketchCanvas extends JPanel {
     private static final int ACTOR_W = 54;
     private static final int ACTOR_H = 74;
     private static final int GRID = 8;
+    /** 端点ハンドルの当たり判定半径 (画面px。モデル座標へはズームで割って変換)。 */
+    private static final double HANDLE_HIT_RADIUS = 8.0;
+    /** 端点ハンドルの描画半サイズ (正方形の一辺の半分)。 */
+    private static final int HANDLE_HALF = 3;
+    private static final Color HANDLE_COLOR = new Color(0x1565C0);
 
     private UseCaseSketchModel model = new UseCaseSketchModel();
     private boolean editable;
@@ -68,6 +73,12 @@ final class UseCaseSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
+    /** 端点付替えドラッグ中の対象関係 (null = 付替え中でない)。 */
+    private UseCaseRelation reattachRelation;
+    /** true = from (始点) 側をドラッグ中, false = to (終点) 側。 */
+    private boolean reattachStartEnd;
+    /** 付替えドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
+    private Point reattachCursor;
 
     UseCaseSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -115,6 +126,8 @@ final class UseCaseSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
                     setRelationMode(null);
                     listener.relationModeCancelled();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachRelation != null) {
+                    cancelReattach();
                 } else if (editable && selected != null && relationMode == null) {
                     int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
                     if (d != null) {
@@ -144,6 +157,8 @@ final class UseCaseSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
+        this.reattachRelation = null;
+        this.reattachCursor = null;
         revalidate();
         repaint();
     }
@@ -164,6 +179,7 @@ final class UseCaseSketchCanvas extends JPanel {
         this.relationMode = kind;
         this.relationSource = null;
         this.selected = null;
+        cancelReattach(); // モード切替で進行中の端点ドラッグを安全に中断する
         repaint();
     }
 
@@ -212,12 +228,29 @@ final class UseCaseSketchCanvas extends JPanel {
             handleRelationClick(hit);
             return;
         }
+        if (beginReattachIfHandleHit(mp)) {
+            return;
+        }
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
             dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
+    }
+
+    /** 端点ハンドルを press したら、通常のノード選択/ドラッグより優先して付替えを開始する。 */
+    private boolean beginReattachIfHandleHit(Point mp) {
+        EndpointHit hit = endpointHandleAt(mp);
+        if (hit == null) {
+            return false;
+        }
+        reattachRelation = hit.relation();
+        reattachStartEnd = hit.startEnd();
+        reattachCursor = mp;
+        selected = null;
+        repaint();
+        return true;
     }
 
     private void handleRelationClick(UseCaseNode hit) {
@@ -238,7 +271,15 @@ final class UseCaseSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || relationMode != null || selected == null || dragOffset == null) {
+        if (!editable || relationMode != null) {
+            return;
+        }
+        if (reattachRelation != null) {
+            reattachCursor = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (selected == null || dragOffset == null) {
             return;
         }
         Point mp = view.toModel(e.getPoint());
@@ -250,6 +291,10 @@ final class UseCaseSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
+        if (reattachRelation != null) {
+            finishReattach(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             showPopup(e, nodeAt(view.toModel(e.getPoint())));
             return;
@@ -264,6 +309,44 @@ final class UseCaseSketchCanvas extends JPanel {
             listener.modelEdited();
         }
         dragOffset = null;
+    }
+
+    /** ドラッグ終了: カーソル位置にノードがあれば付け替え、無ければキャンセル (不変)。 */
+    private void finishReattach(Point releasedAt) {
+        UseCaseRelation rel = reattachRelation;
+        boolean startEnd = reattachStartEnd;
+        reattachRelation = null;
+        reattachCursor = null;
+        performReattach(rel, startEnd, nodeAt(releasedAt));
+        repaint();
+    }
+
+    /** 進行中の端点付替えドラッグをモデル変更なしに中断する (Esc/モード切替用)。 */
+    private void cancelReattach() {
+        reattachRelation = null;
+        reattachCursor = null;
+        repaint();
+    }
+
+    /**
+     * 端点付替えの実処理 (実際のドラッグ&リリース経路とテストシームの両方から呼ばれる)。
+     * 自己ループ (from == to) はこの図では関係追加自体が未対応のため、付替えでも作らせない。
+     */
+    private boolean performReattach(UseCaseRelation rel, boolean startEnd, UseCaseNode target) {
+        if (!editable || rel == null || target == null) {
+            return false;
+        }
+        String otherId = startEnd ? rel.getTo() : rel.getFrom();
+        if (target.getId().equals(otherId)) {
+            return false;
+        }
+        if (startEnd) {
+            rel.setFrom(target.getId());
+        } else {
+            rel.setTo(target.getId());
+        }
+        listener.modelEdited();
+        return true;
     }
 
     private void showPopup(MouseEvent e, UseCaseNode hit) {
@@ -368,6 +451,8 @@ final class UseCaseSketchCanvas extends JPanel {
             for (UseCaseNode n : model.getNodes()) {
                 paintNode(g2, n);
             }
+            paintReattachHandles(g2);
+            paintReattachRubberBand(g2);
         } finally {
             g2.dispose();
         }
@@ -459,8 +544,114 @@ final class UseCaseSketchCanvas extends JPanel {
     }
 
     // -------------------------------------------------------------------------
+    // 端点付替え (発見可能ハンドル描画 / ラバーバンド)
+    // -------------------------------------------------------------------------
+
+    /** 選択/移動モードかつ編集可のときだけ、全関係の端点にハンドルを描く (発見可能性)。 */
+    private void paintReattachHandles(Graphics2D g2) {
+        if (!editable || relationMode != null) {
+            return;
+        }
+        for (UseCaseRelation r : model.getRelations()) {
+            Point[] ends = endpointsOf(r);
+            if (ends == null) {
+                continue;
+            }
+            paintHandle(g2, ends[0]);
+            paintHandle(g2, ends[1]);
+        }
+    }
+
+    private static void paintHandle(Graphics2D g2, Point p) {
+        Color prev = g2.getColor();
+        g2.setColor(HANDLE_COLOR);
+        g2.fillRect(p.x - HANDLE_HALF, p.y - HANDLE_HALF, HANDLE_HALF * 2, HANDLE_HALF * 2);
+        g2.setColor(prev);
+    }
+
+    /** 付替えドラッグ中: 固定側端点 (動かさない方) からカーソルへのラバーバンド線を描く。 */
+    private void paintReattachRubberBand(Graphics2D g2) {
+        if (reattachRelation == null || reattachCursor == null) {
+            return;
+        }
+        Point anchor = reattachFixedAnchor();
+        if (anchor == null) {
+            return;
+        }
+        Stroke old = g2.getStroke();
+        Color prevColor = g2.getColor();
+        g2.setColor(HANDLE_COLOR);
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{5f, 4f}, 0f));
+        g2.drawLine(anchor.x, anchor.y, reattachCursor.x, reattachCursor.y);
+        g2.setStroke(old);
+        paintHandle(g2, reattachCursor);
+        g2.setColor(prevColor);
+    }
+
+    /** 付替えドラッグ中でない側の端点 (固定側) を、カーソル方向を基準に再計算する。 */
+    private Point reattachFixedAnchor() {
+        if (reattachRelation == null || reattachCursor == null) {
+            return null;
+        }
+        UseCaseNode fixed = model.findNode(
+                reattachStartEnd ? reattachRelation.getTo() : reattachRelation.getFrom());
+        return fixed == null ? null : edgePoint(boundsOf(fixed), reattachCursor);
+    }
+
+    // -------------------------------------------------------------------------
     // ヒットテスト / 幾何
     // -------------------------------------------------------------------------
+
+    /** 端点ハンドルのヒットテスト結果 (どの関係の、始点/終点どちら側か)。 */
+    private record EndpointHit(UseCaseRelation relation, boolean startEnd) {
+    }
+
+    /** 押下点 {@code p} (モデル座標) に最も近い端点ハンドルを、当たり判定内から探す。 */
+    private EndpointHit endpointHandleAt(Point p) {
+        double threshold = handleThresholdModel(view.zoom());
+        EndpointHit best = null;
+        double bestD = threshold;
+        for (UseCaseRelation rel : model.getRelations()) {
+            Point[] ends = endpointsOf(rel);
+            if (ends == null) {
+                continue;
+            }
+            double d0 = Math.hypot(p.x - ends[0].x, p.y - ends[0].y);
+            if (d0 <= bestD) {
+                bestD = d0;
+                best = new EndpointHit(rel, true);
+            }
+            double d1 = Math.hypot(p.x - ends[1].x, p.y - ends[1].y);
+            if (d1 <= bestD) {
+                bestD = d1;
+                best = new EndpointHit(rel, false);
+            }
+        }
+        return best;
+    }
+
+    /** 関係の始点・終点アンカー ({@link #paintRelation} と同じ幾何)。自己ループは null。 */
+    private Point[] endpointsOf(UseCaseRelation rel) {
+        UseCaseNode from = model.findNode(rel.getFrom());
+        UseCaseNode to = model.findNode(rel.getTo());
+        if (from == null || to == null || from == to) {
+            return null;
+        }
+        Point pf = edgePoint(boundsOf(from), center(boundsOf(to)));
+        Point pt = edgePoint(boundsOf(to), center(boundsOf(from)));
+        return new Point[]{pf, pt};
+    }
+
+    /** 画面上約 8px のハンドル当たり判定半径を、指定ズームでのモデル座標半径へ変換する (純関数)。 */
+    static double handleThresholdModel(double zoom) {
+        return HANDLE_HIT_RADIUS / Math.max(1e-6, zoom);
+    }
+
+    /** 点 {@code p} がハンドル {@code handle} から {@code thresholdModel} 以内か (純関数)。 */
+    static boolean withinHandle(Point p, Point handle, double thresholdModel) {
+        return Math.hypot(p.x - handle.x, p.y - handle.y) <= thresholdModel;
+    }
 
     private UseCaseRelation relationAt(Point p) {
         UseCaseRelation best = null;
@@ -552,5 +743,14 @@ final class UseCaseSketchCanvas extends JPanel {
 
     void setSelectedForTest(UseCaseNode n) {
         this.selected = n;
+    }
+
+    /**
+     * テスト用シーム: 実際のドラッグ&リリース経路 ({@link #finishReattach}) と同じ
+     * {@link #performReattach} を通して端点を付け替える。{@code targetNodeId} が既存ノードを
+     * 指さない場合はキャンセル (モデル不変) となり false を返す。
+     */
+    boolean reattachForTest(UseCaseRelation rel, boolean startEnd, String targetNodeId) {
+        return performReattach(rel, startEnd, model.findNode(targetNodeId));
     }
 }

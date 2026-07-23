@@ -55,6 +55,13 @@ final class ErSketchCanvas extends JPanel {
     private static final int DIV_H = 6;
     private static final int MIN_W = 120;
     private static final int GRID = 8;
+    /** 端点ハンドルの当たり判定半径 (画面px。モデル座標へはズームで割って変換)。 */
+    private static final double HANDLE_HIT_RADIUS = 8.0;
+    /** 端点ハンドルの描画半サイズ (正方形の一辺の半分)。 */
+    private static final int HANDLE_HALF = 3;
+    /** 自己関連ループの右上への張り出し量 ({@link #paintSelfRelation} と同じ幾何)。 */
+    private static final int SELF_LOOP_EXIT_DX = 24;
+    private static final int SELF_LOOP_RETURN_DY = 16;
 
     private static final Color FILL = new Color(0xFDF6E3);
     private static final Color TITLE_FILL = new Color(0xF3E4B3);
@@ -76,6 +83,12 @@ final class ErSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
+    /** 端点付替えドラッグ中の対象リレーション (null = 付替え中でない)。 */
+    private ErSketchModel.Relation reattachRelation;
+    /** true = left (左端) 側をドラッグ中, false = right (右端) 側。 */
+    private boolean reattachStartEnd;
+    /** 付替えドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
+    private Point reattachCursor;
 
     ErSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -129,6 +142,8 @@ final class ErSketchCanvas extends JPanel {
         } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode) {
             setRelationMode(false);
             listener.relationModeCancelled();
+        } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachRelation != null) {
+            cancelReattach();
         } else if (editable && selected != null && !relationMode) {
             int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
             if (d != null) {
@@ -156,6 +171,8 @@ final class ErSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
+        this.reattachRelation = null;
+        this.reattachCursor = null;
         revalidate();
         repaint();
     }
@@ -177,6 +194,7 @@ final class ErSketchCanvas extends JPanel {
         this.relationMode = on;
         this.relationSource = null;
         this.selected = null;
+        cancelReattach(); // モード切替で進行中の端点ドラッグを安全に中断する
         repaint();
     }
 
@@ -227,12 +245,29 @@ final class ErSketchCanvas extends JPanel {
             handleRelationClick(hit);
             return;
         }
+        if (beginReattachIfHandleHit(mp)) {
+            return;
+        }
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
             dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
         }
         repaint();
+    }
+
+    /** 端点ハンドルを press したら、通常のエンティティ選択/ドラッグより優先して付替えを開始する。 */
+    private boolean beginReattachIfHandleHit(Point mp) {
+        EndpointHit hit = endpointHandleAt(mp);
+        if (hit == null) {
+            return false;
+        }
+        reattachRelation = hit.relation();
+        reattachStartEnd = hit.startEnd();
+        reattachCursor = mp;
+        selected = null;
+        repaint();
+        return true;
     }
 
     /** リレーション追加モード: 1 クリック目で始点、2 クリック目で終点を確定する (自己関連可)。 */
@@ -256,7 +291,15 @@ final class ErSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || relationMode || selected == null || dragOffset == null) {
+        if (!editable || relationMode) {
+            return;
+        }
+        if (reattachRelation != null) {
+            reattachCursor = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (selected == null || dragOffset == null) {
             return;
         }
         Point mp = view.toModel(e.getPoint());
@@ -268,6 +311,10 @@ final class ErSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
+        if (reattachRelation != null) {
+            finishReattach(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             showPopup(e, entityAt(view.toModel(e.getPoint())));
             return;
@@ -282,6 +329,38 @@ final class ErSketchCanvas extends JPanel {
             listener.modelEdited();
         }
         dragOffset = null;
+    }
+
+    /** ドラッグ終了: カーソル位置にエンティティがあれば付け替え、無ければキャンセル (不変)。 */
+    private void finishReattach(Point releasedAt) {
+        ErSketchModel.Relation rel = reattachRelation;
+        boolean startEnd = reattachStartEnd;
+        reattachRelation = null;
+        reattachCursor = null;
+        performReattach(rel, startEnd, entityAt(releasedAt));
+        repaint();
+    }
+
+    /** 進行中の端点付替えドラッグをモデル変更なしに中断する (Esc/モード切替用)。 */
+    private void cancelReattach() {
+        reattachRelation = null;
+        reattachCursor = null;
+        repaint();
+    }
+
+    /** 端点付替えの実処理。ER は自己関連を既存の 2 クリック追加でも許容するため付替えでも禁止しない。 */
+    private boolean performReattach(ErSketchModel.Relation rel, boolean startEnd,
+                                    ErSketchModel.Entity target) {
+        if (!editable || rel == null || target == null) {
+            return false;
+        }
+        if (startEnd) {
+            rel.setLeft(target.getAlias());
+        } else {
+            rel.setRight(target.getAlias());
+        }
+        listener.modelEdited();
+        return true;
     }
 
     private void showPopup(MouseEvent e, ErSketchModel.Entity hit) {
@@ -411,6 +490,8 @@ final class ErSketchCanvas extends JPanel {
             for (ErSketchModel.Entity e : model.getEntities()) {
                 paintEntity(g2, e);
             }
+            paintReattachHandles(g2);
+            paintReattachRubberBand(g2);
         } finally {
             g2.dispose();
         }
@@ -600,8 +681,129 @@ final class ErSketchCanvas extends JPanel {
     }
 
     // -------------------------------------------------------------------------
+    // 端点付替え (発見可能ハンドル描画 / ラバーバンド)
+    // -------------------------------------------------------------------------
+
+    /** 選択/移動モードかつ編集可のときだけ、全リレーションの端点にハンドルを描く (発見可能性)。 */
+    private void paintReattachHandles(Graphics2D g2) {
+        if (!editable || relationMode) {
+            return;
+        }
+        for (ErSketchModel.Relation r : model.getRelations()) {
+            Point[] ends = endpointsOf(r);
+            if (ends == null) {
+                continue;
+            }
+            paintHandle(g2, ends[0]);
+            paintHandle(g2, ends[1]);
+        }
+    }
+
+    private static void paintHandle(Graphics2D g2, Point p) {
+        Color prev = g2.getColor();
+        g2.setColor(SELECTED);
+        g2.fillRect(p.x - HANDLE_HALF, p.y - HANDLE_HALF, HANDLE_HALF * 2, HANDLE_HALF * 2);
+        g2.setColor(prev);
+    }
+
+    /** 付替えドラッグ中: 固定側端点 (動かさない方) からカーソルへのラバーバンド線を描く。 */
+    private void paintReattachRubberBand(Graphics2D g2) {
+        if (reattachRelation == null || reattachCursor == null) {
+            return;
+        }
+        Point anchor = reattachFixedAnchor();
+        if (anchor == null) {
+            return;
+        }
+        Stroke old = g2.getStroke();
+        Color prevColor = g2.getColor();
+        g2.setColor(SELECTED);
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{5f, 4f}, 0f));
+        g2.drawLine(anchor.x, anchor.y, reattachCursor.x, reattachCursor.y);
+        g2.setStroke(old);
+        paintHandle(g2, reattachCursor);
+        g2.setColor(prevColor);
+    }
+
+    /** 固定側端点を計算する。通常は方向再計算、自己関連はループの反対側アンカーを維持する。 */
+    private Point reattachFixedAnchor() {
+        if (reattachRelation == null || reattachCursor == null) {
+            return null;
+        }
+        ErSketchModel.Entity left = model.findEntity(reattachRelation.getLeft());
+        ErSketchModel.Entity right = model.findEntity(reattachRelation.getRight());
+        if (left == null || right == null) {
+            return null;
+        }
+        if (left == right) {
+            Point[] ends = endpointsOf(reattachRelation);
+            return ends == null ? null : (reattachStartEnd ? ends[1] : ends[0]);
+        }
+        ErSketchModel.Entity fixed = reattachStartEnd ? right : left;
+        return edgePoint(boundsOf(fixed), reattachCursor);
+    }
+
+    // -------------------------------------------------------------------------
     // ヒットテスト / 幾何
     // -------------------------------------------------------------------------
+
+    /** 端点ハンドルのヒットテスト結果 (どのリレーションの、左端/右端どちら側か)。 */
+    private record EndpointHit(ErSketchModel.Relation relation, boolean startEnd) {
+    }
+
+    /** 押下点 {@code p} (モデル座標) に最も近い端点ハンドルを、当たり判定内から探す。 */
+    private EndpointHit endpointHandleAt(Point p) {
+        double threshold = handleThresholdModel(view.zoom());
+        EndpointHit best = null;
+        double bestD = threshold;
+        for (ErSketchModel.Relation rel : model.getRelations()) {
+            Point[] ends = endpointsOf(rel);
+            if (ends == null) {
+                continue;
+            }
+            double d0 = Math.hypot(p.x - ends[0].x, p.y - ends[0].y);
+            if (d0 <= bestD) {
+                bestD = d0;
+                best = new EndpointHit(rel, true);
+            }
+            double d1 = Math.hypot(p.x - ends[1].x, p.y - ends[1].y);
+            if (d1 <= bestD) {
+                bestD = d1;
+                best = new EndpointHit(rel, false);
+            }
+        }
+        return best;
+    }
+
+    /** リレーションの左端・右端アンカー (paintRelation/paintSelfRelation と同じ幾何)。 */
+    private Point[] endpointsOf(ErSketchModel.Relation rel) {
+        ErSketchModel.Entity left = model.findEntity(rel.getLeft());
+        ErSketchModel.Entity right = model.findEntity(rel.getRight());
+        if (left == null || right == null) {
+            return null;
+        }
+        if (left == right) {
+            Rectangle r = boundsOf(left);
+            int exitX = r.x + r.width - SELF_LOOP_EXIT_DX;
+            Point start = new Point(exitX, r.y);
+            Point ret = new Point(r.x + r.width, r.y + SELF_LOOP_RETURN_DY);
+            return new Point[]{start, ret};
+        }
+        Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
+        Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
+        return new Point[]{pl, pr};
+    }
+
+    /** 画面上約 8px のハンドル当たり判定半径を、指定ズームでのモデル座標半径へ変換する (純関数)。 */
+    static double handleThresholdModel(double zoom) {
+        return HANDLE_HIT_RADIUS / Math.max(1e-6, zoom);
+    }
+
+    /** 点 {@code p} がハンドル {@code handle} から {@code thresholdModel} 以内か (純関数)。 */
+    static boolean withinHandle(Point p, Point handle, double thresholdModel) {
+        return Math.hypot(p.x - handle.x, p.y - handle.y) <= thresholdModel;
+    }
 
     private ErSketchModel.Relation relationAt(Point p) {
         ErSketchModel.Relation best = null;
@@ -660,5 +862,10 @@ final class ErSketchCanvas extends JPanel {
 
     void setSelectedForTest(ErSketchModel.Entity e) {
         this.selected = e;
+    }
+
+    /** テスト用シーム: 実経路 (performReattach) で端点を付け替える。存在しないエイリアスは false。 */
+    boolean reattachForTest(ErSketchModel.Relation rel, boolean startEnd, String targetAlias) {
+        return performReattach(rel, startEnd, model.findEntity(targetAlias));
     }
 }
