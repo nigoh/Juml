@@ -46,6 +46,25 @@ public class PumlCompletionTest {
     }
 
     @Test
+    public void candidates_completePreprocessorAndMoreBlocks() {
+        // 前処理ディレクティブ (! 始まり)・追加の @start ブロック・skinparam 属性・
+        // 図種キーワードが補完辞書に入っていること (フル言語アシストの被覆)。
+        assertTrue(PumlCompletion.candidates("!inc", "").contains("!include"));
+        assertTrue(PumlCompletion.candidates("!the", "").contains("!theme"));
+        assertTrue(PumlCompletion.candidates("!def", "").contains("!define"));
+        assertTrue(PumlCompletion.candidates("@startd", "").contains("@startdot"));
+        assertTrue(PumlCompletion.candidates("swi", "").contains("switch"));
+        assertTrue(PumlCompletion.candidates("backgroundC", "").contains("backgroundColor"));
+    }
+
+    @Test
+    public void wordPrefix_capturesBangDirectivePrefix() {
+        // ! を語頭に含めるので !include 等が接頭辞として拾えること (以前は ! が境界だった)。
+        String text = "foo\n!inc";
+        assertEquals("!inc", PumlCompletion.wordPrefix(text, text.length()));
+    }
+
+    @Test
     public void candidates_emptyPrefixReturnsContextCandidates() {
         // 明示起動 (Ctrl+Space) 用: 空 prefix は「その文脈の候補」を返す (上限 MAX_CANDIDATES
         // まで、キーワード → 本文識別子の順)。以前は空リストで、Ctrl+Space が無反応だった。
