@@ -95,6 +95,43 @@ public class PumlSourcePanelEditTest {
     }
 
     @Test
+    public void typing_coalescesIntoSingleUndo() {
+        // 成熟度: 連続タイプは「直前のタイプ塊」を 1 手で戻せること (VS Code 相当)。
+        // 以前は 1 文字ごとに Undo 単位が分かれ、11 文字打つと Ctrl+Z ×11 が必要だった。
+        PumlSourcePanel panel = editable("");
+        GuiActionRunner.execute(() -> panel.typeForTest("participant"));
+        assertEquals("participant", GuiActionRunner.execute(panel::getText));
+        GuiActionRunner.execute(panel::undoForTest);
+        assertEquals("連続タイプは 1 手の Undo でまとめて戻る",
+                "", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void typing_isSeparateUndoPerLine() {
+        // 改行でタイプ塊を区切る (VS Code も行単位で戻せる)。1 手 Undo は最後の行の
+        // タイプ塊だけを戻し、前の行は残る。
+        PumlSourcePanel panel = editable("");
+        GuiActionRunner.execute(() -> panel.typeForTest("ab\ncd"));
+        assertEquals("ab\ncd", GuiActionRunner.execute(panel::getText));
+        GuiActionRunner.execute(panel::undoForTest);
+        assertEquals("1 手 Undo は 2 行目のタイプ塊だけを戻す",
+                "ab\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void tab_withSingleLineSelection_indentsLine() {
+        // 成熟度: 単一行内に選択があって Tab を押したら、その行を字下げする (VS Code 相当)。
+        // 以前は insertSnippet(INDENT) で選択を残したままキャレット位置へ空白が割り込んでいた。
+        PumlSourcePanel panel = editable("class A\n");
+        GuiActionRunner.execute(() -> {
+            panel.selectRangeForTest(6, 7); // 単一行内で "A" を選択
+            panel.performEditorActionForTest("juml-indent"); // Tab
+        });
+        assertEquals("選択があれば行頭が字下げされる (空白割込みでない)",
+                "  class A\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
     public void replaceAll_replacesEveryMatch() {
         PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> {
