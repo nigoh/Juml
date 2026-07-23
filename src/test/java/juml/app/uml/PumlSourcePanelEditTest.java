@@ -11,6 +11,8 @@ import org.junit.Test;
 import java.awt.GraphicsEnvironment;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * {@link PumlSourcePanel} のコード編集操作 (行コメント切替・ブロックインデント・全置換) を
@@ -72,6 +74,24 @@ public class PumlSourcePanelEditTest {
         GuiActionRunner.execute(panel::undoForTest);
         assertEquals("複数行インデントは 1 手で戻る",
                 "a\nb\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void setText_resetsActiveFindBar() {
+        // 回帰: setText は removeAllHighlights で検索ハイライトを消すが、find バーの
+        // hits[]/件数表示を reset しないと、次候補ジャンプが旧オフセットを新文書へ適用して
+        // キャレット誤配置や例外を起こす。setText 時に findBar.reset() されることを確認する。
+        PumlSourcePanel panel = editable("foo bar foo baz foo\n");
+        GuiActionRunner.execute(() -> {
+            panel.selectRangeForTest(0, 3); // "foo" を検索クエリに
+            panel.performEditorActionForTest("juml-find"); // Ctrl+F 相当
+        });
+        assertTrue("検索起動で find バーがアクティブになること",
+                GuiActionRunner.execute(panel::findBarActiveForTest));
+
+        GuiActionRunner.execute(() -> panel.setText("completely different text\n"));
+        assertFalse("setText で find バーが reset (非アクティブ) されること",
+                GuiActionRunner.execute(panel::findBarActiveForTest));
     }
 
     @Test

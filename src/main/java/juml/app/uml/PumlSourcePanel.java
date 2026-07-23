@@ -202,6 +202,10 @@ public class PumlSourcePanel extends JPanel {
         errorHighlightTag = null;
         highlightedErrorLine = 0;
         bracketTags.clear();
+        // 検索バーの一致 (hits[] オフセット・件数表示) も旧内容基準で無効になる。reset しないと
+        // removeAllHighlights でハイライトだけ消え、次候補ジャンプが旧オフセットを新文書へ適用して
+        // キャレット誤配置や BadLocationException を招く (JavaSourcePanel と同じ差し替え時の契約)。
+        findBar.reset();
         replaceDocText(text);
         textPane.setCaretPosition(0);
         copyButton.setEnabled(!text.isEmpty());
@@ -501,6 +505,11 @@ public class PumlSourcePanel extends JPanel {
     /** テスト用: 入力追従補完ポップアップ (編集モード以外は null)。 */
     PumlCompletionPopup completionPopupForTest() {
         return completionPopup;
+    }
+
+    /** テスト用: 検索バーが表示 (アクティブ) 状態か。setText で reset されるかの検証に使う。 */
+    boolean findBarActiveForTest() {
+        return findBar.isVisible();
     }
 
     /** テスト用: 直近の編集を 1 手戻す (複合編集の一括 Undo を検証)。 */
