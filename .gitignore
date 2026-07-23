@@ -13,3 +13,5 @@
 /.juml
 # エディタ自動保存の下書き (実行時生成物; user.dir/drafts)
 drafts/
+# 並列エージェント用の git worktree チェックアウト (実行時生成物; コミット対象外)
+/.claude/worktrees/

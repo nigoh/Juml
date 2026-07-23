@@ -11,6 +11,7 @@ import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.util.Collections;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -101,6 +102,26 @@ public class SketchCanvasSelfRelationSmokeTest {
         GuiActionRunner.execute(() -> canvas.setRelationMode(SketchRelation.Kind.EXTENDS));
         assertTrue("関係モードに入ると選択はクリアされるはず",
                 GuiActionRunner.execute(() -> canvas.selectedForTest() == null));
+    }
+
+    @Test
+    public void selfRelation_createdByClickingSameClassTwice() {
+        // 同一クラスを 2 回クリックすると自己関連 (A→A) が作られること。以前は
+        // handleRelationClick が relationSource != hit を要求し、自己関連を作れなかった。
+        SketchCanvas canvas = newCanvas();
+        SketchModel model = new SketchModel();
+        SketchClass a = new SketchClass("A", SketchClass.Kind.CLASS, 60, 60);
+        model.getClasses().add(a);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, true, Collections.emptyList());
+            canvas.setRelationMode(SketchRelation.Kind.ASSOCIATION);
+            canvas.relationClickForTest(a);
+            canvas.relationClickForTest(a); // 同一クラス 2 回目 → 自己関連
+        });
+        assertEquals("自己関連が 1 本作られるはず", 1, canvas.model().getRelations().size());
+        SketchRelation r = canvas.model().getRelations().get(0);
+        assertEquals("A", r.getLeft());
+        assertEquals("A", r.getRight());
     }
 
     @Test

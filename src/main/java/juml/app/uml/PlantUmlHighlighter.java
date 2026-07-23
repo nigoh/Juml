@@ -76,7 +76,13 @@ final class PlantUmlHighlighter {
             "hide", "show", "remove", "together", "left", "right", "top", "bottom",
             "up", "down", "direction", "order", "newpage", "also", "is",
             // ArchiMate / salt など補助
-            "archimate", "sprite", "salt"));
+            "archimate", "sprite", "salt",
+            // 追加の制御・構造 (補完辞書 PumlCompletion と同期)
+            "switch", "case", "endswitch", "label", "goto", "style", "endstyle",
+            "map", "extends", "implements", "circle", "diamond", "mainframe",
+            "allowmixing", "allow_mixing", "box", "endbox", "hnote", "rnote",
+            // ガント (時系列の動詞)
+            "lasts", "starts", "happens"));
 
     private PlantUmlHighlighter() {
     }

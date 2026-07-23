@@ -156,4 +156,33 @@ public class SketchDiagramTypeTest {
         assertEquals(SketchDiagramType.CLASS,
                 SketchDiagramType.detect("@startuml\nWhole o-- Part\n@enduml\n"));
     }
+
+    @Test
+    public void detect_objectTemplate_isObject() {
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect(PumlTemplate.OBJECT.body()));
+    }
+
+    @Test
+    public void detect_objectSampleColonForm_isObject() {
+        // タスクが示す代表的なコロン形式のオブジェクト図。
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect("@startuml\nobject User\n"
+                        + "User : name = \"Alice\"\nobject Post\nUser --> Post : owns\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_objectKeyword_isObject() {
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect("@startuml\nobject User\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_objectMarkerDoesNotRegressClass() {
+        // object マーカーの追加でクラス図テンプレートの判定が揺れないこと (先取り判定の非回帰)。
+        assertEquals(SketchDiagramType.CLASS,
+                SketchDiagramType.detect(PumlTemplate.CLASS.body()));
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
+    }
 }

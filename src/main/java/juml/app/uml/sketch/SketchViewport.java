@@ -98,7 +98,8 @@ final class SketchViewport {
 
     private void onWheel(MouseWheelEvent e) {
         if (e.isControlDown()) {
-            setZoom(e.getWheelRotation() < 0 ? zoom * STEP : zoom / STEP);
+            // カーソル位置を固定点にしてズームする (原点固定だと注視要素が画面外へ逃げる)。
+            zoomAround(e.getWheelRotation() < 0 ? zoom * STEP : zoom / STEP, e.getPoint());
             e.consume();
             return;
         }
@@ -121,6 +122,45 @@ final class SketchViewport {
         zoom = clamped;
         target.revalidate();
         target.repaint();
+    }
+
+    /**
+     * {@code anchorInTarget} (target 座標系のマウス位置) を画面上で動かさないようにズームする
+     * (カーソル中心ズーム)。ズームでキャンバスが拡縮すると同じモデル点の target 座標も
+     * {@code factor} 倍に動くため、その差分だけ viewport をスクロールして注視点を維持する。
+     */
+    void zoomAround(double newZoom, Point anchorInTarget) {
+        double clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+        JViewport vp = viewportOf();
+        if (clamped == zoom || anchorInTarget == null || vp == null) {
+            setZoom(clamped);
+            return;
+        }
+        double factor = clamped / zoom;
+        Point view = vp.getViewPosition();
+        Point desired = anchorAdjustedViewPos(anchorInTarget, view, factor);
+        zoom = clamped;
+        target.revalidate();
+        target.repaint();
+        // 再レイアウト (viewSize 更新) 後に位置を確定・クランプする。
+        SwingUtilities.invokeLater(() -> {
+            Dimension viewSize = vp.getViewSize();
+            Dimension extent = vp.getExtentSize();
+            int nx = Math.max(0, Math.min(desired.x, Math.max(0, viewSize.width - extent.width)));
+            int ny = Math.max(0, Math.min(desired.y, Math.max(0, viewSize.height - extent.height)));
+            vp.setViewPosition(new Point(nx, ny));
+        });
+    }
+
+    /**
+     * カーソル中心ズーム後の (クランプ前) viewport 位置を計算する純関数。
+     * ズーム後に anchor は {@code anchor*factor} へ動くので、そのビューポート相対位置
+     * {@code anchor - view} を保つには {@code anchor*factor - (anchor - view)} へスクロールする。
+     */
+    static Point anchorAdjustedViewPos(Point anchor, Point view, double factor) {
+        int nx = (int) Math.round(anchor.x * factor - anchor.x + view.x);
+        int ny = (int) Math.round(anchor.y * factor - anchor.y + view.y);
+        return new Point(nx, ny);
     }
 
     /** モデル描画用のスケールを適用する (オーバーレイは適用前の Graphics で描く)。 */

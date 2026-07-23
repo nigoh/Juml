@@ -33,6 +33,8 @@ public enum SketchDiagramType {
     USECASE,
     /** コンポーネント図。 */
     COMPONENT,
+    /** オブジェクト図。 */
+    OBJECT,
     /** ER (エンティティ関連) 図。 */
     ER;
 
@@ -48,6 +50,12 @@ public enum SketchDiagramType {
      */
     private static final Pattern COMPONENT_LINE = Pattern.compile(
             "^(component\\b.*|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
+    /**
+     * オブジェクト図に固有の行。{@code object 名前} 宣言は他図種と衝突しないため、これが
+     * 1 行でもあればオブジェクト図と確定できる。
+     */
+    private static final Pattern OBJECT_LINE = Pattern.compile(
+            "^object\\s+[A-Za-z_$].*$");
 
     /** アクティビティ図に固有の行 ({@code start} / {@code :action;} / {@code if} など)。 */
     private static final Pattern ACTIVITY_LINE = Pattern.compile(
@@ -98,6 +106,12 @@ public enum SketchDiagramType {
         for (String raw : lines) {
             if (COMPONENT_LINE.matcher(raw.trim()).matches()) {
                 return COMPONENT;
+            }
+        }
+        // object キーワードも他図種と衝突しないため先取りで判定する。
+        for (String raw : lines) {
+            if (OBJECT_LINE.matcher(raw.trim()).matches()) {
+                return OBJECT;
             }
         }
         // ER 図固有マーカー: crow's-foot 演算子 (単独で確定)、または entity 列ブロック +
