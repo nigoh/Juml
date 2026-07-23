@@ -70,6 +70,16 @@ final class StateSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
+    /** 端点ドラッグ (遷移の付替え) のヒットしきい値 (モデル座標, px)。 */
+    private static final double ENDPOINT_HIT_RADIUS = 8.0;
+    /** 端点ハンドル (発見可能性のための小さな正方形) の一辺 (モデル座標, px)。 */
+    private static final int HANDLE_SIZE = 6;
+    /** 端点ドラッグ中の対象遷移 (null = 端点ドラッグ中でない。選択/移動モードのみで使う)。 */
+    private StateTransition dragTransition;
+    /** 端点ドラッグ中、true なら from (始点) 側、false なら to (終点) 側を掴んでいる。 */
+    private boolean dragFromEnd;
+    /** 端点ドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
+    private Point dragCursor;
 
     StateSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -108,6 +118,11 @@ final class StateSketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && dragTransition != null) {
+                    // 端点ドラッグ中の Esc は繋ぎ替えを行わず安全に中断する。
+                    cancelEndpointDrag();
+                    return;
+                }
                 if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null
                         && !transitionMode) {
                     model.removeState(selected);
@@ -146,6 +161,8 @@ final class StateSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.transitionSource = null;
+        this.dragTransition = null;
+        this.dragCursor = null;
         revalidate();
         repaint();
     }
@@ -167,6 +184,9 @@ final class StateSketchCanvas extends JPanel {
         this.transitionMode = on;
         this.transitionSource = null;
         this.selected = null;
+        // モード切替で進行中の端点ドラッグも安全に中断する (spec #6)。
+        this.dragTransition = null;
+        this.dragCursor = null;
         repaint();
     }
 
@@ -214,6 +234,16 @@ final class StateSketchCanvas extends JPanel {
             handleTransitionClick(hit);
             return;
         }
+        EndpointHit endpointHit = endpointHandleAt(mp);
+        if (endpointHit != null) {
+            // 端点ハンドルの掴みはノードドラッグより優先する。
+            dragTransition = endpointHit.transition();
+            dragFromEnd = endpointHit.fromEnd();
+            dragCursor = mp;
+            selected = null;
+            repaint();
+            return;
+        }
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
@@ -240,7 +270,16 @@ final class StateSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || transitionMode || selected == null || dragOffset == null) {
+        if (!editable) {
+            return;
+        }
+        if (dragTransition != null) {
+            // ノードは動かさず、固定側端点→カーソルのラバーバンド線だけを更新する。
+            dragCursor = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (transitionMode || selected == null || dragOffset == null) {
             return;
         }
         Point mp = view.toModel(e.getPoint());
@@ -252,6 +291,10 @@ final class StateSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
+        if (dragTransition != null) {
+            finishEndpointDrag(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             showPopup(e, stateAt(view.toModel(e.getPoint())));
             return;
@@ -338,6 +381,117 @@ final class StateSketchCanvas extends JPanel {
     }
 
     // -------------------------------------------------------------------------
+    // 端点ドラッグ (遷移の付替え)
+    // -------------------------------------------------------------------------
+
+    /** 端点ハンドルのヒット結果 (遷移 + どちら側 (from/to) を掴んだか)。 */
+    private record EndpointHit(StateTransition transition, boolean fromEnd) { }
+
+    /** press 位置に最も近い端点ハンドルを返す (しきい値外や擬似状態端点/自己遷移は対象外)。 */
+    private EndpointHit endpointHandleAt(Point p) {
+        StateTransition bestT = null;
+        boolean bestFrom = true;
+        double bestD = ENDPOINT_HIT_RADIUS;
+        for (StateTransition t : model.getTransitions()) {
+            Point[] anchors = realEndpointAnchors(t);
+            if (anchors == null) {
+                continue;
+            }
+            double df = p.distance(anchors[0]);
+            if (df < bestD) {
+                bestD = df;
+                bestT = t;
+                bestFrom = true;
+            }
+            double dt = p.distance(anchors[1]);
+            if (dt < bestD) {
+                bestD = dt;
+                bestT = t;
+                bestFrom = false;
+            }
+        }
+        return bestT == null ? null : new EndpointHit(bestT, bestFrom);
+    }
+
+    /**
+     * {@code t} の from/to アンカー (線が状態境界に接する点。描画と同じ {@link #segmentFor} を
+     * 再利用)。初期/終了の擬似状態 {@code [*]} 端点や自己遷移、未解決端点は端点ドラッグの
+     * 対象外として null を返す (擬似状態はドラッグして繋ぎ替えるノードを持たないため)。
+     */
+    private Point[] realEndpointAnchors(StateTransition t) {
+        if (StateTransition.PSEUDO.equals(t.getFrom()) || StateTransition.PSEUDO.equals(t.getTo())) {
+            return null;
+        }
+        StateNode fs = model.findState(t.getFrom());
+        StateNode ts = model.findState(t.getTo());
+        if (fs == null || ts == null || fs == ts) {
+            return null;
+        }
+        double[] seg = segmentFor(t, fs, ts, false, false);
+        return new Point[]{new Point((int) seg[0], (int) seg[1]), new Point((int) seg[2], (int) seg[3])};
+    }
+
+    /**
+     * テスト用/純関数: 点 {@code p} が 2 つの候補アンカー {@code a} (0側) / {@code b} (1側)
+     * のどちらに近いか。しきい値 {@code radius} 以内で、より近い側の番号 (0 or 1) を返す。
+     * どちらもしきい値外なら -1。
+     */
+    static int nearestEndpointForTest(Point p, Point a, Point b, double radius) {
+        double da = p.distance(a);
+        double db = p.distance(b);
+        if (da > radius && db > radius) {
+            return -1;
+        }
+        return da <= db ? 0 : 1;
+    }
+
+    /** 端点ドラッグのリリース処理: カーソル下に状態があれば繋ぎ替え、無ければキャンセル。 */
+    private void finishEndpointDrag(Point releasePoint) {
+        StateTransition t = dragTransition;
+        boolean fromEnd = dragFromEnd;
+        dragTransition = null;
+        dragCursor = null;
+        StateNode target = stateAt(releasePoint);
+        if (target != null) {
+            reattachEndpoint(t, fromEnd, target.getName());
+        }
+        repaint();
+    }
+
+    /** Esc/モード切替時に端点ドラッグを繋ぎ替えずに中断する。 */
+    private void cancelEndpointDrag() {
+        dragTransition = null;
+        dragCursor = null;
+        repaint();
+    }
+
+    /** 遷移の端点を実際に付け替える経路 (production と reattachForTest の共通経路)。 */
+    private void reattachEndpoint(StateTransition t, boolean fromEnd, String targetName) {
+        if (fromEnd) {
+            t.setFrom(targetName);
+        } else {
+            t.setTo(targetName);
+        }
+        listener.modelEdited();
+    }
+
+    /** テスト用: 実際の繋ぎ替え経路 (reattachEndpoint) でモデル端点を更新する。 */
+    void reattachForTest(StateTransition t, boolean fromEnd, String targetName) {
+        reattachEndpoint(t, fromEnd, targetName);
+        repaint();
+    }
+
+    /** テスト用: 現在ドラッグ中の遷移 (端点ドラッグ中でなければ null)。 */
+    StateTransition dragTransitionForTest() {
+        return dragTransition;
+    }
+
+    /** テスト用: 遷移の端点アンカー ({from, to})。擬似状態端点/自己遷移/未解決なら null。 */
+    Point[] endpointAnchorsForTest(StateTransition t) {
+        return realEndpointAnchors(t);
+    }
+
+    // -------------------------------------------------------------------------
     // 描画
     // -------------------------------------------------------------------------
 
@@ -374,6 +528,11 @@ final class StateSketchCanvas extends JPanel {
             for (StateNode s : model.getStates()) {
                 paintState(g2, s);
             }
+            if (editable && !transitionMode) {
+                // 発見可能性: 選択/移動モードでのみ端点ハンドルを見せる。
+                paintEndpointHandles(g2);
+            }
+            paintEndpointDragOverlay(g2);
         } finally {
             g2.dispose();
         }
@@ -488,6 +647,38 @@ final class StateSketchCanvas extends JPanel {
             g2.drawString(t.getLabel(), x + 4, y - 4);
             g2.setColor(new Color(0x37474F));
         }
+    }
+
+    /** 発見可能性: 各遷移の from/to アンカーに小さな正方形ハンドルを描く。 */
+    private void paintEndpointHandles(Graphics2D g2) {
+        int half = HANDLE_SIZE / 2;
+        g2.setColor(new Color(0x1565C0));
+        for (StateTransition t : model.getTransitions()) {
+            Point[] anchors = realEndpointAnchors(t);
+            if (anchors == null) {
+                continue;
+            }
+            g2.fillRect(anchors[0].x - half, anchors[0].y - half, HANDLE_SIZE, HANDLE_SIZE);
+            g2.fillRect(anchors[1].x - half, anchors[1].y - half, HANDLE_SIZE, HANDLE_SIZE);
+        }
+    }
+
+    /** 端点ドラッグ中: 固定側端点→カーソルのラバーバンド線を描く。 */
+    private void paintEndpointDragOverlay(Graphics2D g2) {
+        if (dragTransition == null || dragCursor == null) {
+            return;
+        }
+        String fixedName = dragFromEnd ? dragTransition.getTo() : dragTransition.getFrom();
+        StateNode fixed = StateTransition.PSEUDO.equals(fixedName) ? null : model.findState(fixedName);
+        if (fixed == null) {
+            return;
+        }
+        Point start = edgePoint(boundsOf(fixed), dragCursor);
+        g2.setColor(new Color(0x1565C0));
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{5f, 4f}, 0f));
+        g2.drawLine(start.x, start.y, dragCursor.x, dragCursor.y);
+        g2.setStroke(new BasicStroke(1f));
     }
 
     // -------------------------------------------------------------------------
