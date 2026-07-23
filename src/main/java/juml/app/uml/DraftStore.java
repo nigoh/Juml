@@ -57,9 +57,24 @@ final class DraftStore {
         this.dir = dir;
     }
 
-    /** 既定の保存先 ({@code <basePath>/drafts}) を使うストアを作る。 */
+    /** テスト用: 保存先ディレクトリ (既定保存先の場所を検証する)。 */
+    File dirForTest() {
+        return dir;
+    }
+
+    /**
+     * 既定の保存先を使うストアを作る。保存先は OS 標準のユーザー設定領域配下
+     * ({@code ~/.juml/drafts} 等、解析キャッシュ {@code ~/.juml/cache} と同じ親フォルダ)。
+     *
+     * <p>以前は作業ディレクトリ ({@code user.dir}) 配下の {@code drafts/} に置いていたため、
+     * 別ディレクトリから起動するたびに無関係な下書きが見え、起動時の復元プロンプトが
+     * 暴発していた。ユーザー単位の安定した場所へ移し、起動場所に依存せず「本当の未保存編集」
+     * だけを復元対象にする。</p>
+     */
     static DraftStore createDefault() {
-        return new DraftStore(new File(juml.util.PathUtil.getBasePath(), "drafts"));
+        File cacheBase = DiskAnalysisCache.defaultBaseDir(); // ~/.juml/cache 等
+        File home = cacheBase.getParentFile();               // ~/.juml 等
+        return new DraftStore(new File(home != null ? home : cacheBase, "drafts"));
     }
 
     /** 編集中テキストをスナップショットする。失敗はログのみ (編集を妨げない)。 */

@@ -40,10 +40,22 @@ public class PumlCompletionTest {
     }
 
     @Test
-    public void candidates_excludeExactPrefixAndEmpty() {
+    public void candidates_excludeExactPrefix() {
         assertFalse("打ち終わった語 (完全一致) は候補にしない",
                 PumlCompletion.candidates("class", "").contains("class"));
-        assertTrue("空 prefix は候補なし", PumlCompletion.candidates("", "class Foo").isEmpty());
+    }
+
+    @Test
+    public void candidates_emptyPrefixReturnsContextCandidates() {
+        // 明示起動 (Ctrl+Space) 用: 空 prefix は「その文脈の候補」を返す (上限 MAX_CANDIDATES
+        // まで、キーワード → 本文識別子の順)。以前は空リストで、Ctrl+Space が無反応だった。
+        List<String> c = PumlCompletion.candidates("", "class Foo");
+        assertFalse("空 prefix でも候補を返すべき", c.isEmpty());
+        assertTrue("キーワードを含むべき", c.contains("class"));
+        assertTrue("上限 MAX_CANDIDATES を超えないこと",
+                c.size() <= PumlCompletion.MAX_CANDIDATES);
+        // null は従来どおり候補なし。
+        assertTrue("null は候補なし", PumlCompletion.candidates(null, "class Foo").isEmpty());
     }
 
     @Test

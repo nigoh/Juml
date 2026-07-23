@@ -17,7 +17,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.AbstractDocument;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultHighlighter;
 import javax.swing.text.Element;
@@ -25,9 +24,6 @@ import javax.swing.text.Highlighter;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
-import javax.swing.undo.CompoundEdit;
-import javax.swing.undo.UndoManager;
-import javax.swing.undo.UndoableEdit;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.FlowLayout;
@@ -72,7 +68,11 @@ public class PumlSourcePanel extends JPanel {
     public PumlSourcePanel() {
         super(new BorderLayout());
         textPane = new JTextPane();
+        undoSupport = new PumlUndoSupport(textPane);
         textPane.setEditable(false);
+        // 既定は読み取り専用 (生成図のプレビュー)。クリックしても入力が効かない理由と
+        // 編集への導線をツールチップで示す (無表示だと「なぜ打てない?」が分からない)。
+        textPane.setToolTipText(Messages.get("puml.readOnly.tip"));
         textPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         textPane.setForeground(EditorColors.text());
         textPane.setBackground(EditorColors.background());
@@ -202,15 +202,17 @@ public class PumlSourcePanel extends JPanel {
         errorHighlightTag = null;
         highlightedErrorLine = 0;
         bracketTags.clear();
+        // 検索バーの一致 (hits[] オフセット・件数表示) も旧内容基準で無効になる。reset しないと
+        // removeAllHighlights でハイライトだけ消え、次候補ジャンプが旧オフセットを新文書へ適用して
+        // キャレット誤配置や BadLocationException を招く (JavaSourcePanel と同じ差し替え時の契約)。
+        findBar.reset();
         replaceDocText(text);
         textPane.setCaretPosition(0);
         copyButton.setEnabled(!text.isEmpty());
         // プログラムによる全文差し替え (ファイル読込・Design キャンバス同期など) は
         // undo 単位として意味を成さないため履歴を破棄する。ユーザーのキー入力・
         // スニペット挿入だけが Ctrl+Z の対象になる。
-        if (undoManager != null) {
-            undoManager.discardAllEdits();
-        }
+        undoSupport.discardAll(); // 全文差し替えで旧編集は破棄。進行中のタイプ塊も無効化する。
         // 描画は通知外なので遅延実行で安全にハイライトする (ドキュメント変更通知中の再入回避)。
         SwingUtilities.invokeLater(this::applyHighlight);
         SwingUtilities.invokeLater(this::updateCurrentLineHighlight);
@@ -493,6 +495,19 @@ public class PumlSourcePanel extends JPanel {
         }
     }
 
+    /** テスト用: 1 文字ずつ順に挿入して連続タイプを再現する (Undo 束ねの検証)。 */
+    void typeForTest(String s) {
+        try {
+            for (int i = 0; i < s.length(); i++) {
+                int pos = textPane.getCaretPosition();
+                textPane.getDocument().insertString(pos, String.valueOf(s.charAt(i)), null);
+                textPane.setCaretPosition(pos + 1);
+            }
+        } catch (BadLocationException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
     /** テスト用: キャレット位置を設定する。 */
     void setCaretForTest(int pos) {
         textPane.setCaretPosition(Math.max(0, Math.min(pos, getText().length())));
@@ -503,11 +518,14 @@ public class PumlSourcePanel extends JPanel {
         return completionPopup;
     }
 
-    /** テスト用: 直近の編集を 1 手戻す (複合編集の一括 Undo を検証)。 */
+    /** テスト用: 検索バーが表示 (アクティブ) 状態か。setText で reset されるかの検証に使う。 */
+    boolean findBarActiveForTest() {
+        return findBar.isVisible();
+    }
+
+    /** テスト用: 直近の編集を 1 手戻す (複合編集・連続タイプの一括 Undo を検証)。 */
     void undoForTest() {
-        if (undoManager != null && undoManager.canUndo()) {
-            undoManager.undo();
-        }
+        undoSupport.undo();
     }
 
     /**
@@ -528,13 +546,11 @@ public class PumlSourcePanel extends JPanel {
     // 編集モード / Undo
     // -------------------------------------------------------------------------
 
-    /** 編集モードで有効化する undo/redo マネージャ (リードオンリー表示では null)。 */
-    private UndoManager undoManager;
     /**
-     * 複数行のコメント切替・インデントを 1 回の Undo で戻すためのグルーピング。
-     * null 以外の間、ドキュメント編集はこの複合編集へ束ねる。
+     * 編集モードで有効化する Undo/Redo サブシステム (連続タイプの束ね・複合編集を含む)。
+     * リードオンリー表示では未装備 ({@link PumlUndoSupport#isInstalled()} が false)。
      */
-    private CompoundEdit activeCompound;
+    private final PumlUndoSupport undoSupport;
 
     /** インデント 1 段分 (スペース 2 つ)。 */
     private static final String INDENT = "  ";
@@ -542,10 +558,15 @@ public class PumlSourcePanel extends JPanel {
     /** テキスト領域の編集可否を切り替える (自由編集エディタタブは true にする)。 */
     public void setEditable(boolean editable) {
         textPane.setEditable(editable);
+        // 読み取り専用ヒントは編集モードでは外す (編集できるのに「読み取り専用」と誤解させない)。
+        textPane.setToolTipText(editable ? null : Messages.get("puml.readOnly.tip"));
         // 編集モードでは空テキストからでもコピーできるよう常時有効にする。
         if (editable) {
             copyButton.setEnabled(true);
-            installUndoSupport();
+            if (!undoSupport.isInstalled()) {
+                undoSupport.install();
+                installEditorActions();
+            }
         }
         // スニペット挿入 UI は編集モードのときだけ見せる。
         snippetButton.setVisible(editable);
@@ -558,52 +579,6 @@ public class PumlSourcePanel extends JPanel {
      * undo 対象から除外し、Ctrl+Z が文字の挿入/削除だけを巻き戻すようにする。
      * 多重呼び出しは無視 (再インストールしない)。
      */
-    private void installUndoSupport() {
-        if (undoManager != null) {
-            return;
-        }
-        undoManager = new UndoManager();
-        undoManager.setLimit(500);
-        textPane.getDocument().addUndoableEditListener(e -> {
-            UndoableEdit edit = e.getEdit();
-            if (edit instanceof AbstractDocument.DefaultDocumentEvent
-                    && ((AbstractDocument.DefaultDocumentEvent) edit).getType()
-                        == DocumentEvent.EventType.CHANGE) {
-                return; // 属性変更 (ハイライト) は取り消し対象にしない
-            }
-            // コメント切替・インデント中はまとめて 1 手にする。
-            if (activeCompound != null) {
-                activeCompound.addEdit(edit);
-                return;
-            }
-            undoManager.addEdit(edit);
-        });
-        installEditorActions();
-        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
-        javax.swing.InputMap im = textPane.getInputMap();
-        javax.swing.ActionMap am = textPane.getActionMap();
-        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, menuMask),
-                "juml-undo");
-        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Y, menuMask),
-                "juml-redo");
-        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z,
-                menuMask | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-redo");
-        am.put("juml-undo", new javax.swing.AbstractAction() {
-            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
-                if (undoManager.canUndo()) {
-                    undoManager.undo();
-                }
-            }
-        });
-        am.put("juml-redo", new javax.swing.AbstractAction() {
-            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
-                if (undoManager.canRedo()) {
-                    undoManager.redo();
-                }
-            }
-        });
-    }
-
     /** Ctrl(⌘)+F で検索、Ctrl(⌘)+H で置換、Ctrl(⌘)+G で行ジャンプ (リードオンリーでも可)。 */
     private void installFindKeys() {
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
@@ -721,10 +696,12 @@ public class PumlSourcePanel extends JPanel {
         if (!textPane.isEditable()) {
             return;
         }
-        Element root = textPane.getDocument().getDefaultRootElement();
         int a = Math.min(textPane.getSelectionStart(), textPane.getSelectionEnd());
         int b = Math.max(textPane.getSelectionStart(), textPane.getSelectionEnd());
-        if (root.getElementIndex(a) != root.getElementIndex(b)) {
+        if (a != b) {
+            // 選択があれば (単一行でも複数行でも) その行を字下げする (VS Code 相当)。以前は
+            // 単一行選択で insertSnippet(INDENT) を呼び、選択を残したままキャレット位置へ空白が
+            // 割り込む中途半端な挙動だった。
             indentSelection(outdent);
         } else {
             insertSnippet(INDENT);
@@ -833,22 +810,9 @@ public class PumlSourcePanel extends JPanel {
     }
 
     /** {@code mutation} 内のドキュメント編集を 1 個の複合編集にまとめ、Ctrl+Z で一括して戻せるようにする。 */
+    /** コメント切替・インデント等の複数行操作を 1 回の Undo で戻せるよう束ねる。 */
     private void runAsCompound(Runnable mutation) {
-        if (undoManager == null) {
-            mutation.run();
-            return;
-        }
-        activeCompound = new CompoundEdit();
-        try {
-            mutation.run();
-        } finally {
-            CompoundEdit ce = activeCompound;
-            activeCompound = null;
-            ce.end();
-            if (ce.canUndo()) {
-                undoManager.addEdit(ce);
-            }
-        }
+        undoSupport.runAsCompound(mutation);
     }
 
     /** エディタのテキスト領域へ入力フォーカスを移す (タブを開いた直後に呼ぶ)。 */

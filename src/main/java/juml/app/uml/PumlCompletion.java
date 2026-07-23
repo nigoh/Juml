@@ -81,11 +81,14 @@ final class PumlCompletion {
 
     /**
      * {@code prefix} に前方一致する候補を、キーワード → 本文識別子の順で重複なく返す。
-     * {@code prefix} 自身と完全一致する候補は除く (打ち終わっているため)。空 prefix は候補なし。
+     * {@code prefix} 自身と完全一致する候補は除く (打ち終わっているため)。
+     * 空 prefix は「その文脈の全候補」を返す (明示起動 Ctrl+Space で一覧したいとき用。
+     * 入力追従の暗黙起動では呼び出し側が最低文字数で門前払いするため空 prefix は届かない)。
+     * null は候補なし。
      */
     static List<String> candidates(String prefix, String docText) {
         List<String> out = new ArrayList<>();
-        if (prefix == null || prefix.isEmpty()) {
+        if (prefix == null) {
             return out;
         }
         String lp = prefix.toLowerCase(java.util.Locale.ROOT);

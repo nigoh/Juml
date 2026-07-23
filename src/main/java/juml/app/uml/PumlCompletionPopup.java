@@ -139,7 +139,9 @@ final class PumlCompletionPopup {
         String text = text();
         int caret = pane.getCaretPosition();
         String prefix = PumlCompletion.wordPrefix(text, caret);
-        int min = explicit ? 1 : MIN_PREFIX;
+        // 明示起動 (Ctrl+Space) は接頭辞ゼロでも「その文脈の全候補」を出す (VS Code 相当)。
+        // 入力追従の暗黙起動だけ最低文字数 (MIN_PREFIX) を要求してノイズを抑える。
+        int min = explicit ? 0 : MIN_PREFIX;
         if (prefix.length() < min) {
             hide();
             return;

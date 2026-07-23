@@ -2616,7 +2616,12 @@ public final class DiagramTabPane {
                             juml.core.formats.uml.PlantUmlRenderer.injectLayout(editorPuml);
                     editorLine = PumlErrorLineMapper.editorLineForError(
                             editorPuml, generated, genLine);
-                    sourcePanel.highlightErrorLine(editorLine);
+                    // editorLine はスナップショット (editorPuml) 基準の行番号。描画中にユーザーが
+                    // 編集を進めていると現在の文書では別の行を指すため、スナップショットと現在の
+                    // エディタ内容が一致するときだけ赤帯を描く (不一致なら次回描画で正しく再適用)。
+                    if (editorPuml.equals(sourcePanel.getText())) {
+                        sourcePanel.highlightErrorLine(editorLine);
+                    }
                 }
             }
             // 失敗した PlantUML を logs/ へ保存し、例外を AppLog へ記録する
