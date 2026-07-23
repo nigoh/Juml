@@ -9,9 +9,11 @@ import java.util.regex.Pattern;
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
  * <p>まず {@code usecase} / {@code component} キーワード (いずれも一意) があれば
- * ユースケース図 / コンポーネント図と確定し、続いて {@code node} / {@code artifact} /
- * {@code cloud} 宣言があれば配置図と確定する ({@code database} はシーケンス図の
- * 参加者宣言と衝突しうるため、配置図の主判定材料にはしない)。無ければ行単位の先勝ちで:
+ * ユースケース図 / コンポーネント図と確定する。次に一意マーカーを先取りで判定する:
+ * {@code object 名前} 宣言 → オブジェクト図、ER 図固有マーカー (crow's-foot 関係演算子
+ * {@code ||--o{} 等、または {@code entity "..." {} の列ブロック + {@code hide circle}) → ER 図、
+ * {@code node} / {@code artifact} / {@code cloud} 宣言 → 配置図 ({@code entity} / {@code database}
+ * はシーケンス図と共有するため単独では判定材料にしない)。無ければ行単位の先勝ちで:
  * アクティビティ図の構文 ({@code start} / {@code :action;} /
  * {@code if (...) then}) → 状態遷移図の構文 ({@code state X} / {@code [*] --> X}) →
  * クラス宣言 ({@code class} / {@code interface} / {@code enum}) → シーケンス図の構文
@@ -32,6 +34,10 @@ public enum SketchDiagramType {
     USECASE,
     /** コンポーネント図。 */
     COMPONENT,
+    /** オブジェクト図。 */
+    OBJECT,
+    /** ER (エンティティ関連) 図。 */
+    ER,
     /** 配置図 (デプロイ図)。 */
     DEPLOYMENT;
 
@@ -47,6 +53,12 @@ public enum SketchDiagramType {
      */
     private static final Pattern COMPONENT_LINE = Pattern.compile(
             "^(component\\b.*|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
+    /**
+     * オブジェクト図に固有の行。{@code object 名前} 宣言は他図種と衝突しないため、これが
+     * 1 行でもあればオブジェクト図と確定できる。
+     */
+    private static final Pattern OBJECT_LINE = Pattern.compile(
+            "^object\\s+[A-Za-z_$].*$");
     /**
      * 配置図に固有の宣言行。{@code node} / {@code artifact} / {@code cloud} は他図種と
      * 衝突しないため、これらが 1 行でもあれば配置図と確定できる。{@code database} は
@@ -64,6 +76,18 @@ public enum SketchDiagramType {
      */
     private static final Pattern STATE_LINE = Pattern.compile(
             "^(state\\s+[A-Za-z_$].*|\\[\\*\\]\\s*-->.*|.*-->\\s*\\[\\*\\].*)$");
+    /**
+     * ER 図に固有の crow's-foot (IE) リレーション演算子 ({@code ||--o{} 等)。左右の
+     * カーディナリティトークン ({@code |} / {@code o} / {@code {} / {@code }} の組) は
+     * クラス図の関係表記 ({@code <|--} / {@code o--} / {@code *--} / {@code -->}) と
+     * 一致しないため、これが 1 つでもあれば ER 図と確定できる。
+     */
+    private static final Pattern ER_RELATION = Pattern.compile(
+            "(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)");
+    /** ER 図の列ブロックを開くエンティティ宣言 ({@code entity ... {})。 */
+    private static final Pattern ER_ENTITY_BLOCK = Pattern.compile("^entity\\b.*\\{\\s*$");
+    /** ER 図でエンティティを表として描かせる {@code hide circle} 指令。 */
+    private static final Pattern ER_HIDE_CIRCLE = Pattern.compile("^hide\\s+circle\\b.*$");
     /** クラス図に固有の宣言行。 */
     private static final Pattern CLASS_LINE = Pattern.compile(
             "^(abstract\\s+)?(class|interface|enum)\\b.*$");
@@ -93,6 +117,27 @@ public enum SketchDiagramType {
             if (COMPONENT_LINE.matcher(raw.trim()).matches()) {
                 return COMPONENT;
             }
+        }
+        // object キーワードも他図種と衝突しないため先取りで判定する。
+        for (String raw : lines) {
+            if (OBJECT_LINE.matcher(raw.trim()).matches()) {
+                return OBJECT;
+            }
+        }
+        // ER 図固有マーカー: crow's-foot 演算子 (単独で確定)、または entity 列ブロック +
+        // hide circle の同時出現。entity 単独はシーケンス図と共有するため判定材料にしない。
+        boolean entityBlock = false;
+        boolean hideCircle = false;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (ER_RELATION.matcher(line).find()) {
+                return ER;
+            }
+            entityBlock = entityBlock || ER_ENTITY_BLOCK.matcher(line).matches();
+            hideCircle = hideCircle || ER_HIDE_CIRCLE.matcher(line).matches();
+        }
+        if (entityBlock && hideCircle) {
+            return ER;
         }
         // node / artifact / cloud 宣言も配置図に固有なため先取りで判定する
         // (database はシーケンス図の参加者と衝突するため主判定材料にしない)。

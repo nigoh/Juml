@@ -109,6 +109,18 @@ final class SeqSketchEditor implements SketchEditor {
     public void load(String pumlText) {
         SeqSketchCodec.ParseResult r = SeqSketchCodec.parse(pumlText);
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
+        updateToolbarEnabled();
+    }
+
+    /**
+     * 編集ロック中 (未対応構文を含む図) はツールバー操作を無効表示にする。押しても
+     * 無反応なコントロールが有効に見える誤解を避ける (バナーで理由は別途表示済み)。
+     */
+    private void updateToolbarEnabled() {
+        boolean on = canvas.isModelEditable();
+        for (java.awt.Component comp : toolbar.getComponents()) {
+            comp.setEnabled(on);
+        }
     }
 
     @Override

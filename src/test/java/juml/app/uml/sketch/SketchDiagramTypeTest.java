@@ -160,4 +160,69 @@ public class SketchDiagramTypeTest {
                 SketchDiagramType.detect(
                         "@startuml\ndatabase DB\nUser -> DB : query\n@enduml\n"));
     }
+
+    @Test
+    public void detect_erTemplate_isEr() {
+        assertEquals(SketchDiagramType.ER,
+                SketchDiagramType.detect(PumlTemplate.ER.body()));
+    }
+
+    @Test
+    public void detect_crowsFootRelation_isEr() {
+        // crow's-foot 演算子は一意なので、hide circle が無くても ER と確定する。
+        assertEquals(SketchDiagramType.ER,
+                SketchDiagramType.detect("@startuml\nA ||--o{ B\n@enduml\n"));
+        assertEquals(SketchDiagramType.ER,
+                SketchDiagramType.detect("@startuml\nA }o--|| B\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_entityBlockWithHideCircle_isEr() {
+        assertEquals(SketchDiagramType.ER, SketchDiagramType.detect(
+                "@startuml\nhide circle\nentity \"User\" as e1 {\n  * id : int\n}\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_entityParticipantWithoutErMarkers_staysSequence() {
+        // entity 単独 (シーケンス図の参加者宣言) は crow's-foot も列ブロックも無いため
+        // ER と誤判定せず、既存のシーケンス判定を維持する。
+        assertEquals(SketchDiagramType.SEQUENCE,
+                SketchDiagramType.detect("@startuml\nentity Store\nA -> Store : ping\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_classAggregation_staysClassNotEr() {
+        // クラス図の集約 o-- は crow's-foot トークンと一致しないため ER と誤判定しない。
+        assertEquals(SketchDiagramType.CLASS,
+                SketchDiagramType.detect("@startuml\nWhole o-- Part\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_objectTemplate_isObject() {
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect(PumlTemplate.OBJECT.body()));
+    }
+
+    @Test
+    public void detect_objectSampleColonForm_isObject() {
+        // タスクが示す代表的なコロン形式のオブジェクト図。
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect("@startuml\nobject User\n"
+                        + "User : name = \"Alice\"\nobject Post\nUser --> Post : owns\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_objectKeyword_isObject() {
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect("@startuml\nobject User\n@enduml\n"));
+    }
+
+    @Test
+    public void detect_objectMarkerDoesNotRegressClass() {
+        // object マーカーの追加でクラス図テンプレートの判定が揺れないこと (先取り判定の非回帰)。
+        assertEquals(SketchDiagramType.CLASS,
+                SketchDiagramType.detect(PumlTemplate.CLASS.body()));
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
+    }
 }
