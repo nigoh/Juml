@@ -27,6 +27,18 @@ public final class PumlSnippets {
         SEQUENCE("puml.snip.cat.sequence"),
         ACTIVITY("puml.snip.cat.activity"),
         STATE("puml.snip.cat.state"),
+        USECASE("puml.snip.cat.usecase"),
+        COMPONENT("puml.snip.cat.component"),
+        ER("puml.snip.cat.er"),
+        OBJECT("puml.snip.cat.object"),
+        DEPLOYMENT("puml.snip.cat.deployment"),
+        TIMING("puml.snip.cat.timing"),
+        JSON("puml.snip.cat.json"),
+        YAML("puml.snip.cat.yaml"),
+        MINDMAP("puml.snip.cat.mindmap"),
+        WBS("puml.snip.cat.wbs"),
+        GANTT("puml.snip.cat.gantt"),
+        SALT("puml.snip.cat.salt"),
         COMMON("puml.snip.cat.common");
 
         private final String labelKey;
@@ -100,6 +112,59 @@ public final class PumlSnippets {
             s(Group.STATE, "puml.snip.state.initial", "[*] --> " + CARET + "State\n"),
             s(Group.STATE, "puml.snip.state.composite",
                     "state Composite {\n  [*] --> " + CARET + "Sub\n}\n"),
+            // ユースケース図
+            s(Group.USECASE, "puml.snip.uc.actor", "actor " + CARET + "User\n"),
+            s(Group.USECASE, "puml.snip.uc.usecase", "usecase (" + CARET + "Do Something)\n"),
+            s(Group.USECASE, "puml.snip.uc.link", "User --> (Do Something)\n"),
+            s(Group.USECASE, "puml.snip.uc.include",
+                    "(A) ..> (B) : " + CARET + "<<include>>\n"),
+            // コンポーネント図
+            s(Group.COMPONENT, "puml.snip.comp.component", "component " + CARET + "Name\n"),
+            s(Group.COMPONENT, "puml.snip.comp.interface", "interface \"API\" as I\n"),
+            s(Group.COMPONENT, "puml.snip.comp.connect", "[A] --> [B]\n"),
+            s(Group.COMPONENT, "puml.snip.comp.package",
+                    "package \"" + CARET + "Group\" {\n  [Comp]\n}\n"),
+            // ER 図 (IE 記法)
+            s(Group.ER, "puml.snip.er.entity",
+                    "entity \"" + CARET + "Name\" as e {\n  * id : int\n  --\n  name : string\n}\n"),
+            s(Group.ER, "puml.snip.er.relation", "e1 ||--o{ e2 : has\n"),
+            // オブジェクト図
+            s(Group.OBJECT, "puml.snip.obj.object", "object " + CARET + "Name\n"),
+            s(Group.OBJECT, "puml.snip.obj.attribute", "Name : field = \"value\"\n"),
+            s(Group.OBJECT, "puml.snip.obj.link", "Obj1 --> Obj2\n"),
+            // デプロイ図
+            s(Group.DEPLOYMENT, "puml.snip.depl.node",
+                    "node \"" + CARET + "Server\" {\n  artifact app\n}\n"),
+            s(Group.DEPLOYMENT, "puml.snip.depl.database", "database DB\n"),
+            s(Group.DEPLOYMENT, "puml.snip.depl.cloud", "cloud \"Cloud\" {\n  " + CARET + "\n}\n"),
+            s(Group.DEPLOYMENT, "puml.snip.depl.link", "Server --> DB\n"),
+            // タイミング図
+            s(Group.TIMING, "puml.snip.tim.robust", "robust \"" + CARET + "Signal\" as R\n"),
+            s(Group.TIMING, "puml.snip.tim.concise", "concise \"User\" as U\n"),
+            s(Group.TIMING, "puml.snip.tim.state", "@0\n" + CARET + "R is Idle\n@100\nR is Busy\n"),
+            // JSON
+            s(Group.JSON, "puml.snip.json.object",
+                    "{\n  \"" + CARET + "key\": \"value\",\n  \"items\": [1, 2, 3]\n}\n"),
+            // YAML
+            s(Group.YAML, "puml.snip.yaml.mapping",
+                    CARET + "key: value\nlist:\n  - a\n  - b\n"),
+            // マインドマップ
+            s(Group.MINDMAP, "puml.snip.mm.orgmode",
+                    "* " + CARET + "Root\n** Branch A\n*** Leaf\n** Branch B\n"),
+            s(Group.MINDMAP, "puml.snip.mm.markdown", "+ Root\n++ Child\n-- Left Child\n"),
+            // WBS
+            s(Group.WBS, "puml.snip.wbs.node",
+                    "* " + CARET + "Project\n** Phase 1\n*** Task A\n** Phase 2\n"),
+            // ガント
+            s(Group.GANTT, "puml.snip.gantt.task", "[" + CARET + "Task] lasts 5 days\n"),
+            s(Group.GANTT, "puml.snip.gantt.depend", "[Next] starts at [Task]'s end\n"),
+            s(Group.GANTT, "puml.snip.gantt.milestone",
+                    "[Milestone] happens at [Task]'s end\n"),
+            // ワイヤーフレーム (salt)
+            s(Group.SALT, "puml.snip.salt.buttons", "{\n  [" + CARET + "OK] | [Cancel]\n}\n"),
+            s(Group.SALT, "puml.snip.salt.form",
+                    "{\n  Name  | \"          \"\n  Passwd| \"****      \"\n  [Login]\n}\n"),
+            s(Group.SALT, "puml.snip.salt.checkbox", "{\n  [X] Enabled\n  [ ] Disabled\n}\n"),
             // 共通
             s(Group.COMMON, "puml.snip.common.title", "title " + CARET + "My Diagram\n"),
             s(Group.COMMON, "puml.snip.common.note", "note as N\n  text\nend note\n"),
