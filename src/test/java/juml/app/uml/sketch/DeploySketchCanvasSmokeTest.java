@@ -134,4 +134,58 @@ public class DeploySketchCanvasSmokeTest {
         assertEquals(DeployNode.Kind.DATABASE, canvas.model().getNodes().get(0).getKind());
         paint(canvas);
     }
+
+    /** 入れ子コンテナ (コンテナ + 子 2 個 + リンク) を含むモデルを描いて例外が飛ばないこと。 */
+    @Test
+    public void paintsNestedContainerWithChildrenWithoutThrowing() {
+        DeploySketchCanvas canvas = newCanvas();
+        DeploySketchModel model = new DeploySketchModel();
+        DeployNode outer = new DeployNode(DeployNode.Kind.NODE, "Outer", "Web Server", 40, 40);
+        DeployNode child1 = new DeployNode(DeployNode.Kind.ARTIFACT, "c1", null, 10, 10);
+        DeployNode child2 = new DeployNode(DeployNode.Kind.COMPONENT, "c2", null, 10, 70);
+        model.getNodes().add(outer);
+        model.addChild(outer, child1);
+        model.addChild(outer, child2);
+        model.getLinks().add(new DeployLink("c1", DeployLink.Kind.ARROW, "c2", "calls"));
+        GuiActionRunner.execute(() -> canvas.setModel(model, true, Collections.emptyList()));
+        paint(canvas);
+        assertTrue("外側ノードはコンテナ扱いのはず", outer.isContainer());
+    }
+
+    /** コンテナの子ノードをドラッグすると、親内側原点からの相対座標として更新されること。 */
+    @Test
+    public void dragChildNode_movesRelativeToParentOrigin() {
+        DeploySketchCanvas canvas = newCanvas();
+        DeploySketchModel model = new DeploySketchModel();
+        DeployNode outer = new DeployNode(DeployNode.Kind.NODE, "Outer", null, 100, 80);
+        DeployNode child = new DeployNode(DeployNode.Kind.ARTIFACT, "c1", null, 5, 5);
+        model.getNodes().add(outer);
+        model.addChild(outer, child);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, true, Collections.emptyList());
+            canvas.setSize(600, 500);
+            canvas.setSnapToGrid(false);
+        });
+        java.awt.Rectangle childRectBefore = GuiActionRunner.execute(
+                () -> canvas.layoutForTest().get(child));
+        // 子ノードの中心付近を押し、右へ 20px ドラッグする。
+        int px = childRectBefore.x + childRectBefore.width / 2;
+        int py = childRectBefore.y + childRectBefore.height / 2;
+        GuiActionRunner.execute(() -> canvas.setSelectedForTest(null));
+        dispatch(canvas, java.awt.event.MouseEvent.MOUSE_PRESSED,
+                java.awt.event.InputEvent.BUTTON1_DOWN_MASK, px, py,
+                java.awt.event.MouseEvent.BUTTON1);
+        dispatch(canvas, java.awt.event.MouseEvent.MOUSE_DRAGGED,
+                java.awt.event.InputEvent.BUTTON1_DOWN_MASK, px + 20, py, 0);
+        dispatch(canvas, java.awt.event.MouseEvent.MOUSE_RELEASED, 0, px + 20, py,
+                java.awt.event.MouseEvent.BUTTON1);
+        assertEquals("子は親に付いたまま (親自身は移動していない)", 100, outer.getX());
+        assertEquals("子の相対 x が右へ動いているはず", 25, child.getX());
+    }
+
+    private static void dispatch(DeploySketchCanvas canvas, int id, int modifiersEx,
+                                 int x, int y, int button) {
+        GuiActionRunner.execute(() -> canvas.dispatchEvent(new java.awt.event.MouseEvent(
+                canvas, id, System.currentTimeMillis(), modifiersEx, x, y, 1, false, button)));
+    }
 }

@@ -28,6 +28,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 配置図デザイナーの描画・マウス操作キャンバス。
@@ -38,6 +39,14 @@ import java.util.List;
  * ドラッグ移動・ダブルクリック編集・右クリックメニュー・リンクの 2 クリック追加を
  * 受け付ける。モデル変更は {@link Listener#modelEdited()} で通知し、テキスト再生成は
  * 呼び出し側 ({@link SketchPane}) が行う。</p>
+ *
+ * <p>入れ子コンテナ ({@link DeployNode#isContainer()}) は枠 (タイトル行 + 子ノード領域)
+ * として描く。子ノードの座標は親の内側原点からの相対値で、絶対座標への変換・当たり判定・
+ * 自動サイズ計算は {@link DeploySketchLayout} が担う。</p>
+ *
+ * <p>選択/移動モード ({@code linkMode == null}) では各リンクの端点に正方形ハンドルを描き、
+ * ハンドルを掴んでドラッグし別ノード上で離すと端点を付け替える (ノード外で離せば取消)。
+ * ジオメトリは {@link DeploySketchLinkHandles} が担う。</p>
  */
 final class DeploySketchCanvas extends JPanel {
 
@@ -71,7 +80,15 @@ final class DeploySketchCanvas extends JPanel {
     private DeployNode linkSource;
     private boolean snapToGrid = true;
     private Point dragOffset;
+    /** ドラッグ中ノードの座標系原点 (絶対座標。最上位なら (0,0)、入れ子なら親の内側原点)。 */
+    private Point dragOrigin = new Point(0, 0);
     private boolean draggedSinceMousePress;
+    /** 端点ドラッグ中のリンク (無ければ null)。選択/移動モードでのみ張る。 */
+    private DeployLink endpointDragLink;
+    /** {@link #endpointDragLink} のどちら側を動かしているか (true = from 側)。 */
+    private boolean endpointDragStart;
+    /** 端点ドラッグ中の現在のマウス位置 (モデル座標。ラバーバンド表示用)。 */
+    private Point endpointDragCurrent;
 
     DeploySketchCanvas(Listener listener) {
         this.listener = listener;
@@ -175,7 +192,7 @@ final class DeploySketchCanvas extends JPanel {
         repaint();
     }
 
-    /** 新しいノードを追加する。 */
+    /** 新しいノードを最上位 (トップレベル) へ追加する。 */
     void addNode(DeployNode.Kind kind, Point at) {
         if (!editable) {
             return;
@@ -184,6 +201,27 @@ final class DeploySketchCanvas extends JPanel {
         int x = at != null ? at.x : 50 + (n % 6) * 30;
         int y = at != null ? at.y : 50 + (n % 6) * 28;
         model.getNodes().add(new DeployNode(kind, model.uniqueId(baseNameFor(kind)), null, x, y));
+        listener.modelEdited();
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * 新しいノードを {@code parent} の子として追加する ({@code at} は盤面の絶対座標。
+     * null なら親の内側原点付近の既定位置)。
+     */
+    void addChildNode(DeployNode.Kind kind, DeployNode parent, Point at) {
+        if (!editable || parent == null) {
+            return;
+        }
+        Map<DeployNode, Rectangle> layout = currentLayout();
+        Rectangle pr = layout.get(parent);
+        Point origin = pr != null
+                ? DeploySketchLayout.contentOrigin(pr, titleSize(parent)) : new Point(0, 0);
+        int relX = at != null ? Math.max(0, at.x - origin.x) : 10;
+        int relY = at != null ? Math.max(0, at.y - origin.y) : 10;
+        DeployNode child = new DeployNode(kind, model.uniqueId(baseNameFor(kind)), null, relX, relY);
+        model.addChild(parent, child);
         listener.modelEdited();
         revalidate();
         repaint();
@@ -211,7 +249,8 @@ final class DeploySketchCanvas extends JPanel {
             return;
         }
         Point mp = view.toModel(e.getPoint());
-        DeployNode hit = nodeAt(mp);
+        Map<DeployNode, Rectangle> layout = currentLayout();
+        DeployNode hit = DeploySketchLayout.hitTest(model.getNodes(), layout, mp);
         if (e.isPopupTrigger() || javax.swing.SwingUtilities.isRightMouseButton(e)) {
             selected = hit;
             repaint();
@@ -224,10 +263,22 @@ final class DeploySketchCanvas extends JPanel {
             handleLinkClick(hit);
             return;
         }
+        // 選択/移動モードでは端点ハンドルを優先的に判定する (ノードの縁と重なりうるため)。
+        DeploySketchLinkHandles.EndpointHit eh = DeploySketchLinkHandles.hitTest(model, layout, mp);
+        if (eh != null) {
+            endpointDragLink = eh.link();
+            endpointDragStart = eh.startEnd();
+            endpointDragCurrent = mp;
+            selected = null;
+            repaint();
+            return;
+        }
         selected = hit;
         draggedSinceMousePress = false;
         if (hit != null) {
-            dragOffset = new Point(mp.x - hit.getX(), mp.y - hit.getY());
+            Rectangle r = layout.get(hit);
+            dragOffset = new Point(mp.x - r.x, mp.y - r.y);
+            dragOrigin = DeploySketchLayout.contentOriginOf(hit, layout, this::titleSize);
         }
         repaint();
     }
@@ -257,18 +308,30 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || linkMode != null || selected == null || dragOffset == null) {
+        if (!editable) {
+            return;
+        }
+        if (endpointDragLink != null) {
+            endpointDragCurrent = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (linkMode != null || selected == null || dragOffset == null) {
             return;
         }
         Point mp = view.toModel(e.getPoint());
-        selected.moveTo(Math.max(0, mp.x - dragOffset.x),
-                Math.max(0, mp.y - dragOffset.y));
+        selected.moveTo(Math.max(0, mp.x - dragOffset.x - dragOrigin.x),
+                Math.max(0, mp.y - dragOffset.y - dragOrigin.y));
         draggedSinceMousePress = true;
         revalidate();
         repaint();
     }
 
     private void handleRelease(MouseEvent e) {
+        if (endpointDragLink != null) {
+            finishEndpointDrag(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             showPopup(e, nodeAt(view.toModel(e.getPoint())));
             return;
@@ -285,6 +348,36 @@ final class DeploySketchCanvas extends JPanel {
         dragOffset = null;
     }
 
+    /** 端点ドラッグを終える。ノード上ならそのノードへ付け替え、ノード外なら取消。 */
+    private void finishEndpointDrag(Point mp) {
+        DeployNode target = DeploySketchLayout.hitTest(model.getNodes(), currentLayout(), mp);
+        DeployLink link = endpointDragLink;
+        boolean startEnd = endpointDragStart;
+        endpointDragLink = null;
+        endpointDragCurrent = null;
+        if (target != null) {
+            reattach(link, startEnd, target);
+        } else {
+            repaint();
+        }
+    }
+
+    /** リンクの端点 ({@code startEnd} true = from 側) を {@code target} へ付け替える。 */
+    private void reattach(DeployLink link, boolean startEnd, DeployNode target) {
+        if (startEnd) {
+            link.setFrom(target.getId());
+        } else {
+            link.setTo(target.getId());
+        }
+        listener.modelEdited();
+        repaint();
+    }
+
+    /** テスト用: 実際のドラッグ操作を経ずにリンク端点付け替えを直接実行する。 */
+    void reattachForTest(DeployLink link, boolean startEnd, DeployNode target) {
+        reattach(link, startEnd, target);
+    }
+
     private void showPopup(MouseEvent e, DeployNode hit) {
         if (!editable) {
             return;
@@ -299,6 +392,11 @@ final class DeploySketchCanvas extends JPanel {
                 repaint();
             });
             addLinkDeleteMenu(menu, hit);
+            if (hit.isContainer()) {
+                final Point at = view.toModel(e.getPoint());
+                addItem(menu, "sketch.depl.menu.addChildHere",
+                        () -> addChildNode(DeployNode.Kind.NODE, hit, at));
+            }
         } else {
             // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
             final Point at = view.toModel(e.getPoint());
@@ -335,34 +433,33 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private DeployNode nodeAt(Point p) {
-        List<DeployNode> ns = model.getNodes();
-        for (int i = ns.size() - 1; i >= 0; i--) {
-            if (boundsOf(ns.get(i)).contains(p)) {
-                return ns.get(i);
-            }
-        }
-        return null;
+        return DeploySketchLayout.hitTest(model.getNodes(), currentLayout(), p);
+    }
+
+    /** 全ノード (入れ子含む) の絶対矩形を求める (呼び出しごとに再計算する軽量な純関数)。 */
+    private Map<DeployNode, Rectangle> currentLayout() {
+        return DeploySketchLayout.compute(model.getNodes(), this::titleSize);
+    }
+
+    /** ノードのタイトル (ステレオタイプ + 表示名) を収める最小サイズ。葉ノードの全体サイズにも使う。 */
+    private Dimension titleSize(DeployNode n) {
+        FontMetrics fm = getFontMetrics(getFont() != null ? getFont()
+                : new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        int textW = Math.max(fm.stringWidth(n.displayText()),
+                fm.stringWidth(stereotype(n.getKind())));
+        int w = Math.max(NODE_MIN_W, textW + 2 * PAD_X);
+        return new Dimension(w, NODE_H);
     }
 
     // -------------------------------------------------------------------------
     // 描画
     // -------------------------------------------------------------------------
 
-    Rectangle boundsOf(DeployNode n) {
-        FontMetrics fm = getFontMetrics(getFont() != null ? getFont()
-                : new Font(Font.SANS_SERIF, Font.PLAIN, 12));
-        int textW = Math.max(fm.stringWidth(n.displayText()),
-                fm.stringWidth(stereotype(n.getKind())));
-        int w = Math.max(NODE_MIN_W, textW + 2 * PAD_X);
-        return new Rectangle(n.getX(), n.getY(), w, NODE_H);
-    }
-
     @Override
     public Dimension getPreferredSize() {
         int w = 400;
         int h = 300;
-        for (DeployNode n : model.getNodes()) {
-            Rectangle r = boundsOf(n);
+        for (Rectangle r : currentLayout().values()) {
             w = Math.max(w, r.x + r.width + 80);
             h = Math.max(h, r.y + r.height + 80);
         }
@@ -377,11 +474,12 @@ final class DeploySketchCanvas extends JPanel {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
             view.applyTransform(g2);
+            Map<DeployNode, Rectangle> layout = currentLayout();
             for (DeployLink l : model.getLinks()) {
-                paintLink(g2, l);
+                paintLink(g2, l, layout);
             }
             for (DeployNode n : model.getNodes()) {
-                paintNode(g2, n);
+                paintNodeTree(g2, n, layout);
             }
             if (!editable) {
                 SketchBanner.paint(g2, this, unsupported);
@@ -390,22 +488,73 @@ final class DeploySketchCanvas extends JPanel {
                 g2.drawString(Messages.get(linkSource == null
                         ? "sketch.depl.hint.pickSource"
                         : "sketch.depl.hint.pickTarget"), 8, 14);
+            } else {
+                // 選択/移動モードのみ端点ハンドルを見せる (リンク作成モード中は邪魔になる)。
+                paintEndpointHandles(g2, layout);
             }
         } finally {
             g2.dispose();
         }
     }
 
+    /** 各リンクの端点に正方形ハンドルを描き、端点ドラッグ中ならラバーバンド線も添える。 */
+    private void paintEndpointHandles(Graphics2D g2, Map<DeployNode, Rectangle> layout) {
+        g2.setColor(new Color(0x1565C0));
+        for (DeployLink link : model.getLinks()) {
+            Point[] eps = DeploySketchLinkHandles.endpointsOf(model, link, layout);
+            if (eps == null) {
+                continue;
+            }
+            drawHandle(g2, eps[0]);
+            drawHandle(g2, eps[1]);
+        }
+        if (endpointDragLink != null && endpointDragCurrent != null) {
+            Point[] eps = DeploySketchLinkHandles.endpointsOf(model, endpointDragLink, layout);
+            if (eps != null) {
+                Point anchor = endpointDragStart ? eps[1] : eps[0];
+                g2.drawLine(anchor.x, anchor.y, endpointDragCurrent.x, endpointDragCurrent.y);
+            }
+        }
+    }
+
+    private void drawHandle(Graphics2D g2, Point p) {
+        int s = DeploySketchLinkHandles.HANDLE_SIZE;
+        g2.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    }
+
     private static String stereotype(DeployNode.Kind kind) {
         return "«" + kind.keyword() + "»";
     }
 
-    private void paintNode(Graphics2D g2, DeployNode n) {
-        Rectangle r = boundsOf(n);
+    /** ノード 1 個 (コンテナならその枠 + 子孫全体) を再帰的に描く。 */
+    private void paintNodeTree(Graphics2D g2, DeployNode n, Map<DeployNode, Rectangle> layout) {
+        Rectangle r = layout.get(n);
+        if (n.isContainer()) {
+            paintContainerFrame(g2, n, r);
+            for (DeployNode c : n.getChildren()) {
+                paintNodeTree(g2, c, layout);
+            }
+        } else {
+            paintNode(g2, n, r);
+        }
+    }
+
+    /** コンテナの枠 (タイトル行 + 子ノード領域) を描く。子は呼び出し側が別途描く。 */
+    private void paintContainerFrame(Graphics2D g2, DeployNode n, Rectangle r) {
         boolean sel = n == selected || n == linkSource;
         Color line = sel ? new Color(0x1565C0) : new Color(0x555555);
+        g2.setColor(new Color(0xF3F6FA));
+        g2.fillRect(r.x, r.y, r.width, r.height);
         g2.setStroke(new BasicStroke(sel ? 2f : 1f));
-        paintShape(g2, n.getKind(), r, line);
+        g2.setColor(line);
+        g2.drawRect(r.x, r.y, r.width, r.height);
+        Dimension title = titleSize(n);
+        g2.drawLine(r.x, r.y + title.height, r.x + r.width, r.y + title.height);
+        g2.setStroke(new BasicStroke(1f));
+        drawTitleText(g2, n, r, title.height);
+    }
+
+    private void drawTitleText(Graphics2D g2, DeployNode n, Rectangle r, int titleH) {
         FontMetrics fm = g2.getFontMetrics();
         int cx = r.x + r.width / 2;
         g2.setColor(new Color(0x607D8B));
@@ -413,7 +562,16 @@ final class DeploySketchCanvas extends JPanel {
         g2.drawString(st, cx - fm.stringWidth(st) / 2, r.y + 18);
         g2.setColor(new Color(0x1A1A1A));
         String name = n.displayText();
-        g2.drawString(name, cx - fm.stringWidth(name) / 2, r.y + 36);
+        int nameY = Math.min(r.y + 36, r.y + titleH - 6);
+        g2.drawString(name, cx - fm.stringWidth(name) / 2, nameY);
+    }
+
+    private void paintNode(Graphics2D g2, DeployNode n, Rectangle r) {
+        boolean sel = n == selected || n == linkSource;
+        Color line = sel ? new Color(0x1565C0) : new Color(0x555555);
+        g2.setStroke(new BasicStroke(sel ? 2f : 1f));
+        paintShape(g2, n.getKind(), r, line);
+        drawTitleText(g2, n, r, NODE_H);
         g2.setStroke(new BasicStroke(1f));
     }
 
@@ -522,18 +680,20 @@ final class DeploySketchCanvas extends JPanel {
         g2.drawLine(r.x + tabW - 5, r.y + tabH, r.x + tabW, r.y + tabH - 5);
     }
 
-    private void paintLink(Graphics2D g2, DeployLink link) {
+    private void paintLink(Graphics2D g2, DeployLink link, Map<DeployNode, Rectangle> layout) {
         DeployNode from = model.findNode(link.getFrom());
         DeployNode to = model.findNode(link.getTo());
         if (from == null || to == null) {
             return;
         }
+        Rectangle fr = layout.get(from);
+        Rectangle tr = layout.get(to);
         if (from == to) {
-            paintSelfLink(g2, boundsOf(from), link);
+            paintSelfLink(g2, fr, link);
             return;
         }
-        Point pf = edgePoint(boundsOf(from), center(boundsOf(to)));
-        Point pt = edgePoint(boundsOf(to), center(boundsOf(from)));
+        Point pf = DeploySketchLinkHandles.edgePoint(fr, DeploySketchLinkHandles.center(tr));
+        Point pt = DeploySketchLinkHandles.edgePoint(tr, DeploySketchLinkHandles.center(fr));
         boolean dashed = link.getKind() == DeployLink.Kind.DEPENDENCY;
         Stroke old = g2.getStroke();
         g2.setColor(new Color(0x37474F));
@@ -596,6 +756,7 @@ final class DeploySketchCanvas extends JPanel {
     // -------------------------------------------------------------------------
 
     private DeployLink linkAt(Point p) {
+        Map<DeployNode, Rectangle> layout = currentLayout();
         DeployLink best = null;
         double bestD = 7.0;
         for (DeployLink link : model.getLinks()) {
@@ -604,9 +765,11 @@ final class DeploySketchCanvas extends JPanel {
             if (from == null || to == null) {
                 continue;
             }
+            Rectangle fr = layout.get(from);
+            Rectangle tr = layout.get(to);
             double d = from == to
-                    ? selfLoopDistance(boundsOf(from), p)
-                    : segmentDistance(boundsOf(from), boundsOf(to), p);
+                    ? selfLoopDistance(fr, p)
+                    : segmentDistance(fr, tr, p);
             if (d < bestD) {
                 bestD = d;
                 best = link;
@@ -616,8 +779,8 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private static double segmentDistance(Rectangle from, Rectangle to, Point p) {
-        Point pf = edgePoint(from, center(to));
-        Point pt = edgePoint(to, center(from));
+        Point pf = DeploySketchLinkHandles.edgePoint(from, DeploySketchLinkHandles.center(to));
+        Point pt = DeploySketchLinkHandles.edgePoint(to, DeploySketchLinkHandles.center(from));
         return pointToSegment(p.x, p.y, pf.x, pf.y, pt.x, pt.y);
     }
 
@@ -631,10 +794,6 @@ final class DeploySketchCanvas extends JPanel {
         return best;
     }
 
-    private static Point center(Rectangle r) {
-        return new Point(r.x + r.width / 2, r.y + r.height / 2);
-    }
-
     private static double pointToSegment(double px, double py,
                                          double x1, double y1, double x2, double y2) {
         double dx = x2 - x1;
@@ -643,19 +802,6 @@ final class DeploySketchCanvas extends JPanel {
         double u = len2 == 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / len2;
         u = Math.max(0, Math.min(1, u));
         return Math.hypot(px - (x1 + u * dx), py - (y1 + u * dy));
-    }
-
-    private static Point edgePoint(Rectangle r, Point toward) {
-        Point c = center(r);
-        double dx = toward.x - c.x;
-        double dy = toward.y - c.y;
-        if (dx == 0 && dy == 0) {
-            return c;
-        }
-        double scaleX = dx != 0 ? (r.width / 2.0) / Math.abs(dx) : Double.MAX_VALUE;
-        double scaleY = dy != 0 ? (r.height / 2.0) / Math.abs(dy) : Double.MAX_VALUE;
-        double t = Math.min(scaleX, scaleY);
-        return new Point((int) Math.round(c.x + dx * t), (int) Math.round(c.y + dy * t));
     }
 
     private void paintOpenArrow(Graphics2D g2, Point at, Point from) {
@@ -683,5 +829,10 @@ final class DeploySketchCanvas extends JPanel {
 
     void setSelectedForTest(DeployNode n) {
         this.selected = n;
+    }
+
+    /** テスト用: 現在の絶対レイアウト矩形 (入れ子含む)。 */
+    Map<DeployNode, Rectangle> layoutForTest() {
+        return currentLayout();
     }
 }
