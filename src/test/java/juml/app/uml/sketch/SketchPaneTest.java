@@ -170,10 +170,11 @@ public class SketchPaneTest {
 
     @Test
     public void loadFrom_deploymentTemplate_disablesEditing() {
-        // 専用エディタの無い図種 (配置図等) は従来どおり編集ロックで保全する。
+        // 配置図には専用デザイナーがあるが、テンプレートは入れ子コンテナ (node X { ... }) を
+        // 含むため、往復不能な未対応構文として従来どおり編集ロックで保全する。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.DEPLOYMENT.body()));
-        assertFalse("未対応構文では GUI 編集が無効になるはず",
+        assertFalse("入れ子コンテナを含むため GUI 編集が無効になるはず",
                 GuiActionRunner.execute(pane::isEditable));
     }
 
