@@ -39,6 +39,7 @@ public final class SketchPane extends JPanel {
     private final StateSketchEditor stateEditor = new StateSketchEditor();
     private final UseCaseSketchEditor usecaseEditor = new UseCaseSketchEditor();
     private final ComponentSketchEditor componentEditor = new ComponentSketchEditor();
+    private final ErSketchEditor erEditor = new ErSketchEditor();
     private SketchEditor active = classEditor;
     private SketchDiagramType activeType = SketchDiagramType.CLASS;
 
@@ -92,6 +93,7 @@ public final class SketchPane extends JPanel {
             case STATE:    return stateEditor;
             case USECASE:  return usecaseEditor;
             case COMPONENT: return componentEditor;
+            case ER:       return erEditor;
             default:       return classEditor;
         }
     }
@@ -286,6 +288,21 @@ public final class SketchPane extends JPanel {
     /** テスト用: 実際の編集経路でコンポーネント図要素を追加し Undo 履歴も積む。 */
     void addComponentNodeForTest(ComponentNode.Kind kind) {
         componentEditor.addNodeForTest(kind);
+    }
+
+    /** テスト用: 現在の解析済み ER 図モデルのエンティティ群。 */
+    List<ErSketchModel.Entity> erEntitiesForTest() {
+        return erEditor.entitiesForTest();
+    }
+
+    /** テスト用: 現在の解析済み ER 図モデルのリレーション群。 */
+    List<ErSketchModel.Relation> erRelationsForTest() {
+        return erEditor.relationsForTest();
+    }
+
+    /** テスト用: 実際の編集経路で ER エンティティを追加し Undo 履歴も積む。 */
+    void addErEntityForTest() {
+        erEditor.addEntityForTest();
     }
 
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */

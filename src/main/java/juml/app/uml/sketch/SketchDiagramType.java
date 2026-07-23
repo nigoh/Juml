@@ -9,7 +9,10 @@ import java.util.regex.Pattern;
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
  * <p>まず {@code usecase} / {@code component} キーワード (いずれも一意) があれば
- * ユースケース図 / コンポーネント図と確定する。無ければ行単位の先勝ちで:
+ * ユースケース図 / コンポーネント図と確定する。次に ER 図固有のマーカー
+ * (crow's-foot 関係演算子 {@code ||--o{} 等、または {@code entity "..." {} の列ブロック +
+ * {@code hide circle}) があれば ER 図と確定する ({@code entity} 単独は他図種と共有するため
+ * 判定材料にしない)。無ければ行単位の先勝ちで:
  * アクティビティ図の構文 ({@code start} / {@code :action;} /
  * {@code if (...) then}) → 状態遷移図の構文 ({@code state X} / {@code [*] --> X}) →
  * クラス宣言 ({@code class} / {@code interface} / {@code enum}) → シーケンス図の構文
@@ -29,7 +32,9 @@ public enum SketchDiagramType {
     /** ユースケース図。 */
     USECASE,
     /** コンポーネント図。 */
-    COMPONENT;
+    COMPONENT,
+    /** ER (エンティティ関連) 図。 */
+    ER;
 
     /**
      * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
@@ -53,6 +58,18 @@ public enum SketchDiagramType {
      */
     private static final Pattern STATE_LINE = Pattern.compile(
             "^(state\\s+[A-Za-z_$].*|\\[\\*\\]\\s*-->.*|.*-->\\s*\\[\\*\\].*)$");
+    /**
+     * ER 図に固有の crow's-foot (IE) リレーション演算子 ({@code ||--o{} 等)。左右の
+     * カーディナリティトークン ({@code |} / {@code o} / {@code {} / {@code }} の組) は
+     * クラス図の関係表記 ({@code <|--} / {@code o--} / {@code *--} / {@code -->}) と
+     * 一致しないため、これが 1 つでもあれば ER 図と確定できる。
+     */
+    private static final Pattern ER_RELATION = Pattern.compile(
+            "(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)");
+    /** ER 図の列ブロックを開くエンティティ宣言 ({@code entity ... {})。 */
+    private static final Pattern ER_ENTITY_BLOCK = Pattern.compile("^entity\\b.*\\{\\s*$");
+    /** ER 図でエンティティを表として描かせる {@code hide circle} 指令。 */
+    private static final Pattern ER_HIDE_CIRCLE = Pattern.compile("^hide\\s+circle\\b.*$");
     /** クラス図に固有の宣言行。 */
     private static final Pattern CLASS_LINE = Pattern.compile(
             "^(abstract\\s+)?(class|interface|enum)\\b.*$");
@@ -82,6 +99,21 @@ public enum SketchDiagramType {
             if (COMPONENT_LINE.matcher(raw.trim()).matches()) {
                 return COMPONENT;
             }
+        }
+        // ER 図固有マーカー: crow's-foot 演算子 (単独で確定)、または entity 列ブロック +
+        // hide circle の同時出現。entity 単独はシーケンス図と共有するため判定材料にしない。
+        boolean entityBlock = false;
+        boolean hideCircle = false;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (ER_RELATION.matcher(line).find()) {
+                return ER;
+            }
+            entityBlock = entityBlock || ER_ENTITY_BLOCK.matcher(line).matches();
+            hideCircle = hideCircle || ER_HIDE_CIRCLE.matcher(line).matches();
+        }
+        if (entityBlock && hideCircle) {
+            return ER;
         }
         for (String raw : lines) {
             String line = raw.trim();
