@@ -11,6 +11,7 @@ import java.io.File;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -26,6 +27,20 @@ public class DraftStoreTest {
     public TemporaryFolder tmp = new TemporaryFolder();
 
     private static final String TEXT = "@startuml\nclass A\n@enduml\n";
+
+    @Test
+    public void createDefault_usesUserConfigDirNotWorkingDir() {
+        // 成熟度: 下書きは作業ディレクトリ (user.dir) ではなくユーザー設定領域
+        // (~/.juml/drafts 等、キャッシュと同じ親フォルダ) に置く。作業ディレクトリ配下だと
+        // 別ディレクトリから起動するたびに無関係な復元プロンプトが暴発する。
+        File dir = DraftStore.createDefault().dirForTest();
+        File workingDirDrafts = new File(System.getProperty("user.dir"), "drafts");
+        assertNotEquals("下書きは作業ディレクトリ配下に置かない",
+                workingDirDrafts.getAbsolutePath(), dir.getAbsolutePath());
+        File expected = new File(DiskAnalysisCache.defaultBaseDir().getParentFile(), "drafts");
+        assertEquals("キャッシュと同じ親フォルダの drafts/ を使う",
+                expected.getAbsolutePath(), dir.getAbsolutePath());
+    }
 
     @Test
     public void save_thenLoadAll_roundTripsTextAndMeta() throws Exception {
