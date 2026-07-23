@@ -79,6 +79,37 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void loadFrom_erTemplate_enablesErEditing() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.ER.body()));
+        assertEquals("ER 図として判定されるはず", SketchDiagramType.ER,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("ER 図テンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals(2, (int) GuiActionRunner.execute(
+                () -> pane.erEntitiesForTest().size()));
+        assertEquals(1, (int) GuiActionRunner.execute(
+                () -> pane.erRelationsForTest().size()));
+    }
+
+    @Test
+    public void erEdit_addEntity_syncsText() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.ER.body());
+        });
+        GuiActionRunner.execute(pane::addErEntityForTest);
+        assertEquals("エンティティ追加でモデルが 3 件になる", 3,
+                (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
+        assertTrue("追加直後のテキストに新エンティティが載る: " + lastPuml.get(),
+                lastPuml.get().contains("entity Entity"));
+        assertTrue("編集後も Undo 可能な履歴が積まれる",
+                GuiActionRunner.execute(pane::canUndoForTest));
+    }
+
+    @Test
     public void stateEdit_syncsTextAndUndoRedo() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         AtomicReference<String> lastPuml = new AtomicReference<>("");
