@@ -59,6 +59,8 @@ final class SeqSketchCanvas extends JPanel {
     private static final int ROW_H = 38;
     private static final int FIRST_ROW_GAP = 30;
     private static final int BAR_W = 8;
+    /** メッセージ端点ハンドルの当たり判定半径 (px, モデル座標)。 */
+    private static final int HANDLE_R = 8;
 
     private SeqSketchModel model = new SeqSketchModel();
     private boolean editable;
@@ -73,6 +75,11 @@ final class SeqSketchCanvas extends JPanel {
     private SeqItem.Arrow messageMode;
     /** メッセージ追加モードで最初にクリックした始点参加者。 */
     private SeqParticipant messageSource;
+    /** 端点付替えドラッグの状態 (message が null = 非ドラッグ中。並べ替えドラッグより優先)。
+     * fromEnd は始点(true)/終点(false)側、point はカーソル位置 (モデル座標、ラバーバンド用)。 */
+    private SeqItem endpointDragMessage;
+    private boolean endpointDragFromEnd;
+    private Point endpointDragPoint;
     /** ドラッグ中のマウス位置 (並べ替えのゴースト描画用。null = ドラッグ中でない)。 */
     private Point dragPoint;
     private boolean draggedSinceMousePress;
@@ -119,9 +126,15 @@ final class SeqSketchCanvas extends JPanel {
             @Override public void keyPressed(KeyEvent e) {
                 if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && messageMode == null) {
                     deleteSelection();
-                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && messageMode != null) {
-                    setMessageMode(null);
-                    listener.messageModeCancelled();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    if (endpointDragMessage != null) {
+                        endpointDragMessage = null;
+                        endpointDragPoint = null;
+                        repaint();
+                    } else if (messageMode != null) {
+                        setMessageMode(null);
+                        listener.messageModeCancelled();
+                    }
                 }
             }
         });
@@ -135,6 +148,8 @@ final class SeqSketchCanvas extends JPanel {
         this.selectedItem = null;
         this.selectedParticipant = null;
         this.messageSource = null;
+        this.endpointDragMessage = null;
+        this.endpointDragPoint = null;
         revalidate();
         repaint();
     }
@@ -154,6 +169,9 @@ final class SeqSketchCanvas extends JPanel {
         // モード切替時に旧選択をクリアする (Delete / ダブルクリックの誤爆防止)。
         this.selectedItem = null;
         this.selectedParticipant = null;
+        // モード切替は進行中の端点ドラッグも中断する (仕様: Esc/モード切替で中断)。
+        this.endpointDragMessage = null;
+        this.endpointDragPoint = null;
         repaint();
     }
 
@@ -304,6 +322,75 @@ final class SeqSketchCanvas extends JPanel {
         return MARGIN_X;
     }
 
+    /** 端点付替え (送信元/送信先ライフラインの繋ぎ替え) のヒットテスト結果。 */
+    static final class EndpointHit {
+        final SeqItem message;
+        final boolean fromEnd;
+        EndpointHit(SeqItem message, boolean fromEnd) {
+            this.message = message;
+            this.fromEnd = fromEnd;
+        }
+    }
+
+    /** カーソルが端点ハンドルの許容範囲内か判定する純関数 (テストしやすいよう座標計算のみ)。 */
+    static boolean withinHandle(Point cursor, Point endpoint) {
+        double dx = cursor.x - endpoint.x;
+        double dy = cursor.y - endpoint.y;
+        return dx * dx + dy * dy <= (double) HANDLE_R * HANDLE_R;
+    }
+
+    /** メッセージ {@code m} の始点/終点の描画位置 (自己メッセージは {@link #paintMessage} のループ形状の両端)。 */
+    private Point endpointPoint(int[] xs, SeqItem m, boolean fromEnd) {
+        int y = rowYOf(m);
+        if (m.getFrom().equals(m.getTo())) {
+            int x1 = centerOf(xs, m.getFrom());
+            return fromEnd ? new Point(x1, y - 7) : new Point(x1 + 4, y + 7);
+        }
+        int x = centerOf(xs, fromEnd ? m.getFrom() : m.getTo());
+        return new Point(x, y);
+    }
+
+    /** 指定座標に最も近い端点ハンドルを探す (見つからなければ null)。 */
+    private EndpointHit endpointAt(Point p) {
+        int[] xs = centers();
+        for (SeqItem m : model.getItems()) {
+            if (m.getKind() != SeqItem.Kind.MESSAGE) {
+                continue;
+            }
+            for (boolean fromEnd : new boolean[]{true, false}) {
+                if (withinHandle(p, endpointPoint(xs, m, fromEnd))) {
+                    return new EndpointHit(m, fromEnd);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 座標を受け止める参加者ライフライン (列幅の X 帯かつ Y 範囲内、範囲外は null = 付替えキャンセル判定に使う)。 */
+    private SeqParticipant lifelineAt(Point p) {
+        if (p.y < HEAD_TOP + HEAD_H || p.y > bottomY() + 20) {
+            return null;
+        }
+        int[] xs = centers();
+        List<SeqParticipant> ps = model.getParticipants();
+        for (int i = 0; i < xs.length; i++) {
+            int halfW = colWidth(ps.get(i)) / 2;
+            if (Math.abs(p.x - xs[i]) <= halfW) {
+                return ps.get(i);
+            }
+        }
+        return null;
+    }
+
+    /** メッセージ {@code message} の指定端をモデル上で {@code target} へ繋ぎ替える。 */
+    private void reattachEndpoint(SeqItem message, boolean fromEnd, SeqParticipant target) {
+        if (fromEnd) {
+            message.setFrom(target.getName());
+        } else {
+            message.setTo(target.getName());
+        }
+    }
+
     // -------------------------------------------------------------------------
     // マウス操作
     // -------------------------------------------------------------------------
@@ -328,6 +415,18 @@ final class SeqSketchCanvas extends JPanel {
         }
         if (messageMode != null) {
             handleMessageClick(columnAt(mp.x));
+            return;
+        }
+        // 端点ハンドルは既存のメッセージ選択/並べ替えドラッグより優先する。
+        EndpointHit hit = endpointAt(mp);
+        if (hit != null) {
+            endpointDragMessage = hit.message;
+            endpointDragFromEnd = hit.fromEnd;
+            endpointDragPoint = mp;
+            selectedItem = hit.message;
+            selectedParticipant = null;
+            leftDragArmed = true;
+            repaint();
             return;
         }
         selectAt(mp);
@@ -368,8 +467,15 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || !leftDragArmed || messageMode != null
-                || (selectedItem == null && selectedParticipant == null)) {
+        if (!editable || !leftDragArmed || messageMode != null) {
+            return;
+        }
+        if (endpointDragMessage != null) {
+            endpointDragPoint = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (selectedItem == null && selectedParticipant == null) {
             return;
         }
         dragPoint = view.toModel(e.getPoint());
@@ -379,6 +485,10 @@ final class SeqSketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         leftDragArmed = false;
+        if (endpointDragMessage != null) {
+            finishEndpointDrag(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             selectAt(view.toModel(e.getPoint()));
             repaint();
@@ -450,6 +560,24 @@ final class SeqSketchCanvas extends JPanel {
         return true;
     }
 
+    /** 端点ドラッグのリリース処理: 別の参加者ライフラインの X 帯なら繋ぎ替え、それ以外はモデル不変。 */
+    private void finishEndpointDrag(Point releasePoint) {
+        SeqItem message = endpointDragMessage;
+        boolean fromEnd = endpointDragFromEnd;
+        endpointDragMessage = null;
+        endpointDragPoint = null;
+        SeqParticipant target = lifelineAt(releasePoint);
+        String current = fromEnd ? message.getFrom() : message.getTo();
+        if (target != null && !target.getName().equals(current)) {
+            reattachEndpoint(message, fromEnd, target);
+            listener.modelEdited();
+        }
+        selectedItem = message;
+        selectedParticipant = null;
+        revalidate();
+        repaint();
+    }
+
     private void showPopup(MouseEvent e) {
         if (!editable) {
             return;
@@ -519,10 +647,12 @@ final class SeqSketchCanvas extends JPanel {
                     row++;
                 }
             }
+            paintEndpointHandles(g2, xs);
             for (int i = 0; i < model.getParticipants().size(); i++) {
                 paintHeader(g2, i);
             }
             paintDragGhost(g2);
+            paintEndpointDragGhost(g2, xs);
         } finally {
             g2.dispose();
         }
@@ -703,6 +833,43 @@ final class SeqSketchCanvas extends JPanel {
         }
     }
 
+    /** 発見可能性: 選択/移動モードで編集可能なときだけメッセージ端点に小さなハンドルを描く。 */
+    private void paintEndpointHandles(Graphics2D g2, int[] xs) {
+        if (!editable || messageMode != null) {
+            return;
+        }
+        Color old = g2.getColor();
+        for (SeqItem m : model.getItems()) {
+            if (m.getKind() != SeqItem.Kind.MESSAGE) {
+                continue;
+            }
+            for (boolean fromEnd : new boolean[]{true, false}) {
+                Point pt = endpointPoint(xs, m, fromEnd);
+                boolean dragging = m == endpointDragMessage && fromEnd == endpointDragFromEnd;
+                g2.setColor(dragging ? new Color(0x1565C0) : new Color(0x90A4AE));
+                int r = dragging ? 4 : 3;
+                g2.fillOval(pt.x - r, pt.y - r, r * 2, r * 2);
+            }
+        }
+        g2.setColor(old);
+    }
+
+    /** 端点ドラッグ中: 固定端 (動かしていない側) からカーソルへのラバーバンド線。 */
+    private void paintEndpointDragGhost(Graphics2D g2, int[] xs) {
+        if (endpointDragMessage == null || endpointDragPoint == null) {
+            return;
+        }
+        Point fixed = endpointPoint(xs, endpointDragMessage, !endpointDragFromEnd);
+        Stroke old = g2.getStroke();
+        g2.setColor(new Color(0x1565C0));
+        g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{4f, 3f}, 0f));
+        g2.drawLine(fixed.x, fixed.y, endpointDragPoint.x, endpointDragPoint.y);
+        g2.setStroke(old);
+        int r = 4;
+        g2.fillOval(endpointDragPoint.x - r, endpointDragPoint.y - r, r * 2, r * 2);
+    }
+
     // -------------------------------------------------------------------------
     // テスト用シーム
     // -------------------------------------------------------------------------
@@ -716,5 +883,18 @@ final class SeqSketchCanvas extends JPanel {
     void setSelectedForTest(SeqItem item) {
         this.selectedItem = item;
         this.selectedParticipant = null;
+    }
+
+    /** テスト用: 端点ヒットテストを直接呼ぶ (マウス press の代替)。 */
+    EndpointHit endpointAtForTest(Point p) {
+        return endpointAt(p);
+    }
+
+    /** テスト用: 実際の更新経路 (モデル更新 + modelEdited 通知) でメッセージ端点を付け替える。 */
+    void reattachForTest(SeqItem message, boolean fromEnd, SeqParticipant target) {
+        reattachEndpoint(message, fromEnd, target);
+        listener.modelEdited();
+        revalidate();
+        repaint();
     }
 }
