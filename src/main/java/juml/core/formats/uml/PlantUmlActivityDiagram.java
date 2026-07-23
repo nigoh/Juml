@@ -200,10 +200,19 @@ public final class PlantUmlActivityDiagram {
                                            StringBuilder out, String indent, Ctx ctx) {
         Options opts = ctx.opts;
         boolean ended = false;
-        for (JavaMethodInfo.Statement s : stmts) {
+        for (int i = 0; i < stmts.size(); i++) {
+            JavaMethodInfo.Statement s = stmts.get(i);
             ended = false;
             if (s instanceof JavaMethodInfo.Call) {
-                emitCall((JavaMethodInfo.Call) s, out, indent, ctx);
+                JavaMethodInfo.Call call = (JavaMethodInfo.Call) s;
+                // 値式 (ローカル変数初期化子・代入値・return/throw 等) から持ち上げた Call は、
+                // 続く host 文がその値式を全文表示するときだけ本文テキストを重ねない (同じ
+                // 呼び出しが 2 度出て回数を誤認させるのを防ぐ)。ただし host が非表示
+                // (showLocalVars/showAssignments=false) のときや、ラムダ本体を持つ (partition
+                // 展開が必要な) ときは呼び出し自体を失わないよう本文/展開を描く。
+                boolean textRedundant = call.isHoisted()
+                        && hoistedHostRendersText(stmts, i, opts);
+                emitCall(call, out, indent, ctx, !textRedundant);
             } else if (s instanceof JavaMethodInfo.Return) {
                 ended = emitReturn((JavaMethodInfo.Return) s, out, indent, opts);
             } else if (s instanceof JavaMethodInfo.Throw) {
@@ -233,8 +242,53 @@ public final class PlantUmlActivityDiagram {
         return ended;
     }
 
+    /**
+     * 値式から持ち上げた Call ({@code isHoisted}) の本文テキストが冗長かを、直後に続く
+     * host 文がその値式を全文表示するかどうかで判定する。持ち上げ Call は host 文の直前へ
+     * 兄弟として挿入される (StatementAdapter.emitLocalVar / emitExprValue)。
+     *
+     * <ul>
+     *   <li>host が LocalVar/Assignment → 表示オプション ({@code showLocalVars} /
+     *       {@code showAssignments}) が有効なときだけ冗長 (非表示なら本文を描かないと
+     *       呼び出しが消えるため false)。</li>
+     *   <li>host が return/throw/yield → 常に全文表示するため冗長 (true)。</li>
+     *   <li>host 不在・その他 → 呼び出しを失わないよう false (本文テキストを描く)。</li>
+     * </ul>
+     */
+    private static boolean hoistedHostRendersText(List<JavaMethodInfo.Statement> stmts,
+                                                  int callIdx, Options opts) {
+        for (int j = callIdx + 1; j < stmts.size(); j++) {
+            JavaMethodInfo.Statement h = stmts.get(j);
+            // 同じ host に属する別の持ち上げ Call は読み飛ばす。
+            if (h instanceof JavaMethodInfo.Call && ((JavaMethodInfo.Call) h).isHoisted()) {
+                continue;
+            }
+            if (h instanceof JavaMethodInfo.LocalVar) {
+                return opts.showLocalVars;
+            }
+            if (h instanceof JavaMethodInfo.Assignment) {
+                return opts.showAssignments;
+            }
+            return h instanceof JavaMethodInfo.Return
+                    || h instanceof JavaMethodInfo.Throw
+                    || h instanceof JavaMethodInfo.Yield;
+        }
+        return false;
+    }
+
     private static void emitCall(JavaMethodInfo.Call call, StringBuilder out,
                                   String indent, Ctx ctx) {
+        emitCall(call, out, indent, ctx, true);
+    }
+
+    /**
+     * Call ノードを描く。{@code emitTextNode=false} のときは本文アクションノード
+     * ({@code :receiver.name(args);}) の出力だけを抑止し、インラインコールバックの
+     * partition 展開や格納コールバックの展開は従来どおり行う。値式から持ち上げた Call で
+     * 親文が同じテキストを描く場合に、本文の重複だけを避けつつ展開は残すために使う。
+     */
+    private static void emitCall(JavaMethodInfo.Call call, StringBuilder out,
+                                  String indent, Ctx ctx, boolean emitTextNode) {
         Options opts = ctx.opts;
         String rcv = call.getReceiver();
         String name = call.getMethodName();
@@ -243,8 +297,10 @@ public final class PlantUmlActivityDiagram {
         String text = (rcv == null || rcv.isEmpty())
                 ? name + "(" + args + ")"
                 : rcv + "." + name + "(" + args + ")";
-        out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
-                .append(";\n");
+        if (emitTextNode) {
+            out.append(indent).append(':').append(escapeAction(text, opts.commentMaxLength))
+                    .append(";\n");
+        }
 
         if (opts.expandInlineCallbacks && !call.getInlineMethods().isEmpty()) {
             for (JavaMethodInfo inline : call.getInlineMethods()) {

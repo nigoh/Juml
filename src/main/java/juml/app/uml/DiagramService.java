@@ -212,6 +212,13 @@ public final class DiagramService {
                                   DependencyJarIndex depIndex) {
             List<JavaClassInfo> scoped = applyScope(classes, request.getScope(),
                     index != null ? index.moduleMap() : null);
+            // パッケージ図はパッケージ間依存をフィールド型・メソッド戻り値/引数型からも集計する
+            // (PlantUmlPackageDiagram 参照)。これらは Stage B 詳細でしか埋まらないため、
+            // 他の構造系図種と同様に詳細へ昇格させる。昇格しないと lazyDetails (AOSP 級) で
+            // ロードされた Stage A ヘッダは fields/methods が空になり、依存矢印がほぼ消える。
+            if (index != null) {
+                scoped = promoteToDetailed(scoped, index);
+            }
             PlantUmlPackageDiagram.Options o = new PlantUmlPackageDiagram.Options();
             o.includeLegend = request.isIncludeLegend();
             return PlantUmlPackageDiagram.generate(scoped, o);
@@ -438,10 +445,22 @@ public final class DiagramService {
             o.topToBottomDirection = true;
             // 兄弟ノードが 5 個を超えたら次の行に折り返す
             o.maxSiblingsPerRow = 5;
+            // クラス数上限を必ず設定する。未設定 (0=無制限) だと大規模プロジェクトの
+            // 継承グラフが Smetana レイアウトの上限を超えて描画クラッシュする
+            // (mincross ArrayIndexOutOfBounds)。scope に明示があればそれを尊重し、
+            // 無ければ安全な既定上限で先頭から切り詰め、フッタ警告で切り詰めを知らせる。
+            int inhMax = request.getScope() != null ? request.getScope().getMaxClasses() : 0;
+            o.maxClasses = inhMax > 0 ? inhMax : INHERITANCE_DEFAULT_MAX_CLASSES;
             o.includeLegend = request.isIncludeLegend();
             o.interactiveLinks = request.isInteractiveLinks();
             return PlantUmlClassDiagram.generate(scoped, o);
     }
+
+    /**
+     * 継承図の既定クラス数上限。scope で明示されないときに適用する。大規模プロジェクトの
+     * 継承グラフが Smetana レイアウトを破綻させる (描画クラッシュ) のを防ぐための安全弁。
+     */
+    private static final int INHERITANCE_DEFAULT_MAX_CLASSES = 120;
 
     private static String generateCallgraphDiagram(DiagramRequest request,
                                   AndroidProjectAnalysis analysis,

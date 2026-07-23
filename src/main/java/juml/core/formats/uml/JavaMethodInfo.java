@@ -29,10 +29,27 @@ public class JavaMethodInfo {
         private String argsLabel;
         private String resolvedOwnerFqn;
         private String resolvedSignature;
+        private boolean hoisted;
 
         public Call(String receiver, String methodName) {
             this.receiver = receiver;
             this.methodName = methodName;
+        }
+
+        /**
+         * 値式 (ローカル変数初期化子・代入値・return/throw・条件式など) の中から
+         * 兄弟 Call として「持ち上げられた」呼び出しか。シーケンス図・コールグラフは
+         * 呼び出しを取りこぼさないためこれを描くが、アクティビティ図は親の文を全文表示
+         * ({@code :Type v = svc.getName();} 等) するため、持ち上げた Call を別ノードとして
+         * 重ねて描くと同じ呼び出しが 2 度出て回数を誤認させる。アクティビティ図はこのフラグが
+         * 立つ Call をスキップする。
+         */
+        public boolean isHoisted() {
+            return hoisted;
+        }
+
+        public void setHoisted(boolean hoisted) {
+            this.hoisted = hoisted;
         }
 
         public String getReceiver() {

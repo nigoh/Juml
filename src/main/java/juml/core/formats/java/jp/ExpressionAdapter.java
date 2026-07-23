@@ -41,6 +41,26 @@ final class ExpressionAdapter {
         }
     }
 
+    /**
+     * 値式 (ローカル変数初期化子・代入値・return/throw・条件式など) から呼び出しを兄弟 Call
+     * として持ち上げつつ、追加した Call に「持ち上げ」フラグを立てる。親の文を全文表示する
+     * アクティビティ図が、同じ呼び出しを別ノードとして重複描画しないようにするための印。
+     * シーケンス図・コールグラフはフラグに関係なく Call を消費するので影響しない。
+     */
+    static void emitHoistedCalls(Expression e, List<JavaMethodInfo.Statement> out,
+                                 JpContext ctx) {
+        if (e == null) {
+            return;
+        }
+        int from = out.size();
+        walk(e, out, ctx);
+        for (int i = from; i < out.size(); i++) {
+            if (out.get(i) instanceof JavaMethodInfo.Call) {
+                ((JavaMethodInfo.Call) out.get(i)).setHoisted(true);
+            }
+        }
+    }
+
     private static void walk(Node n, List<JavaMethodInfo.Statement> out, JpContext ctx) {
         if (n instanceof SwitchExpr) {
             // switch 式は StatementAdapter が Block 化して扱うのでここでは降下しない
