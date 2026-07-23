@@ -246,6 +246,11 @@ final class SketchCanvas extends JPanel {
     }
 
     /** 関係追加モード: 1 クリック目で始点、2 クリック目で終点を確定する。 */
+    /** テスト用: 関係モードのクリックを 1 回シミュレートする (自己関連作成の検証に使う)。 */
+    void relationClickForTest(SketchClass hit) {
+        handleRelationClick(hit);
+    }
+
     private void handleRelationClick(SketchClass hit) {
         if (hit == null) {
             relationSource = null;
@@ -254,7 +259,9 @@ final class SketchCanvas extends JPanel {
         }
         if (relationSource == null) {
             relationSource = hit;
-        } else if (relationSource != hit) {
+        } else {
+            // 2 回目のクリックで関係を作る。同一クラスを 2 回クリックした場合は自己関連
+            // (A→A) を作る (描画は paintSelfRelation が対応済み)。
             model.getRelations().add(new SketchRelation(
                     relationSource.getName(), relationMode, hit.getName(), null));
             relationSource = null;

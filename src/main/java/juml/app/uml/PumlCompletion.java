@@ -19,9 +19,13 @@ import java.util.regex.Pattern;
  */
 final class PumlCompletion {
 
-    /** 補完対象の語を構成する文字か ({@code @} を先頭に含めてディレクティブも補完できる)。 */
+    /**
+     * 補完対象の語を構成する文字か。{@code @} と {@code !} を先頭に含めることで、
+     * {@code @startuml} 等のブロック指定子と {@code !include}/{@code !theme} 等の
+     * プリプロセッサ・ディレクティブも補完できるようにする。
+     */
     private static boolean isWordChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_' || c == '@';
+        return Character.isLetterOrDigit(c) || c == '_' || c == '@' || c == '!';
     }
 
     /** 補完候補の最大件数 (ポップアップが長くなりすぎないように)。 */
@@ -44,7 +48,31 @@ final class PumlCompletion {
             "state", "concise", "robust", "choice",
             "skinparam", "title", "header", "footer", "legend", "caption", "scale",
             "hide", "show", "remove", "together", "left", "right", "top", "bottom",
-            "up", "down", "direction", "order", "newpage", "archimate", "salt");
+            "up", "down", "direction", "order", "newpage", "archimate", "salt",
+            // プリプロセッサ・ディレクティブ (! 始まり)
+            "!include", "!includesub", "!includeurl", "!import", "!define", "!undef",
+            "!definelong", "!enddefinelong", "!if", "!elseif", "!else", "!endif",
+            "!ifdef", "!ifndef", "!while", "!endwhile", "!function", "!endfunction",
+            "!procedure", "!endprocedure", "!return", "!theme", "!pragma", "!log",
+            "!assert", "!unquoted",
+            // その他の @start/@end (dot / ditaa / 数式 / chen ER)
+            "@startdot", "@enddot", "@startditaa", "@endditaa", "@startmath", "@endmath",
+            "@startlatex", "@endlatex", "@startchen", "@endchen",
+            // skinparam 主要属性
+            "backgroundColor", "defaultFontName", "defaultFontSize", "defaultFontColor",
+            "roundcorner", "handwritten", "monochrome", "shadowing", "dpi", "linetype",
+            "nodesep", "ranksep", "padding", "ArrowColor", "BorderColor", "FontColor",
+            "FontSize", "FontName", "FontStyle", "componentStyle", "sequenceMessageAlign",
+            "wrapWidth", "ortho", "polyline",
+            // !theme のテーマ名
+            "plain", "cerulean", "materia", "sketchy", "spacelab", "superhero", "united",
+            "cyborg", "hacker", "sandstone", "silver", "toy", "vibrant", "bluegray",
+            "blueprint", "mimeograph", "reddress-darkblue",
+            // 追加のダイアグラム構文
+            "switch", "case", "endswitch", "detach", "kill", "label", "goto", "backward",
+            "sprite", "style", "endstyle", "map", "also", "extends", "implements",
+            "hnote", "rnote", "box", "endbox", "mainframe", "allowmixing", "allow_mixing",
+            "circle", "diamond");
 
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 

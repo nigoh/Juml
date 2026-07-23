@@ -64,4 +64,21 @@ public class SketchViewportTest {
         assertEquals(800, d.width);
         assertEquals(600, d.height);
     }
+
+    @Test
+    public void anchorAdjustedViewPos_keepsCursorPointFixed() {
+        // カーソル中心ズーム: 2倍ズームでカーソル (200,200)・viewport 原点なら、
+        // 同じモデル点を維持するため viewport を (200,200) へスクロールする。
+        Point p = SketchViewport.anchorAdjustedViewPos(new Point(200, 200), new Point(0, 0), 2.0);
+        assertEquals(200, p.x);
+        assertEquals(200, p.y);
+        // 等倍 (factor=1.0) は viewport を動かさない。
+        Point same = SketchViewport.anchorAdjustedViewPos(new Point(50, 60), new Point(10, 20), 1.0);
+        assertEquals(10, same.x);
+        assertEquals(20, same.y);
+        // 縮小 (factor=0.5): カーソル (200,200)・view (100,100) → (0,0)。
+        Point out = SketchViewport.anchorAdjustedViewPos(new Point(200, 200), new Point(100, 100), 0.5);
+        assertEquals(0, out.x);
+        assertEquals(0, out.y);
+    }
 }
