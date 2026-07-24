@@ -274,6 +274,98 @@ public class DeploySketchCodecTest {
         assertTrue(puml.contains("CDN --> appServer"));
     }
 
+    // --- bug-hunt round6: 入れ子子ノードの負の相対座標は load 時に 0 へ正規化するはず ---------
+
+    @Test
+    public void parse_negativeChildPos_isClampedToZero() {
+        // 手編集テキストでのみ到達しうる負の相対座標 ('@pos L -30 -20)。GUI ドラッグは
+        // Math.max(0,..) で非負に丸めるためこの値は生成されないが、POS 正規表現
+        // (-?\d+) はそのまま受理してしまう。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -20",
+                "@enduml", ""));
+        assertTrue(r.isFullySupported());
+        DeployNode child = r.model.findNode("L");
+        assertNotNull(child);
+        assertEquals("負の相対 x は 0 へクランプされるはず", 0, child.getX());
+        assertEquals("負の相対 y は 0 へクランプされるはず", 0, child.getY());
+    }
+
+    @Test
+    public void parse_partiallyNegativeChildPos_clampsOnlyTheNegativeAxis() {
+        // x のみ負、y は正の混在ケース。軸ごとに独立してクランプされ、正側は変わらないはず。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -5 20",
+                "@enduml", ""));
+        DeployNode child = r.model.findNode("L");
+        assertEquals("負の x 軸だけクランプされるはず", 0, child.getX());
+        assertEquals("正の y 軸はそのまま保たれるはず", 20, child.getY());
+    }
+
+    @Test
+    public void parse_negativeGrandchildPos_isClampedAtEveryNestingLevel() {
+        // 多段入れ子でも、親を持つノードなら深さに関わらずクランプされるはず。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node Outer {",
+                "  node Inner {",
+                "    artifact Leaf",
+                "  }",
+                "}",
+                "'@pos Outer 0 0",
+                "'@pos Inner -5 -5",
+                "'@pos Leaf -100 -200",
+                "@enduml", ""));
+        DeployNode inner = r.model.findNode("Inner");
+        DeployNode leaf = r.model.findNode("Leaf");
+        assertEquals(0, inner.getX());
+        assertEquals(0, inner.getY());
+        assertEquals("孫ノードも親からの相対座標としてクランプされるはず", 0, leaf.getX());
+        assertEquals(0, leaf.getY());
+    }
+
+    @Test
+    public void parse_negativeTopLevelPos_isNotClamped() {
+        // トップレベルノードの座標は盤面上の絶対座標であり、この修正の対象外
+        // (GUI 操作では既に非負のため、手編集で負にした場合の挙動は従来どおり変えない)。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml", "node C", "'@pos C -50 -60", "@enduml", ""));
+        DeployNode c = r.model.findNode("C");
+        assertEquals("トップレベルの絶対座標はクランプ対象外のはず", -50, c.getX());
+        assertEquals(-60, c.getY());
+    }
+
+    @Test
+    public void roundTrip_negativeChildPos_normalizesOnFirstLoadThenReachesFixedPoint() {
+        // 「初回ロードで 0 に正規化・2 回目以降は固定点」という往復流儀を固定する。
+        DeploySketchCodec.ParseResult first = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -20",
+                "@enduml", ""));
+        String gen1 = DeploySketchCodec.toPuml(first.model);
+        assertTrue("再生成テキストは正規化後の 0 を書き出すはず: " + gen1,
+                gen1.contains("'@pos L 0 0"));
+        assertFalse("負の座標は再生成テキストに残らないはず: " + gen1, gen1.contains("-30"));
+
+        DeploySketchCodec.ParseResult second = DeploySketchCodec.parse(gen1);
+        String gen2 = DeploySketchCodec.toPuml(second.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+    }
+
     /** 生成した配置図 PlantUML が構文エラー無しで SVG になることを確認する。 */
     @Test
     public void generatedPuml_rendersValidSvg() throws IOException {
@@ -284,6 +376,72 @@ public class DeploySketchCodecTest {
         PlantUmlRenderer.renderSvg(puml, out);
         String svg = new String(out.toByteArray(), StandardCharsets.UTF_8);
         assertFalse("PlantUML が構文エラーを報告した:\n" + puml, svg.contains("Syntax Error"));
+        assertTrue("SVG が生成されるはず", svg.contains("<svg"));
+    }
+
+    // --- bug-hunt round7 #1/#2: ダイアログで入力可能な任意のラベルで toPuml→parse が
+    // 固定点になり、データ消失もロックも起きないはず -----------------------------------
+
+    /**
+     * ノードの表示名 (DeploySketchDialogs.editNode の labelField から自由入力できる) に
+     * {@code "} が含まれても、往復不能にならないはず。修正前は appendNodes がラベルを
+     * エスケープせず {@code node "App "Prod"" as id} のような壊れた引用符を生成し、
+     * 再 parse が宣言をマッチできず (未対応→編集ロック) ノードごと消失していた。
+     */
+    @Test
+    public void roundTrip_nodeLabelWithQuote_reachesFixedPointAndRendersValidSvg()
+            throws IOException {
+        DeploySketchModel model = new DeploySketchModel();
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "id1", "App \"Prod\"", 50, 50));
+        String gen1 = DeploySketchCodec.toPuml(model);
+
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(gen1);
+        assertTrue("ラベルに \" を含んでも対応構文のはず: " + r.unsupportedLines,
+                r.isFullySupported());
+        assertEquals("ノードが消失せず残るはず", 1, r.model.getNodes().size());
+        assertEquals("App \"Prod\"", r.model.findNode("id1").getLabel());
+
+        String gen2 = DeploySketchCodec.toPuml(r.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PlantUmlRenderer.setRendererImplForTest(null);
+        PlantUmlRenderer.renderSvg(gen1, out);
+        String svg = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        assertFalse("PlantUML が構文エラーを報告した:\n" + gen1, svg.contains("Syntax Error"));
+        assertTrue("SVG が生成されるはず", svg.contains("<svg"));
+    }
+
+    /**
+     * リンクの表示名 (DeploySketchDialogs.editLink の labelField から自由入力できる) が
+     * 開き波括弧 1 文字で終わっても、往復不能にならないはず。修正前は toPuml が生成した
+     * {@code a --> b : calls} の行末に開き波括弧が付くと「行末 = ブロック開始」と誤認され、
+     * リンクと後続の {@code '@pos} 行がまるごと未対応ブロックへ飲み込まれ消失していた。
+     */
+    @Test
+    public void roundTrip_linkLabelEndingWithBrace_reachesFixedPointAndRendersValidSvg()
+            throws IOException {
+        DeploySketchModel model = new DeploySketchModel();
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "a", null, 50, 50));
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "b", null, 250, 50));
+        model.getLinks().add(new DeployLink("a", DeployLink.Kind.ARROW, "b", "calls {"));
+        String gen1 = DeploySketchCodec.toPuml(model);
+
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(gen1);
+        assertTrue("ラベル末尾が { のリンクでも対応構文のはず: " + r.unsupportedLines,
+                r.isFullySupported());
+        assertEquals("ノードが消失せず残るはず", 2, r.model.getNodes().size());
+        assertEquals("リンクが消失せず残るはず", 1, r.model.getLinks().size());
+        assertEquals("calls {", r.model.getLinks().get(0).getLabel());
+
+        String gen2 = DeploySketchCodec.toPuml(r.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PlantUmlRenderer.setRendererImplForTest(null);
+        PlantUmlRenderer.renderSvg(gen1, out);
+        String svg = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        assertFalse("PlantUML が構文エラーを報告した:\n" + gen1, svg.contains("Syntax Error"));
         assertTrue("SVG が生成されるはず", svg.contains("<svg"));
     }
 }

@@ -205,11 +205,81 @@ public class SeqSketchCanvasEndpointReattachTest {
     }
 
     @Test
-    public void withinHandle_pureFunctionRespectsRadius() {
+    public void withinHandle_pureFunctionRespectsGivenThreshold() {
         Point endpoint = new Point(100, 100);
-        assertTrue("半径 8px 以内はヒット", SeqSketchCanvas.withinHandle(new Point(104, 100), endpoint));
+        assertTrue("半径 8px 以内はヒット",
+                SeqSketchCanvas.withinHandle(new Point(104, 100), endpoint, 8.0));
         assertFalse("半径 8px を超えたらヒットしない",
-                SeqSketchCanvas.withinHandle(new Point(120, 100), endpoint));
+                SeqSketchCanvas.withinHandle(new Point(120, 100), endpoint, 8.0));
+    }
+
+    // --- bug-hunt round3 指摘 H: 縮小ズームでも端点ハンドルが画面上一定 px で掴めるはず ------
+
+    @Test
+    public void withinHandle_zoomScaledThreshold_catchesFartherPressAtMinZoom() {
+        Point endpoint = new Point(100, 100);
+        Point press = new Point(120, 100); // モデル座標で 20px 離れた press。
+        double zoom1Threshold = EndpointHitThreshold.modelRadius(8.0, 1.0);
+        double zoom025Threshold = EndpointHitThreshold.modelRadius(8.0, 0.25);
+        assertEquals("等倍では従来どおり 8px 相当", 8.0, zoom1Threshold, 1e-9);
+        assertEquals("0.25x (MIN_ZOOM) では 32px 相当まで拾うはず", 32.0, zoom025Threshold, 1e-9);
+        assertFalse("等倍では 20px 離れると従来どおりヒットしない",
+                SeqSketchCanvas.withinHandle(press, endpoint, zoom1Threshold));
+        assertTrue("0.25x 縮小時は画面上同じ距離でもモデル座標では拾えるはず (bug-hunt H)",
+                SeqSketchCanvas.withinHandle(press, endpoint, zoom025Threshold));
+    }
+
+    // --- bug-hunt round5 論点2: 自己メッセージの終点を掴んでも向きが反転しないはず ----------
+
+    @Test
+    public void endpointAt_selfMessage_zoomedOut_pressingToHandle_stillPicksToEnd() {
+        // 自己メッセージ (from == to) の 2 端点は約 14.6px しか離れておらず、
+        // 0.3x では しきい値 (8/0.3 ≈ 26.7px) がこれを超えるため、修正前の「先勝ち」実装だと
+        // to 側 (endpointPoint の 2 つ目、fromEnd=false) を正確に押しても from 側 (1 つ目、
+        // fromEnd=true。boolean[]{true,false} の走査順で先に判定される) がヒットしていた。
+        SeqItem self = SeqItem.message("A", SeqItem.Arrow.SYNC, "A", "loop");
+        GuiActionRunner.execute(() -> {
+            model.getItems().add(self);
+            canvas.setModel(model, true, List.of());
+            canvas.setZoomForTest(0.3);
+        });
+        int y = FIRST_ROW_Y + ROW_H; // 2 番目のメッセージなので 1 行下。
+        // endpointPoint: fromEnd=true → (x1, y-7)、fromEnd=false (to) → (x1+4, y+7)。
+        // to 側の座標をそのまま press することで、最近傍探索なら to が選ばれるはず。
+        Point toPoint = new Point(CENTER_A + 4, y + 7);
+        SeqSketchCanvas.EndpointHit hit =
+                GuiActionRunner.execute(() -> canvas.endpointAtForTest(toPoint));
+        assertEquals("自己メッセージがヒットするはず", self, hit.message);
+        assertFalse("to 側 (fromEnd=false) が選ばれ、向きが反転しないはず", hit.fromEnd);
+    }
+
+    // --- bug-hunt round9 論点3: 端点ドラッグ中の中ボタン操作で確定/凍結しない ----------------
+
+    /**
+     * 端点ドラッグ中に中ボタンを押し離しても付替えが確定せず、以降の左ドラッグ→左リリースで
+     * 正しく確定する。round9 論点3 の修正は handleRelease の順序を組み替え、端点ドラッグ中は
+     * 中ボタン等のリリースで {@code leftDragArmed} を落とさない (落とすと以降の handleDrag が
+     * 早期 return しラバーバンドが凍る) ようにした。ここではその組み替えで「中ボタンでは確定
+     * しない (round5 論点3)」と「中ボタンを挟んでも左リリースで正しく付替わる」の両不変条件が
+     * 保たれることを固定する (中ボタンドラッグ中の凍結自体は描画のみで、最終付替え結果は不変)。
+     */
+    @Test
+    public void middleButtonReleaseDuringEndpointDrag_doesNotFinishAndLeftReleaseStillReattaches() {
+        // to 端点 (B) を掴む。
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON1);
+        // 端点ドラッグ中に中ボタンを押し離す (パンの誤操作)。ここで確定してはならない。
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON2_DOWN_MASK,
+                CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON2);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON2);
+        assertEquals("中ボタンのリリースで付替えが確定してはならない", "B", message.getTo());
+        assertEquals("中ボタンのリリースで modelEdited が飛んではならない", 0, edits.get());
+        // 中ボタンを挟んでもドラッグは生き続け、左ドラッグ→左リリースで C へ確定する。
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, CENTER_C, FIRST_ROW_Y, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, CENTER_C, FIRST_ROW_Y, MouseEvent.BUTTON1);
+        assertEquals("中ボタン操作を挟んでも左リリースで C へ付替わるはず", "C", message.getTo());
+        assertEquals("from 側は変わらないはず", "A", message.getFrom());
+        assertEquals("付替えは 1 回だけ確定するはず", 1, edits.get());
     }
 
     // --- (c) ハンドル込み paint が例外を投げない ---------------------------------------

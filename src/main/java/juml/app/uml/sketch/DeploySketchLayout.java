@@ -41,36 +41,70 @@ final class DeploySketchLayout {
      */
     static Map<DeployNode, Rectangle> compute(List<DeployNode> roots, Sizer sizer) {
         Map<DeployNode, Rectangle> out = new IdentityHashMap<>();
+        Map<DeployNode, Point> origins = new IdentityHashMap<>();
         for (DeployNode n : roots) {
-            layout(n, 0, 0, sizer, out);
+            layout(n, 0, 0, sizer, out, origins);
         }
         return out;
     }
 
-    private static Rectangle layout(DeployNode n, int originX, int originY,
-                                    Sizer sizer, Map<DeployNode, Rectangle> out) {
+    /**
+     * {@link #compute} と同じレイアウトを行い、各コンテナ自身の論理 content 原点
+     * (そのコンテナの子の相対座標 (0,0) が指す絶対位置。{@code (ax+CONTAINER_PAD,
+     * ay+title.height)}) を返す。
+     *
+     * <p>子が負の相対座標を持つと {@link #compute} が返す containerRect は左/上へ広がる
+     * (bug-hunt round3 指摘 I)。しかし子の実配置基準は常にこの論理原点のままであり、
+     * 広がった後の containerRect から逆算すると (ax - minLeft) だけ原点がずれてしまう
+     * (bug-hunt round5 論点1)。子ドラッグ ({@link DeploySketchCanvas#handlePress}/
+     * {@code handleDrag}) や子追加 ({@link DeploySketchCanvas#addChildNode}) は
+     * 必ずこちらの結果 ({@link #contentOriginOf}) を使うこと。</p>
+     */
+    static Map<DeployNode, Point> computeContentOrigins(List<DeployNode> roots, Sizer sizer) {
+        Map<DeployNode, Rectangle> bounds = new IdentityHashMap<>();
+        Map<DeployNode, Point> origins = new IdentityHashMap<>();
+        for (DeployNode n : roots) {
+            layout(n, 0, 0, sizer, bounds, origins);
+        }
+        return origins;
+    }
+
+    private static Rectangle layout(DeployNode n, int originX, int originY, Sizer sizer,
+                                    Map<DeployNode, Rectangle> out, Map<DeployNode, Point> origins) {
         int ax = originX + n.getX();
         int ay = originY + n.getY();
         Dimension title = sizer.sizeOf(n);
         Rectangle r = n.isContainer()
-                ? layoutContainer(n, ax, ay, title, sizer, out)
+                ? layoutContainer(n, ax, ay, title, sizer, out, origins)
                 : new Rectangle(ax, ay, title.width, title.height);
         out.put(n, r);
         return r;
     }
 
     private static Rectangle layoutContainer(DeployNode n, int ax, int ay, Dimension title,
-                                             Sizer sizer, Map<DeployNode, Rectangle> out) {
+                                             Sizer sizer, Map<DeployNode, Rectangle> out,
+                                             Map<DeployNode, Point> origins) {
         int contentX = ax + CONTAINER_PAD;
         int contentY = ay + title.height;
+        // このコンテナの論理原点を記録する (枠拡張の影響を受けない、子配置の唯一の基準)。
+        origins.put(n, new Point(contentX, contentY));
+        // 子は '@pos の手編集で負の相対座標も持ちうる (GUI ドラッグは非負に丸めるが、
+        // テキスト往復で到達しうる)。minLeft/minTop も追跡し、枠が右/下だけでなく
+        // 左/上へはみ出す子も包含するようにする (bug-hunt round3 指摘 I)。ただしこれは
+        // 描画用の枠 (containerRect) の拡張であり、子の配置基準 (上記 contentX/contentY)
+        // 自体は変えない。
+        int minLeft = ax;
+        int minTop = ay;
         int maxRight = ax + Math.max(title.width + 2 * CONTAINER_PAD, MIN_CONTAINER_W);
         int maxBottom = contentY + CONTAINER_PAD;
         for (DeployNode c : n.getChildren()) {
-            Rectangle cr = layout(c, contentX, contentY, sizer, out);
+            Rectangle cr = layout(c, contentX, contentY, sizer, out, origins);
+            minLeft = Math.min(minLeft, cr.x - CONTAINER_PAD);
+            minTop = Math.min(minTop, cr.y - CONTAINER_PAD);
             maxRight = Math.max(maxRight, cr.x + cr.width + CONTAINER_PAD);
             maxBottom = Math.max(maxBottom, cr.y + cr.height + CONTAINER_PAD);
         }
-        return new Rectangle(ax, ay, maxRight - ax, maxBottom - ay);
+        return new Rectangle(minLeft, minTop, maxRight - minLeft, maxBottom - minTop);
     }
 
     /**
@@ -95,17 +129,18 @@ final class DeploySketchLayout {
         return null;
     }
 
-    /** コンテナ矩形からその内側原点 (子ノードの相対座標 (0,0) が指す絶対位置) を求める。 */
-    static Point contentOrigin(Rectangle containerRect, Dimension title) {
-        return new Point(containerRect.x + CONTAINER_PAD, containerRect.y + title.height);
-    }
-
-    /** {@code target} の絶対原点 (ドラッグ時に相対座標へ変換する基準点)。最上位なら (0,0)。 */
-    static Point contentOriginOf(DeployNode target, Map<DeployNode, Rectangle> layout, Sizer sizer) {
+    /**
+     * {@code target} の絶対原点 (ドラッグ時に相対座標へ変換する基準点)。最上位なら (0,0)。
+     * {@code contentOrigins} は {@link #computeContentOrigins} の結果を渡すこと
+     * (containerRect ベースの逆算は負座標子があると原点がずれるため使わない。
+     * bug-hunt round5 論点1)。
+     */
+    static Point contentOriginOf(DeployNode target, Map<DeployNode, Point> contentOrigins) {
         DeployNode parent = target.getParent();
         if (parent == null) {
             return new Point(0, 0);
         }
-        return contentOrigin(layout.get(parent), sizer.sizeOf(parent));
+        Point origin = contentOrigins.get(parent);
+        return origin != null ? origin : new Point(0, 0);
     }
 }
