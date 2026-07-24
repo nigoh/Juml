@@ -227,4 +227,34 @@ public class SketchCanvasEndpointReattachTest {
         assertTrue("0.25x (MIN_ZOOM) では画面上同じ距離でも掴めるはず (bug-hunt round3 H)",
                 GuiActionRunner.execute(() -> canvas.dragRelationForTest() == rel));
     }
+
+    // --- ロック状態 (!editable) では端点ドラッグ自体が始まらないはず --------------------
+
+    @Test
+    public void notEditable_endpointHandlePressDoesNotStartDrag() {
+        SketchCanvas canvas = newCanvas();
+        SketchModel model = sampleModel();
+        SketchRelation rel = model.getRelations().get(0);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, false, Collections.emptyList());
+            canvas.setSize(600, 400);
+        });
+        Point leftAnchor = GuiActionRunner.execute(() -> canvas.endpointAnchorsForTest(rel)[0]);
+        SketchClass c = model.getClasses().get(2);
+
+        dispatch(canvas, MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                leftAnchor, MouseEvent.BUTTON1);
+        assertNull("!editable では handlePress 冒頭のガード (SketchCanvas.java:229) で"
+                        + "端点ドラッグが開始しないはず",
+                GuiActionRunner.execute(canvas::dragRelationForTest));
+
+        Point insideC = new Point(c.getX() + 10, c.getY() + 10);
+        dispatch(canvas, MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, insideC, 0);
+        dispatch(canvas, MouseEvent.MOUSE_RELEASED, 0, insideC, MouseEvent.BUTTON1);
+
+        assertEquals("ロック状態ではドラッグ→リリースしても left は変わらないはず",
+                "A", rel.getLeft());
+        assertEquals("right も変わらないはず", "B", rel.getRight());
+        assertEquals("ロック状態では modelEdited が飛ばないはず", 0, edits.get());
+    }
 }

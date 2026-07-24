@@ -13,6 +13,8 @@ import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.List;
@@ -195,6 +197,36 @@ public class UseCaseSketchCanvasReattachTest {
         assertFalse("存在しないノードへの付替えは失敗するはず", rejected);
         assertEquals("失敗時は from が変わらないはず", "C", relation.getFrom());
         assertEquals("失敗時は編集通知が追加で飛ばないはず", 1, edits.get());
+    }
+
+    /**
+     * Esc で進行中の端点ドラッグが中断されること (UseCaseSketchCanvas.java の
+     * {@code VK_ESCAPE && reattachDrag.isActive() -> cancelReattach()})。このキャンバスに
+     * ドラッグ状態を直接覗くテスト用シームが無いため、挙動 (Esc 後の release で端点が
+     * 変わらず modelEdited も飛ばないこと) で固定する。オフスクリーンの canvas はフォーカスを
+     * 持てないため、{@code dispatchEvent} ではなく登録済み {@link KeyListener} を EDT 上で
+     * 直接起動する (SketchCanvasEndpointReattachTest と同じ手法)。
+     */
+    @Test
+    public void escapeDuringEndpointDrag_cancelsWithoutReattaching() {
+        Point toHandle = leftMid(actorB);
+        Point target = centerOf(actorC);
+        press(toHandle);
+        drag(target);
+
+        GuiActionRunner.execute(() -> {
+            KeyEvent ke = new KeyEvent(canvas, KeyEvent.KEY_PRESSED, System.currentTimeMillis(), 0,
+                    KeyEvent.VK_ESCAPE, KeyEvent.CHAR_UNDEFINED);
+            for (KeyListener kl : canvas.getKeyListeners()) {
+                kl.keyPressed(ke);
+            }
+        });
+
+        release(target);
+
+        assertEquals("Esc 後の release で to 側は変わらないはず", "B", relation.getTo());
+        assertEquals("Esc 後の release で from 側も変わらないはず", "A", relation.getFrom());
+        assertEquals("繋ぎ替えは起きていないので modelEdited は飛ばないはず", 0, edits.get());
     }
 
     @Test
