@@ -147,6 +147,11 @@ public class ActivitySketchCanvasTest {
                 x, y, 1, true, MouseEvent.BUTTON3);
     }
 
+    /** popup-on-release 環境 (Windows 系 L&amp;F) を模した右ボタンのリリース (popupTrigger=true)。 */
+    private static void rightRelease(ActivitySketchCanvas canvas, int x, int y) {
+        dispatchMouse(canvas, MouseEvent.MOUSE_RELEASED, 0, x, y, 1, true, MouseEvent.BUTTON3);
+    }
+
     private static void doubleLeftClick(ActivitySketchCanvas canvas, int x, int y) {
         dispatchMouse(canvas, MouseEvent.MOUSE_CLICKED, InputEvent.BUTTON1_DOWN_MASK,
                 x, y, 2, false, MouseEvent.BUTTON1);
@@ -435,6 +440,28 @@ public class ActivitySketchCanvasTest {
             closePopup();
             GuiActionRunner.execute(() -> frame.dispose());
         }
+    }
+
+    /**
+     * popup-on-release 環境 (Windows 系) を模した MOUSE_RELEASED + popupTrigger でも、
+     * ロック中は選択が変わらないこと (mouseReleased の editable ガード)。press 経路
+     * (handlePress) はガード済みだが、修正前は release 経路が editable を見ずに selected を
+     * 更新し、ロック中でも選択ハイライトだけが動く不整合があった。
+     */
+    @Test
+    public void lockedCanvas_rightRelease_doesNotChangeSelection() {
+        RecordingListener listener = new RecordingListener();
+        ActivitySketchCanvas canvas = newCanvas(listener);
+        ActivitySketchModel model = new ActivitySketchModel();
+        model.getNodes().add(ActivityNode.action("A"));
+        GuiActionRunner.execute(() -> canvas.setModel(model, false, List.of()));
+        assertNull("前提: 未選択のはず", canvas.selectedForTest());
+
+        rightRelease(canvas, CX, FIRST_ACTION_CY);
+
+        assertNull("ロック中は右リリース (popup-on-release) でも選択が変わってはならない",
+                canvas.selectedForTest());
+        assertEquals("ロック中は modelEdited が飛ばないはず", 0, listener.edits.get());
     }
 
     // =========================================================================
