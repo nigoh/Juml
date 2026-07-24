@@ -407,11 +407,12 @@ final class DeploySketchCanvas extends JPanel {
                 repaint();
             });
             addLinkDeleteMenu(menu, hit);
-            if (hit.isContainer()) {
-                final Point at = view.toModel(e.getPoint());
-                addItem(menu, "sketch.depl.menu.addChildHere",
-                        () -> addChildNode(DeployNode.Kind.NODE, hit, at));
-            }
+            // 葉ノードでも子を追加できるようにする (bug-hunt round8 #1: addChildNode は
+            // model.addChild 経由で parent.setContainer(true) を踏むので、コンテナ限定に
+            // していると GUI から第1階層のネストを新規作成する導線が一切無かった)。
+            final Point at = view.toModel(e.getPoint());
+            addItem(menu, "sketch.depl.menu.addChildHere",
+                    () -> addChildNode(DeployNode.Kind.NODE, hit, at));
         } else {
             // 追加位置はモデル座標で渡す (ズーム中でもクリックした場所に置く)。
             final Point at = view.toModel(e.getPoint());

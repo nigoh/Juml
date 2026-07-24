@@ -362,9 +362,9 @@ final class SeqSketchCanvas extends JPanel {
         return pick == null ? null : new EndpointHit(pick.item(), pick.first());
     }
 
-    /** 座標を受け止める参加者ライフライン (列幅の X 帯かつ Y 範囲内、範囲外は null = 付替えキャンセル判定に使う)。 */
+    /** 座標を受け止める参加者ライフライン (列幅の X 帯かつ Y 範囲内、範囲外は null = 付替えキャンセル判定に使う。ヘッダー箱の y=[HEAD_TOP,..) も受理域に含める。bug-hunt round8 #2)。 */
     private SeqParticipant lifelineAt(Point p) {
-        if (p.y < HEAD_TOP + HEAD_H || p.y > bottomY() + 20) {
+        if (p.y < HEAD_TOP || p.y > bottomY() + 20) {
             return null;
         }
         int[] xs = centers();
