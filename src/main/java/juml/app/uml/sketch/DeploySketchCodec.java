@@ -83,6 +83,11 @@ public final class DeploySketchCodec {
         }
     }
 
+    /** 未解決のまま保留したリンク 1 本分 (2 パス目でノード宣言確定後に解決する)。 */
+    private record PendingRelation(String fromToken, DeployLink.Kind kind,
+                                    String toToken, String label) {
+    }
+
     /** 解析中の可変状態をまとめた作業用コンテキスト (parse 本体のメソッド長を抑える)。 */
     private static final class ParseCtx {
         final DeploySketchModel model = new DeploySketchModel();
@@ -94,6 +99,13 @@ public final class DeploySketchCodec {
         final Deque<DeployNode> containerStack = new ArrayDeque<>();
         /** 未対応ブロックの中にいるときの残り深さ (0 ならブロック外)。 */
         int unknownBlockDepth;
+        /**
+         * 1 パス目で読んだリンクを保留するキュー。宣言 (ノード/入れ子) より前に
+         * 書かれたリンクが labelToId 未登録のまま解決され、幽霊ノードの二重生成や
+         * 入れ子子ノードのトップレベル残留を招くのを防ぐため、全宣言確定後の
+         * 2 パス目でまとめて解決する。
+         */
+        final List<PendingRelation> pendingRelations = new ArrayList<>();
     }
 
     /** PlantUML テキストを配置図モデルへ解析する。 */
@@ -101,6 +113,12 @@ public final class DeploySketchCodec {
         ParseCtx ctx = new ParseCtx();
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             parseLine(ctx, raw.trim());
+        }
+        // 2 パス目: 全ノード宣言 (入れ子含む) が確定した後にリンク端点を解決する。
+        for (PendingRelation p : ctx.pendingRelations) {
+            String from = resolveEndpoint(ctx, p.fromToken());
+            String to = resolveEndpoint(ctx, p.toToken());
+            ctx.model.getLinks().add(new DeployLink(from, p.kind(), to, p.label()));
         }
         applyPositions(ctx.model.getNodes(), ctx.positions);
         return new ParseResult(ctx.model, ctx.unsupported);
@@ -184,9 +202,8 @@ public final class DeploySketchCodec {
 
     private static void parseRelation(ParseCtx ctx, Matcher rel) {
         DeployLink.Kind kind = DeployLink.Kind.fromArrow(rel.group(2));
-        String from = resolveEndpoint(ctx, rel.group(1));
-        String to = resolveEndpoint(ctx, rel.group(3));
-        ctx.model.getLinks().add(new DeployLink(from, kind, to, rel.group(4)));
+        // 端点解決は全ノード宣言が確定してから (2 パス目) 行う。ここでは保留するだけ。
+        ctx.pendingRelations.add(new PendingRelation(rel.group(1), kind, rel.group(3), rel.group(4)));
     }
 
     /**

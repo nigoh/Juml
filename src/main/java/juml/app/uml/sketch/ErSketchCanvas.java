@@ -83,12 +83,9 @@ final class ErSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
-    /** 端点付替えドラッグ中の対象リレーション (null = 付替え中でない)。 */
-    private ErSketchModel.Relation reattachRelation;
-    /** true = left (左端) 側をドラッグ中, false = right (右端) 側。 */
-    private boolean reattachStartEnd;
-    /** 付替えドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
-    private Point reattachCursor;
+    /** 端点付替えドラッグの状態。クリック判定/no-op 判定は
+     * {@link EndpointDragSession#finish} に委ねる。 */
+    private final EndpointDragSession<ErSketchModel.Relation> reattachDrag = new EndpointDragSession<>();
 
     ErSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -142,7 +139,7 @@ final class ErSketchCanvas extends JPanel {
         } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode) {
             setRelationMode(false);
             listener.relationModeCancelled();
-        } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachRelation != null) {
+        } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachDrag.isActive()) {
             cancelReattach();
         } else if (editable && selected != null && !relationMode) {
             int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
@@ -171,8 +168,7 @@ final class ErSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
-        this.reattachRelation = null;
-        this.reattachCursor = null;
+        this.reattachDrag.cancel();
         revalidate();
         repaint();
     }
@@ -262,9 +258,7 @@ final class ErSketchCanvas extends JPanel {
         if (hit == null) {
             return false;
         }
-        reattachRelation = hit.relation();
-        reattachStartEnd = hit.startEnd();
-        reattachCursor = mp;
+        reattachDrag.start(hit.relation(), hit.startEnd(), mp);
         selected = null;
         repaint();
         return true;
@@ -294,8 +288,8 @@ final class ErSketchCanvas extends JPanel {
         if (!editable || relationMode) {
             return;
         }
-        if (reattachRelation != null) {
-            reattachCursor = view.toModel(e.getPoint());
+        if (reattachDrag.isActive()) {
+            reattachDrag.updateCursor(view.toModel(e.getPoint()));
             repaint();
             return;
         }
@@ -311,7 +305,7 @@ final class ErSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (reattachRelation != null) {
+        if (reattachDrag.isActive()) {
             finishReattach(view.toModel(e.getPoint()));
             return;
         }
@@ -331,20 +325,23 @@ final class ErSketchCanvas extends JPanel {
         dragOffset = null;
     }
 
-    /** ドラッグ終了: カーソル位置にエンティティがあれば付け替え、無ければキャンセル (不変)。 */
+    /** ドラッグ終了: クリック相当 (移動なし) や自ノードへの落下は no-op として弾き、
+     * 実際に別エンティティ上へドラッグされたときだけ付け替える。 */
     private void finishReattach(Point releasedAt) {
-        ErSketchModel.Relation rel = reattachRelation;
-        boolean startEnd = reattachStartEnd;
-        reattachRelation = null;
-        reattachCursor = null;
-        performReattach(rel, startEnd, entityAt(releasedAt));
+        ErSketchModel.Relation rel = reattachDrag.item();
+        boolean startEnd = reattachDrag.leftEnd();
+        ErSketchModel.Entity target = entityAt(releasedAt);
+        String targetAlias = target == null ? null : target.getAlias();
+        String current = startEnd ? rel.getLeft() : rel.getRight();
+        if (reattachDrag.finish(releasedAt, targetAlias, current)) {
+            performReattach(rel, startEnd, target);
+        }
         repaint();
     }
 
     /** 進行中の端点付替えドラッグをモデル変更なしに中断する (Esc/モード切替用)。 */
     private void cancelReattach() {
-        reattachRelation = null;
-        reattachCursor = null;
+        reattachDrag.cancel();
         repaint();
     }
 
@@ -708,7 +705,8 @@ final class ErSketchCanvas extends JPanel {
 
     /** 付替えドラッグ中: 固定側端点 (動かさない方) からカーソルへのラバーバンド線を描く。 */
     private void paintReattachRubberBand(Graphics2D g2) {
-        if (reattachRelation == null || reattachCursor == null) {
+        Point cursor = reattachDrag.cursor();
+        if (!reattachDrag.isActive() || cursor == null) {
             return;
         }
         Point anchor = reattachFixedAnchor();
@@ -720,28 +718,31 @@ final class ErSketchCanvas extends JPanel {
         g2.setColor(SELECTED);
         g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 10f, new float[]{5f, 4f}, 0f));
-        g2.drawLine(anchor.x, anchor.y, reattachCursor.x, reattachCursor.y);
+        g2.drawLine(anchor.x, anchor.y, cursor.x, cursor.y);
         g2.setStroke(old);
-        paintHandle(g2, reattachCursor);
+        paintHandle(g2, cursor);
         g2.setColor(prevColor);
     }
 
     /** 固定側端点を計算する。通常は方向再計算、自己関連はループの反対側アンカーを維持する。 */
     private Point reattachFixedAnchor() {
-        if (reattachRelation == null || reattachCursor == null) {
+        Point cursor = reattachDrag.cursor();
+        if (!reattachDrag.isActive() || cursor == null) {
             return null;
         }
-        ErSketchModel.Entity left = model.findEntity(reattachRelation.getLeft());
-        ErSketchModel.Entity right = model.findEntity(reattachRelation.getRight());
+        ErSketchModel.Relation rel = reattachDrag.item();
+        ErSketchModel.Entity left = model.findEntity(rel.getLeft());
+        ErSketchModel.Entity right = model.findEntity(rel.getRight());
         if (left == null || right == null) {
             return null;
         }
+        boolean leftEnd = reattachDrag.leftEnd();
         if (left == right) {
-            Point[] ends = endpointsOf(reattachRelation);
-            return ends == null ? null : (reattachStartEnd ? ends[1] : ends[0]);
+            Point[] ends = endpointsOf(rel);
+            return ends == null ? null : (leftEnd ? ends[1] : ends[0]);
         }
-        ErSketchModel.Entity fixed = reattachStartEnd ? right : left;
-        return edgePoint(boundsOf(fixed), reattachCursor);
+        ErSketchModel.Entity fixed = leftEnd ? right : left;
+        return edgePoint(boundsOf(fixed), cursor);
     }
 
     // -------------------------------------------------------------------------

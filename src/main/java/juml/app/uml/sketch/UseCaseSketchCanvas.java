@@ -73,12 +73,9 @@ final class UseCaseSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
-    /** 端点付替えドラッグ中の対象関係 (null = 付替え中でない)。 */
-    private UseCaseRelation reattachRelation;
-    /** true = from (始点) 側をドラッグ中, false = to (終点) 側。 */
-    private boolean reattachStartEnd;
-    /** 付替えドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
-    private Point reattachCursor;
+    /** 端点付替えドラッグの状態。クリック判定/no-op 判定は
+     * {@link EndpointDragSession#finish} に委ねる。 */
+    private final EndpointDragSession<UseCaseRelation> reattachDrag = new EndpointDragSession<>();
 
     UseCaseSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -126,7 +123,7 @@ final class UseCaseSketchCanvas extends JPanel {
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && relationMode != null) {
                     setRelationMode(null);
                     listener.relationModeCancelled();
-                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachRelation != null) {
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE && reattachDrag.isActive()) {
                     cancelReattach();
                 } else if (editable && selected != null && relationMode == null) {
                     int[] d = SketchNudge.deltaFor(e.getKeyCode(), e.isShiftDown(), GRID);
@@ -157,8 +154,7 @@ final class UseCaseSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
-        this.reattachRelation = null;
-        this.reattachCursor = null;
+        this.reattachDrag.cancel();
         revalidate();
         repaint();
     }
@@ -245,9 +241,7 @@ final class UseCaseSketchCanvas extends JPanel {
         if (hit == null) {
             return false;
         }
-        reattachRelation = hit.relation();
-        reattachStartEnd = hit.startEnd();
-        reattachCursor = mp;
+        reattachDrag.start(hit.relation(), hit.startEnd(), mp);
         selected = null;
         repaint();
         return true;
@@ -274,8 +268,8 @@ final class UseCaseSketchCanvas extends JPanel {
         if (!editable || relationMode != null) {
             return;
         }
-        if (reattachRelation != null) {
-            reattachCursor = view.toModel(e.getPoint());
+        if (reattachDrag.isActive()) {
+            reattachDrag.updateCursor(view.toModel(e.getPoint()));
             repaint();
             return;
         }
@@ -291,7 +285,7 @@ final class UseCaseSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (reattachRelation != null) {
+        if (reattachDrag.isActive()) {
             finishReattach(view.toModel(e.getPoint()));
             return;
         }
@@ -311,20 +305,23 @@ final class UseCaseSketchCanvas extends JPanel {
         dragOffset = null;
     }
 
-    /** ドラッグ終了: カーソル位置にノードがあれば付け替え、無ければキャンセル (不変)。 */
+    /** ドラッグ終了: クリック相当 (移動なし) や自ノードへの落下は no-op として弾き、
+     * 実際に別ノード上へドラッグされたときだけ付け替える。 */
     private void finishReattach(Point releasedAt) {
-        UseCaseRelation rel = reattachRelation;
-        boolean startEnd = reattachStartEnd;
-        reattachRelation = null;
-        reattachCursor = null;
-        performReattach(rel, startEnd, nodeAt(releasedAt));
+        UseCaseRelation rel = reattachDrag.item();
+        boolean startEnd = reattachDrag.leftEnd();
+        UseCaseNode target = nodeAt(releasedAt);
+        String targetId = target == null ? null : target.getId();
+        String current = startEnd ? rel.getFrom() : rel.getTo();
+        if (reattachDrag.finish(releasedAt, targetId, current)) {
+            performReattach(rel, startEnd, target);
+        }
         repaint();
     }
 
     /** 進行中の端点付替えドラッグをモデル変更なしに中断する (Esc/モード切替用)。 */
     private void cancelReattach() {
-        reattachRelation = null;
-        reattachCursor = null;
+        reattachDrag.cancel();
         repaint();
     }
 
@@ -571,7 +568,8 @@ final class UseCaseSketchCanvas extends JPanel {
 
     /** 付替えドラッグ中: 固定側端点 (動かさない方) からカーソルへのラバーバンド線を描く。 */
     private void paintReattachRubberBand(Graphics2D g2) {
-        if (reattachRelation == null || reattachCursor == null) {
+        Point cursor = reattachDrag.cursor();
+        if (!reattachDrag.isActive() || cursor == null) {
             return;
         }
         Point anchor = reattachFixedAnchor();
@@ -583,20 +581,22 @@ final class UseCaseSketchCanvas extends JPanel {
         g2.setColor(HANDLE_COLOR);
         g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 10f, new float[]{5f, 4f}, 0f));
-        g2.drawLine(anchor.x, anchor.y, reattachCursor.x, reattachCursor.y);
+        g2.drawLine(anchor.x, anchor.y, cursor.x, cursor.y);
         g2.setStroke(old);
-        paintHandle(g2, reattachCursor);
+        paintHandle(g2, cursor);
         g2.setColor(prevColor);
     }
 
     /** 付替えドラッグ中でない側の端点 (固定側) を、カーソル方向を基準に再計算する。 */
     private Point reattachFixedAnchor() {
-        if (reattachRelation == null || reattachCursor == null) {
+        Point cursor = reattachDrag.cursor();
+        if (!reattachDrag.isActive() || cursor == null) {
             return null;
         }
+        UseCaseRelation rel = reattachDrag.item();
         UseCaseNode fixed = model.findNode(
-                reattachStartEnd ? reattachRelation.getTo() : reattachRelation.getFrom());
-        return fixed == null ? null : edgePoint(boundsOf(fixed), reattachCursor);
+                reattachDrag.leftEnd() ? rel.getTo() : rel.getFrom());
+        return fixed == null ? null : edgePoint(boundsOf(fixed), cursor);
     }
 
     // -------------------------------------------------------------------------
