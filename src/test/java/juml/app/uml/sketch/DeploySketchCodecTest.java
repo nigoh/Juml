@@ -274,6 +274,98 @@ public class DeploySketchCodecTest {
         assertTrue(puml.contains("CDN --> appServer"));
     }
 
+    // --- bug-hunt round6: 入れ子子ノードの負の相対座標は load 時に 0 へ正規化するはず ---------
+
+    @Test
+    public void parse_negativeChildPos_isClampedToZero() {
+        // 手編集テキストでのみ到達しうる負の相対座標 ('@pos L -30 -20)。GUI ドラッグは
+        // Math.max(0,..) で非負に丸めるためこの値は生成されないが、POS 正規表現
+        // (-?\d+) はそのまま受理してしまう。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -20",
+                "@enduml", ""));
+        assertTrue(r.isFullySupported());
+        DeployNode child = r.model.findNode("L");
+        assertNotNull(child);
+        assertEquals("負の相対 x は 0 へクランプされるはず", 0, child.getX());
+        assertEquals("負の相対 y は 0 へクランプされるはず", 0, child.getY());
+    }
+
+    @Test
+    public void parse_partiallyNegativeChildPos_clampsOnlyTheNegativeAxis() {
+        // x のみ負、y は正の混在ケース。軸ごとに独立してクランプされ、正側は変わらないはず。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -5 20",
+                "@enduml", ""));
+        DeployNode child = r.model.findNode("L");
+        assertEquals("負の x 軸だけクランプされるはず", 0, child.getX());
+        assertEquals("正の y 軸はそのまま保たれるはず", 20, child.getY());
+    }
+
+    @Test
+    public void parse_negativeGrandchildPos_isClampedAtEveryNestingLevel() {
+        // 多段入れ子でも、親を持つノードなら深さに関わらずクランプされるはず。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node Outer {",
+                "  node Inner {",
+                "    artifact Leaf",
+                "  }",
+                "}",
+                "'@pos Outer 0 0",
+                "'@pos Inner -5 -5",
+                "'@pos Leaf -100 -200",
+                "@enduml", ""));
+        DeployNode inner = r.model.findNode("Inner");
+        DeployNode leaf = r.model.findNode("Leaf");
+        assertEquals(0, inner.getX());
+        assertEquals(0, inner.getY());
+        assertEquals("孫ノードも親からの相対座標としてクランプされるはず", 0, leaf.getX());
+        assertEquals(0, leaf.getY());
+    }
+
+    @Test
+    public void parse_negativeTopLevelPos_isNotClamped() {
+        // トップレベルノードの座標は盤面上の絶対座標であり、この修正の対象外
+        // (GUI 操作では既に非負のため、手編集で負にした場合の挙動は従来どおり変えない)。
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml", "node C", "'@pos C -50 -60", "@enduml", ""));
+        DeployNode c = r.model.findNode("C");
+        assertEquals("トップレベルの絶対座標はクランプ対象外のはず", -50, c.getX());
+        assertEquals(-60, c.getY());
+    }
+
+    @Test
+    public void roundTrip_negativeChildPos_normalizesOnFirstLoadThenReachesFixedPoint() {
+        // 「初回ロードで 0 に正規化・2 回目以降は固定点」という往復流儀を固定する。
+        DeploySketchCodec.ParseResult first = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -20",
+                "@enduml", ""));
+        String gen1 = DeploySketchCodec.toPuml(first.model);
+        assertTrue("再生成テキストは正規化後の 0 を書き出すはず: " + gen1,
+                gen1.contains("'@pos L 0 0"));
+        assertFalse("負の座標は再生成テキストに残らないはず: " + gen1, gen1.contains("-30"));
+
+        DeploySketchCodec.ParseResult second = DeploySketchCodec.parse(gen1);
+        String gen2 = DeploySketchCodec.toPuml(second.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+    }
+
     /** 生成した配置図 PlantUML が構文エラー無しで SVG になることを確認する。 */
     @Test
     public void generatedPuml_rendersValidSvg() throws IOException {

@@ -26,8 +26,10 @@ import java.util.regex.Pattern;
  * ({@code -->} / {@code ..>} / {@code --}) ({@code : label} 付き・自己リンク可・
  * 端点はエイリアス/引用符ラベルのどちらでも可)、レイアウト座標コメント
  * ({@code '@pos id x y})。入れ子ノードの座標は親の内側原点からの相対値として
- * {@code '@pos} に保存する。往復不能な構文 (未知キーワードのブロック等) だけ
- * 「未対応」として報告し編集をロックしてテキストを守る。</p>
+ * {@code '@pos} に保存する。手編集で負の相対座標が指定されても {@link #parse} 時に
+ * 0 へクランプし (トップレベルの絶対座標は対象外)、負座標がモデルへ入らないようにする
+ * (bug-hunt round6。{@link #applyPositions(List, Map, boolean)} 参照)。往復不能な構文
+ * (未知キーワードのブロック等) だけ「未対応」として報告し編集をロックしてテキストを守る。</p>
  */
 public final class DeploySketchCodec {
 
@@ -311,17 +313,40 @@ public final class DeploySketchCodec {
      * 格子状に自動配置する。入れ子ノードの座標は親の内側原点からの相対値。
      */
     private static void applyPositions(List<DeployNode> siblings, Map<String, int[]> positions) {
+        applyPositions(siblings, positions, false);
+    }
+
+    /**
+     * {@code clampNonNegative} が true (= {@code siblings} が誰かの子、つまり相対座標) の
+     * ときだけ、明示座標を非負へクランプして適用する。トップレベル (絶対座標) は従来どおり
+     * そのまま反映する。
+     *
+     * <p>入れ子子ノードの相対座標は GUI ドラッグでは {@code Math.max(0, ..)} で常に非負に
+     * 丸められるが、手編集テキストの {@code '@pos child -30 -20} (POS 正規表現 {@code -?\d+}
+     * は負値も受理する) からは負の相対座標が到達しうる。負の相対座標がモデルへ入ると、枠拡張
+     * (旧 minLeft/minTop) と contentOrigin/タイトル描画/子ドラッグの原点計算が食い違い、
+     * 座標ジャンプ・タイトル重なり・往復での誤座標永続化を招く (bug-hunt round5/round6)。
+     * ここで load 時に一度だけ 0 へクランプしてモデルへ確定させることで、以降のレイアウト・
+     * 描画・ドラッグ・再シリアライズはすべて非負の一貫した値だけを見ればよくなり、これらの
+     * バグの発生条件自体が消える (初回ロードで正規化・2 回目以降は固定点、という既存の
+     * 往復流儀に沿う)。</p>
+     */
+    private static void applyPositions(List<DeployNode> siblings, Map<String, int[]> positions,
+                                        boolean clampNonNegative) {
         int auto = 0;
         for (DeployNode n : siblings) {
             int[] p = positions.get(n.getId());
             if (p != null) {
-                n.moveTo(p[0], p[1]);
+                int x = clampNonNegative ? Math.max(0, p[0]) : p[0];
+                int y = clampNonNegative ? Math.max(0, p[1]) : p[1];
+                n.moveTo(x, y);
             } else {
                 n.moveTo(GRID_MARGIN + (auto % GRID_COLS) * GRID_X,
                         GRID_MARGIN + (auto / GRID_COLS) * GRID_Y);
                 auto++;
             }
-            applyPositions(n.getChildren(), positions);
+            // 子は必ず親からの相対座標 (誰の子であっても非負へクランプする)。
+            applyPositions(n.getChildren(), positions, true);
         }
     }
 

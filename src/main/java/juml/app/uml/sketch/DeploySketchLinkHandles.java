@@ -15,7 +15,12 @@ import java.util.Map;
  *
  * <p>リンクの端点座標の算出 ({@link #endpointsOf}) と、ある絶対座標点がどの
  * リンクのどちら側の端点ハンドルに近いかの当たり判定 ({@link #hitTest}) を提供する。
- * 自己リンク (from == to) は付け替え対象にしないため対象外とする。</p>
+ * 自己リンク (from == to) もループの出口/戻り点 ({@link #selfLoopPoints}) が
+ * ハンドルとして残り、他 7 キャンバス (Object 等) と同様に掴み直して別ノードへ
+ * 付け替えられる (付替え対象から除外はしない)。{@link #hitTest} は
+ * {@link EndpointHitThreshold#nearestPair} により全リンク×両端点を走査して
+ * 押下点に最も近い 1 つを選ぶ (先勝ちで即 return する実装だと、縮小時の自己リンクや
+ * 近接する 2 リンクで意図と違う端点/リンクを誤って掴む。bug-hunt round6)。</p>
  */
 final class DeploySketchLinkHandles {
 
@@ -92,28 +97,26 @@ final class DeploySketchLinkHandles {
     }
 
     /**
-     * {@code p} (絶対座標) の近くにある端点ハンドルを探す (無ければ null)。
+     * {@code p} (絶対座標) の近くにある端点ハンドルを、当たり判定内から最近傍探索で
+     * 探す (無ければ null)。
      *
      * <p>{@code zoom} で当たり判定半径 ({@link #HANDLE_HIT_RADIUS}, 画面上 px 相当) を
      * {@link EndpointHitThreshold#modelRadius} によりモデル座標半径へ換算する。他 7
      * キャンバスと同様、縮小 (最小 {@link SketchViewport#MIN_ZOOM} = 0.25x) してもハンドルが
-     * 画面上ではおよそ一定の大きさで掴めるようにするため (bug-hunt round4 指摘 K)。</p>
+     * 画面上ではおよそ一定の大きさで掴めるようにするため (bug-hunt round4 指摘 K)。
+     * 「しきい値内で最初に一致した端点」を返す先勝ち判定だと、縮小時に自己リンクの
+     * 2 端点や近接する 2 リンクの端点がともにしきい値へ入り、掴んだ側と逆や別リンクの
+     * 端点が誤って選ばれる (bug-hunt round6)。{@link EndpointHitThreshold#nearestPair} で
+     * 全リンク×両端点を大域探索し、最も近い 1 つだけを選ぶ。</p>
      */
     static EndpointHit hitTest(DeploySketchModel model, Map<DeployNode, Rectangle> layout,
                                Point p, double zoom) {
         double threshold = EndpointHitThreshold.modelRadius(HANDLE_HIT_RADIUS, zoom);
-        for (DeployLink link : model.getLinks()) {
-            Point[] eps = endpointsOf(model, link, layout);
-            if (eps == null) {
-                continue;
-            }
-            if (p.distance(eps[0]) <= threshold) {
-                return new EndpointHit(link, true);
-            }
-            if (p.distance(eps[1]) <= threshold) {
-                return new EndpointHit(link, false);
-            }
-        }
-        return null;
+        EndpointHitThreshold.Pick<DeployLink> pick = EndpointHitThreshold.nearestPair(
+                model.getLinks(),
+                link -> endpointsOf(model, link, layout) != null,
+                (link, startEnd) -> endpointsOf(model, link, layout)[startEnd ? 0 : 1],
+                p, threshold);
+        return pick == null ? null : new EndpointHit(pick.item(), pick.first());
     }
 }

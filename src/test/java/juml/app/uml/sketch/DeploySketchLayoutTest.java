@@ -131,76 +131,99 @@ public class DeploySketchLayoutTest {
         assertEquals(10, r.y);
     }
 
-    // --- bug-hunt round3 指摘 I: 負の相対座標を持つ子でも枠がはみ出さず包含するはず ------------
+    // --- bug-hunt round3 指摘 I → round6 で根本修正: 負の相対座標は DeploySketchCodec#parse が
+    // load 時に 0 へ正規化するため、DeploySketchLayout に渡る時点では既に非負であり、枠拡張
+    // (旧 minLeft/minTop) はもはや発動しない。手編集テキスト ('@pos L -30 -20) を実際に
+    // DeploySketchCodec.parse へ通し、正規化後の値で枠計算を検証する (直接 DeployNode を
+    // 負座標で組み立てる旧テストは、load を経ない到達不能な入力を検証してしまうため、
+    // 実際の入力経路 (parse) を通す形に更新した)。--------------------------------------------
 
     @Test
-    public void compute_containerWithNegativeRelativeChild_frameContainsChild() {
-        // 手編集テキスト ('@pos c -30 -20 相当) で子に負の相対座標が付いたケース。
-        DeployNode container = node("C", 0, 0);
-        DeployNode child = node("L", -30, -20);
-        container.getChildren().add(child);
-        child.setParent(container);
-        container.setContainer(true);
+    public void compute_negativeRelativeChildPos_isNormalizedAtLoadSoFrameNeedsNoExpansion() {
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -20",
+                "@enduml", ""));
+        DeployNode container = r.model.findNode("C");
+        DeployNode child = r.model.findNode("L");
+        assertEquals("load 時に 0 へ正規化されるはず", 0, child.getX());
+        assertEquals("load 時に 0 へ正規化されるはず", 0, child.getY());
 
         Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(container), SIZER);
         Rectangle containerRect = layout.get(container);
         Rectangle childRect = layout.get(child);
 
-        // 子: 原点 (14,30) + 相対 (-30,-20) = (-16,10)、サイズ (60,30)。
-        assertEquals(new Rectangle(-16, 10, 60, 30), childRect);
-        // 親: 左/上へ minLeft/minTop まで広がり、子を完全に包含する。
-        assertEquals(new Rectangle(-30, -4, 170, 58), containerRect);
-        assertTrue("負の相対座標を持つ子でも枠内に収まるはず", containerRect.contains(childRect));
+        // 子: 原点 (14,30) + 正規化後の相対 (0,0)、サイズ (60,30)。
+        assertEquals(new Rectangle(14, 30, 60, 30), childRect);
+        // 親: 正規化により負座標の子がいなくなったので、通常の (非負専用) 自動サイズと同じ
+        // (枠は左/上へ広がらない)。
+        assertEquals(new Rectangle(0, 0, 140, 74), containerRect);
+        assertTrue("正規化後も枠内に収まるはず", containerRect.contains(childRect));
     }
 
     @Test
-    public void compute_containerWithMixedPositiveAndNegativeChildren_boundsContainBoth() {
-        DeployNode container = node("C", 0, 0);
-        DeployNode negChild = node("L1", -30, -20);
-        DeployNode posChild = node("L2", 5, 5);
-        container.getChildren().add(negChild);
-        container.getChildren().add(posChild);
-        negChild.setParent(container);
-        posChild.setParent(container);
-        container.setContainer(true);
+    public void compute_mixedPositiveAndNegativeChildrenPos_bothNormalizedWithinBounds() {
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L1",
+                "  node L2",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L1 -30 -20",
+                "'@pos L2 5 5",
+                "@enduml", ""));
+        DeployNode container = r.model.findNode("C");
+        DeployNode negChild = r.model.findNode("L1");
+        DeployNode posChild = r.model.findNode("L2");
+        assertEquals("負だった子は 0 へ正規化されるはず", 0, negChild.getX());
+        assertEquals(0, negChild.getY());
+        assertEquals("元々正だった子はそのままのはず", 5, posChild.getX());
+        assertEquals(5, posChild.getY());
 
         Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(container), SIZER);
         Rectangle containerRect = layout.get(container);
 
-        assertTrue("負の相対座標の子も枠内に収まるはず",
+        assertTrue("正規化後の子も枠内に収まるはず",
                 containerRect.contains(layout.get(negChild)));
         assertTrue("正の相対座標の子も枠内に収まるはず",
                 containerRect.contains(layout.get(posChild)));
     }
 
-    // --- bug-hunt round5 論点1: 負座標の子で containerRect が広がっても、論理 content 原点
-    // (子ドラッグ/子追加の逆算基準) はコンテナ自身の絶対位置基準のまま保たれるはず -------------
+    // --- bug-hunt round5 論点1 → round6 で根本修正: 負座標がそもそも load 時に消えるため、
+    // containerRect が広がって contentOrigin の逆算がずれる発生条件自体が消える -------------
 
     @Test
-    public void computeContentOrigins_withNegativeChild_isUnaffectedByFrameExpansion() {
-        // 手編集テキスト ('@pos c -30 -20 相当) で子に負の相対座標が付いたケース。
-        DeployNode container = node("C", 0, 0);
-        DeployNode negChild = node("L1", -30, -20);
-        DeployNode posChild = node("L2", 5, 5);
-        container.getChildren().add(negChild);
-        container.getChildren().add(posChild);
-        negChild.setParent(container);
-        posChild.setParent(container);
-        container.setContainer(true);
+    public void computeContentOrigins_negativeChildPosNormalizedAtLoad_frameNoLongerExpands() {
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L1",
+                "  node L2",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L1 -30 -20",
+                "'@pos L2 5 5",
+                "@enduml", ""));
+        DeployNode container = r.model.findNode("C");
+        DeployNode negChild = r.model.findNode("L1");
+        DeployNode posChild = r.model.findNode("L2");
 
         Map<DeployNode, Rectangle> bounds = DeploySketchLayout.compute(List.of(container), SIZER);
         Map<DeployNode, Point> origins =
                 DeploySketchLayout.computeContentOrigins(List.of(container), SIZER);
 
-        // 枠 (containerRect) は負座標の子を包含するため左/上へ広がる (原点 (0,0) より小さくなる)。
+        // 正規化により負座標の子がいなくなったので、枠 (containerRect) はもう左/上へ広がらない
+        // (修正前はここが < 0 になり、それを起点に contentOrigin を逆算するとずれていた)。
         Rectangle containerRect = bounds.get(container);
-        assertTrue("枠は左へ広がるはず", containerRect.x < 0);
-        assertTrue("枠は上へ広がるはず", containerRect.y < 0);
+        assertEquals("正規化後は枠が左へ広がらないはず", 0, containerRect.x);
+        assertEquals("正規化後は枠が上へ広がらないはず", 0, containerRect.y);
 
-        // 論理 content 原点は常にコンテナ自身の絶対位置基準 (ax+PAD, ay+title.height) = (14,30)
-        // のままで、枠拡張の影響を受けない。修正前は containerRect.x/y + PAD/title.height から
-        // 逆算しており、この原点が (ax - minLeft) だけずれていた (子ドラッグ/子追加が press 位置
-        // から (ax - minLeft) だけジャンプするバグの根本原因)。
+        // 論理 content 原点は常にコンテナ自身の絶対位置基準 (ax+PAD, ay+title.height) = (14,30)。
         Point origin = DeploySketchLayout.contentOriginOf(negChild, origins);
         assertEquals(new Point(14, 30), origin);
         assertEquals("正座標の子から見ても同じコンテナ原点のはず",
@@ -208,6 +231,8 @@ public class DeploySketchLayoutTest {
 
         // 往復固定点: 論理原点 + 子の相対座標 == 子の絶対矩形の左上、という契約を固定する。
         // これはまさに addChildNode/子ドラッグが press 位置から相対座標を逆算する式そのもの。
+        // 正規化によりモデルの実値 (negChild.getX/getY) 自体が非負になるため、この等式が
+        // 常に矛盾なく成立する (旧バグは枠拡張後の containerRect から逆算してずれていた)。
         assertEquals(bounds.get(negChild).getLocation(),
                 new Point(origin.x + negChild.getX(), origin.y + negChild.getY()));
         assertEquals(bounds.get(posChild).getLocation(),

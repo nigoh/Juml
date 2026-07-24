@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * {@link DeploySketchCanvas} の実マウス経路 (press/drag/release, {@code addChildNode}) で、
@@ -30,6 +31,13 @@ import static org.junit.Assert.assertEquals;
  * から原点を逆算していたため、負座標の兄弟がいるコンテナでは子ドラッグ/子追加が
  * (ax - minLeft) 分だけジャンプしていた。ここでは負座標の子 (-30,-60) を持つコンテナに対して
  * 実際に別の子をドラッグ/追加し、ジャンプせず press 位置どおりになることを固定する。</p>
+ *
+ * <p>round6 ではさらに根本原因まで遡り、負の相対座標が {@link DeploySketchCodec#parse}
+ * (= load) の時点で 0 へ正規化されるようにした。上記の手動構築モデルによる検証に加え、
+ * 末尾の {@code loadTextWithNegativeChildPos_*} 系テストは実際の手編集テキスト
+ * ({@code '@pos L -30 -60}) を {@link DeploySketchCodec#parse} → {@link
+ * DeploySketchCanvas#setModel} という実経路に通し、正規化後は枠が広がらずタイトル領域と
+ * 子が重ならないこと・兄弟追加がジャンプしないことを検証する。</p>
  */
 public class DeploySketchCanvasNegativeChildOriginTest {
 
@@ -115,5 +123,57 @@ public class DeploySketchCanvasNegativeChildOriginTest {
         Rectangle r = GuiActionRunner.execute(() -> canvas.layoutForTest().get(added));
         assertEquals("新しい子は press 位置どおりに置かれるはず (x)", at.x, r.x);
         assertEquals("新しい子は press 位置どおりに置かれるはず (y)", at.y, r.y);
+    }
+
+    // --- bug-hunt round6: 手編集テキストの負の相対座標は load (parse) 時に 0 へ正規化され、
+    // 枠拡張・ドラッグジャンプ・タイトル重なりの発生条件自体が消えるはず -----------------------
+
+    private DeployNode loadNegativeChildText() {
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(String.join("\n",
+                "@startuml",
+                "node C {",
+                "  node L",
+                "}",
+                "'@pos C 0 0",
+                "'@pos L -30 -60",
+                "@enduml", ""));
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(r.model, true, List.of());
+            canvas.setSize(600, 500);
+            canvas.setSnapToGrid(false);
+        });
+        return r.model.findNode("C");
+    }
+
+    @Test
+    public void loadTextWithNegativeChildPos_normalizesChildAndKeepsFrameUnexpanded() {
+        DeployNode loadedContainer = loadNegativeChildText();
+        DeployNode loadedChild = loadedContainer.getChildren().get(0);
+
+        assertEquals("手編集の負の相対座標は load 時に 0 へ正規化されるはず", 0, loadedChild.getX());
+        assertEquals(0, loadedChild.getY());
+
+        Rectangle containerRect =
+                GuiActionRunner.execute(() -> canvas.layoutForTest().get(loadedContainer));
+        Rectangle childRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(loadedChild));
+        assertEquals("正規化後は枠が上へ広がらないはず (タイトル領域と子が重ならない)",
+                0, containerRect.y);
+        assertEquals("正規化後は枠が左へ広がらないはず", 0, containerRect.x);
+        assertTrue("正規化後の子は枠内に収まるはず (a)", containerRect.contains(childRect));
+    }
+
+    @Test
+    public void loadTextWithNegativeChildPos_addingSiblingDoesNotJump() {
+        DeployNode loadedContainer = loadNegativeChildText();
+        Point at = new Point(200, 200);
+
+        GuiActionRunner.execute(() -> canvas.addChildNode(DeployNode.Kind.NODE, loadedContainer, at));
+
+        assertEquals("正規化後の負座標子の兄弟を追加しても子は 2 個になるはず",
+                2, loadedContainer.getChildren().size());
+        DeployNode added = loadedContainer.getChildren().get(1);
+        Rectangle r = GuiActionRunner.execute(() -> canvas.layoutForTest().get(added));
+        assertEquals("正規化後も press 位置どおりに子が置かれるはず (b, x)", at.x, r.x);
+        assertEquals("正規化後も press 位置どおりに子が置かれるはず (b, y)", at.y, r.y);
     }
 }
