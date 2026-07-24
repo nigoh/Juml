@@ -229,6 +229,30 @@ public class SeqSketchCanvasEndpointReattachTest {
                 SeqSketchCanvas.withinHandle(press, endpoint, zoom025Threshold));
     }
 
+    // --- bug-hunt round5 論点2: 自己メッセージの終点を掴んでも向きが反転しないはず ----------
+
+    @Test
+    public void endpointAt_selfMessage_zoomedOut_pressingToHandle_stillPicksToEnd() {
+        // 自己メッセージ (from == to) の 2 端点は約 14.6px しか離れておらず、
+        // 0.3x では しきい値 (8/0.3 ≈ 26.7px) がこれを超えるため、修正前の「先勝ち」実装だと
+        // to 側 (endpointPoint の 2 つ目、fromEnd=false) を正確に押しても from 側 (1 つ目、
+        // fromEnd=true。boolean[]{true,false} の走査順で先に判定される) がヒットしていた。
+        SeqItem self = SeqItem.message("A", SeqItem.Arrow.SYNC, "A", "loop");
+        GuiActionRunner.execute(() -> {
+            model.getItems().add(self);
+            canvas.setModel(model, true, List.of());
+            canvas.setZoomForTest(0.3);
+        });
+        int y = FIRST_ROW_Y + ROW_H; // 2 番目のメッセージなので 1 行下。
+        // endpointPoint: fromEnd=true → (x1, y-7)、fromEnd=false (to) → (x1+4, y+7)。
+        // to 側の座標をそのまま press することで、最近傍探索なら to が選ばれるはず。
+        Point toPoint = new Point(CENTER_A + 4, y + 7);
+        SeqSketchCanvas.EndpointHit hit =
+                GuiActionRunner.execute(() -> canvas.endpointAtForTest(toPoint));
+        assertEquals("自己メッセージがヒットするはず", self, hit.message);
+        assertFalse("to 側 (fromEnd=false) が選ばれ、向きが反転しないはず", hit.fromEnd);
+    }
+
     // --- (c) ハンドル込み paint が例外を投げない ---------------------------------------
 
     @Test

@@ -285,7 +285,8 @@ final class UseCaseSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (reattachDrag.isActive()) {
+        // 中ボタン (パン) のリリースでは確定しない (bug-hunt round5 論点3、全8キャンバス共通)。
+        if (reattachDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
             finishReattach(view.toModel(e.getPoint()));
             return;
         }
@@ -313,7 +314,7 @@ final class UseCaseSketchCanvas extends JPanel {
         UseCaseNode target = nodeAt(releasedAt);
         String targetId = target == null ? null : target.getId();
         String current = startEnd ? rel.getFrom() : rel.getTo();
-        if (reattachDrag.finish(releasedAt, targetId, current)) {
+        if (reattachDrag.finish(releasedAt, targetId, current, view.zoom())) {
             performReattach(rel, startEnd, target);
         }
         repaint();

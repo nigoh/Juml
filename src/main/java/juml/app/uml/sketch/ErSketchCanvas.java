@@ -305,7 +305,8 @@ final class ErSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (reattachDrag.isActive()) {
+        // 中ボタン (パン) のリリースでは確定しない (bug-hunt round5 論点3、全8キャンバス共通)。
+        if (reattachDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
             finishReattach(view.toModel(e.getPoint()));
             return;
         }
@@ -333,7 +334,7 @@ final class ErSketchCanvas extends JPanel {
         ErSketchModel.Entity target = entityAt(releasedAt);
         String targetAlias = target == null ? null : target.getAlias();
         String current = startEnd ? rel.getLeft() : rel.getRight();
-        if (reattachDrag.finish(releasedAt, targetAlias, current)) {
+        if (reattachDrag.finish(releasedAt, targetAlias, current, view.zoom())) {
             performReattach(rel, startEnd, target);
         }
         repaint();

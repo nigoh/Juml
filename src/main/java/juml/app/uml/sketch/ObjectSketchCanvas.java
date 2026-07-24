@@ -306,7 +306,8 @@ final class ObjectSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (endpointDrag.isActive()) {
+        // 中ボタン (パン) のリリースでは確定しない (bug-hunt round5 論点3、全8キャンバス共通)。
+        if (endpointDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -465,7 +466,7 @@ final class ObjectSketchCanvas extends JPanel {
         ObjectInstance target = objectAt(releasePoint);
         String targetName = target == null ? null : target.getName();
         String current = leftEnd ? link.getLeft() : link.getRight();
-        if (endpointDrag.finish(releasePoint, targetName, current)) {
+        if (endpointDrag.finish(releasePoint, targetName, current, view.zoom())) {
             reattachEndpoint(link, leftEnd, targetName);
         }
         repaint();

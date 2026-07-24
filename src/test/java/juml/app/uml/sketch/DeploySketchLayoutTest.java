@@ -99,8 +99,8 @@ public class DeploySketchLayoutTest {
     @Test
     public void contentOriginOf_topLevel_isZero() {
         DeployNode top = node("T", 30, 40);
-        Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(top), SIZER);
-        assertEquals(new Point(0, 0), DeploySketchLayout.contentOriginOf(top, layout, SIZER));
+        Map<DeployNode, Point> origins = DeploySketchLayout.computeContentOrigins(List.of(top), SIZER);
+        assertEquals(new Point(0, 0), DeploySketchLayout.contentOriginOf(top, origins));
     }
 
     @Test
@@ -114,10 +114,10 @@ public class DeploySketchLayoutTest {
         d.getChildren().add(g);
         g.setParent(d);
         d.setContainer(true);
-        Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(c), SIZER);
+        Map<DeployNode, Point> origins = DeploySketchLayout.computeContentOrigins(List.of(c), SIZER);
 
-        assertEquals(new Point(14, 30), DeploySketchLayout.contentOriginOf(d, layout, SIZER));
-        assertEquals(new Point(33, 65), DeploySketchLayout.contentOriginOf(g, layout, SIZER));
+        assertEquals(new Point(14, 30), DeploySketchLayout.contentOriginOf(d, origins));
+        assertEquals(new Point(33, 65), DeploySketchLayout.contentOriginOf(g, origins));
     }
 
     @Test
@@ -171,5 +171,46 @@ public class DeploySketchLayoutTest {
                 containerRect.contains(layout.get(negChild)));
         assertTrue("正の相対座標の子も枠内に収まるはず",
                 containerRect.contains(layout.get(posChild)));
+    }
+
+    // --- bug-hunt round5 論点1: 負座標の子で containerRect が広がっても、論理 content 原点
+    // (子ドラッグ/子追加の逆算基準) はコンテナ自身の絶対位置基準のまま保たれるはず -------------
+
+    @Test
+    public void computeContentOrigins_withNegativeChild_isUnaffectedByFrameExpansion() {
+        // 手編集テキスト ('@pos c -30 -20 相当) で子に負の相対座標が付いたケース。
+        DeployNode container = node("C", 0, 0);
+        DeployNode negChild = node("L1", -30, -20);
+        DeployNode posChild = node("L2", 5, 5);
+        container.getChildren().add(negChild);
+        container.getChildren().add(posChild);
+        negChild.setParent(container);
+        posChild.setParent(container);
+        container.setContainer(true);
+
+        Map<DeployNode, Rectangle> bounds = DeploySketchLayout.compute(List.of(container), SIZER);
+        Map<DeployNode, Point> origins =
+                DeploySketchLayout.computeContentOrigins(List.of(container), SIZER);
+
+        // 枠 (containerRect) は負座標の子を包含するため左/上へ広がる (原点 (0,0) より小さくなる)。
+        Rectangle containerRect = bounds.get(container);
+        assertTrue("枠は左へ広がるはず", containerRect.x < 0);
+        assertTrue("枠は上へ広がるはず", containerRect.y < 0);
+
+        // 論理 content 原点は常にコンテナ自身の絶対位置基準 (ax+PAD, ay+title.height) = (14,30)
+        // のままで、枠拡張の影響を受けない。修正前は containerRect.x/y + PAD/title.height から
+        // 逆算しており、この原点が (ax - minLeft) だけずれていた (子ドラッグ/子追加が press 位置
+        // から (ax - minLeft) だけジャンプするバグの根本原因)。
+        Point origin = DeploySketchLayout.contentOriginOf(negChild, origins);
+        assertEquals(new Point(14, 30), origin);
+        assertEquals("正座標の子から見ても同じコンテナ原点のはず",
+                origin, DeploySketchLayout.contentOriginOf(posChild, origins));
+
+        // 往復固定点: 論理原点 + 子の相対座標 == 子の絶対矩形の左上、という契約を固定する。
+        // これはまさに addChildNode/子ドラッグが press 位置から相対座標を逆算する式そのもの。
+        assertEquals(bounds.get(negChild).getLocation(),
+                new Point(origin.x + negChild.getX(), origin.y + negChild.getY()));
+        assertEquals(bounds.get(posChild).getLocation(),
+                new Point(origin.x + posChild.getX(), origin.y + posChild.getY()));
     }
 }

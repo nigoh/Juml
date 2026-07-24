@@ -352,21 +352,14 @@ final class SeqSketchCanvas extends JPanel {
         return new Point(x, y);
     }
 
-    /** 指定座標に最も近い端点ハンドルを探す (見つからなければ null)。 */
+    /** 指定座標に最も近い端点ハンドルを探す (しきい値内で最近傍を選ぶ大域探索。bug-hunt round5 論点2。見つからなければ null)。 */
     private EndpointHit endpointAt(Point p) {
         int[] xs = centers();
         double threshold = EndpointHitThreshold.modelRadius(HANDLE_R, view.zoom());
-        for (SeqItem m : model.getItems()) {
-            if (m.getKind() != SeqItem.Kind.MESSAGE) {
-                continue;
-            }
-            for (boolean fromEnd : new boolean[]{true, false}) {
-                if (withinHandle(p, endpointPoint(xs, m, fromEnd), threshold)) {
-                    return new EndpointHit(m, fromEnd);
-                }
-            }
-        }
-        return null;
+        EndpointHitThreshold.Pick<SeqItem> pick = EndpointHitThreshold.nearestPair(
+                model.getItems(), m -> m.getKind() == SeqItem.Kind.MESSAGE,
+                (m, fromEnd) -> endpointPoint(xs, m, fromEnd), p, threshold);
+        return pick == null ? null : new EndpointHit(pick.item(), pick.first());
     }
 
     /** 座標を受け止める参加者ライフライン (列幅の X 帯かつ Y 範囲内、範囲外は null = 付替えキャンセル判定に使う)。 */
@@ -486,7 +479,9 @@ final class SeqSketchCanvas extends JPanel {
 
     private void handleRelease(MouseEvent e) {
         leftDragArmed = false;
-        if (endpointDrag.isActive()) {
+        // 中ボタン (パン) のリリースでは確定しない: 端点ドラッグ中に中ボタンを押して離すと
+        // ボタン種別を見ずに確定してしまっていた (bug-hunt round5 論点3、全8キャンバス共通)。
+        if (endpointDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -568,7 +563,7 @@ final class SeqSketchCanvas extends JPanel {
         SeqParticipant target = lifelineAt(releasePoint);
         String targetName = target == null ? null : target.getName();
         String current = fromEnd ? message.getFrom() : message.getTo();
-        if (endpointDrag.finish(releasePoint, targetName, current)) {
+        if (endpointDrag.finish(releasePoint, targetName, current, view.zoom())) {
             reattachEndpoint(message, fromEnd, target);
             listener.modelEdited();
         }
@@ -890,6 +885,11 @@ final class SeqSketchCanvas extends JPanel {
     /** テスト用: 端点ヒットテストを直接呼ぶ (マウス press の代替)。 */
     EndpointHit endpointAtForTest(Point p) {
         return endpointAt(p);
+    }
+
+    /** テスト用: ズーム倍率を直接設定する (Ctrl+ホイール相当)。 */
+    void setZoomForTest(double z) {
+        view.setZoom(z);
     }
 
     /** テスト用: 実際の更新経路 (モデル更新 + modelEdited 通知) でメッセージ端点を付け替える。 */

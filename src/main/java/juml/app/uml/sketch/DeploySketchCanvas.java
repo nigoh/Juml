@@ -223,10 +223,9 @@ final class DeploySketchCanvas extends JPanel {
         if (!editable || parent == null) {
             return;
         }
-        Map<DeployNode, Rectangle> layout = currentLayout();
-        Rectangle pr = layout.get(parent);
-        Point origin = pr != null
-                ? DeploySketchLayout.contentOrigin(pr, titleSize(parent)) : new Point(0, 0);
+        // 論理 content 原点 (枠拡張の影響を受けない) を基準に相対座標へ変換する
+        // (bug-hunt round5 論点1: containerRect ベースの逆算だと負座標の兄弟がいるとずれる)。
+        Point origin = currentContentOrigins().getOrDefault(parent, new Point(0, 0));
         int relX = at != null ? Math.max(0, at.x - origin.x) : 10;
         int relY = at != null ? Math.max(0, at.y - origin.y) : 10;
         DeployNode child = new DeployNode(kind, model.uniqueId(baseNameFor(kind)), null, relX, relY);
@@ -286,7 +285,7 @@ final class DeploySketchCanvas extends JPanel {
         if (hit != null) {
             Rectangle r = layout.get(hit);
             dragOffset = new Point(mp.x - r.x, mp.y - r.y);
-            dragOrigin = DeploySketchLayout.contentOriginOf(hit, layout, this::titleSize);
+            dragOrigin = DeploySketchLayout.contentOriginOf(hit, currentContentOrigins());
         }
         repaint();
     }
@@ -336,7 +335,8 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (endpointDrag.isActive()) {
+        // 中ボタン (パン) のリリースでは確定しない (bug-hunt round5 論点3、全8キャンバス共通)。
+        if (endpointDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -370,7 +370,7 @@ final class DeploySketchCanvas extends JPanel {
         DeployNode target = DeploySketchLayout.hitTest(model.getNodes(), currentLayout(), mp);
         String targetId = target == null ? null : target.getId();
         String current = startEnd ? link.getFrom() : link.getTo();
-        if (endpointDrag.finish(mp, targetId, current)) {
+        if (endpointDrag.finish(mp, targetId, current, view.zoom())) {
             reattach(link, startEnd, target);
         } else {
             repaint();
@@ -454,6 +454,12 @@ final class DeploySketchCanvas extends JPanel {
     /** 全ノード (入れ子含む) の絶対矩形を求める (呼び出しごとに再計算する軽量な純関数)。 */
     private Map<DeployNode, Rectangle> currentLayout() {
         return DeploySketchLayout.compute(model.getNodes(), this::titleSize);
+    }
+
+    /** 全コンテナの論理 content 原点 (枠拡張前の (ax+PAD, ay+title.height))。子ドラッグ/
+     * 子追加の相対座標変換は必ずこちらを使う (bug-hunt round5 論点1)。 */
+    private Map<DeployNode, Point> currentContentOrigins() {
+        return DeploySketchLayout.computeContentOrigins(model.getNodes(), this::titleSize);
     }
 
     /** ノードのタイトル (ステレオタイプ + 表示名) を収める最小サイズ。葉ノードの全体サイズにも使う。 */

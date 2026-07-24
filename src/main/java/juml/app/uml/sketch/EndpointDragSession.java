@@ -77,10 +77,17 @@ final class EndpointDragSession<T> {
      * ({@code targetName}) が掴んだ端の現在のノード ({@code currentName}) と同一
      * (no-op) の場合は false を返す。呼び出し側はこの戻り値が true のときだけ
      * 実際のモデル変更 (と modelEdited 通知) を行うこと。
+     *
+     * <p>{@code zoom} でクリック/ドラッグしきい値もズーム補正する ({@link
+     * EndpointHitThreshold#modelRadius} と同じ画面 px 意味論)。以前はモデル座標の
+     * 固定値のままだったため、当たり判定 (ズーム補正済み) と意味論が食い違い、
+     * 縮小時は「クリック」と判定されやすく拡大時は微小移動でもドラッグ扱いされていた
+     * (bug-hunt round5 論点4)。</p>
      */
-    boolean finish(Point release, String targetName, String currentName) {
+    boolean finish(Point release, String targetName, String currentName, double zoom) {
+        double threshold = EndpointHitThreshold.modelRadius(CLICK_THRESHOLD_PX, zoom);
         boolean reattach = pressPoint != null && release != null
-                && release.distance(pressPoint) >= CLICK_THRESHOLD_PX
+                && release.distance(pressPoint) >= threshold
                 && targetName != null && !targetName.equals(currentName);
         item = null;
         pressPoint = null;
