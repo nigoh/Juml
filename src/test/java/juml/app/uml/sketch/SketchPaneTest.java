@@ -9,6 +9,9 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.GraphicsEnvironment;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -369,6 +372,74 @@ public class SketchPaneTest {
         GuiActionRunner.execute(pane::undo);
         assertEquals("loadFrom 後の Undo は前内容へ戻さない", after,
                 (int) GuiActionRunner.execute(() -> pane.classesForTest().size()));
+    }
+
+    @Test
+    public void loadFrom_routesAcrossDiagramTypesInSameInstance() {
+        // 1 つの稼働中インスタンスへ図種の異なるテキストを連続で loadFrom したとき、毎回
+        // (1) activeTypeForTest が期待図種になり、(2) ツールバー/キャンバスの CardLayout が
+        // 対応するカードへ切り替わり、(3) Undo 履歴が別セッション扱いでリセットされることを
+        // 検証する (bug-hunt round2 High: 図種を跨いだ再利用経路がカバーされていなかった)。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        Container toolbarCards = GuiActionRunner.execute(() -> toolbarCardsOf(pane));
+        Container canvasCards = GuiActionRunner.execute(() -> canvasCardsOf(pane));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.CLASS);
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        assertTrue("クラス図編集で Undo 履歴が積まれるはず", GuiActionRunner.execute(pane::canUndoForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.SEQUENCE.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.SEQUENCE);
+        assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
+                GuiActionRunner.execute(pane::canUndoForTest));
+        GuiActionRunner.execute(() -> pane.addParticipantForTest(SeqParticipant.Kind.PARTICIPANT));
+        assertTrue("シーケンス図編集で Undo 履歴が積まれるはず", GuiActionRunner.execute(pane::canUndoForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.ACTIVITY.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.ACTIVITY);
+        assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
+                GuiActionRunner.execute(pane::canUndoForTest));
+    }
+
+    /** {@code pane} が {@code expected} 図種として判定され、両カードとも切り替わっていることを検証する。 */
+    private static void assertRoutedTo(SketchPane pane, Container toolbarCards, Container canvasCards,
+            SketchDiagramType expected) {
+        assertEquals(expected + " として判定されるはず", expected,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertEquals("ツールバーのカードが " + expected + " へ切り替わるはず",
+                expected.ordinal(), (int) GuiActionRunner.execute(() -> visibleCardIndex(toolbarCards)));
+        assertEquals("キャンバスのカードが " + expected + " へ切り替わるはず",
+                expected.ordinal(), (int) GuiActionRunner.execute(() -> visibleCardIndex(canvasCards)));
+    }
+
+    /**
+     * {@link SketchPane} は {@code BorderLayout} の NORTH に図種ツールバーの
+     * {@code CardLayout} 面 (さらに CENTER) を、CENTER にキャンバスの {@code CardLayout} 面を
+     * 直接置いている。内部フィールドへリフレクションせず、公開された {@link BorderLayout} の
+     * API だけでその面を取得する。
+     */
+    private static Container toolbarCardsOf(SketchPane pane) {
+        Container north = (Container) ((BorderLayout) pane.getLayout())
+                .getLayoutComponent(pane, BorderLayout.NORTH);
+        return (Container) ((BorderLayout) north.getLayout())
+                .getLayoutComponent(north, BorderLayout.CENTER);
+    }
+
+    private static Container canvasCardsOf(SketchPane pane) {
+        return (Container) ((BorderLayout) pane.getLayout())
+                .getLayoutComponent(pane, BorderLayout.CENTER);
+    }
+
+    /** CardLayout は選択中の 1 枚だけを visible にするため、その添字を返す (無ければ -1)。 */
+    private static int visibleCardIndex(Container cards) {
+        Component[] children = cards.getComponents();
+        for (int i = 0; i < children.length; i++) {
+            if (children[i].isVisible()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Test
