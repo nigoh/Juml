@@ -51,13 +51,14 @@ final class DeploySketchLinkHandles {
 
     /**
      * リンクの端点座標 {@code [from 側, to 側]} を絶対座標で返す。
-     * 自己リンク、または端点ノードが解決できないときは null。
+     * 自己リンク (from == to) はループの出口/戻り点 ({@link #selfLoopPoints}) を返す
+     * (掴み直せるようハンドルを消さないため)。端点ノードが解決できないときは null。
      */
     static Point[] endpointsOf(DeploySketchModel model, DeployLink link,
                                Map<DeployNode, Rectangle> layout) {
         DeployNode from = model.findNode(link.getFrom());
         DeployNode to = model.findNode(link.getTo());
-        if (from == null || to == null || from == to) {
+        if (from == null || to == null) {
             return null;
         }
         Rectangle fr = layout.get(from);
@@ -65,7 +66,29 @@ final class DeploySketchLinkHandles {
         if (fr == null || tr == null) {
             return null;
         }
+        if (from == to) {
+            Point[] loop = selfLoopPoints(fr);
+            return new Point[]{loop[0], loop[loop.length - 1]};
+        }
         return new Point[]{edgePoint(fr, center(tr)), edgePoint(tr, center(fr))};
+    }
+
+    /**
+     * 自己リンクの折れ線頂点列 (上辺→上→右→右辺へ戻る)。
+     * {@link DeploySketchCanvas#paintSelfLink} の描画ジオメトリと一致させる。
+     */
+    static Point[] selfLoopPoints(Rectangle r) {
+        int exitX = r.x + r.width - 20;
+        int topY = r.y - 18;
+        int rightX = r.x + r.width + 18;
+        int retY = r.y + 14;
+        return new Point[]{
+                new Point(exitX, r.y),
+                new Point(exitX, topY),
+                new Point(rightX, topY),
+                new Point(rightX, retY),
+                new Point(r.x + r.width, retY),
+        };
     }
 
     /** {@code p} (絶対座標) の近くにある端点ハンドルを探す (無ければ null)。 */

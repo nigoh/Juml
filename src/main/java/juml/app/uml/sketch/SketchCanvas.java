@@ -416,7 +416,7 @@ final class SketchCanvas extends JPanel {
         boolean bestLeft = true;
         double bestD = ENDPOINT_HIT_RADIUS;
         for (SketchRelation rel : model.getRelations()) {
-            Point[] anchors = nonSelfEndpointAnchors(rel);
+            Point[] anchors = relationEndpointAnchors(rel);
             if (anchors == null) {
                 continue;
             }
@@ -436,17 +436,25 @@ final class SketchCanvas extends JPanel {
         return bestRel == null ? null : new EndpointHit(bestRel, bestLeft);
     }
 
-    /** {@code rel} の始点(left)/終点(right)アンカー ({@link #edgePoint} を再利用)。
-     * 自己関連 (left==right) や未解決端点は対象外として null (relationAt と同様に簡略化)。 */
-    private Point[] nonSelfEndpointAnchors(SketchRelation rel) {
+    /** {@code rel} の左右アンカー。自己関連は {@link #selfRelationAnchors} を使う
+     * (掴み直せるようハンドルを消さないため)。未解決端点のみ null。 */
+    private Point[] relationEndpointAnchors(SketchRelation rel) {
         SketchClass left = model.findClass(rel.getLeft());
         SketchClass right = model.findClass(rel.getRight());
-        if (left == null || right == null || left == right) {
+        if (left == null || right == null) {
             return null;
         }
-        Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
-        Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
-        return new Point[]{pl, pr};
+        if (left == right) {
+            return selfRelationAnchors(boundsOf(left));
+        }
+        return new Point[]{edgePoint(boundsOf(left), center(boundsOf(right))),
+                edgePoint(boundsOf(right), center(boundsOf(left)))};
+    }
+
+    /** 自己関連ループのアンカー ({@code [from, to]})。{@link #paintSelfRelation} と同じ幾何。 */
+    private static Point[] selfRelationAnchors(Rectangle r) {
+        Point ret = new Point(r.x + r.width, r.y + 14);
+        return new Point[]{new Point(r.x + r.width + 18, ret.y), ret};
     }
 
     /** テスト用/純関数: 点 p が候補アンカー a (0側) / b (1側) のどちらに近いか
@@ -503,7 +511,7 @@ final class SketchCanvas extends JPanel {
 
     /** テスト用: 関係の端点アンカー ({left, right})。自己関連/未解決なら null。 */
     Point[] endpointAnchorsForTest(SketchRelation relation) {
-        return nonSelfEndpointAnchors(relation);
+        return relationEndpointAnchors(relation);
     }
 
     // -------------------------------------------------------------------------
@@ -699,9 +707,9 @@ final class SketchCanvas extends JPanel {
     private void paintSelfRelation(Graphics2D g2, Rectangle r, SketchRelation rel) {
         int exitX = r.x + r.width - 20;      // 上辺から出る点
         int topY = r.y - 18;                 // ループの上端
-        int rightX = r.x + r.width + 18;     // ループの右端
-        Point ret = new Point(r.x + r.width, r.y + 14); // 右辺へ戻る (矢印先)
-        Point from = new Point(rightX, ret.y);
+        Point[] anchors = selfRelationAnchors(r); // [from(ループの右端), ret(右辺へ戻る=矢印先)]
+        Point from = anchors[0];
+        Point ret = anchors[1];
         boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS
                 || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
         Stroke old = g2.getStroke();
@@ -713,8 +721,8 @@ final class SketchCanvas extends JPanel {
         Path2D loop = new Path2D.Double();
         loop.moveTo(exitX, r.y);
         loop.lineTo(exitX, topY);
-        loop.lineTo(rightX, topY);
-        loop.lineTo(rightX, ret.y);
+        loop.lineTo(from.x, topY);
+        loop.lineTo(from.x, ret.y);
         loop.lineTo(ret.x, ret.y);
         g2.draw(loop);
         g2.setStroke(old);
@@ -738,7 +746,7 @@ final class SketchCanvas extends JPanel {
         }
         if (rel.getLabel() != null && !rel.getLabel().isEmpty()) {
             g2.setColor(new Color(0x555555));
-            g2.drawString(rel.getLabel(), rightX + 4, topY + 4);
+            g2.drawString(rel.getLabel(), from.x + 4, topY + 4);
         }
     }
 
@@ -747,7 +755,7 @@ final class SketchCanvas extends JPanel {
         int half = HANDLE_SIZE / 2;
         g2.setColor(new Color(0x1565C0));
         for (SketchRelation rel : model.getRelations()) {
-            Point[] anchors = nonSelfEndpointAnchors(rel);
+            Point[] anchors = relationEndpointAnchors(rel);
             if (anchors == null) {
                 continue;
             }

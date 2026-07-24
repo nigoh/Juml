@@ -451,16 +451,24 @@ final class ComponentSketchCanvas extends JPanel {
             }
             paintReattachHandles(g2);
             paintReattachRubberBand(g2);
+        } finally {
+            g2.dispose();
+        }
+        // バナー/ヒントはズームに依らず読める大きさで描く (スケール適用外)。
+        Graphics2D overlay = (Graphics2D) g.create();
+        try {
+            overlay.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
             if (!editable) {
-                SketchBanner.paint(g2, this, unsupported);
+                SketchBanner.paint(overlay, this, unsupported);
             } else if (relationMode != null) {
-                g2.setColor(new Color(0x1565C0));
-                g2.drawString(Messages.get(relationSource == null
+                overlay.setColor(new Color(0x1565C0));
+                overlay.drawString(Messages.get(relationSource == null
                         ? "sketch.comp.hint.pickSource"
                         : "sketch.comp.hint.pickTarget"), 8, 14);
             }
         } finally {
-            g2.dispose();
+            overlay.dispose();
         }
     }
 
@@ -713,5 +721,10 @@ final class ComponentSketchCanvas extends JPanel {
      */
     boolean reattachForTest(ComponentRelation rel, boolean startEnd, String targetNodeId) {
         return performReattach(rel, startEnd, model.findNode(targetNodeId));
+    }
+
+    /** テスト用: ズーム倍率を直接設定する (Ctrl+ホイール相当)。 */
+    void setZoomForTest(double z) {
+        view.setZoom(z);
     }
 }

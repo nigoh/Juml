@@ -405,7 +405,7 @@ final class ObjectSketchCanvas extends JPanel {
         boolean bestLeft = true;
         double bestD = ENDPOINT_HIT_RADIUS;
         for (ObjectLink link : model.getLinks()) {
-            Point[] anchors = nonSelfEndpointAnchors(link);
+            Point[] anchors = relationEndpointAnchors(link);
             if (anchors == null) {
                 continue;
             }
@@ -427,18 +427,26 @@ final class ObjectSketchCanvas extends JPanel {
 
     /**
      * {@code link} の始点(left)/終点(right)アンカー (線がオブジェクト境界に接する点。描画と
-     * 同じ {@link #edgePoint} を再利用)。自己リンク (left==right) や未解決端点は端点ドラッグの
-     * 対象外として null を返す ({@link #linkAt} が自己リンクを除外するのと同様に簡略化する)。
+     * 同じ {@link #edgePoint} を再利用)。自己リンク (left==right) は {@link #selfLinkAnchors}
+     * のループ上アンカーを返す (掴み直せるようハンドルを消さないため)。未解決端点のみ null。
      */
-    private Point[] nonSelfEndpointAnchors(ObjectLink link) {
+    private Point[] relationEndpointAnchors(ObjectLink link) {
         ObjectInstance left = model.findObject(link.getLeft());
         ObjectInstance right = model.findObject(link.getRight());
-        if (left == null || right == null || left == right) {
+        if (left == null || right == null) {
             return null;
         }
-        Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
-        Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
-        return new Point[]{pl, pr};
+        if (left == right) {
+            return selfLinkAnchors(boundsOf(left));
+        }
+        return new Point[]{edgePoint(boundsOf(left), center(boundsOf(right))),
+                edgePoint(boundsOf(right), center(boundsOf(left)))};
+    }
+
+    /** 自己リンクループのアンカー ({@code [from, to]})。{@link #paintSelfLink} と同じ幾何。 */
+    private static Point[] selfLinkAnchors(Rectangle r) {
+        Point ret = new Point(r.x + r.width, r.y + 14);
+        return new Point[]{new Point(r.x + r.width + 18, ret.y), ret};
     }
 
     /**
@@ -498,7 +506,7 @@ final class ObjectSketchCanvas extends JPanel {
 
     /** テスト用: リンクの端点アンカー ({left, right})。自己リンク/未解決なら null。 */
     Point[] endpointAnchorsForTest(ObjectLink link) {
-        return nonSelfEndpointAnchors(link);
+        return relationEndpointAnchors(link);
     }
 
     // -------------------------------------------------------------------------
@@ -646,17 +654,17 @@ final class ObjectSketchCanvas extends JPanel {
                               boolean dashed, boolean arrow) {
         int exitX = r.x + r.width - 20;      // 上辺から出る点
         int topY = r.y - 18;                 // ループの上端
-        int rightX = r.x + r.width + 18;     // ループの右端
-        Point ret = new Point(r.x + r.width, r.y + 14); // 右辺へ戻る (矢印先)
-        Point from = new Point(rightX, ret.y);
+        Point[] anchors = selfLinkAnchors(r); // [from(ループの右端), ret(右辺へ戻る=矢印先)]
+        Point from = anchors[0];
+        Point ret = anchors[1];
         Stroke old = g2.getStroke();
         g2.setColor(new Color(0x37474F));
         g2.setStroke(strokeFor(dashed));
         Path2D loop = new Path2D.Double();
         loop.moveTo(exitX, r.y);
         loop.lineTo(exitX, topY);
-        loop.lineTo(rightX, topY);
-        loop.lineTo(rightX, ret.y);
+        loop.lineTo(from.x, topY);
+        loop.lineTo(from.x, ret.y);
         loop.lineTo(ret.x, ret.y);
         g2.draw(loop);
         g2.setStroke(old);
@@ -665,7 +673,7 @@ final class ObjectSketchCanvas extends JPanel {
         }
         if (link.getLabel() != null && !link.getLabel().isEmpty()) {
             g2.setColor(new Color(0x455A64));
-            g2.drawString(link.getLabel(), rightX + 4, topY + 4);
+            g2.drawString(link.getLabel(), from.x + 4, topY + 4);
         }
     }
 
@@ -681,7 +689,7 @@ final class ObjectSketchCanvas extends JPanel {
         int half = HANDLE_SIZE / 2;
         g2.setColor(new Color(0x1565C0));
         for (ObjectLink link : model.getLinks()) {
-            Point[] anchors = nonSelfEndpointAnchors(link);
+            Point[] anchors = relationEndpointAnchors(link);
             if (anchors == null) {
                 continue;
             }

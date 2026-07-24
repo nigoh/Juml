@@ -415,8 +415,9 @@ final class StateSketchCanvas extends JPanel {
 
     /**
      * {@code t} の from/to アンカー (線が状態境界に接する点。描画と同じ {@link #segmentFor} を
-     * 再利用)。初期/終了の擬似状態 {@code [*]} 端点や自己遷移、未解決端点は端点ドラッグの
-     * 対象外として null を返す (擬似状態はドラッグして繋ぎ替えるノードを持たないため)。
+     * 再利用)。初期/終了の擬似状態 {@code [*]} 端点や未解決端点は端点ドラッグの対象外として
+     * null を返す (擬似状態はドラッグして繋ぎ替えるノードを持たないため)。自己遷移は
+     * {@link #selfTransitionAnchors} のループ上アンカーを返す (掴み直せるようハンドルを消さない)。
      */
     private Point[] realEndpointAnchors(StateTransition t) {
         if (StateTransition.PSEUDO.equals(t.getFrom()) || StateTransition.PSEUDO.equals(t.getTo())) {
@@ -424,11 +425,21 @@ final class StateSketchCanvas extends JPanel {
         }
         StateNode fs = model.findState(t.getFrom());
         StateNode ts = model.findState(t.getTo());
-        if (fs == null || ts == null || fs == ts) {
+        if (fs == null || ts == null) {
             return null;
+        }
+        if (fs == ts) {
+            // 自己遷移も掴み直せるようループ上アンカーを返す (ハンドルを消さない)。
+            return selfTransitionAnchors(boundsOf(fs));
         }
         double[] seg = segmentFor(t, fs, ts, false, false);
         return new Point[]{new Point((int) seg[0], (int) seg[1]), new Point((int) seg[2], (int) seg[3])};
+    }
+
+    /** 自己遷移ループのアンカー ({@code [from, to]})。{@link #paintSelfTransition} と同じ幾何。 */
+    private static Point[] selfTransitionAnchors(Rectangle r) {
+        Point ret = new Point(r.x + r.width, r.y + 14);
+        return new Point[]{new Point(r.x + r.width + 20, ret.y), ret};
     }
 
     /**
@@ -486,7 +497,7 @@ final class StateSketchCanvas extends JPanel {
         return dragTransition;
     }
 
-    /** テスト用: 遷移の端点アンカー ({from, to})。擬似状態端点/自己遷移/未解決なら null。 */
+    /** テスト用: 遷移の端点アンカー ({from, to})。擬似状態端点/未解決なら null (自己遷移はループ上アンカー)。 */
     Point[] endpointAnchorsForTest(StateTransition t) {
         return realEndpointAnchors(t);
     }
@@ -627,18 +638,19 @@ final class StateSketchCanvas extends JPanel {
     private void paintSelfTransition(Graphics2D g2, Rectangle r, StateTransition t) {
         int exitX = r.x + r.width - 24;
         int topY = r.y - 20;
-        int rightX = r.x + r.width + 20;
-        Point ret = new Point(r.x + r.width, r.y + 14);
+        Point[] anchors = selfTransitionAnchors(r);
+        Point from = anchors[0];
+        Point ret = anchors[1];
         g2.setStroke(new BasicStroke(1.2f));
         java.awt.geom.Path2D loop = new java.awt.geom.Path2D.Double();
         loop.moveTo(exitX, r.y);
         loop.lineTo(exitX, topY);
-        loop.lineTo(rightX, topY);
-        loop.lineTo(rightX, ret.y);
+        loop.lineTo(from.x, topY);
+        loop.lineTo(from.x, ret.y);
         loop.lineTo(ret.x, ret.y);
         g2.draw(loop);
-        paintOpenArrow(g2, ret, new Point(rightX, ret.y));
-        paintLabel(g2, t, rightX + 4, topY + 4);
+        paintOpenArrow(g2, ret, from);
+        paintLabel(g2, t, from.x + 4, topY + 4);
     }
 
     private void paintLabel(Graphics2D g2, StateTransition t, int x, int y) {
