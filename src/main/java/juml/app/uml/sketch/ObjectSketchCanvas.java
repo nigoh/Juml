@@ -78,7 +78,8 @@ final class ObjectSketchCanvas extends JPanel {
     private boolean snapToGrid = true;
     private Point dragOffset;
     private boolean draggedSinceMousePress;
-    /** 端点ドラッグ (リンクの付替え) のヒットしきい値 (モデル座標, px)。 */
+    /** 端点ドラッグ (リンクの付替え) のヒットしきい値 (画面上 px。{@link EndpointHitThreshold}
+     * でズームに応じてモデル座標半径へ変換してから使う)。 */
     private static final double ENDPOINT_HIT_RADIUS = 8.0;
     /** 端点ハンドル (発見可能性のための小さな正方形) の一辺 (モデル座標, px)。 */
     private static final int HANDLE_SIZE = 6;
@@ -396,7 +397,7 @@ final class ObjectSketchCanvas extends JPanel {
     private EndpointHit endpointHandleAt(Point p) {
         ObjectLink bestLink = null;
         boolean bestLeft = true;
-        double bestD = ENDPOINT_HIT_RADIUS;
+        double bestD = EndpointHitThreshold.modelRadius(ENDPOINT_HIT_RADIUS, view.zoom());
         for (ObjectLink link : model.getLinks()) {
             Point[] anchors = relationEndpointAnchors(link);
             if (anchors == null) {

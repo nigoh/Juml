@@ -205,11 +205,28 @@ public class SeqSketchCanvasEndpointReattachTest {
     }
 
     @Test
-    public void withinHandle_pureFunctionRespectsRadius() {
+    public void withinHandle_pureFunctionRespectsGivenThreshold() {
         Point endpoint = new Point(100, 100);
-        assertTrue("半径 8px 以内はヒット", SeqSketchCanvas.withinHandle(new Point(104, 100), endpoint));
+        assertTrue("半径 8px 以内はヒット",
+                SeqSketchCanvas.withinHandle(new Point(104, 100), endpoint, 8.0));
         assertFalse("半径 8px を超えたらヒットしない",
-                SeqSketchCanvas.withinHandle(new Point(120, 100), endpoint));
+                SeqSketchCanvas.withinHandle(new Point(120, 100), endpoint, 8.0));
+    }
+
+    // --- bug-hunt round3 指摘 H: 縮小ズームでも端点ハンドルが画面上一定 px で掴めるはず ------
+
+    @Test
+    public void withinHandle_zoomScaledThreshold_catchesFartherPressAtMinZoom() {
+        Point endpoint = new Point(100, 100);
+        Point press = new Point(120, 100); // モデル座標で 20px 離れた press。
+        double zoom1Threshold = EndpointHitThreshold.modelRadius(8.0, 1.0);
+        double zoom025Threshold = EndpointHitThreshold.modelRadius(8.0, 0.25);
+        assertEquals("等倍では従来どおり 8px 相当", 8.0, zoom1Threshold, 1e-9);
+        assertEquals("0.25x (MIN_ZOOM) では 32px 相当まで拾うはず", 32.0, zoom025Threshold, 1e-9);
+        assertFalse("等倍では 20px 離れると従来どおりヒットしない",
+                SeqSketchCanvas.withinHandle(press, endpoint, zoom1Threshold));
+        assertTrue("0.25x 縮小時は画面上同じ距離でもモデル座標では拾えるはず (bug-hunt H)",
+                SeqSketchCanvas.withinHandle(press, endpoint, zoom025Threshold));
     }
 
     // --- (c) ハンドル込み paint が例外を投げない ---------------------------------------

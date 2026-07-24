@@ -130,4 +130,46 @@ public class DeploySketchLayoutTest {
         assertEquals(10, r.x);
         assertEquals(10, r.y);
     }
+
+    // --- bug-hunt round3 指摘 I: 負の相対座標を持つ子でも枠がはみ出さず包含するはず ------------
+
+    @Test
+    public void compute_containerWithNegativeRelativeChild_frameContainsChild() {
+        // 手編集テキスト ('@pos c -30 -20 相当) で子に負の相対座標が付いたケース。
+        DeployNode container = node("C", 0, 0);
+        DeployNode child = node("L", -30, -20);
+        container.getChildren().add(child);
+        child.setParent(container);
+        container.setContainer(true);
+
+        Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(container), SIZER);
+        Rectangle containerRect = layout.get(container);
+        Rectangle childRect = layout.get(child);
+
+        // 子: 原点 (14,30) + 相対 (-30,-20) = (-16,10)、サイズ (60,30)。
+        assertEquals(new Rectangle(-16, 10, 60, 30), childRect);
+        // 親: 左/上へ minLeft/minTop まで広がり、子を完全に包含する。
+        assertEquals(new Rectangle(-30, -4, 170, 58), containerRect);
+        assertTrue("負の相対座標を持つ子でも枠内に収まるはず", containerRect.contains(childRect));
+    }
+
+    @Test
+    public void compute_containerWithMixedPositiveAndNegativeChildren_boundsContainBoth() {
+        DeployNode container = node("C", 0, 0);
+        DeployNode negChild = node("L1", -30, -20);
+        DeployNode posChild = node("L2", 5, 5);
+        container.getChildren().add(negChild);
+        container.getChildren().add(posChild);
+        negChild.setParent(container);
+        posChild.setParent(container);
+        container.setContainer(true);
+
+        Map<DeployNode, Rectangle> layout = DeploySketchLayout.compute(List.of(container), SIZER);
+        Rectangle containerRect = layout.get(container);
+
+        assertTrue("負の相対座標の子も枠内に収まるはず",
+                containerRect.contains(layout.get(negChild)));
+        assertTrue("正の相対座標の子も枠内に収まるはず",
+                containerRect.contains(layout.get(posChild)));
+    }
 }

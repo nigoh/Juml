@@ -63,14 +63,21 @@ final class DeploySketchLayout {
                                              Sizer sizer, Map<DeployNode, Rectangle> out) {
         int contentX = ax + CONTAINER_PAD;
         int contentY = ay + title.height;
+        // 子は '@pos の手編集で負の相対座標も持ちうる (GUI ドラッグは非負に丸めるが、
+        // テキスト往復で到達しうる)。minLeft/minTop も追跡し、枠が右/下だけでなく
+        // 左/上へはみ出す子も包含するようにする (bug-hunt round3 指摘 I)。
+        int minLeft = ax;
+        int minTop = ay;
         int maxRight = ax + Math.max(title.width + 2 * CONTAINER_PAD, MIN_CONTAINER_W);
         int maxBottom = contentY + CONTAINER_PAD;
         for (DeployNode c : n.getChildren()) {
             Rectangle cr = layout(c, contentX, contentY, sizer, out);
+            minLeft = Math.min(minLeft, cr.x - CONTAINER_PAD);
+            minTop = Math.min(minTop, cr.y - CONTAINER_PAD);
             maxRight = Math.max(maxRight, cr.x + cr.width + CONTAINER_PAD);
             maxBottom = Math.max(maxBottom, cr.y + cr.height + CONTAINER_PAD);
         }
-        return new Rectangle(ax, ay, maxRight - ax, maxBottom - ay);
+        return new Rectangle(minLeft, minTop, maxRight - minLeft, maxBottom - minTop);
     }
 
     /**

@@ -59,7 +59,8 @@ final class SeqSketchCanvas extends JPanel {
     private static final int ROW_H = 38;
     private static final int FIRST_ROW_GAP = 30;
     private static final int BAR_W = 8;
-    /** メッセージ端点ハンドルの当たり判定半径 (px, モデル座標)。 */
+    /** メッセージ端点ハンドルの当たり判定半径 (画面上 px。{@link EndpointHitThreshold}
+     * でズームに応じてモデル座標半径へ変換してから使う)。 */
     private static final int HANDLE_R = 8;
     /** 端点ハンドルの一辺と色 (他 6 キャンバスと同じ青の正方形。色は issue G のテストからも参照)。 */
     private static final int HANDLE_SIZE = 6;
@@ -336,10 +337,8 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     /** カーソルが端点ハンドルの許容範囲内か判定する純関数 (テストしやすいよう座標計算のみ)。 */
-    static boolean withinHandle(Point cursor, Point endpoint) {
-        double dx = cursor.x - endpoint.x;
-        double dy = cursor.y - endpoint.y;
-        return dx * dx + dy * dy <= (double) HANDLE_R * HANDLE_R;
+    static boolean withinHandle(Point cursor, Point endpoint, double thresholdModel) {
+        return EndpointHitThreshold.within(cursor, endpoint, thresholdModel);
     }
 
     /** メッセージ {@code m} の始点/終点の描画位置 (自己メッセージは {@link #paintMessage} のループ形状の両端)。 */
@@ -356,12 +355,13 @@ final class SeqSketchCanvas extends JPanel {
     /** 指定座標に最も近い端点ハンドルを探す (見つからなければ null)。 */
     private EndpointHit endpointAt(Point p) {
         int[] xs = centers();
+        double threshold = EndpointHitThreshold.modelRadius(HANDLE_R, view.zoom());
         for (SeqItem m : model.getItems()) {
             if (m.getKind() != SeqItem.Kind.MESSAGE) {
                 continue;
             }
             for (boolean fromEnd : new boolean[]{true, false}) {
-                if (withinHandle(p, endpointPoint(xs, m, fromEnd))) {
+                if (withinHandle(p, endpointPoint(xs, m, fromEnd), threshold)) {
                     return new EndpointHit(m, fromEnd);
                 }
             }
