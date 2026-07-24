@@ -96,7 +96,7 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void erEdit_addEntity_syncsText() {
+    public void erEdit_syncsTextAndUndoRedo() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         AtomicReference<String> lastPuml = new AtomicReference<>("");
         GuiActionRunner.execute(() -> {
@@ -108,8 +108,17 @@ public class SketchPaneTest {
                 (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
         assertTrue("追加直後のテキストに新エンティティが載る: " + lastPuml.get(),
                 lastPuml.get().contains("entity Entity"));
-        assertTrue("編集後も Undo 可能な履歴が積まれる",
-                GuiActionRunner.execute(pane::canUndoForTest));
+        GuiActionRunner.execute(pane::undo);
+        assertEquals("Undo でエンティティ数が 2 件へ戻る", 2,
+                (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
+        assertFalse("Undo 後のテキストからは新エンティティが消える: " + lastPuml.get(),
+                lastPuml.get().contains("entity Entity"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertEquals("Redo でエンティティ数が 3 件へ戻る", 3,
+                (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
+        assertTrue("Redo 後のテキストに新エンティティが戻る: " + lastPuml.get(),
+                lastPuml.get().contains("entity Entity"));
     }
 
     @Test
@@ -302,7 +311,7 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void activityEdit_syncsTextAndUndo() {
+    public void activityEdit_syncsTextAndUndoRedo() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         AtomicReference<String> lastPuml = new AtomicReference<>("");
         GuiActionRunner.execute(() -> {
@@ -317,6 +326,9 @@ public class SketchPaneTest {
         assertFalse("Undo 後のテキストからは新アクションが消える: " + lastPuml.get(),
                 lastPuml.get().contains(":New step;"));
         assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新アクションが戻る: " + lastPuml.get(),
+                lastPuml.get().contains(":New step;"));
     }
 
     @Test
