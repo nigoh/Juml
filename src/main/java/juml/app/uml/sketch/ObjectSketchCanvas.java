@@ -82,12 +82,9 @@ final class ObjectSketchCanvas extends JPanel {
     private static final double ENDPOINT_HIT_RADIUS = 8.0;
     /** 端点ハンドル (発見可能性のための小さな正方形) の一辺 (モデル座標, px)。 */
     private static final int HANDLE_SIZE = 6;
-    /** 端点ドラッグ中の対象リンク (null = 端点ドラッグ中でない。選択/移動モードのみで使う)。 */
-    private ObjectLink dragLink;
-    /** 端点ドラッグ中、true なら left (始点) 側、false なら right (終点) 側を掴んでいる。 */
-    private boolean dragLeftEnd;
-    /** 端点ドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
-    private Point dragCursor;
+    /** 端点ドラッグ (リンクの付替え) の状態。クリック判定/no-op 判定は
+     * {@link EndpointDragSession#finish} に委ねる。 */
+    private final EndpointDragSession<ObjectLink> endpointDrag = new EndpointDragSession<>();
 
     ObjectSketchCanvas(Listener listener) {
         this.listener = listener;
@@ -127,7 +124,7 @@ final class ObjectSketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && dragLink != null) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && endpointDrag.isActive()) {
                     // 端点ドラッグ中の Esc は繋ぎ替えを行わず安全に中断する。
                     cancelEndpointDrag();
                     return;
@@ -172,8 +169,7 @@ final class ObjectSketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
-        this.dragLink = null;
-        this.dragCursor = null;
+        this.endpointDrag.cancel();
         revalidate();
         repaint();
     }
@@ -198,8 +194,7 @@ final class ObjectSketchCanvas extends JPanel {
         // モード切替時に旧選択をクリアする (ダブルクリック編集/Delete が旧オブジェクトへ漏れる防止)。
         this.selected = null;
         // モード切替で進行中の端点ドラッグも安全に中断する (spec #6)。
-        this.dragLink = null;
-        this.dragCursor = null;
+        this.endpointDrag.cancel();
         repaint();
     }
 
@@ -250,9 +245,7 @@ final class ObjectSketchCanvas extends JPanel {
         EndpointHit endpointHit = endpointHandleAt(mp);
         if (endpointHit != null) {
             // 端点ハンドルの掴みはノードドラッグより優先する。
-            dragLink = endpointHit.link();
-            dragLeftEnd = endpointHit.leftEnd();
-            dragCursor = mp;
+            endpointDrag.start(endpointHit.link(), endpointHit.leftEnd(), mp);
             selected = null;
             repaint();
             return;
@@ -294,9 +287,9 @@ final class ObjectSketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        if (dragLink != null) {
+        if (endpointDrag.isActive()) {
             // ノードは動かさず、固定側端点→カーソルのラバーバンド線だけを更新する。
-            dragCursor = view.toModel(e.getPoint());
+            endpointDrag.updateCursor(view.toModel(e.getPoint()));
             repaint();
             return;
         }
@@ -312,7 +305,7 @@ final class ObjectSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (dragLink != null) {
+        if (endpointDrag.isActive()) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -463,23 +456,23 @@ final class ObjectSketchCanvas extends JPanel {
         return da <= db ? 0 : 1;
     }
 
-    /** 端点ドラッグのリリース処理: カーソル下にオブジェクトがあれば繋ぎ替え、無ければキャンセル。 */
+    /** 端点ドラッグのリリース処理: クリック相当 (移動なし) や自ノードへの落下は no-op として
+     * 弾き、実際に別オブジェクト上へドラッグされたときだけ繋ぎ替える。 */
     private void finishEndpointDrag(Point releasePoint) {
-        ObjectLink link = dragLink;
-        boolean leftEnd = dragLeftEnd;
-        dragLink = null;
-        dragCursor = null;
+        ObjectLink link = endpointDrag.item();
+        boolean leftEnd = endpointDrag.leftEnd();
         ObjectInstance target = objectAt(releasePoint);
-        if (target != null) {
-            reattachEndpoint(link, leftEnd, target.getName());
+        String targetName = target == null ? null : target.getName();
+        String current = leftEnd ? link.getLeft() : link.getRight();
+        if (endpointDrag.finish(releasePoint, targetName, current)) {
+            reattachEndpoint(link, leftEnd, targetName);
         }
         repaint();
     }
 
     /** Esc/モード切替時に端点ドラッグを繋ぎ替えずに中断する。 */
     private void cancelEndpointDrag() {
-        dragLink = null;
-        dragCursor = null;
+        endpointDrag.cancel();
         repaint();
     }
 
@@ -501,7 +494,7 @@ final class ObjectSketchCanvas extends JPanel {
 
     /** テスト用: 現在ドラッグ中のリンク (端点ドラッグ中でなければ null)。 */
     ObjectLink dragLinkForTest() {
-        return dragLink;
+        return endpointDrag.item();
     }
 
     /** テスト用: リンクの端点アンカー ({left, right})。自己リンク/未解決なら null。 */
@@ -700,19 +693,21 @@ final class ObjectSketchCanvas extends JPanel {
 
     /** 端点ドラッグ中: 固定側端点→カーソルのラバーバンド線を描く。 */
     private void paintEndpointDragOverlay(Graphics2D g2) {
-        if (dragLink == null || dragCursor == null) {
+        Point cursor = endpointDrag.cursor();
+        if (!endpointDrag.isActive() || cursor == null) {
             return;
         }
-        String fixedName = dragLeftEnd ? dragLink.getRight() : dragLink.getLeft();
+        ObjectLink link = endpointDrag.item();
+        String fixedName = endpointDrag.leftEnd() ? link.getRight() : link.getLeft();
         ObjectInstance fixed = model.findObject(fixedName);
         if (fixed == null) {
             return;
         }
-        Point start = edgePoint(boundsOf(fixed), dragCursor);
+        Point start = edgePoint(boundsOf(fixed), cursor);
         g2.setColor(new Color(0x1565C0));
         g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 10f, new float[]{5f, 4f}, 0f));
-        g2.drawLine(start.x, start.y, dragCursor.x, dragCursor.y);
+        g2.drawLine(start.x, start.y, cursor.x, cursor.y);
         g2.setStroke(new BasicStroke(1f));
     }
 

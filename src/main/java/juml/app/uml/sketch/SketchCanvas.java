@@ -82,12 +82,9 @@ final class SketchCanvas extends JPanel {
     private static final double ENDPOINT_HIT_RADIUS = 8.0;
     /** 端点ハンドル (発見可能性のための小さな正方形) の一辺 (モデル座標, px)。 */
     private static final int HANDLE_SIZE = 6;
-    /** 端点ドラッグ中の対象関係 (null = 端点ドラッグ中でない。選択/移動モードのみで使う)。 */
-    private SketchRelation dragRelation;
-    /** 端点ドラッグ中、true なら left (始点) 側、false なら right (終点) 側を掴んでいる。 */
-    private boolean dragLeftEnd;
-    /** 端点ドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
-    private Point dragCursor;
+    /** 端点ドラッグ (関係線の付替え) の状態。クリック判定/no-op 判定は
+     * {@link EndpointDragSession#finish} に委ねる。 */
+    private final EndpointDragSession<SketchRelation> endpointDrag = new EndpointDragSession<>();
 
     SketchCanvas(Listener listener) {
         this.listener = listener;
@@ -129,7 +126,7 @@ final class SketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && dragRelation != null) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && endpointDrag.isActive()) {
                     // 端点ドラッグ中の Esc は繋ぎ替えを行わず安全に中断する。
                     cancelEndpointDrag();
                     return;
@@ -176,8 +173,7 @@ final class SketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
-        this.dragRelation = null;
-        this.dragCursor = null;
+        this.endpointDrag.cancel();
         revalidate();
         repaint();
     }
@@ -222,8 +218,7 @@ final class SketchCanvas extends JPanel {
         // 残すとダブルクリック編集/Delete が旧クラスへ漏れる (上のガードと二重の保険)。
         this.selected = null;
         // モード切替で進行中の端点ドラッグも安全に中断する (spec #6)。
-        this.dragRelation = null;
-        this.dragCursor = null;
+        this.endpointDrag.cancel();
         repaint();
     }
 
@@ -260,9 +255,7 @@ final class SketchCanvas extends JPanel {
         EndpointHit endpointHit = endpointHandleAt(mp);
         if (endpointHit != null) {
             // 端点ハンドルの掴みはノードドラッグより優先する。
-            dragRelation = endpointHit.relation();
-            dragLeftEnd = endpointHit.leftEnd();
-            dragCursor = mp;
+            endpointDrag.start(endpointHit.relation(), endpointHit.leftEnd(), mp);
             selected = null;
             repaint();
             return;
@@ -304,9 +297,9 @@ final class SketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        if (dragRelation != null) {
+        if (endpointDrag.isActive()) {
             // ノードは動かさず、固定側端点→カーソルのラバーバンド線だけを更新する。
-            dragCursor = view.toModel(e.getPoint());
+            endpointDrag.updateCursor(view.toModel(e.getPoint()));
             repaint();
             return;
         }
@@ -322,7 +315,7 @@ final class SketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (dragRelation != null) {
+        if (endpointDrag.isActive()) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -468,23 +461,23 @@ final class SketchCanvas extends JPanel {
         return da <= db ? 0 : 1;
     }
 
-    /** 端点ドラッグのリリース処理: カーソル下にノードがあれば繋ぎ替え、無ければキャンセル。 */
+    /** 端点ドラッグのリリース処理: クリック相当 (移動なし) や自ノードへの落下は no-op として
+     * 弾き、実際に別ノード上へドラッグされたときだけ繋ぎ替える。 */
     private void finishEndpointDrag(Point releasePoint) {
-        SketchRelation relation = dragRelation;
-        boolean leftEnd = dragLeftEnd;
-        dragRelation = null;
-        dragCursor = null;
+        SketchRelation relation = endpointDrag.item();
+        boolean leftEnd = endpointDrag.leftEnd();
         SketchClass target = classAt(releasePoint);
-        if (target != null) {
-            reattachEndpoint(relation, leftEnd, target.getName());
+        String targetName = target == null ? null : target.getName();
+        String current = leftEnd ? relation.getLeft() : relation.getRight();
+        if (endpointDrag.finish(releasePoint, targetName, current)) {
+            reattachEndpoint(relation, leftEnd, targetName);
         }
         repaint();
     }
 
     /** Esc/モード切替時に端点ドラッグを繋ぎ替えずに中断する。 */
     private void cancelEndpointDrag() {
-        dragRelation = null;
-        dragCursor = null;
+        endpointDrag.cancel();
         repaint();
     }
 
@@ -506,7 +499,7 @@ final class SketchCanvas extends JPanel {
 
     /** テスト用: 現在ドラッグ中の関係 (端点ドラッグ中でなければ null)。 */
     SketchRelation dragRelationForTest() {
-        return dragRelation;
+        return endpointDrag.item();
     }
 
     /** テスト用: 関係の端点アンカー ({left, right})。自己関連/未解決なら null。 */
@@ -766,20 +759,22 @@ final class SketchCanvas extends JPanel {
 
     /** 端点ドラッグ中: 固定側端点→カーソルのラバーバンド線を描く。 */
     private void paintEndpointDragOverlay(Graphics2D g2) {
-        if (dragRelation == null || dragCursor == null) {
+        Point cursor = endpointDrag.cursor();
+        if (!endpointDrag.isActive() || cursor == null) {
             return;
         }
-        String fixedName = dragLeftEnd ? dragRelation.getRight() : dragRelation.getLeft();
+        SketchRelation relation = endpointDrag.item();
+        String fixedName = endpointDrag.leftEnd() ? relation.getRight() : relation.getLeft();
         SketchClass fixed = model.findClass(fixedName);
         if (fixed == null) {
             return;
         }
-        Point start = edgePoint(boundsOf(fixed), dragCursor);
+        Point start = edgePoint(boundsOf(fixed), cursor);
         Stroke old = g2.getStroke();
         g2.setColor(new Color(0x1565C0));
         g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 10f, new float[]{5f, 4f}, 0f));
-        g2.drawLine(start.x, start.y, dragCursor.x, dragCursor.y);
+        g2.drawLine(start.x, start.y, cursor.x, cursor.y);
         g2.setStroke(old);
     }
 

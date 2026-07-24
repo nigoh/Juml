@@ -83,12 +83,9 @@ final class DeploySketchCanvas extends JPanel {
     /** ドラッグ中ノードの座標系原点 (絶対座標。最上位なら (0,0)、入れ子なら親の内側原点)。 */
     private Point dragOrigin = new Point(0, 0);
     private boolean draggedSinceMousePress;
-    /** 端点ドラッグ中のリンク (無ければ null)。選択/移動モードでのみ張る。 */
-    private DeployLink endpointDragLink;
-    /** {@link #endpointDragLink} のどちら側を動かしているか (true = from 側)。 */
-    private boolean endpointDragStart;
-    /** 端点ドラッグ中の現在のマウス位置 (モデル座標。ラバーバンド表示用)。 */
-    private Point endpointDragCurrent;
+    /** 端点ドラッグ (リンクの付替え) の状態。クリック判定/no-op 判定は
+     * {@link EndpointDragSession#finish} に委ねる。 */
+    private final EndpointDragSession<DeployLink> endpointDrag = new EndpointDragSession<>();
 
     DeploySketchCanvas(Listener listener) {
         this.listener = listener;
@@ -133,7 +130,7 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private void handleKey(KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.VK_ESCAPE && endpointDragLink != null) {
+        if (e.getKeyCode() == KeyEvent.VK_ESCAPE && endpointDrag.isActive()) {
             // 端点ドラッグ中の Esc は繋ぎ替えを行わず安全に中断する。
             cancelEndpointDrag();
             return;
@@ -271,9 +268,7 @@ final class DeploySketchCanvas extends JPanel {
         // 選択/移動モードでは端点ハンドルを優先的に判定する (ノードの縁と重なりうるため)。
         DeploySketchLinkHandles.EndpointHit eh = DeploySketchLinkHandles.hitTest(model, layout, mp);
         if (eh != null) {
-            endpointDragLink = eh.link();
-            endpointDragStart = eh.startEnd();
-            endpointDragCurrent = mp;
+            endpointDrag.start(eh.link(), eh.startEnd(), mp);
             selected = null;
             repaint();
             return;
@@ -316,8 +311,8 @@ final class DeploySketchCanvas extends JPanel {
         if (!editable) {
             return;
         }
-        if (endpointDragLink != null) {
-            endpointDragCurrent = view.toModel(e.getPoint());
+        if (endpointDrag.isActive()) {
+            endpointDrag.updateCursor(view.toModel(e.getPoint()));
             repaint();
             return;
         }
@@ -333,7 +328,7 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        if (endpointDragLink != null) {
+        if (endpointDrag.isActive()) {
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
         }
@@ -355,19 +350,19 @@ final class DeploySketchCanvas extends JPanel {
 
     /** Esc/モード切替時に端点ドラッグを繋ぎ替えずに中断する。 */
     private void cancelEndpointDrag() {
-        endpointDragLink = null;
-        endpointDragCurrent = null;
+        endpointDrag.cancel();
         repaint();
     }
 
-    /** 端点ドラッグを終える。ノード上ならそのノードへ付け替え、ノード外なら取消。 */
+    /** 端点ドラッグを終える。クリック相当 (移動なし) や自ノードへの落下は no-op として弾き、
+     * 実際に別ノード上へドラッグされたときだけ付け替える。 */
     private void finishEndpointDrag(Point mp) {
+        DeployLink link = endpointDrag.item();
+        boolean startEnd = endpointDrag.leftEnd();
         DeployNode target = DeploySketchLayout.hitTest(model.getNodes(), currentLayout(), mp);
-        DeployLink link = endpointDragLink;
-        boolean startEnd = endpointDragStart;
-        endpointDragLink = null;
-        endpointDragCurrent = null;
-        if (target != null) {
+        String targetId = target == null ? null : target.getId();
+        String current = startEnd ? link.getFrom() : link.getTo();
+        if (endpointDrag.finish(mp, targetId, current)) {
             reattach(link, startEnd, target);
         } else {
             repaint();
@@ -529,11 +524,12 @@ final class DeploySketchCanvas extends JPanel {
             drawHandle(g2, eps[0]);
             drawHandle(g2, eps[1]);
         }
-        if (endpointDragLink != null && endpointDragCurrent != null) {
-            Point[] eps = DeploySketchLinkHandles.endpointsOf(model, endpointDragLink, layout);
+        Point cursor = endpointDrag.cursor();
+        if (endpointDrag.isActive() && cursor != null) {
+            Point[] eps = DeploySketchLinkHandles.endpointsOf(model, endpointDrag.item(), layout);
             if (eps != null) {
-                Point anchor = endpointDragStart ? eps[1] : eps[0];
-                g2.drawLine(anchor.x, anchor.y, endpointDragCurrent.x, endpointDragCurrent.y);
+                Point anchor = endpointDrag.leftEnd() ? eps[1] : eps[0];
+                g2.drawLine(anchor.x, anchor.y, cursor.x, cursor.y);
             }
         }
     }
@@ -844,7 +840,7 @@ final class DeploySketchCanvas extends JPanel {
 
     /** テスト用: 現在端点ドラッグ中のリンク (無ければ null)。 */
     DeployLink endpointDragLinkForTest() {
-        return endpointDragLink;
+        return endpointDrag.item();
     }
 
     /** テスト用: ズーム倍率を直接設定する (Ctrl+ホイール相当)。 */
