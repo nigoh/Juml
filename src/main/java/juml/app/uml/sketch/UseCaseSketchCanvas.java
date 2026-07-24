@@ -560,10 +560,13 @@ final class UseCaseSketchCanvas extends JPanel {
         }
     }
 
-    private static void paintHandle(Graphics2D g2, Point p) {
+    private void paintHandle(Graphics2D g2, Point p) {
         Color prev = g2.getColor();
         g2.setColor(HANDLE_COLOR);
-        g2.fillRect(p.x - HANDLE_HALF, p.y - HANDLE_HALF, HANDLE_HALF * 2, HANDLE_HALF * 2);
+        // 画面上 HANDLE_HALF*2 px 一定になるようズームに応じてモデル座標長を換算する
+        // (bug-hunt round7 #4: 固定モデル px のままだと拡大/縮小でヒット半径と食い違う)。
+        int size = EndpointHitThreshold.handleSizeModel(HANDLE_HALF * 2, view.zoom());
+        g2.fillRect(p.x - size / 2, p.y - size / 2, size, size);
         g2.setColor(prev);
     }
 

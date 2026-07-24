@@ -747,15 +747,18 @@ final class SketchCanvas extends JPanel {
 
     /** 発見可能性: 各関係の始点/終点アンカーに小さな正方形ハンドルを描く。 */
     private void paintEndpointHandles(Graphics2D g2) {
-        int half = HANDLE_SIZE / 2;
+        // 画面上 HANDLE_SIZE px 一定になるようズームに応じてモデル座標長を換算する
+        // (bug-hunt round7 #4: 固定モデル px のままだと拡大/縮小でヒット半径と食い違う)。
+        int size = EndpointHitThreshold.handleSizeModel(HANDLE_SIZE, view.zoom());
+        int half = size / 2;
         g2.setColor(new Color(0x1565C0));
         for (SketchRelation rel : model.getRelations()) {
             Point[] anchors = relationEndpointAnchors(rel);
             if (anchors == null) {
                 continue;
             }
-            g2.fillRect(anchors[0].x - half, anchors[0].y - half, HANDLE_SIZE, HANDLE_SIZE);
-            g2.fillRect(anchors[1].x - half, anchors[1].y - half, HANDLE_SIZE, HANDLE_SIZE);
+            g2.fillRect(anchors[0].x - half, anchors[0].y - half, size, size);
+            g2.fillRect(anchors[1].x - half, anchors[1].y - half, size, size);
         }
     }
 

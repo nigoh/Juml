@@ -843,7 +843,7 @@ final class SeqSketchCanvas extends JPanel {
             for (boolean fromEnd : new boolean[]{true, false}) {
                 Point pt = endpointPoint(xs, m, fromEnd);
                 boolean dragging = m == endpointDrag.item() && fromEnd == endpointDrag.leftEnd();
-                int half = (dragging ? HANDLE_SIZE + 2 : HANDLE_SIZE) / 2;
+                int half = EndpointHitThreshold.handleSizeModel(dragging ? HANDLE_SIZE + 2 : HANDLE_SIZE, view.zoom()) / 2;
                 g2.fillRect(pt.x - half, pt.y - half, half * 2, half * 2);
             }
         }
@@ -863,7 +863,7 @@ final class SeqSketchCanvas extends JPanel {
                 10f, new float[]{4f, 3f}, 0f));
         g2.drawLine(fixed.x, fixed.y, cursor.x, cursor.y);
         g2.setStroke(old);
-        int half = HANDLE_SIZE / 2 + 1;
+        int half = EndpointHitThreshold.handleSizeModel(HANDLE_SIZE, view.zoom()) / 2 + 1;
         g2.fillRect(cursor.x - half, cursor.y - half, half * 2, half * 2);
     }
 

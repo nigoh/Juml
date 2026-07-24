@@ -378,4 +378,70 @@ public class DeploySketchCodecTest {
         assertFalse("PlantUML が構文エラーを報告した:\n" + puml, svg.contains("Syntax Error"));
         assertTrue("SVG が生成されるはず", svg.contains("<svg"));
     }
+
+    // --- bug-hunt round7 #1/#2: ダイアログで入力可能な任意のラベルで toPuml→parse が
+    // 固定点になり、データ消失もロックも起きないはず -----------------------------------
+
+    /**
+     * ノードの表示名 (DeploySketchDialogs.editNode の labelField から自由入力できる) に
+     * {@code "} が含まれても、往復不能にならないはず。修正前は appendNodes がラベルを
+     * エスケープせず {@code node "App "Prod"" as id} のような壊れた引用符を生成し、
+     * 再 parse が宣言をマッチできず (未対応→編集ロック) ノードごと消失していた。
+     */
+    @Test
+    public void roundTrip_nodeLabelWithQuote_reachesFixedPointAndRendersValidSvg()
+            throws IOException {
+        DeploySketchModel model = new DeploySketchModel();
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "id1", "App \"Prod\"", 50, 50));
+        String gen1 = DeploySketchCodec.toPuml(model);
+
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(gen1);
+        assertTrue("ラベルに \" を含んでも対応構文のはず: " + r.unsupportedLines,
+                r.isFullySupported());
+        assertEquals("ノードが消失せず残るはず", 1, r.model.getNodes().size());
+        assertEquals("App \"Prod\"", r.model.findNode("id1").getLabel());
+
+        String gen2 = DeploySketchCodec.toPuml(r.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PlantUmlRenderer.setRendererImplForTest(null);
+        PlantUmlRenderer.renderSvg(gen1, out);
+        String svg = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        assertFalse("PlantUML が構文エラーを報告した:\n" + gen1, svg.contains("Syntax Error"));
+        assertTrue("SVG が生成されるはず", svg.contains("<svg"));
+    }
+
+    /**
+     * リンクの表示名 (DeploySketchDialogs.editLink の labelField から自由入力できる) が
+     * 開き波括弧 1 文字で終わっても、往復不能にならないはず。修正前は toPuml が生成した
+     * {@code a --> b : calls} の行末に開き波括弧が付くと「行末 = ブロック開始」と誤認され、
+     * リンクと後続の {@code '@pos} 行がまるごと未対応ブロックへ飲み込まれ消失していた。
+     */
+    @Test
+    public void roundTrip_linkLabelEndingWithBrace_reachesFixedPointAndRendersValidSvg()
+            throws IOException {
+        DeploySketchModel model = new DeploySketchModel();
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "a", null, 50, 50));
+        model.getNodes().add(new DeployNode(DeployNode.Kind.NODE, "b", null, 250, 50));
+        model.getLinks().add(new DeployLink("a", DeployLink.Kind.ARROW, "b", "calls {"));
+        String gen1 = DeploySketchCodec.toPuml(model);
+
+        DeploySketchCodec.ParseResult r = DeploySketchCodec.parse(gen1);
+        assertTrue("ラベル末尾が { のリンクでも対応構文のはず: " + r.unsupportedLines,
+                r.isFullySupported());
+        assertEquals("ノードが消失せず残るはず", 2, r.model.getNodes().size());
+        assertEquals("リンクが消失せず残るはず", 1, r.model.getLinks().size());
+        assertEquals("calls {", r.model.getLinks().get(0).getLabel());
+
+        String gen2 = DeploySketchCodec.toPuml(r.model);
+        assertEquals("2 回目以降の再生成は固定点になるはず", gen1, gen2);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PlantUmlRenderer.setRendererImplForTest(null);
+        PlantUmlRenderer.renderSvg(gen1, out);
+        String svg = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        assertFalse("PlantUML が構文エラーを報告した:\n" + gen1, svg.contains("Syntax Error"));
+        assertTrue("SVG が生成されるはず", svg.contains("<svg"));
+    }
 }

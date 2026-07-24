@@ -496,11 +496,16 @@ final class DeploySketchCanvas extends JPanel {
                     RenderingHints.VALUE_ANTIALIAS_ON);
             view.applyTransform(g2);
             Map<DeployNode, Rectangle> layout = currentLayout();
-            for (DeployLink l : model.getLinks()) {
-                paintLink(g2, l, layout);
-            }
+            // ノード (入れ子コンテナの不透明な枠塗りを含む) を先に描き、リンクは後から重ねる。
+            // 逆順だと、入れ子子ノードへ繋がるリンク線がコンテナ枠の不透明塗りに隠れてしまう
+            // (paintContainerFrame の fillRect が全域を覆うため。bug-hunt round7 #3)。
+            // edgePoint は矩形の縁までしか線を伸ばさないため、非入れ子ノード同士のリンクの
+            // 見た目はこの並び替えでも変わらない。
             for (DeployNode n : model.getNodes()) {
                 paintNodeTree(g2, n, layout);
+            }
+            for (DeployLink l : model.getLinks()) {
+                paintLink(g2, l, layout);
             }
             if (editable && linkMode == null) {
                 // 選択/移動モードのみ端点ハンドルを見せる (リンク作成モード中は邪魔になる)。
@@ -549,7 +554,7 @@ final class DeploySketchCanvas extends JPanel {
     }
 
     private void drawHandle(Graphics2D g2, Point p) {
-        int s = DeploySketchLinkHandles.HANDLE_SIZE;
+        int s = EndpointHitThreshold.handleSizeModel(DeploySketchLinkHandles.HANDLE_SIZE, view.zoom());
         g2.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     }
 

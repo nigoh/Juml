@@ -29,6 +29,22 @@ final class EndpointHitThreshold {
         return baseRadiusPx / Math.max(1e-6, zoom);
     }
 
+    /**
+     * ハンドル描画の一辺 (画面上 {@code basePx} 一定) を、指定ズームでのモデル座標長へ変換する
+     * (最低 1 を保証)。
+     *
+     * <p>{@link #modelRadius} と同じ「画面上 px 一定」の意味論を描画側にも適用するための
+     * ヘルパー。修正前は 8 キャンバスすべてがハンドルをモデル座標の固定サイズ (6px 等) で
+     * 描いていたため、既に zoom 倍されている描画用 {@code Graphics2D} 上ではハンドルの見た目が
+     * ズームに比例して拡縮してしまい、ヒット半径 (画面上一定) と食い違っていた
+     * (拡大時は見た目 &gt; 掴める範囲、縮小時はほぼ不可視なのに掴める。bug-hunt round7 #4)。
+     * ここで {@code basePx / zoom} をモデル座標として描けば、zoom 倍後の見た目は
+     * {@code basePx} 一定に戻る。</p>
+     */
+    static int handleSizeModel(int basePx, double zoom) {
+        return Math.max(1, (int) Math.round(basePx / Math.max(1e-6, zoom)));
+    }
+
     /** 点 {@code p} がハンドル {@code handle} から {@code thresholdModel} 以内か。 */
     static boolean within(Point p, Point handle, double thresholdModel) {
         return Math.hypot(p.x - handle.x, p.y - handle.y) <= thresholdModel;

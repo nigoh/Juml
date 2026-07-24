@@ -29,7 +29,12 @@ import java.util.regex.Pattern;
  * {@code '@pos} に保存する。手編集で負の相対座標が指定されても {@link #parse} 時に
  * 0 へクランプし (トップレベルの絶対座標は対象外)、負座標がモデルへ入らないようにする
  * (bug-hunt round6。{@link #applyPositions(List, Map, boolean)} 参照)。往復不能な構文
- * (未知キーワードのブロック等) だけ「未対応」として報告し編集をロックしてテキストを守る。</p>
+ * (未知キーワードのブロック等) だけ「未対応」として報告し編集をロックしてテキストを守る。
+ * ノードの引用符付きラベルに {@code "}/{@code \} が含まれる場合は {@link #escapeLabel}/
+ * {@link #unescapeLabel} で往復させ (bug-hunt round7 #1)、リンクのラベルが {@code {} で
+ * 終わっても関係構文の判定をブロック開始判定より先に行うことで誤ってブロックとして
+ * 飲み込まれないようにする (bug-hunt round7 #2)。どちらも GUI で自由入力できるラベルに
+ * 対して toPuml→parse が固定点になる (データもロックも失わない) ようにする根本修正。</p>
  */
 public final class DeploySketchCodec {
 
@@ -43,11 +48,14 @@ public final class DeploySketchCodec {
 
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
+    /** 引用符付きラベル本体: {@code \"} と {@code \\} のエスケープを許容する
+     * (bug-hunt round7 #1: ラベルに {@code "} を含む場合の往復不能を修正)。 */
+    private static final String QUOTED_LABEL = "\"((?:\\\\.|[^\"\\\\])*)\"";
     private static final Pattern ALIAS = Pattern.compile(
-            "^(" + KW + ")\\s+\"([^\"]*)\"\\s+as\\s+(" + BARE_ID + ")\\s*$");
+            "^(" + KW + ")\\s+" + QUOTED_LABEL + "\\s+as\\s+(" + BARE_ID + ")\\s*$");
     /** 引用符ラベルのみでエイリアス無し ({@code node "Web Server"})。id は合成する。 */
     private static final Pattern ANON_QUOTED = Pattern.compile(
-            "^(" + KW + ")\\s+\"([^\"]*)\"\\s*$");
+            "^(" + KW + ")\\s+" + QUOTED_LABEL + "\\s*$");
     /** 素の宣言。id は {@code .}/{@code -} も許す緩い文字集合で受理し、
      * 厳格な識別子でなければ (例: {@code app.war}) ラベルとして扱い id を合成する。 */
     private static final Pattern DECL_LOOSE = Pattern.compile(
@@ -166,6 +174,14 @@ public final class DeploySketchCodec {
             ctx.unsupported.add(line);
             return;
         }
+        // リンク行はラベルが (末尾の) "{" で終わっても入れ子ブロック開始ではないため、
+        // ブロック開始判定より先に行全体で関係構文を試す (bug-hunt round7 #2:
+        // ラベル末尾が "{" のリンクが未対応ブロックとして丸ごと未解決になっていた)。
+        Matcher rel = RELATION.matcher(line);
+        if (rel.matches()) {
+            parseRelation(ctx, rel);
+            return;
+        }
         boolean opensBlock = line.endsWith("{");
         String head = opensBlock ? line.substring(0, line.length() - 1).trim() : line;
         DeployNode parent = ctx.containerStack.peek();
@@ -176,13 +192,6 @@ public final class DeploySketchCodec {
                 ctx.containerStack.push(declared);
             }
             return;
-        }
-        if (!opensBlock) {
-            Matcher rel = RELATION.matcher(line);
-            if (rel.matches()) {
-                parseRelation(ctx, rel);
-                return;
-            }
         }
         // 未知のキーワード/構文は往復できないため編集をロックする。ブロックを開いていれば
         // 対応する閉じ括弧まで丸ごと未対応として保全する。
@@ -216,7 +225,7 @@ public final class DeploySketchCodec {
         Matcher alias = ALIAS.matcher(head);
         if (alias.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(alias.group(1));
-            String label = alias.group(2);
+            String label = unescapeLabel(alias.group(2));
             String id = alias.group(3);
             DeployNode n = declareNode(ctx.model, kind, id, label, parent);
             ctx.labelToId.put(label, id);
@@ -225,7 +234,7 @@ public final class DeploySketchCodec {
         Matcher anon = ANON_QUOTED.matcher(head);
         if (anon.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(anon.group(1));
-            return declareAnon(ctx, kind, anon.group(2), parent);
+            return declareAnon(ctx, kind, unescapeLabel(anon.group(2)), parent);
         }
         Matcher decl = DECL_LOOSE.matcher(head);
         if (decl.matches()) {
@@ -298,6 +307,38 @@ public final class DeploySketchCodec {
             s = "N" + s;
         }
         return s;
+    }
+
+    /**
+     * 引用符付きラベルとして書き出すため {@code \} と {@code "} をバックスラッシュで
+     * エスケープする (bug-hunt round7 #1)。{@code "} を無変換で埋め込むと
+     * {@code node "App "Prod"" as id} のように引用符の対応が崩れ、{@link #parse}
+     * 側が宣言をマッチできず (未対応→編集ロック) ノードごと消失していた。
+     */
+    private static String escapeLabel(String label) {
+        StringBuilder out = new StringBuilder(label.length());
+        for (int i = 0; i < label.length(); i++) {
+            char c = label.charAt(i);
+            if (c == '\\' || c == '"') {
+                out.append('\\');
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    /** {@link #escapeLabel} の逆変換 ({@link #QUOTED_LABEL} が捕捉した本体に適用する)。 */
+    private static String unescapeLabel(String escaped) {
+        StringBuilder out = new StringBuilder(escaped.length());
+        for (int i = 0; i < escaped.length(); i++) {
+            char c = escaped.charAt(i);
+            if (c == '\\' && i + 1 < escaped.length()) {
+                i++;
+                c = escaped.charAt(i);
+            }
+            out.append(c);
+        }
+        return out.toString();
     }
 
     private static Integer parseIntSafe(String s) {
@@ -389,7 +430,7 @@ public final class DeploySketchCodec {
             boolean hasLabel = n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId());
             if (hasLabel) {
-                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
+                sb.append('"').append(escapeLabel(n.getLabel())).append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());
             }
