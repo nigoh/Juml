@@ -17,6 +17,8 @@ import javax.swing.MenuSelectionManager;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.GraphicsEnvironment;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
@@ -101,6 +103,39 @@ public class DeploySketchCanvasAddChildToLeafTest {
         assertNotNull("再パース後も Leaf が見つかるはず", reparsedLeaf);
         assertTrue("再パース後もコンテナとして復元されるはず", reparsedLeaf.isContainer());
         assertEquals(1, reparsedLeaf.getChildren().size());
+    }
+
+    @Test
+    public void addChildNode_onLeafNode_atClickPoint_placesChildAtThatPointNotOffset() {
+        // bug-hunt round9 論点1/2 の回帰テスト: 葉ノードに初めて子を追加する際、葉は
+        // computeContentOrigins に載らない (コンテナだけが原点を持つ) ため、追加「前」に
+        // 逆算する旧実装では原点が (0,0) となり、絶対クリック座標がそのまま相対座標として
+        // 入って初回の子が大きくずれていた (round8 で葉への子追加を許した際の回帰)。
+        AtomicInteger edits = new AtomicInteger();
+        DeploySketchCanvas canvas =
+                GuiActionRunner.execute(() -> new DeploySketchCanvas(noopListener(edits)));
+        DeploySketchModel model = new DeploySketchModel();
+        DeployNode leaf = new DeployNode(DeployNode.Kind.NODE, "Leaf", null, 40, 40);
+        model.getNodes().add(leaf);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, true, List.of());
+            canvas.setSize(600, 500);
+            // グリッド吸着は結果座標を丸めるため、原点計算そのものの検証に絞って無効化する。
+            canvas.setSnapToGrid(false);
+        });
+
+        // 葉の論理 content 原点 = (40 + CONTAINER_PAD(14), 40 + NODE_H(52)) = (54, 92)。
+        // そこから (100,100) 離れた絶対位置をクリックしたことを模す。
+        Point at = new Point(154, 192);
+        GuiActionRunner.execute(() -> canvas.addChildNode(DeployNode.Kind.ARTIFACT, leaf, at));
+
+        assertEquals("葉がコンテナ化し子が 1 個増えるはず", 1, leaf.getChildren().size());
+        DeployNode child = leaf.getChildren().get(0);
+        Rectangle childRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(child));
+        assertEquals("葉→コンテナ化後もクリック位置どおりに子が置かれるはず (x)", at.x, childRect.x);
+        assertEquals("葉→コンテナ化後もクリック位置どおりに子が置かれるはず (y)", at.y, childRect.y);
+        Rectangle parentRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(leaf));
+        assertTrue("子はコンテナ枠内に収まるはず", parentRect.contains(childRect));
     }
 
     // --- (b) 右クリックメニューは葉ノードでも「ここに子ノードを追加」を出す (公開挙動で確認) --

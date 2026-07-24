@@ -223,13 +223,19 @@ final class DeploySketchCanvas extends JPanel {
         if (!editable || parent == null) {
             return;
         }
-        // 論理 content 原点 (枠拡張の影響を受けない) を基準に相対座標へ変換する
-        // (bug-hunt round5 論点1: containerRect ベースの逆算だと負座標の兄弟がいるとずれる)。
-        Point origin = currentContentOrigins().getOrDefault(parent, new Point(0, 0));
-        int relX = at != null ? Math.max(0, at.x - origin.x) : 10;
-        int relY = at != null ? Math.max(0, at.y - origin.y) : 10;
-        DeployNode child = new DeployNode(kind, model.uniqueId(baseNameFor(kind)), null, relX, relY);
+        // 先に既定位置で子を追加し、親をコンテナ化させてから content 原点を確定する。
+        // 葉ノードは computeContentOrigins に載らない (コンテナだけが原点を持つ) ため、
+        // 追加「前」に逆算すると親が葉のとき原点が (0,0) になり、絶対クリック座標が
+        // そのまま相対座標として入って初回の子が大きくずれる (bug-hunt round9 論点1/2:
+        // round8 で葉ノードにも子追加を許した際の回帰)。
+        DeployNode child = new DeployNode(kind, model.uniqueId(baseNameFor(kind)), null, 10, 10);
         model.addChild(parent, child);
+        if (at != null) {
+            // 親がコンテナになった後の論理 content 原点 (枠拡張の影響を受けない、子配置の
+            // 唯一の基準。bug-hunt round5 論点1) を基準に相対座標へ変換する。
+            Point origin = currentContentOrigins().getOrDefault(parent, new Point(0, 0));
+            child.moveTo(Math.max(0, at.x - origin.x), Math.max(0, at.y - origin.y));
+        }
         listener.modelEdited();
         revalidate();
         repaint();
@@ -546,9 +552,16 @@ final class DeploySketchCanvas extends JPanel {
         }
         Point cursor = endpointDrag.cursor();
         if (endpointDrag.isActive() && cursor != null) {
-            Point[] eps = DeploySketchLinkHandles.endpointsOf(model, endpointDrag.item(), layout);
-            if (eps != null) {
-                Point anchor = endpointDrag.leftEnd() ? eps[1] : eps[0];
+            // 固定側 (掴んでいない端点) のノードの縁からカーソルへラバーバンドを引く。
+            // 他 7 キャンバスと同様、固定端はカーソル方向へ都度再計算する。固定した相手
+            // (元の接続先) 向きの静的端点を使うと、離れた位置へドラッグしたとき線が固定端の
+            // ノード縁からずれて浮く (bug-hunt round9 論点4: Deploy だけ再計算が抜けていた)。
+            DeployLink dragging = endpointDrag.item();
+            DeployNode fixed = model.findNode(
+                    endpointDrag.leftEnd() ? dragging.getTo() : dragging.getFrom());
+            Rectangle fr = fixed != null ? layout.get(fixed) : null;
+            if (fr != null) {
+                Point anchor = DeploySketchLinkHandles.edgePoint(fr, cursor);
                 g2.drawLine(anchor.x, anchor.y, cursor.x, cursor.y);
             }
         }
@@ -580,12 +593,13 @@ final class DeploySketchCanvas extends JPanel {
     private void paintContainerFrame(Graphics2D g2, DeployNode n, Rectangle r) {
         boolean sel = n == selected || n == linkSource;
         Color line = sel ? new Color(0x1565C0) : new Color(0x555555);
-        g2.setColor(new Color(0xF3F6FA));
-        g2.fillRect(r.x, r.y, r.width, r.height);
         g2.setStroke(new BasicStroke(sel ? 2f : 1f));
-        g2.setColor(line);
-        g2.drawRect(r.x, r.y, r.width, r.height);
+        // 種別ごとの外形でコンテナ枠を描く。database/cloud/artifact などが子を持つと
+        // ただの矩形に潰れて種別 (円柱/雲/成果物) が消えていた (bug-hunt round9 論点5)。
+        // 子ノードは呼び出し側がこの外形の内側に別途描く。
+        paintShape(g2, n.getKind(), r, line);
         Dimension title = titleSize(n);
+        g2.setColor(line);
         g2.drawLine(r.x, r.y + title.height, r.x + r.width, r.y + title.height);
         g2.setStroke(new BasicStroke(1f));
         drawTitleText(g2, n, r, title.height);

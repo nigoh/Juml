@@ -152,6 +152,40 @@ public class DeploySketchCanvasSmokeTest {
         assertTrue("外側ノードはコンテナ扱いのはず", outer.isContainer());
     }
 
+    /**
+     * bug-hunt round9 論点5: 子を持つコンテナも種別ごとの外形で描く。修正前はコンテナは
+     * 種別に関わらず常に矩形で塗られ、database/cloud/artifact が子を持つと円柱/雲/成果物の
+     * 外形が失われていた。ここでは外形をコーナー画素で判定する: database コンテナは円柱の
+     * 曲線で左上コーナーが「切り取られ」背景のままになる一方、rectangle コンテナは矩形塗りで
+     * コーナーまで塗られる (ステレオタイプ文字はコーナーに無いため、種別間の文字差に依らず
+     * 外形だけを切り分けられる)。
+     */
+    @Test
+    public void containerWithChildren_usesKindShape_databaseCornerIsCutButRectangleIsFilled() {
+        int[] dbCornerAndBg = containerCornerAndBackground(DeployNode.Kind.DATABASE);
+        int[] rectCornerAndBg = containerCornerAndBackground(DeployNode.Kind.RECTANGLE);
+        assertEquals("database コンテナの左上コーナーは円柱の曲線で切り取られ背景のままのはず",
+                dbCornerAndBg[1], dbCornerAndBg[0]);
+        assertTrue("rectangle コンテナの左上コーナーは矩形塗りで背景と異なるはず",
+                rectCornerAndBg[0] != rectCornerAndBg[1]);
+    }
+
+    /** {@code kind} の子持ちコンテナを描き、[コンテナ左上コーナー画素, 背景画素] を返す。 */
+    private static int[] containerCornerAndBackground(DeployNode.Kind kind) {
+        DeploySketchCanvas canvas = newCanvas();
+        DeploySketchModel model = new DeploySketchModel();
+        DeployNode outer = new DeployNode(kind, "Outer", null, 80, 80);
+        DeployNode child = new DeployNode(DeployNode.Kind.COMPONENT, "c1", null, 10, 10);
+        model.getNodes().add(outer);
+        model.addChild(outer, child);
+        GuiActionRunner.execute(() -> canvas.setModel(model, true, Collections.emptyList()));
+        BufferedImage img = paint(canvas);
+        java.awt.Rectangle r = GuiActionRunner.execute(() -> canvas.layoutForTest().get(outer));
+        int corner = img.getRGB(r.x + 2, r.y + 2);
+        int background = img.getRGB(3, 3); // ノードのない左上隅 (最初のノードは x,y>=80)。
+        return new int[]{corner, background};
+    }
+
     /** コンテナの子ノードをドラッグすると、親内側原点からの相対座標として更新されること。 */
     @Test
     public void dragChildNode_movesRelativeToParentOrigin() {

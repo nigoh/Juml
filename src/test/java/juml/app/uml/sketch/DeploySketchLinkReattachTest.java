@@ -11,9 +11,11 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.awt.GraphicsEnvironment;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -148,6 +150,39 @@ public class DeploySketchLinkReattachTest {
         assertEquals("リンク作成モード中は端点付け替えが起きないはず", "B", link.getTo());
         assertFalse("リンクは 1 本のまま増えないはず (単発クリックなので未確定)",
                 canvas.model().getLinks().size() > 1);
+    }
+
+    /**
+     * bug-hunt round9 論点4: 端点ドラッグ中のラバーバンドは、固定端 (掴んでいない側) の
+     * ノード縁からカーソルへ「都度再計算」して描く (他 7 キャンバスと同じ挙動)。掴んだ端点を
+     * 固定端から大きく離れた位置へドラッグしても、固定側ノードを解決して {@code edgePoint} を
+     * 通り、描画が例外を投げないことを固定する (回帰: 固定相手向きの静的端点だと線が浮く/
+     * 固定側が解決できないと NPE)。
+     */
+    @Test
+    public void paintDuringEndpointDrag_recomputesGhostAnchorWithoutException() {
+        Rectangle bRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(b));
+        int handleX = bRect.x;
+        int handleY = bRect.y + bRect.height / 2;
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                handleX, handleY, MouseEvent.BUTTON1);
+        // カーソルを固定端 (from=A) から大きく離れた位置へ動かす。
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, 540, 470, 0);
+        assertEquals("端点ドラッグ中のはず", link,
+                GuiActionRunner.execute(canvas::endpointDragLinkForTest));
+
+        BufferedImage img = new BufferedImage(600, 500, BufferedImage.TYPE_INT_ARGB);
+        GuiActionRunner.execute(() -> {
+            Graphics2D g2 = img.createGraphics();
+            try {
+                canvas.setSize(600, 500);
+                canvas.paintComponent(g2);
+            } finally {
+                g2.dispose();
+            }
+        });
+        assertEquals("描画してもドラッグ状態は維持されるはず", link,
+                GuiActionRunner.execute(canvas::endpointDragLinkForTest));
     }
 
     /** モード切替で進行中の端点ドラッグも安全に中断する (他 6 キャンバスと同じ spec #6。

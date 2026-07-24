@@ -111,8 +111,7 @@ final class SeqSketchCanvas extends JPanel {
             }
 
             @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2 || !editable || messageMode != null
-                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+                if (e.getClickCount() != 2 || !editable || messageMode != null || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selectedItem != null) {
@@ -356,9 +355,8 @@ final class SeqSketchCanvas extends JPanel {
     private EndpointHit endpointAt(Point p) {
         int[] xs = centers();
         double threshold = EndpointHitThreshold.modelRadius(HANDLE_R, view.zoom());
-        EndpointHitThreshold.Pick<SeqItem> pick = EndpointHitThreshold.nearestPair(
-                model.getItems(), m -> m.getKind() == SeqItem.Kind.MESSAGE,
-                (m, fromEnd) -> endpointPoint(xs, m, fromEnd), p, threshold);
+        EndpointHitThreshold.Pick<SeqItem> pick = EndpointHitThreshold.nearestPair(model.getItems(),
+                m -> m.getKind() == SeqItem.Kind.MESSAGE, (m, fromEnd) -> endpointPoint(xs, m, fromEnd), p, threshold);
         return pick == null ? null : new EndpointHit(pick.item(), pick.first());
     }
 
@@ -478,12 +476,15 @@ final class SeqSketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
-        leftDragArmed = false;
-        // 中ボタン (パン) のリリースでは確定しない: 端点ドラッグ中に中ボタンを押して離すと
-        // ボタン種別を見ずに確定してしまっていた (bug-hunt round5 論点3、全8キャンバス共通)。
+        // 端点ドラッグ中の左リリースだけ繋ぎ替えを確定する (round5 論点3: 中ボタンでは確定しない)。
         if (endpointDrag.isActive() && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+            leftDragArmed = false;
             finishEndpointDrag(view.toModel(e.getPoint()));
             return;
+        }
+        // 端点ドラッグ中は leftDragArmed を落とさない (round9 論点3: 落とすと handleDrag が早期 return しラバーバンドが凍る)。
+        if (!endpointDrag.isActive()) {
+            leftDragArmed = false;
         }
         if (e.isPopupTrigger()) {
             selectAt(view.toModel(e.getPoint()));
@@ -859,8 +860,7 @@ final class SeqSketchCanvas extends JPanel {
         Point fixed = endpointPoint(xs, endpointDrag.item(), !endpointDrag.leftEnd());
         Stroke old = g2.getStroke();
         g2.setColor(HANDLE_COLOR);
-        g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-                10f, new float[]{4f, 3f}, 0f));
+        g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 3f}, 0f));
         g2.drawLine(fixed.x, fixed.y, cursor.x, cursor.y);
         g2.setStroke(old);
         int half = EndpointHitThreshold.handleSizeModel(HANDLE_SIZE, view.zoom()) / 2 + 1;

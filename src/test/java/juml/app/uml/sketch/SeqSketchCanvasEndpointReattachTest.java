@@ -253,6 +253,35 @@ public class SeqSketchCanvasEndpointReattachTest {
         assertFalse("to 側 (fromEnd=false) が選ばれ、向きが反転しないはず", hit.fromEnd);
     }
 
+    // --- bug-hunt round9 論点3: 端点ドラッグ中の中ボタン操作で確定/凍結しない ----------------
+
+    /**
+     * 端点ドラッグ中に中ボタンを押し離しても付替えが確定せず、以降の左ドラッグ→左リリースで
+     * 正しく確定する。round9 論点3 の修正は handleRelease の順序を組み替え、端点ドラッグ中は
+     * 中ボタン等のリリースで {@code leftDragArmed} を落とさない (落とすと以降の handleDrag が
+     * 早期 return しラバーバンドが凍る) ようにした。ここではその組み替えで「中ボタンでは確定
+     * しない (round5 論点3)」と「中ボタンを挟んでも左リリースで正しく付替わる」の両不変条件が
+     * 保たれることを固定する (中ボタンドラッグ中の凍結自体は描画のみで、最終付替え結果は不変)。
+     */
+    @Test
+    public void middleButtonReleaseDuringEndpointDrag_doesNotFinishAndLeftReleaseStillReattaches() {
+        // to 端点 (B) を掴む。
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON1);
+        // 端点ドラッグ中に中ボタンを押し離す (パンの誤操作)。ここで確定してはならない。
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON2_DOWN_MASK,
+                CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON2);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON2);
+        assertEquals("中ボタンのリリースで付替えが確定してはならない", "B", message.getTo());
+        assertEquals("中ボタンのリリースで modelEdited が飛んではならない", 0, edits.get());
+        // 中ボタンを挟んでもドラッグは生き続け、左ドラッグ→左リリースで C へ確定する。
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, CENTER_C, FIRST_ROW_Y, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, CENTER_C, FIRST_ROW_Y, MouseEvent.BUTTON1);
+        assertEquals("中ボタン操作を挟んでも左リリースで C へ付替わるはず", "C", message.getTo());
+        assertEquals("from 側は変わらないはず", "A", message.getFrom());
+        assertEquals("付替えは 1 回だけ確定するはず", 1, edits.get());
+    }
+
     // --- (c) ハンドル込み paint が例外を投げない ---------------------------------------
 
     @Test
