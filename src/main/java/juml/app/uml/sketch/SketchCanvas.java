@@ -108,8 +108,7 @@ final class SketchCanvas extends JPanel {
             @Override public void mouseClicked(MouseEvent e) {
                 // 関係追加モード中はクリックで端点を置く操作なので、ダブルクリック編集は無効化する
                 // (旧 selected の編集ダイアログが不意に開いて関係描画が中断するのを防ぐ)。
-                if (e.getClickCount() != 2 || !editable || relationMode != null
-                        || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+                if (e.getClickCount() != 2 || !editable || relationMode != null || !javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
                 if (selected != null) {
@@ -133,8 +132,7 @@ final class SketchCanvas extends JPanel {
                     return;
                 }
                 // 関係追加モード中の Delete は無効 (旧 selected クラスの破壊的削除を防ぐ。中断は Esc)。
-                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null
-                        && relationMode == null) {
+                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null && relationMode == null) {
                     model.removeClass(selected);
                     selected = null;
                     listener.modelEdited();
@@ -349,6 +347,10 @@ final class SketchCanvas extends JPanel {
             menu.add(edit);
             JMenuItem del = new JMenuItem(Messages.get("sketch.menu.delete"));
             del.addActionListener(a -> {
+                // round10: 始点を消したら pending source も無効化 (宙吊り関係/幽霊クラス防止)。
+                if (hit == relationSource) {
+                    relationSource = null;
+                }
                 model.removeClass(hit);
                 selected = null;
                 listener.modelEdited();
@@ -525,8 +527,7 @@ final class SketchCanvas extends JPanel {
             w = Math.max(w, fm.stringWidth(s) + 2 * PAD_X);
         }
         w = Math.max(w, MIN_W);
-        int h = TITLE_H + 4
-                + Math.max(1, c.getFields().size()) * LINE_H
+        int h = TITLE_H + 4 + Math.max(1, c.getFields().size()) * LINE_H
                 + Math.max(1, c.getMethods().size()) * LINE_H + 8;
         return new Rectangle(c.getX(), c.getY(), w, h);
     }
@@ -664,8 +665,7 @@ final class SketchCanvas extends JPanel {
         Point pl = edgePoint(rl, center(rr));
         Point pr = edgePoint(rr, center(rl));
         // PlantUML 表記の意味に合わせ、線は right(子/利用側) → left(親/対象) へ向かう。
-        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS
-                || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
+        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
         Stroke old = g2.getStroke();
         g2.setColor(new Color(0x37474F));
         g2.setStroke(dashed
@@ -705,8 +705,7 @@ final class SketchCanvas extends JPanel {
         Point[] anchors = selfRelationAnchors(r); // [from(ループの右端), ret(右辺へ戻る=矢印先)]
         Point from = anchors[0];
         Point ret = anchors[1];
-        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS
-                || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
+        boolean dashed = rel.getKind() == SketchRelation.Kind.IMPLEMENTS || rel.getKind() == SketchRelation.Kind.DEPENDENCY;
         Stroke old = g2.getStroke();
         g2.setColor(new Color(0x37474F));
         g2.setStroke(dashed

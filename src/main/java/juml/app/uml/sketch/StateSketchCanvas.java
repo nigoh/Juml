@@ -326,6 +326,10 @@ final class StateSketchCanvas extends JPanel {
                 repaint();
             });
             addItem(menu, "sketch.menu.delete", () -> {
+                // round10: 始点を消したら pending source も無効化 (宙吊り遷移/幽霊状態防止)。
+                if (hit == transitionSource) {
+                    transitionSource = null;
+                }
                 model.removeState(hit);
                 selected = null;
                 listener.modelEdited();

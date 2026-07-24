@@ -353,6 +353,10 @@ final class ComponentSketchCanvas extends JPanel {
         if (hit != null) {
             addItem(menu, "sketch.menu.edit", () -> listener.editNodeRequested(hit));
             addItem(menu, "sketch.menu.delete", () -> {
+                // round10: 始点を消したら pending source も無効化 (宙吊りリレーション/幽霊ノード防止)。
+                if (hit == relationSource) {
+                    relationSource = null;
+                }
                 model.removeNode(hit);
                 selected = null;
                 listener.modelEdited();

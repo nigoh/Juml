@@ -335,6 +335,10 @@ final class ObjectSketchCanvas extends JPanel {
         if (hit != null) {
             addItem(menu, "sketch.obj.menu.edit", () -> listener.editObjectRequested(hit));
             addItem(menu, "sketch.obj.menu.delete", () -> {
+                // round10: 始点を消したら pending source も無効化 (宙吊りリンク/幽霊ノード防止)。
+                if (hit == relationSource) {
+                    relationSource = null;
+                }
                 model.removeObject(hit);
                 selected = null;
                 listener.modelEdited();

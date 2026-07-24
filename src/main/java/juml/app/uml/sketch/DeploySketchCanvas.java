@@ -407,6 +407,15 @@ final class DeploySketchCanvas extends JPanel {
         if (hit != null) {
             addItem(menu, "sketch.depl.menu.edit", () -> listener.editNodeRequested(hit));
             addItem(menu, "sketch.depl.menu.delete", () -> {
+                // round10: 削除される部分木 (コンテナなら子孫も消える) に、リンク追加モードで
+                // 確定済みの始点が含まれるなら pending source を無効化する。放置すると削除済み
+                // ノードを指し続け、次クリックで宙吊りリンク/幽霊ノードを生む (8キャンバス横断)。
+                for (DeployNode n = linkSource; n != null; n = n.getParent()) {
+                    if (n == hit) {
+                        linkSource = null;
+                        break;
+                    }
+                }
                 model.removeNode(hit);
                 selected = null;
                 listener.modelEdited();

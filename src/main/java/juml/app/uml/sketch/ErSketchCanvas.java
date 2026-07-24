@@ -369,6 +369,10 @@ final class ErSketchCanvas extends JPanel {
         if (hit != null) {
             addItem(menu, "sketch.er.menu.edit", () -> listener.editEntityRequested(hit));
             addItem(menu, "sketch.er.menu.delete", () -> {
+                // round10: 始点を消したら pending source も無効化 (宙吊りリレーション/幽霊エンティティ防止)。
+                if (hit == relationSource) {
+                    relationSource = null;
+                }
                 model.removeEntity(hit);
                 selected = null;
                 listener.modelEdited();

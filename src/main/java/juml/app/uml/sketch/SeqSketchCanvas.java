@@ -184,6 +184,10 @@ final class SeqSketchCanvas extends JPanel {
             model.getItems().remove(selectedItem);
             selectedItem = null;
         } else if (selectedParticipant != null) {
+            // round10: 始点を消したら pending source も無効化 (宙吊りメッセージ/幽霊参加者防止)。
+            if (selectedParticipant == messageSource) {
+                messageSource = null;
+            }
             model.removeParticipant(selectedParticipant);
             selectedParticipant = null;
         } else {
@@ -449,8 +453,7 @@ final class SeqSketchCanvas extends JPanel {
             messageSource = hit;
         } else {
             // 同じ参加者を 2 回クリックした場合は自己メッセージとして追加する。
-            model.getItems().add(SeqItem.message(
-                    messageSource.getName(), messageMode, hit.getName(), null));
+            model.getItems().add(SeqItem.message(messageSource.getName(), messageMode, hit.getName(), null));
             messageSource = null;
             listener.modelEdited();
             revalidate();
@@ -661,8 +664,7 @@ final class SeqSketchCanvas extends JPanel {
                 SketchBanner.paint(overlay, this, unsupported);
             } else if (messageMode != null) {
                 overlay.setColor(new Color(0x1565C0));
-                overlay.drawString(Messages.get(messageSource == null
-                        ? "sketch.seq.hint.pickSource" : "sketch.seq.hint.pickTarget"), 8, 14);
+                overlay.drawString(Messages.get(messageSource == null ? "sketch.seq.hint.pickSource" : "sketch.seq.hint.pickTarget"), 8, 14);
             }
         } finally {
             overlay.dispose();
@@ -723,8 +725,7 @@ final class SeqSketchCanvas extends JPanel {
             if (m.getKind() == SeqItem.Kind.MESSAGE) {
                 curY = rowYOf(m);
             } else if (m.getKind() == SeqItem.Kind.ACTIVATE) {
-                open.computeIfAbsent(m.getTarget(), k -> new java.util.ArrayDeque<>())
-                        .push(curY);
+                open.computeIfAbsent(m.getTarget(), k -> new java.util.ArrayDeque<>()).push(curY);
             } else {
                 java.util.Deque<Integer> stack = open.get(m.getTarget());
                 if (stack != null && !stack.isEmpty()) {
@@ -752,8 +753,7 @@ final class SeqSketchCanvas extends JPanel {
         g2.setColor(color);
         Stroke old = g2.getStroke();
         g2.setStroke(m.getArrow().dashed()
-                ? new BasicStroke(isSel ? 2f : 1.2f, BasicStroke.CAP_BUTT,
-                        BasicStroke.JOIN_MITER, 10f, new float[]{6f, 5f}, 0f)
+                ? new BasicStroke(isSel ? 2f : 1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{6f, 5f}, 0f)
                 : new BasicStroke(isSel ? 2f : 1.2f));
         int x1 = centerOf(xs, m.getFrom());
         int x2 = centerOf(xs, m.getTo());
