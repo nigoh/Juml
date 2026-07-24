@@ -194,4 +194,34 @@ public class ObjectSketchCanvasEndpointReattachTest {
             }
         });
     }
+
+    // --- ロック状態 (!editable) では端点ドラッグ自体が始まらないはず --------------------
+
+    @Test
+    public void notEditable_endpointHandlePressDoesNotStartDrag() {
+        ObjectSketchCanvas canvas = newCanvas();
+        ObjectSketchModel model = sampleModel();
+        ObjectLink link = model.getLinks().get(0);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, false, Collections.emptyList());
+            canvas.setSize(600, 400);
+        });
+        Point leftAnchor = GuiActionRunner.execute(() -> canvas.endpointAnchorsForTest(link)[0]);
+        ObjectInstance other = model.getObjects().get(2);
+
+        dispatch(canvas, MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                leftAnchor, MouseEvent.BUTTON1);
+        assertNull("!editable では handlePress 冒頭のガード (ObjectSketchCanvas.java:225) で"
+                        + "端点ドラッグが開始しないはず",
+                GuiActionRunner.execute(canvas::dragLinkForTest));
+
+        Point insideOther = new Point(other.getX() + 10, other.getY() + 10);
+        dispatch(canvas, MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, insideOther, 0);
+        dispatch(canvas, MouseEvent.MOUSE_RELEASED, 0, insideOther, MouseEvent.BUTTON1);
+
+        assertEquals("ロック状態ではドラッグ→リリースしても left は変わらないはず",
+                "User", link.getLeft());
+        assertEquals("right も変わらないはず", "Post", link.getRight());
+        assertEquals("ロック状態では modelEdited が飛ばないはず", 0, edits.get());
+    }
 }

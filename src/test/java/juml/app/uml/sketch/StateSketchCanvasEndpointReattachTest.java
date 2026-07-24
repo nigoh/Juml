@@ -205,4 +205,34 @@ public class StateSketchCanvasEndpointReattachTest {
             }
         });
     }
+
+    // --- ロック状態 (!editable) では端点ドラッグ自体が始まらないはず --------------------
+
+    @Test
+    public void notEditable_endpointHandlePressDoesNotStartDrag() {
+        StateSketchCanvas canvas = newCanvas();
+        StateSketchModel model = sampleModel();
+        StateTransition t = model.getTransitions().get(0);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, false, Collections.emptyList());
+            canvas.setSize(600, 400);
+        });
+        Point fromAnchor = GuiActionRunner.execute(() -> canvas.endpointAnchorsForTest(t)[0]);
+        StateNode s3 = model.getStates().get(2);
+
+        dispatch(canvas, MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                fromAnchor, MouseEvent.BUTTON1);
+        assertNull("!editable では handlePress 冒頭のガード (StateSketchCanvas.java:212) で"
+                        + "端点ドラッグが開始しないはず",
+                GuiActionRunner.execute(canvas::dragTransitionForTest));
+
+        Point insideS3 = new Point(s3.getX() + 10, s3.getY() + 10);
+        dispatch(canvas, MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, insideS3, 0);
+        dispatch(canvas, MouseEvent.MOUSE_RELEASED, 0, insideS3, MouseEvent.BUTTON1);
+
+        assertEquals("ロック状態ではドラッグ→リリースしても from は変わらないはず",
+                "S1", t.getFrom());
+        assertEquals("to も変わらないはず", "S2", t.getTo());
+        assertEquals("ロック状態では modelEdited が飛ばないはず", 0, edits.get());
+    }
 }

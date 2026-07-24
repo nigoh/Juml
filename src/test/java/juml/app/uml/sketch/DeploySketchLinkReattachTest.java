@@ -12,6 +12,7 @@ import org.junit.Test;
 
 import java.awt.GraphicsEnvironment;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -211,5 +213,91 @@ public class DeploySketchLinkReattachTest {
 
         assertEquals("中断後の release で to 側は変わらないはず", "B", link.getTo());
         assertEquals("中断後の release で modelEdited は飛ばないはず", 0, edits.get());
+    }
+
+    // --- 入れ子コンテナ内の子ノードへの付替え (既存ケースはトップレベルノード間のみだった穴) ---
+
+    /**
+     * リンク端点を入れ子コンテナ内の子ノード上へ実マウスドラッグすると、子ノードへ付け替わる
+     * ことを検証する ({@link DeploySketchCanvasAddChildToLeafTest} と同じ組み方でコンテナ+子を
+     * 作る)。
+     */
+    @Test
+    public void dragEndpointHandle_ontoChildNodeInsideContainer_reattachesToChild() {
+        // C (トップレベル、CLOUD) を子持ちコンテナ化する。
+        GuiActionRunner.execute(() -> canvas.addChildNode(DeployNode.Kind.ARTIFACT, c, null));
+        DeployNode child = c.getChildren().get(0);
+        edits.set(0);
+
+        Rectangle bRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(b));
+        Rectangle childRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(child));
+        int handleX = bRect.x;
+        int handleY = bRect.y + bRect.height / 2;
+        int targetX = childRect.x + childRect.width / 2;
+        int targetY = childRect.y + childRect.height / 2;
+
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                handleX, handleY, MouseEvent.BUTTON1);
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, targetX, targetY, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, targetX, targetY, MouseEvent.BUTTON1);
+
+        assertEquals("入れ子コンテナ内の子ノードへ付け替わるはず", child.getId(), link.getTo());
+        assertEquals("from 側は変わらないはず", "A", link.getFrom());
+        assertTrue("modelEdited が飛ぶはず", edits.get() >= 1);
+    }
+
+    // --- 自己リンクとの相互変換 (bug-hunt 網羅性の穴: ObjectSketchCanvasSelfLinkEndpointHandleTest /
+    // SketchCanvasSelfRelationEndpointHandleTest と同じ主旨を Deploy でも固定する) -------------
+
+    /** 自己リンク (from==to) の一端を別ノードへドラッグすると通常リンクになる。 */
+    @Test
+    public void dragEndpointOfSelfLink_ontoAnotherNode_becomesNormalLink() {
+        DeployLink selfLink = new DeployLink("A", DeployLink.Kind.ARROW, "A", null);
+        model.getLinks().add(selfLink);
+        edits.set(0);
+
+        Point[] eps = GuiActionRunner.execute(
+                () -> DeploySketchLinkHandles.endpointsOf(model, selfLink, canvas.layoutForTest()));
+        Point toHandle = eps[1]; // to 側 (ループの戻り点)。
+        Rectangle bRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(b));
+        int targetX = bRect.x + bRect.width / 2;
+        int targetY = bRect.y + bRect.height / 2;
+
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                toHandle.x, toHandle.y, MouseEvent.BUTTON1);
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, targetX, targetY, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, targetX, targetY, MouseEvent.BUTTON1);
+
+        assertEquals("to 側が B へ付け替わり通常リンク化するはず", "B", selfLink.getTo());
+        assertEquals("from 側は変わらないはず", "A", selfLink.getFrom());
+        assertEquals("付替えで modelEdited が 1 回飛ぶはず", 1, edits.get());
+    }
+
+    /**
+     * 通常リンクの一端を自ノード (もう一方の端と同じノード) へドラッグすると自己リンクになり、
+     * 変換後も端点ハンドルが両端とも解決できる (行き止まりにならない) ことを検証する。
+     */
+    @Test
+    public void dragEndpointOfNormalLink_ontoOwnOtherEnd_becomesSelfLink() {
+        Rectangle bRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(b));
+        Rectangle aRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(a));
+        int handleX = bRect.x;
+        int handleY = bRect.y + bRect.height / 2;
+        int targetX = aRect.x + aRect.width / 2;
+        int targetY = aRect.y + aRect.height / 2;
+
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                handleX, handleY, MouseEvent.BUTTON1);
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK, targetX, targetY, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, targetX, targetY, MouseEvent.BUTTON1);
+
+        assertEquals("to 側が A (from と同じ) へ付け替わり自己リンク化するはず", "A", link.getTo());
+        assertEquals("from 側は変わらないはず", "A", link.getFrom());
+        assertTrue("付替えで modelEdited が飛ぶはず", edits.get() >= 1);
+
+        Point[] eps = GuiActionRunner.execute(
+                () -> DeploySketchLinkHandles.endpointsOf(model, link, canvas.layoutForTest()));
+        assertNotNull("自己リンク化後もハンドルは非null (掴み直せる) はず", eps);
+        assertEquals("自己リンク化後も両端点が解決できるはず", 2, eps.length);
     }
 }

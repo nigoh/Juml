@@ -302,6 +302,29 @@ public class SeqSketchCanvasEndpointReattachTest {
         paint(canvas);
     }
 
+    // --- ロック状態 (!editable) では端点ドラッグ自体が始まらないはず --------------------
+
+    @Test
+    public void notEditable_endpointHandlePressDoesNotStartDrag() {
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, false, List.of());
+            canvas.setSize(600, 400);
+        });
+
+        // "to" 端点 (B, x=CENTER_B) を C のライフラインへドラッグしようとする。
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                CENTER_B, FIRST_ROW_Y, MouseEvent.BUTTON1);
+        dispatch(MouseEvent.MOUSE_DRAGGED, InputEvent.BUTTON1_DOWN_MASK,
+                CENTER_C, FIRST_ROW_Y, 0);
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, CENTER_C, FIRST_ROW_Y, MouseEvent.BUTTON1);
+
+        assertEquals("!editable では handlePress 冒頭のガード (SeqSketchCanvas.java:397) で"
+                        + "端点ドラッグが開始せず to は変わらないはず",
+                "B", message.getTo());
+        assertEquals("from も変わらないはず", "A", message.getFrom());
+        assertEquals("ロック状態では modelEdited が飛ばないはず", 0, edits.get());
+    }
+
     private static void paint(SeqSketchCanvas canvas) {
         BufferedImage img = new BufferedImage(600, 400, BufferedImage.TYPE_INT_ARGB);
         GuiActionRunner.execute(() -> {

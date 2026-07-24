@@ -112,9 +112,14 @@ public class DeploySketchCanvasNegativeChildOriginTest {
 
     @Test
     public void addChildNode_intoContainerWithNegativeSibling_placesAtPressPointWithoutJump() {
-        // コンテナの論理 content 原点 (14,52) から (100,100) だけ離れた絶対位置をクリックした
-        // ことを模す (負座標の兄弟がいても枠拡張の影響を受けないはず)。
-        Point at = new Point(114, 152);
+        // コンテナの論理 content 原点を、既存の負座標子 (negChild, 相対 (-30,-60)) の絶対矩形
+        // から動的に逆算する (origin = negChildRect - negChild の相対座標)。ハードコードした
+        // 座標だと CONTAINER_PAD/NODE_H 等の定数が変わった際にテストの意図と数値がずれる。
+        // そこから (100,100) だけ離れた絶対位置をクリックしたことを模す (負座標の兄弟がいても
+        // 枠拡張の影響を受けないはず)。
+        Rectangle negChildRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(negChild));
+        Point origin = new Point(negChildRect.x - negChild.getX(), negChildRect.y - negChild.getY());
+        Point at = new Point(origin.x + 100, origin.y + 100);
 
         GuiActionRunner.execute(() -> canvas.addChildNode(DeployNode.Kind.NODE, container, at));
 
