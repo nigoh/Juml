@@ -196,4 +196,35 @@ public class SketchCanvasEndpointReattachTest {
             }
         });
     }
+
+    // --- bug-hunt round3 指摘 H: 縮小ズームでも端点ハンドルが画面上一定 px で掴めるはず -------
+
+    @Test
+    public void zoomedOut_endpointHandleCatchesPressFartherFromAnchorInModelCoords() {
+        SketchCanvas canvas = newCanvas();
+        SketchModel model = sampleModel();
+        SketchRelation rel = model.getRelations().get(0);
+        GuiActionRunner.execute(() -> {
+            canvas.setModel(model, true, Collections.emptyList());
+            canvas.setSize(600, 400);
+        });
+        Point anchor = GuiActionRunner.execute(() -> canvas.endpointAnchorsForTest(rel)[0]);
+        // モデル座標で 20px 離れた press (固定 8px 判定なら外れ、8/0.25=32px 判定なら拾えるはず)。
+        Point farInModel = new Point(anchor.x + 20, anchor.y);
+
+        assertEquals(1.0, (double) GuiActionRunner.execute(canvas::zoomForTest), 1e-9);
+        dispatch(canvas, MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                farInModel, MouseEvent.BUTTON1);
+        assertNull("等倍 (1.0x) では従来どおり 8px 相当を超えるとヒットしないはず",
+                GuiActionRunner.execute(canvas::dragRelationForTest));
+        dispatch(canvas, MouseEvent.MOUSE_RELEASED, 0, farInModel, MouseEvent.BUTTON1);
+
+        GuiActionRunner.execute(() -> canvas.setZoomForTest(0.25));
+        Point pressAtMinZoom = new Point(
+                (int) Math.round(farInModel.x * 0.25), (int) Math.round(farInModel.y * 0.25));
+        dispatch(canvas, MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                pressAtMinZoom, MouseEvent.BUTTON1);
+        assertTrue("0.25x (MIN_ZOOM) では画面上同じ距離でも掴めるはず (bug-hunt round3 H)",
+                GuiActionRunner.execute(() -> canvas.dragRelationForTest() == rel));
+    }
 }

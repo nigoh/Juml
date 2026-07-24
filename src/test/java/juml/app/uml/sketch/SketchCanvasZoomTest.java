@@ -91,4 +91,62 @@ public class SketchCanvasZoomTest {
         GuiActionRunner.execute(() -> canvas.setZoomForTest(99.0));
         assertEquals(SketchViewport.MAX_ZOOM, canvas.zoomForTest(), 1e-9);
     }
+
+    // --- bug-hunt round7 #4: 端点ハンドルの描画サイズは画面 px 一定 (ズームで拡縮しない) ---
+
+    /**
+     * 端点ハンドル (色 0x1565C0) の描画面積を zoom=3.0/1.0/0.25 で比較し、ズームに比例して
+     * 拡縮しない (画面上ほぼ一定) ことを確認する (代表 2 キャンバスの 1 つ。他方は
+     * {@link DeploySketchCanvasSmokeTest#endpointHandleScreenSize_staysApproxConstantAcrossZoom}
+     * )。修正前はモデル座標固定サイズ ({@code HANDLE_SIZE}) のまま既にズームされた
+     * {@code Graphics2D} へ描くため、面積は zoom の 2 乗 (3.0/0.25 で 144 倍) に比例して
+     * 変わってしまっていた。
+     */
+    @Test
+    public void endpointHandleScreenSize_staysApproxConstantAcrossZoom() {
+        SketchCanvas canvas = GuiActionRunner.execute(() -> new SketchCanvas(noopListener()));
+        SketchModel m = new SketchModel();
+        SketchClass a = new SketchClass("A", SketchClass.Kind.CLASS, 40, 60);
+        SketchClass b = new SketchClass("B", SketchClass.Kind.CLASS, 300, 60);
+        m.getClasses().add(a);
+        m.getClasses().add(b);
+        m.getRelations().add(new SketchRelation("A", SketchRelation.Kind.ASSOCIATION, "B", null));
+        GuiActionRunner.execute(() -> canvas.setModel(m, true, List.of()));
+
+        int zoomIn = countHandleColorPixels(canvas, 3.0);
+        int zoom1 = countHandleColorPixels(canvas, 1.0);
+        int zoomOut = countHandleColorPixels(canvas, 0.25);
+
+        assertTrue("拡大・等倍・縮小いずれでもハンドルは描かれるはず",
+                zoomIn > 0 && zoom1 > 0 && zoomOut > 0);
+        double ratio = (double) Math.max(zoomIn, zoomOut) / Math.min(zoomIn, zoomOut);
+        assertTrue("ハンドルの画面上サイズはズームに依らずほぼ一定のはず (拡大/縮小の面積比="
+                + ratio + ")", ratio < 4.0);
+    }
+
+    private static int countHandleColorPixels(SketchCanvas canvas, double zoom) {
+        GuiActionRunner.execute(() -> canvas.setZoomForTest(zoom));
+        int w = 1600;
+        int h = 900;
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        GuiActionRunner.execute(() -> {
+            Graphics2D g2 = img.createGraphics();
+            try {
+                canvas.setSize(w, h);
+                canvas.paintComponent(g2);
+            } finally {
+                g2.dispose();
+            }
+        });
+        int target = 0xFF1565C0;
+        int count = 0;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (img.getRGB(x, y) == target) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
 }

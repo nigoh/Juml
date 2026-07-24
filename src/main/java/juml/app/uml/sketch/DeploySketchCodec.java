@@ -26,8 +26,15 @@ import java.util.regex.Pattern;
  * ({@code -->} / {@code ..>} / {@code --}) ({@code : label} 付き・自己リンク可・
  * 端点はエイリアス/引用符ラベルのどちらでも可)、レイアウト座標コメント
  * ({@code '@pos id x y})。入れ子ノードの座標は親の内側原点からの相対値として
- * {@code '@pos} に保存する。往復不能な構文 (未知キーワードのブロック等) だけ
- * 「未対応」として報告し編集をロックしてテキストを守る。</p>
+ * {@code '@pos} に保存する。手編集で負の相対座標が指定されても {@link #parse} 時に
+ * 0 へクランプし (トップレベルの絶対座標は対象外)、負座標がモデルへ入らないようにする
+ * (bug-hunt round6。{@link #applyPositions(List, Map, boolean)} 参照)。往復不能な構文
+ * (未知キーワードのブロック等) だけ「未対応」として報告し編集をロックしてテキストを守る。
+ * ノードの引用符付きラベルに {@code "}/{@code \} が含まれる場合は {@link #escapeLabel}/
+ * {@link #unescapeLabel} で往復させ (bug-hunt round7 #1)、リンクのラベルが {@code {} で
+ * 終わっても関係構文の判定をブロック開始判定より先に行うことで誤ってブロックとして
+ * 飲み込まれないようにする (bug-hunt round7 #2)。どちらも GUI で自由入力できるラベルに
+ * 対して toPuml→parse が固定点になる (データもロックも失わない) ようにする根本修正。</p>
  */
 public final class DeploySketchCodec {
 
@@ -41,11 +48,14 @@ public final class DeploySketchCodec {
 
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
+    /** 引用符付きラベル本体: {@code \"} と {@code \\} のエスケープを許容する
+     * (bug-hunt round7 #1: ラベルに {@code "} を含む場合の往復不能を修正)。 */
+    private static final String QUOTED_LABEL = "\"((?:\\\\.|[^\"\\\\])*)\"";
     private static final Pattern ALIAS = Pattern.compile(
-            "^(" + KW + ")\\s+\"([^\"]*)\"\\s+as\\s+(" + BARE_ID + ")\\s*$");
+            "^(" + KW + ")\\s+" + QUOTED_LABEL + "\\s+as\\s+(" + BARE_ID + ")\\s*$");
     /** 引用符ラベルのみでエイリアス無し ({@code node "Web Server"})。id は合成する。 */
     private static final Pattern ANON_QUOTED = Pattern.compile(
-            "^(" + KW + ")\\s+\"([^\"]*)\"\\s*$");
+            "^(" + KW + ")\\s+" + QUOTED_LABEL + "\\s*$");
     /** 素の宣言。id は {@code .}/{@code -} も許す緩い文字集合で受理し、
      * 厳格な識別子でなければ (例: {@code app.war}) ラベルとして扱い id を合成する。 */
     private static final Pattern DECL_LOOSE = Pattern.compile(
@@ -83,6 +93,11 @@ public final class DeploySketchCodec {
         }
     }
 
+    /** 未解決のまま保留したリンク 1 本分 (2 パス目でノード宣言確定後に解決する)。 */
+    private record PendingRelation(String fromToken, DeployLink.Kind kind,
+                                    String toToken, String label) {
+    }
+
     /** 解析中の可変状態をまとめた作業用コンテキスト (parse 本体のメソッド長を抑える)。 */
     private static final class ParseCtx {
         final DeploySketchModel model = new DeploySketchModel();
@@ -94,6 +109,13 @@ public final class DeploySketchCodec {
         final Deque<DeployNode> containerStack = new ArrayDeque<>();
         /** 未対応ブロックの中にいるときの残り深さ (0 ならブロック外)。 */
         int unknownBlockDepth;
+        /**
+         * 1 パス目で読んだリンクを保留するキュー。宣言 (ノード/入れ子) より前に
+         * 書かれたリンクが labelToId 未登録のまま解決され、幽霊ノードの二重生成や
+         * 入れ子子ノードのトップレベル残留を招くのを防ぐため、全宣言確定後の
+         * 2 パス目でまとめて解決する。
+         */
+        final List<PendingRelation> pendingRelations = new ArrayList<>();
     }
 
     /** PlantUML テキストを配置図モデルへ解析する。 */
@@ -101,6 +123,12 @@ public final class DeploySketchCodec {
         ParseCtx ctx = new ParseCtx();
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             parseLine(ctx, raw.trim());
+        }
+        // 2 パス目: 全ノード宣言 (入れ子含む) が確定した後にリンク端点を解決する。
+        for (PendingRelation p : ctx.pendingRelations) {
+            String from = resolveEndpoint(ctx, p.fromToken());
+            String to = resolveEndpoint(ctx, p.toToken());
+            ctx.model.getLinks().add(new DeployLink(from, p.kind(), to, p.label()));
         }
         applyPositions(ctx.model.getNodes(), ctx.positions);
         return new ParseResult(ctx.model, ctx.unsupported);
@@ -146,6 +174,14 @@ public final class DeploySketchCodec {
             ctx.unsupported.add(line);
             return;
         }
+        // リンク行はラベルが (末尾の) "{" で終わっても入れ子ブロック開始ではないため、
+        // ブロック開始判定より先に行全体で関係構文を試す (bug-hunt round7 #2:
+        // ラベル末尾が "{" のリンクが未対応ブロックとして丸ごと未解決になっていた)。
+        Matcher rel = RELATION.matcher(line);
+        if (rel.matches()) {
+            parseRelation(ctx, rel);
+            return;
+        }
         boolean opensBlock = line.endsWith("{");
         String head = opensBlock ? line.substring(0, line.length() - 1).trim() : line;
         DeployNode parent = ctx.containerStack.peek();
@@ -156,13 +192,6 @@ public final class DeploySketchCodec {
                 ctx.containerStack.push(declared);
             }
             return;
-        }
-        if (!opensBlock) {
-            Matcher rel = RELATION.matcher(line);
-            if (rel.matches()) {
-                parseRelation(ctx, rel);
-                return;
-            }
         }
         // 未知のキーワード/構文は往復できないため編集をロックする。ブロックを開いていれば
         // 対応する閉じ括弧まで丸ごと未対応として保全する。
@@ -184,9 +213,8 @@ public final class DeploySketchCodec {
 
     private static void parseRelation(ParseCtx ctx, Matcher rel) {
         DeployLink.Kind kind = DeployLink.Kind.fromArrow(rel.group(2));
-        String from = resolveEndpoint(ctx, rel.group(1));
-        String to = resolveEndpoint(ctx, rel.group(3));
-        ctx.model.getLinks().add(new DeployLink(from, kind, to, rel.group(4)));
+        // 端点解決は全ノード宣言が確定してから (2 パス目) 行う。ここでは保留するだけ。
+        ctx.pendingRelations.add(new PendingRelation(rel.group(1), kind, rel.group(3), rel.group(4)));
     }
 
     /**
@@ -197,7 +225,7 @@ public final class DeploySketchCodec {
         Matcher alias = ALIAS.matcher(head);
         if (alias.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(alias.group(1));
-            String label = alias.group(2);
+            String label = unescapeLabel(alias.group(2));
             String id = alias.group(3);
             DeployNode n = declareNode(ctx.model, kind, id, label, parent);
             ctx.labelToId.put(label, id);
@@ -206,7 +234,7 @@ public final class DeploySketchCodec {
         Matcher anon = ANON_QUOTED.matcher(head);
         if (anon.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(anon.group(1));
-            return declareAnon(ctx, kind, anon.group(2), parent);
+            return declareAnon(ctx, kind, unescapeLabel(anon.group(2)), parent);
         }
         Matcher decl = DECL_LOOSE.matcher(head);
         if (decl.matches()) {
@@ -281,6 +309,38 @@ public final class DeploySketchCodec {
         return s;
     }
 
+    /**
+     * 引用符付きラベルとして書き出すため {@code \} と {@code "} をバックスラッシュで
+     * エスケープする (bug-hunt round7 #1)。{@code "} を無変換で埋め込むと
+     * {@code node "App "Prod"" as id} のように引用符の対応が崩れ、{@link #parse}
+     * 側が宣言をマッチできず (未対応→編集ロック) ノードごと消失していた。
+     */
+    private static String escapeLabel(String label) {
+        StringBuilder out = new StringBuilder(label.length());
+        for (int i = 0; i < label.length(); i++) {
+            char c = label.charAt(i);
+            if (c == '\\' || c == '"') {
+                out.append('\\');
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    /** {@link #escapeLabel} の逆変換 ({@link #QUOTED_LABEL} が捕捉した本体に適用する)。 */
+    private static String unescapeLabel(String escaped) {
+        StringBuilder out = new StringBuilder(escaped.length());
+        for (int i = 0; i < escaped.length(); i++) {
+            char c = escaped.charAt(i);
+            if (c == '\\' && i + 1 < escaped.length()) {
+                i++;
+                c = escaped.charAt(i);
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
     private static Integer parseIntSafe(String s) {
         try {
             return Integer.parseInt(s);
@@ -294,17 +354,40 @@ public final class DeploySketchCodec {
      * 格子状に自動配置する。入れ子ノードの座標は親の内側原点からの相対値。
      */
     private static void applyPositions(List<DeployNode> siblings, Map<String, int[]> positions) {
+        applyPositions(siblings, positions, false);
+    }
+
+    /**
+     * {@code clampNonNegative} が true (= {@code siblings} が誰かの子、つまり相対座標) の
+     * ときだけ、明示座標を非負へクランプして適用する。トップレベル (絶対座標) は従来どおり
+     * そのまま反映する。
+     *
+     * <p>入れ子子ノードの相対座標は GUI ドラッグでは {@code Math.max(0, ..)} で常に非負に
+     * 丸められるが、手編集テキストの {@code '@pos child -30 -20} (POS 正規表現 {@code -?\d+}
+     * は負値も受理する) からは負の相対座標が到達しうる。負の相対座標がモデルへ入ると、枠拡張
+     * (旧 minLeft/minTop) と contentOrigin/タイトル描画/子ドラッグの原点計算が食い違い、
+     * 座標ジャンプ・タイトル重なり・往復での誤座標永続化を招く (bug-hunt round5/round6)。
+     * ここで load 時に一度だけ 0 へクランプしてモデルへ確定させることで、以降のレイアウト・
+     * 描画・ドラッグ・再シリアライズはすべて非負の一貫した値だけを見ればよくなり、これらの
+     * バグの発生条件自体が消える (初回ロードで正規化・2 回目以降は固定点、という既存の
+     * 往復流儀に沿う)。</p>
+     */
+    private static void applyPositions(List<DeployNode> siblings, Map<String, int[]> positions,
+                                        boolean clampNonNegative) {
         int auto = 0;
         for (DeployNode n : siblings) {
             int[] p = positions.get(n.getId());
             if (p != null) {
-                n.moveTo(p[0], p[1]);
+                int x = clampNonNegative ? Math.max(0, p[0]) : p[0];
+                int y = clampNonNegative ? Math.max(0, p[1]) : p[1];
+                n.moveTo(x, y);
             } else {
                 n.moveTo(GRID_MARGIN + (auto % GRID_COLS) * GRID_X,
                         GRID_MARGIN + (auto / GRID_COLS) * GRID_Y);
                 auto++;
             }
-            applyPositions(n.getChildren(), positions);
+            // 子は必ず親からの相対座標 (誰の子であっても非負へクランプする)。
+            applyPositions(n.getChildren(), positions, true);
         }
     }
 
@@ -347,7 +430,7 @@ public final class DeploySketchCodec {
             boolean hasLabel = n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId());
             if (hasLabel) {
-                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
+                sb.append('"').append(escapeLabel(n.getLabel())).append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());
             }
