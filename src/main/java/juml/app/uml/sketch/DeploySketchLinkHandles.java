@@ -91,17 +91,26 @@ final class DeploySketchLinkHandles {
         };
     }
 
-    /** {@code p} (絶対座標) の近くにある端点ハンドルを探す (無ければ null)。 */
-    static EndpointHit hitTest(DeploySketchModel model, Map<DeployNode, Rectangle> layout, Point p) {
+    /**
+     * {@code p} (絶対座標) の近くにある端点ハンドルを探す (無ければ null)。
+     *
+     * <p>{@code zoom} で当たり判定半径 ({@link #HANDLE_HIT_RADIUS}, 画面上 px 相当) を
+     * {@link EndpointHitThreshold#modelRadius} によりモデル座標半径へ換算する。他 7
+     * キャンバスと同様、縮小 (最小 {@link SketchViewport#MIN_ZOOM} = 0.25x) してもハンドルが
+     * 画面上ではおよそ一定の大きさで掴めるようにするため (bug-hunt round4 指摘 K)。</p>
+     */
+    static EndpointHit hitTest(DeploySketchModel model, Map<DeployNode, Rectangle> layout,
+                               Point p, double zoom) {
+        double threshold = EndpointHitThreshold.modelRadius(HANDLE_HIT_RADIUS, zoom);
         for (DeployLink link : model.getLinks()) {
             Point[] eps = endpointsOf(model, link, layout);
             if (eps == null) {
                 continue;
             }
-            if (p.distance(eps[0]) <= HANDLE_HIT_RADIUS) {
+            if (p.distance(eps[0]) <= threshold) {
                 return new EndpointHit(link, true);
             }
-            if (p.distance(eps[1]) <= HANDLE_HIT_RADIUS) {
+            if (p.distance(eps[1]) <= threshold) {
                 return new EndpointHit(link, false);
             }
         }

@@ -126,7 +126,7 @@ final class SeqSketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && messageMode == null) {
+                if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && messageMode == null && !endpointDrag.isActive()) { // 端点ドラッグ中は無効 (issue J)
                     deleteSelection();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     if (endpointDrag.isActive()) {

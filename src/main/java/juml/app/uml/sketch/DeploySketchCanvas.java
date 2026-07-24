@@ -171,6 +171,10 @@ final class DeploySketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.linkSource = null;
+        // モデル差替え時に旧モデルのリンクを指した端点ドラッグが残ると、以後の release で
+        // 孤立参照への reattach/modelEdited が起きうる。他 6 キャンバスと同様に必ず中断する
+        // (bug-hunt round4 指摘 L)。
+        this.endpointDrag.cancel();
         revalidate();
         repaint();
     }
@@ -191,6 +195,9 @@ final class DeploySketchCanvas extends JPanel {
         this.linkMode = kind;
         this.linkSource = null;
         this.selected = null;
+        // モード切替で進行中の端点ドラッグも安全に中断する (他 6 キャンバスと同じ spec #6。
+        // bug-hunt round4 で Deploy に欠けていたことが判明)。
+        this.endpointDrag.cancel();
         repaint();
     }
 
@@ -266,7 +273,8 @@ final class DeploySketchCanvas extends JPanel {
             return;
         }
         // 選択/移動モードでは端点ハンドルを優先的に判定する (ノードの縁と重なりうるため)。
-        DeploySketchLinkHandles.EndpointHit eh = DeploySketchLinkHandles.hitTest(model, layout, mp);
+        DeploySketchLinkHandles.EndpointHit eh =
+                DeploySketchLinkHandles.hitTest(model, layout, mp, view.zoom());
         if (eh != null) {
             endpointDrag.start(eh.link(), eh.startEnd(), mp);
             selected = null;

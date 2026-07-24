@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -147,5 +148,33 @@ public class DeploySketchLinkReattachTest {
         assertEquals("リンク作成モード中は端点付け替えが起きないはず", "B", link.getTo());
         assertFalse("リンクは 1 本のまま増えないはず (単発クリックなので未確定)",
                 canvas.model().getLinks().size() > 1);
+    }
+
+    /** モード切替で進行中の端点ドラッグも安全に中断する (他 6 キャンバスと同じ spec #6。
+     * bug-hunt round4 で Deploy の {@code setLinkMode} に欠けていたことが判明)。 */
+    @Test
+    public void switchingToLinkModeDuringDrag_cancelsEndpointDragAndLaterReleaseDoesNotReattach() {
+        Rectangle bRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(b));
+        Rectangle cRect = GuiActionRunner.execute(() -> canvas.layoutForTest().get(c));
+        int handleX = bRect.x;
+        int handleY = bRect.y + bRect.height / 2;
+        int targetX = cRect.x + cRect.width / 2;
+        int targetY = cRect.y + cRect.height / 2;
+
+        dispatch(MouseEvent.MOUSE_PRESSED, InputEvent.BUTTON1_DOWN_MASK,
+                handleX, handleY, MouseEvent.BUTTON1);
+        assertEquals("端点ドラッグが開始しているはず", link,
+                GuiActionRunner.execute(canvas::endpointDragLinkForTest));
+
+        // ドラッグ中にツールバー等からリンク作成モードへ切り替える。
+        GuiActionRunner.execute(() -> canvas.setLinkMode(DeployLink.Kind.ARROW));
+
+        assertNull("モード切替で端点ドラッグは中断されるはず",
+                GuiActionRunner.execute(canvas::endpointDragLinkForTest));
+
+        dispatch(MouseEvent.MOUSE_RELEASED, 0, targetX, targetY, MouseEvent.BUTTON1);
+
+        assertEquals("中断後の release で to 側は変わらないはず", "B", link.getTo());
+        assertEquals("中断後の release で modelEdited は飛ばないはず", 0, edits.get());
     }
 }
