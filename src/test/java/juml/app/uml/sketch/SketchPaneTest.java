@@ -234,13 +234,18 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void loadFrom_deploymentTemplate_disablesEditing() {
-        // 配置図には専用デザイナーがあるが、テンプレートは入れ子コンテナ (node X { ... }) を
-        // 含むため、往復不能な未対応構文として従来どおり編集ロックで保全する。
+    public void loadFrom_deploymentTemplate_enablesEditing() {
+        // 配置図テンプレートは入れ子コンテナ (node "Web Server" { ... }) を含むが、
+        // DeploySketchCodec が入れ子コンテナへ対応したため GUI 編集可能になる。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.DEPLOYMENT.body()));
-        assertFalse("入れ子コンテナを含むため GUI 編集が無効になるはず",
+        assertEquals("配置図として判定されるはず", SketchDiagramType.DEPLOYMENT,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("入れ子コンテナ対応により GUI 編集可能になるはず",
                 GuiActionRunner.execute(pane::isEditable));
+        // トップレベル: cloud Internet / node "Web Server" (コンテナ) / database "DB" as db。
+        assertEquals(3, (int) GuiActionRunner.execute(
+                () -> pane.deployNodesForTest().size()));
     }
 
     @Test

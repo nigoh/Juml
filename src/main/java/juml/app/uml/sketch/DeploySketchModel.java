@@ -12,8 +12,10 @@ import java.util.List;
  * <p>PlantUML テキストとの相互変換は {@link DeploySketchCodec} が担う。
  * このクラスは構造の保持と基本操作 (追加・削除・名前解決) のみ。ノードと
  * リンクの値クラスはこのモデル固有なので入れ子クラスとして同梱する。
- * 入れ子コンテナ ({@code node X { ... }}) は未対応で、来た場合は
- * {@link DeploySketchCodec} が編集ロックしてテキストを保全する。</p>
+ * ノードは入れ子コンテナ ({@code node X { ... }}) として子ノードを持てる。
+ * {@link #getNodes()} はトップレベル (最上位) のノードのみを返し、子ノードは
+ * {@link DeployNode#getChildren()} で辿る。id はネスト位置に関わらずモデル全体で
+ * 一意 (PlantUML のエイリアス名前空間がグローバルなことに対応)。</p>
  */
 public final class DeploySketchModel {
 
@@ -22,7 +24,9 @@ public final class DeploySketchModel {
      *
      * <p>{@code id} はリンクの端点・{@code '@pos}・一意性に使う識別子 (別名)。
      * {@code label} は空白を含みうる表示名で、{@code id} と異なる場合のみ
-     * {@code "label" as id} 形式で出力する。</p>
+     * {@code "label" as id} 形式で出力する。コンテナ ({@link #isContainer()}) は
+     * {@code x}/{@code y} が最上位なら盤面の絶対座標、入れ子なら親の内側原点からの
+     * 相対座標になる ({@link DeploySketchCodec} 参照)。</p>
      */
     public static final class DeployNode {
 
@@ -64,6 +68,12 @@ public final class DeploySketchModel {
         private String label;
         private int x;
         private int y;
+        /** 直属の子ノード (コンテナの中身)。空なら葉ノード扱い (下記 container フラグ参照)。 */
+        private final List<DeployNode> children = new ArrayList<>();
+        /** 親コンテナ (最上位なら null)。 */
+        private DeployNode parent;
+        /** 明示的にブロック ({@code { }}) として宣言されたか (子が空でも維持する)。 */
+        private boolean container;
 
         public DeployNode(Kind kind, String id, String label, int x, int y) {
             this.kind = kind;
@@ -114,6 +124,32 @@ public final class DeploySketchModel {
         public void moveTo(int newX, int newY) {
             this.x = newX;
             this.y = newY;
+        }
+
+        /** 直属の子ノード一覧 (可変、追加/削除に使ってよい)。トップレベルなら常に空。 */
+        public List<DeployNode> getChildren() {
+            return children;
+        }
+
+        /** 親コンテナ (最上位なら null)。 */
+        public DeployNode getParent() {
+            return parent;
+        }
+
+        void setParent(DeployNode parent) {
+            this.parent = parent;
+        }
+
+        /**
+         * コンテナ (枠付き) として描画・出力すべきか。子を持てば自動的に true になるほか、
+         * 空コンテナ ({@code node X { }}) を保つために明示フラグでも true にできる。
+         */
+        public boolean isContainer() {
+            return container || !children.isEmpty();
+        }
+
+        public void setContainer(boolean container) {
+            this.container = container;
         }
     }
 
@@ -205,10 +241,12 @@ public final class DeploySketchModel {
         }
     }
 
+    /** トップレベル (最上位) のノードのみ。子ノードは {@link DeployNode#getChildren()} 経由。 */
     private final List<DeployNode> nodes = new ArrayList<>();
     private final List<DeployLink> links = new ArrayList<>();
     private String diagramName = "";
 
+    /** トップレベルのノード一覧 (可変)。全ノード (入れ子含む) は {@link #allNodes()}。 */
     public List<DeployNode> getNodes() {
         return nodes;
     }
@@ -227,17 +265,39 @@ public final class DeploySketchModel {
         this.diagramName = name != null ? name : "";
     }
 
-    /** id でノードを探す (無ければ null)。 */
+    /** トップレベル・入れ子を問わず全ノードを深さ優先で平坦化して返す (id 探索・位置適用用)。 */
+    public List<DeployNode> allNodes() {
+        List<DeployNode> out = new ArrayList<>();
+        collect(nodes, out);
+        return out;
+    }
+
+    private static void collect(List<DeployNode> level, List<DeployNode> out) {
+        for (DeployNode n : level) {
+            out.add(n);
+            collect(n.getChildren(), out);
+        }
+    }
+
+    /** id でノードを探す (入れ子も含めて探索。無ければ null)。 */
     public DeployNode findNode(String id) {
-        for (DeployNode n : nodes) {
+        return findNode(nodes, id);
+    }
+
+    private static DeployNode findNode(List<DeployNode> level, String id) {
+        for (DeployNode n : level) {
             if (n.getId().equals(id)) {
                 return n;
+            }
+            DeployNode hit = findNode(n.getChildren(), id);
+            if (hit != null) {
+                return hit;
             }
         }
         return null;
     }
 
-    /** {@code base}, {@code base2}, ... の形式で未使用の id を作る。 */
+    /** {@code base}, {@code base2}, ... の形式で未使用の id を作る (入れ子も含めて一意)。 */
     public String uniqueId(String base) {
         if (findNode(base) == null) {
             return base;
@@ -249,10 +309,27 @@ public final class DeploySketchModel {
         return base + n;
     }
 
-    /** ノードを削除し、そのノードに接続するリンクもまとめて取り除く。 */
+    /** {@code child} を {@code parent} の子として追加する (親をコンテナ化する)。 */
+    public void addChild(DeployNode parent, DeployNode child) {
+        child.setParent(parent);
+        parent.getChildren().add(child);
+        parent.setContainer(true);
+    }
+
+    /**
+     * ノードを削除し、そのノード自身と子孫すべてに接続するリンクをまとめて取り除く
+     * (コンテナを消せば中身も一緒に消える)。
+     */
     public void removeNode(DeployNode target) {
-        nodes.remove(target);
-        links.removeIf(l -> l.touches(target.getId()));
+        List<DeployNode> siblings = target.getParent() != null
+                ? target.getParent().getChildren() : nodes;
+        siblings.remove(target);
+        List<DeployNode> subtree = new ArrayList<>();
+        subtree.add(target);
+        collect(target.getChildren(), subtree);
+        for (DeployNode d : subtree) {
+            links.removeIf(l -> l.touches(d.getId()));
+        }
     }
 
     /** id の変更に追随してリンクの端点も付け替える。 */

@@ -78,6 +78,16 @@ final class SketchCanvas extends JPanel {
     /** ドラッグ中の掴み位置オフセット。 */
     private Point dragOffset;
     private boolean draggedSinceMousePress;
+    /** 端点ドラッグ (関係線の付替え) のヒットしきい値 (モデル座標, px)。 */
+    private static final double ENDPOINT_HIT_RADIUS = 8.0;
+    /** 端点ハンドル (発見可能性のための小さな正方形) の一辺 (モデル座標, px)。 */
+    private static final int HANDLE_SIZE = 6;
+    /** 端点ドラッグ中の対象関係 (null = 端点ドラッグ中でない。選択/移動モードのみで使う)。 */
+    private SketchRelation dragRelation;
+    /** 端点ドラッグ中、true なら left (始点) 側、false なら right (終点) 側を掴んでいる。 */
+    private boolean dragLeftEnd;
+    /** 端点ドラッグ中のカーソル位置 (モデル座標。ラバーバンド線の先端)。 */
+    private Point dragCursor;
 
     SketchCanvas(Listener listener) {
         this.listener = listener;
@@ -119,6 +129,11 @@ final class SketchCanvas extends JPanel {
         addMouseMotionListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE && dragRelation != null) {
+                    // 端点ドラッグ中の Esc は繋ぎ替えを行わず安全に中断する。
+                    cancelEndpointDrag();
+                    return;
+                }
                 // 関係追加モード中の Delete は無効 (旧 selected クラスの破壊的削除を防ぐ。中断は Esc)。
                 if (e.getKeyCode() == KeyEvent.VK_DELETE && editable && selected != null
                         && relationMode == null) {
@@ -161,6 +176,8 @@ final class SketchCanvas extends JPanel {
         this.unsupported = unsupported != null ? unsupported : List.of();
         this.selected = null;
         this.relationSource = null;
+        this.dragRelation = null;
+        this.dragCursor = null;
         revalidate();
         repaint();
     }
@@ -204,6 +221,9 @@ final class SketchCanvas extends JPanel {
         // モード切替時に旧選択をクリアする。関係モード中は press で selected を更新しないため、
         // 残すとダブルクリック編集/Delete が旧クラスへ漏れる (上のガードと二重の保険)。
         this.selected = null;
+        // モード切替で進行中の端点ドラッグも安全に中断する (spec #6)。
+        this.dragRelation = null;
+        this.dragCursor = null;
         repaint();
     }
 
@@ -235,6 +255,16 @@ final class SketchCanvas extends JPanel {
         }
         if (relationMode != null) {
             handleRelationClick(hit);
+            return;
+        }
+        EndpointHit endpointHit = endpointHandleAt(mp);
+        if (endpointHit != null) {
+            // 端点ハンドルの掴みはノードドラッグより優先する。
+            dragRelation = endpointHit.relation();
+            dragLeftEnd = endpointHit.leftEnd();
+            dragCursor = mp;
+            selected = null;
+            repaint();
             return;
         }
         selected = hit;
@@ -271,7 +301,16 @@ final class SketchCanvas extends JPanel {
     }
 
     private void handleDrag(MouseEvent e) {
-        if (!editable || relationMode != null || selected == null || dragOffset == null) {
+        if (!editable) {
+            return;
+        }
+        if (dragRelation != null) {
+            // ノードは動かさず、固定側端点→カーソルのラバーバンド線だけを更新する。
+            dragCursor = view.toModel(e.getPoint());
+            repaint();
+            return;
+        }
+        if (relationMode != null || selected == null || dragOffset == null) {
             return;
         }
         Point mp = view.toModel(e.getPoint());
@@ -283,6 +322,10 @@ final class SketchCanvas extends JPanel {
     }
 
     private void handleRelease(MouseEvent e) {
+        if (dragRelation != null) {
+            finishEndpointDrag(view.toModel(e.getPoint()));
+            return;
+        }
         if (e.isPopupTrigger()) {
             showPopup(e, classAt(view.toModel(e.getPoint())));
             return;
@@ -361,6 +404,109 @@ final class SketchCanvas extends JPanel {
     }
 
     // -------------------------------------------------------------------------
+    // 端点ドラッグ (関係線の付替え)
+    // -------------------------------------------------------------------------
+
+    /** 端点ハンドルのヒット結果 (関係 + どちら側 (left/right) を掴んだか)。 */
+    private record EndpointHit(SketchRelation relation, boolean leftEnd) { }
+
+    /** press 位置に最も近い端点ハンドルを返す (しきい値外や自己関連は対象外。無ければ null)。 */
+    private EndpointHit endpointHandleAt(Point p) {
+        SketchRelation bestRel = null;
+        boolean bestLeft = true;
+        double bestD = ENDPOINT_HIT_RADIUS;
+        for (SketchRelation rel : model.getRelations()) {
+            Point[] anchors = nonSelfEndpointAnchors(rel);
+            if (anchors == null) {
+                continue;
+            }
+            double dl = p.distance(anchors[0]);
+            if (dl < bestD) {
+                bestD = dl;
+                bestRel = rel;
+                bestLeft = true;
+            }
+            double dr = p.distance(anchors[1]);
+            if (dr < bestD) {
+                bestD = dr;
+                bestRel = rel;
+                bestLeft = false;
+            }
+        }
+        return bestRel == null ? null : new EndpointHit(bestRel, bestLeft);
+    }
+
+    /** {@code rel} の始点(left)/終点(right)アンカー ({@link #edgePoint} を再利用)。
+     * 自己関連 (left==right) や未解決端点は対象外として null (relationAt と同様に簡略化)。 */
+    private Point[] nonSelfEndpointAnchors(SketchRelation rel) {
+        SketchClass left = model.findClass(rel.getLeft());
+        SketchClass right = model.findClass(rel.getRight());
+        if (left == null || right == null || left == right) {
+            return null;
+        }
+        Point pl = edgePoint(boundsOf(left), center(boundsOf(right)));
+        Point pr = edgePoint(boundsOf(right), center(boundsOf(left)));
+        return new Point[]{pl, pr};
+    }
+
+    /** テスト用/純関数: 点 p が候補アンカー a (0側) / b (1側) のどちらに近いか
+     * (しきい値 radius 以内で近い方の番号。どちらもしきい値外なら -1)。 */
+    static int nearestEndpointForTest(Point p, Point a, Point b, double radius) {
+        double da = p.distance(a);
+        double db = p.distance(b);
+        if (da > radius && db > radius) {
+            return -1;
+        }
+        return da <= db ? 0 : 1;
+    }
+
+    /** 端点ドラッグのリリース処理: カーソル下にノードがあれば繋ぎ替え、無ければキャンセル。 */
+    private void finishEndpointDrag(Point releasePoint) {
+        SketchRelation relation = dragRelation;
+        boolean leftEnd = dragLeftEnd;
+        dragRelation = null;
+        dragCursor = null;
+        SketchClass target = classAt(releasePoint);
+        if (target != null) {
+            reattachEndpoint(relation, leftEnd, target.getName());
+        }
+        repaint();
+    }
+
+    /** Esc/モード切替時に端点ドラッグを繋ぎ替えずに中断する。 */
+    private void cancelEndpointDrag() {
+        dragRelation = null;
+        dragCursor = null;
+        repaint();
+    }
+
+    /** 関係の端点を実際に付け替える経路 (production と reattachForTest の共通経路)。 */
+    private void reattachEndpoint(SketchRelation relation, boolean leftEnd, String targetName) {
+        if (leftEnd) {
+            relation.setLeft(targetName);
+        } else {
+            relation.setRight(targetName);
+        }
+        listener.modelEdited();
+    }
+
+    /** テスト用: 実際の繋ぎ替え経路 (reattachEndpoint) でモデル端点を更新する。 */
+    void reattachForTest(SketchRelation relation, boolean leftEnd, String targetName) {
+        reattachEndpoint(relation, leftEnd, targetName);
+        repaint();
+    }
+
+    /** テスト用: 現在ドラッグ中の関係 (端点ドラッグ中でなければ null)。 */
+    SketchRelation dragRelationForTest() {
+        return dragRelation;
+    }
+
+    /** テスト用: 関係の端点アンカー ({left, right})。自己関連/未解決なら null。 */
+    Point[] endpointAnchorsForTest(SketchRelation relation) {
+        return nonSelfEndpointAnchors(relation);
+    }
+
+    // -------------------------------------------------------------------------
     // 描画
     // -------------------------------------------------------------------------
 
@@ -408,6 +554,12 @@ final class SketchCanvas extends JPanel {
             for (SketchClass c : model.getClasses()) {
                 paintClass(g2, c);
             }
+            if (editable && relationMode == null) {
+                // 発見可能性: 選択/移動モードでのみ端点ハンドルを見せる (関係追加モード中は
+                // 別のヒントを描くため出さない)。
+                paintEndpointHandles(g2);
+            }
+            paintEndpointDragOverlay(g2);
         } finally {
             g2.dispose();
         }
@@ -588,6 +740,39 @@ final class SketchCanvas extends JPanel {
             g2.setColor(new Color(0x555555));
             g2.drawString(rel.getLabel(), rightX + 4, topY + 4);
         }
+    }
+
+    /** 発見可能性: 各関係の始点/終点アンカーに小さな正方形ハンドルを描く。 */
+    private void paintEndpointHandles(Graphics2D g2) {
+        int half = HANDLE_SIZE / 2;
+        g2.setColor(new Color(0x1565C0));
+        for (SketchRelation rel : model.getRelations()) {
+            Point[] anchors = nonSelfEndpointAnchors(rel);
+            if (anchors == null) {
+                continue;
+            }
+            g2.fillRect(anchors[0].x - half, anchors[0].y - half, HANDLE_SIZE, HANDLE_SIZE);
+            g2.fillRect(anchors[1].x - half, anchors[1].y - half, HANDLE_SIZE, HANDLE_SIZE);
+        }
+    }
+
+    /** 端点ドラッグ中: 固定側端点→カーソルのラバーバンド線を描く。 */
+    private void paintEndpointDragOverlay(Graphics2D g2) {
+        if (dragRelation == null || dragCursor == null) {
+            return;
+        }
+        String fixedName = dragLeftEnd ? dragRelation.getRight() : dragRelation.getLeft();
+        SketchClass fixed = model.findClass(fixedName);
+        if (fixed == null) {
+            return;
+        }
+        Point start = edgePoint(boundsOf(fixed), dragCursor);
+        Stroke old = g2.getStroke();
+        g2.setColor(new Color(0x1565C0));
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{5f, 4f}, 0f));
+        g2.drawLine(start.x, start.y, dragCursor.x, dragCursor.y);
+        g2.setStroke(old);
     }
 
     private static Point center(Rectangle r) {

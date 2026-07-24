@@ -20,8 +20,9 @@ import java.util.List;
 /**
  * 配置図の GUI デザイナー編集面 (ツールバー + {@link DeploySketchCanvas})。
  *
- * <p>対応構文は配置図の基本要素 (フラット構成) のみ ({@link DeploySketchCodec} 参照)。
- * 図種の切り替え・Undo/Redo・テキスト同期は {@link SketchPane} が担う。</p>
+ * <p>入れ子コンテナ ({@code node X { ... }}) を含む配置図の基本要素に対応する
+ * ({@link DeploySketchCodec} 参照)。図種の切り替え・Undo/Redo・テキスト同期は
+ * {@link SketchPane} が担う。</p>
  */
 final class DeploySketchEditor implements SketchEditor {
 
