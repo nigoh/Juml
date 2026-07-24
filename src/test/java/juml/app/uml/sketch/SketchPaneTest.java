@@ -252,6 +252,34 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void deployEdit_syncsTextAndUndoRedo() {
+        // 配置図エディタでも編集 → テキスト同期 → Undo/Redo が一貫して動くこと (他8図種と対)。
+        // 従来 addDeployNodeForTest シームは定義のみで一度も呼ばれておらず、Deploy 図の
+        // Pane レベル編集同期が未検証だった。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.DEPLOYMENT.body());
+        });
+        int before = GuiActionRunner.execute(() -> pane.deployNodesForTest().size());
+        GuiActionRunner.execute(
+                () -> pane.addDeployNodeForTest(DeploySketchModel.DeployNode.Kind.NODE));
+        assertEquals("編集経路でトップレベルノードが 1 つ増えるはず", before + 1,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+        assertTrue("追加直後のテキスト同期で新ノード Node が載るはず: " + lastPuml.get(),
+                lastPuml.get().contains("Node"));
+        GuiActionRunner.execute(pane::undo);
+        assertEquals("Undo で元のノード数へ戻るはず", before,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+        assertEquals("Undo 後は同期テキストと currentPuml が一致するはず",
+                GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertEquals("Redo でノードが再び増えるはず", before + 1,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+    }
+
+    @Test
     public void sequenceEdit_syncsTextAndUndoRedo() {
         // シーケンス図エディタでも編集 → テキスト同期 → Undo/Redo が一貫して動くこと。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
