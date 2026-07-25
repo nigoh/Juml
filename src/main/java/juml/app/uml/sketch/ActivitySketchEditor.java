@@ -25,6 +25,8 @@ final class ActivitySketchEditor implements SketchEditor {
     private final JPanel toolbar;
     private final JScrollPane scroll;
     private Runnable onEdited = () -> { };
+    /** 直近の load で未対応だった行 (コメント行ロックの1クリック解除判定に使う)。 */
+    private java.util.List<String> unsupported = java.util.List.of();
 
     ActivitySketchEditor() {
         canvas = new ActivitySketchCanvas(new ActivitySketchCanvas.Listener() {
@@ -79,6 +81,7 @@ final class ActivitySketchEditor implements SketchEditor {
     @Override
     public void load(String pumlText) {
         ActivitySketchCodec.ParseResult r = ActivitySketchCodec.parse(pumlText);
+        this.unsupported = r.unsupportedLines != null ? r.unsupportedLines : java.util.List.of();
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
         updateToolbarEnabled();
     }
@@ -102,6 +105,11 @@ final class ActivitySketchEditor implements SketchEditor {
     @Override
     public boolean isEditable() {
         return canvas.isModelEditable();
+    }
+
+    @Override
+    public java.util.List<String> unsupportedLines() {
+        return unsupported;
     }
 
     @Override

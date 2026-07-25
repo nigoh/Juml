@@ -51,8 +51,12 @@ public final class SketchPane extends JPanel {
     private final JPanel canvasPanel = new JPanel(canvasCards);
     private final JButton undoButton;
     private final JButton redoButton;
+    /** 未対応がコメント行だけのとき出す「編集を有効化」ボタン (それ以外は非表示)。 */
+    private final JButton enableEditingButton;
 
     private Consumer<String> onPumlChange;
+    /** 「編集を有効化」ボタンが押されたときの通知先 (DiagramTab がコメント除去+再読込を配線)。 */
+    private Runnable onEnableEditing = () -> { };
     // Undo/Redo は PlantUML テキストのスナップショットで管理する (round-trip 実績を流用)。
     // baseline は現在のモデル状態のテキスト、restoring は復元適用中の再記録抑止フラグ。
     private final java.util.Deque<String> undoStack = new java.util.ArrayDeque<>();
@@ -70,12 +74,17 @@ public final class SketchPane extends JPanel {
         }
 
         JPanel historyBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 3));
+        enableEditingButton = new JButton(Messages.get("sketch.enableEditing"));
+        enableEditingButton.setToolTipText(Messages.get("sketch.enableEditing.tip"));
+        enableEditingButton.setVisible(false);
+        enableEditingButton.addActionListener(e -> onEnableEditing.run());
         undoButton = new JButton(Messages.get("sketch.toolbar.undo"));
         undoButton.setToolTipText(Messages.get("sketch.toolbar.undo.tip"));
         undoButton.addActionListener(e -> undo());
         redoButton = new JButton(Messages.get("sketch.toolbar.redo"));
         redoButton.setToolTipText(Messages.get("sketch.toolbar.redo.tip"));
         redoButton.addActionListener(e -> redo());
+        historyBar.add(enableEditingButton);
         historyBar.add(undoButton);
         historyBar.add(redoButton);
 
@@ -129,6 +138,14 @@ public final class SketchPane extends JPanel {
     }
 
     /**
+     * 「編集を有効化」ボタン (コメント行だけのロック解除) が押されたときの通知先を登録する。
+     * 通常はテキスト欄からコメント行を除去して {@link #loadFrom(String)} で再読込する処理を配線する。
+     */
+    public void setOnEnableEditingRequested(Runnable listener) {
+        this.onEnableEditing = listener != null ? listener : () -> { };
+    }
+
+    /**
      * PlantUML テキストを解析してキャンバスへ反映する (Design タブ選択時に呼ぶ)。
      * 図種を自動判定して対応するエディタへ切り替える。
      * 未対応構文が含まれる場合は編集不可として表示のみ行う。
@@ -150,6 +167,25 @@ public final class SketchPane extends JPanel {
         toolbarCards.show(toolbarPanel, type.name());
         canvasCards.show(canvasPanel, type.name());
         active.load(pumlText);
+        updateEnableEditingButton();
+    }
+
+    /** 未対応がコメント行のみ (= 除去すれば編集可能) のとき「編集を有効化」を表示する。 */
+    private void updateEnableEditingButton() {
+        enableEditingButton.setVisible(isCommentOnlyLock());
+    }
+
+    /**
+     * 現在の編集ロックが PlantUML コメント行 ({@code '} 始まり) だけに起因するか。編集可能な
+     * とき、または未対応が空/コメント以外を含むときは false (= ワンクリック解除は提供しない)。
+     */
+    boolean isCommentOnlyLock() {
+        if (active.isEditable()) {
+            return false;
+        }
+        List<String> lines = active.unsupportedLines();
+        return !lines.isEmpty()
+                && lines.stream().allMatch(l -> l != null && l.trim().startsWith("'"));
     }
 
     /** キャンバス操作を 1 手戻す。 */
@@ -370,5 +406,15 @@ public final class SketchPane extends JPanel {
     /** テスト用: Redo 可能な履歴があるか。 */
     boolean canRedoForTest() {
         return !redoStack.isEmpty();
+    }
+
+    /** テスト用: 「編集を有効化」ボタンが表示中か。 */
+    boolean enableEditingVisibleForTest() {
+        return enableEditingButton.isVisible();
+    }
+
+    /** テスト用: 「編集を有効化」を実際に押す (onEnableEditing を発火)。 */
+    void clickEnableEditingForTest() {
+        onEnableEditing.run();
     }
 }
