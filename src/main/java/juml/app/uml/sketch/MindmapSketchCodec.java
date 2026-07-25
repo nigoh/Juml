@@ -39,8 +39,13 @@ import java.util.regex.Pattern;
  */
 public final class MindmapSketchCodec {
 
-    /** 記号の連続 + テキスト ({@code ** Design} 等)。記号は 1 種でなければ未対応にする。 */
-    private static final Pattern NODE_LINE = Pattern.compile("^([*+\\-]+)\\s+(.+)$");
+    /**
+     * 記号の連続 + テキスト ({@code ** Design} / 空白なしの {@code **Design} 等)。記号と
+     * テキストの間の空白は PlantUML では任意 ({@code **Design} は {@code ** Design} と同一に
+     * 描画される) なので {@code \s*} で受理し、往復出力側 ({@link #emit}) が常に空白付きへ
+     * 正規化する。記号は 1 種でなければ ({@link #singleFamilySide}) 未対応にする。
+     */
+    private static final Pattern NODE_LINE = Pattern.compile("^([*+\\-]+)\\s*(.+)$");
 
     private MindmapSketchCodec() {
     }
@@ -102,7 +107,13 @@ public final class MindmapSketchCodec {
             unsupported.add(line);
             return;
         }
-        MindmapNode node = new MindmapNode(m.group(2).trim());
+        String text = m.group(2).trim();
+        if (text.isEmpty()) {
+            // 記号のみ・空白のみ (テキスト無し) の行はモデル化できないため未対応。
+            unsupported.add(line);
+            return;
+        }
+        MindmapNode node = new MindmapNode(text);
         node.setOwnSide(side);
         int depth = symbols.length();
         if (stack.isEmpty()) {

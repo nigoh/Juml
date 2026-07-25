@@ -54,6 +54,10 @@ final class MindmapSketchCanvas extends JPanel {
         /** 空図でルートの新規追加 (ダブルクリック / メニュー) が要求された。 */
         default void addRootRequested(Point at) {
         }
+
+        /** 選択ノードが変わった (side コンボ等の選択連動 UI 更新用。null=選択解除)。 */
+        default void selectionChanged(MindmapNode selected) {
+        }
     }
 
     private static final String DEFAULT_TEXT = "Idea";
@@ -91,7 +95,7 @@ final class MindmapSketchCanvas extends JPanel {
                 }
                 Point mp = view.toModel(e.getPoint());
                 if (e.isPopupTrigger()) {
-                    selected = nodeAt(mp);
+                    select(nodeAt(mp));
                     repaint();
                     showPopup(e.getPoint(), mp);
                     return;
@@ -111,7 +115,7 @@ final class MindmapSketchCanvas extends JPanel {
                 }
                 Point mp = view.toModel(e.getPoint());
                 if (e.isPopupTrigger()) {
-                    selected = nodeAt(mp);
+                    select(nodeAt(mp));
                     cancelDrag();
                     repaint();
                     showPopup(e.getPoint(), mp);
@@ -157,7 +161,7 @@ final class MindmapSketchCanvas extends JPanel {
         this.model = model;
         this.editable = editable;
         this.unsupported = unsupported != null ? unsupported : List.of();
-        this.selected = null;
+        select(null);
         cancelDrag();
         revalidate();
         repaint();
@@ -193,7 +197,7 @@ final class MindmapSketchCanvas extends JPanel {
         } else {
             model.addChild(parent, child);
         }
-        selected = child;
+        select(child);
         fireEdited();
     }
 
@@ -211,7 +215,7 @@ final class MindmapSketchCanvas extends JPanel {
         List<MindmapNode> siblings = parent.getChildren();
         siblings.remove(sib);
         siblings.add(siblings.indexOf(after) + 1, sib);
-        selected = sib;
+        select(sib);
         fireEdited();
     }
 
@@ -225,7 +229,11 @@ final class MindmapSketchCanvas extends JPanel {
         } else {
             model.remove(selected);
         }
-        selected = null;
+        select(null);
+        // 削除でドラッグ対象が木から切り離されるため掴み状態も必ず解除する。これをしないと
+        // ドラッグ中 (press 済み) に Delete キーで削除→別ノード上でリリースしたとき、切り離した
+        // ノードが reparent で木へ復活してしまう (pressPoint を消すことでリリースも no-op になる)。
+        clearDragState();
         fireEdited();
     }
 
@@ -260,13 +268,19 @@ final class MindmapSketchCanvas extends JPanel {
         repaint();
     }
 
+    /** 選択を変更し UI (side コンボ等) へ通知する。描画は呼び出し側が行う。 */
+    private void select(MindmapNode n) {
+        selected = n;
+        listener.selectionChanged(n);
+    }
+
     // -------------------------------------------------------------------------
     // reparent ドラッグ (モデル座標で駆動。テストシームも同じ経路を通す)
     // -------------------------------------------------------------------------
 
     private void onPress(Point p) {
         MindmapNode hit = nodeAt(p);
-        selected = hit;
+        select(hit);
         pressPoint = p;
         cursor = p;
         // ルートは付け替え不可 (選択のみ)。それ以外は掴んで reparent 候補にする。
@@ -292,7 +306,7 @@ final class MindmapSketchCanvas extends JPanel {
         boolean reattached = false;
         if (moved && target != null && target != dragging
                 && model.reparent(dragging, target, -1)) {
-            selected = dragging;
+            select(dragging);
             reattached = true;
         }
         dragging = null;
@@ -307,10 +321,15 @@ final class MindmapSketchCanvas extends JPanel {
     }
 
     private void cancelDrag() {
+        clearDragState();
+        repaint();
+    }
+
+    /** reparent ドラッグの掴み状態 (掴みノード・押下点・カーソル) を消す (再描画はしない)。 */
+    private void clearDragState() {
         dragging = null;
         pressPoint = null;
         cursor = null;
-        repaint();
     }
 
     private void showPopup(Point screenAt, Point modelAt) {
@@ -486,9 +505,9 @@ final class MindmapSketchCanvas extends JPanel {
         return selected;
     }
 
-    /** テスト用: 選択ノードを直接設定する (マウス press の代替)。 */
+    /** テスト用: 選択ノードを直接設定する (マウス press の代替)。side コンボ同期も発火する。 */
     void setSelectedForTest(MindmapNode node) {
-        this.selected = node;
+        select(node);
     }
 
     /** テスト用: 現在ズーム。 */

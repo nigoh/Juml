@@ -216,6 +216,29 @@ public class MindmapSketchCanvasTest {
     }
 
     @Test
+    public void deleteDuringDrag_doesNotResurrectNodeOnRelease() {
+        // A を押下 (ドラッグ開始) → Delete で A を削除 → B の上でリリース。切り離した A が
+        // reparent で木へ復活しないこと (deleteSelected が掴み状態を解除するため)。
+        MindmapNode[] n = new MindmapNode[3];
+        MindmapSketchCanvas canvas = newCanvas();
+        GuiActionRunner.execute(() -> canvas.setModel(rootWithTwoChildren(n), true, List.of()));
+        Point onA = center(canvas, n[1]);
+        Point onB = center(canvas, n[2]);
+        edits.set(0);
+        boolean ok = GuiActionRunner.execute(() -> {
+            canvas.pressForTest(onA);
+            assertSame("press で A を掴む", n[1], canvas.draggingForTest());
+            canvas.deleteSelected();
+            return canvas.releaseForTest(onB);
+        });
+        assertFalse("削除済みノードはリリースで復活しない", ok);
+        assertNull("A は木から外れたまま (親なし)", n[1].getParent());
+        assertFalse("A はどのノードの子にもならない", n[2].getChildren().contains(n[1]));
+        assertNull("ドラッグ状態は解除済み", GuiActionRunner.execute(canvas::draggingForTest));
+        assertEquals("削除で 1 回だけ modelEdited (リリースでは追加発火しない)", 1, edits.get());
+    }
+
+    @Test
     public void lockedModel_ignoresEditsAndPaintsBanner() {
         MindmapNode[] n = new MindmapNode[3];
         MindmapSketchCanvas canvas = newCanvas();

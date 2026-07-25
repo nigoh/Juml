@@ -27,6 +27,8 @@ final class MindmapSketchEditor implements SketchEditor {
     private final JScrollPane scroll;
     private final JComboBox<String> sideCombo;
     private Runnable onEdited = () -> { };
+    /** side コンボを選択連動で書き換える間 true。ユーザー操作と誤認して側変更しないためのガード。 */
+    private boolean syncingSide;
 
     /** side コンボの並びに対応する左右指定 (Auto / Left / Right)。 */
     private static final MindmapNode.Side[] SIDES = {
@@ -53,6 +55,10 @@ final class MindmapSketchEditor implements SketchEditor {
             @Override public void addRootRequested(Point at) {
                 canvas.addChild(null);
             }
+
+            @Override public void selectionChanged(MindmapNode selected) {
+                syncSideCombo(selected);
+            }
         });
 
         toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
@@ -71,8 +77,12 @@ final class MindmapSketchEditor implements SketchEditor {
             labels[i] = Messages.get(SIDE_KEYS[i]);
         }
         sideCombo = new JComboBox<>(labels);
-        sideCombo.addActionListener(
-                e -> canvas.setSideOfSelected(SIDES[sideCombo.getSelectedIndex()]));
+        sideCombo.addActionListener(e -> {
+            if (syncingSide) {
+                return; // 選択連動での再表示中はユーザー操作でないので側を変えない。
+            }
+            canvas.setSideOfSelected(SIDES[sideCombo.getSelectedIndex()]);
+        });
         toolbar.add(sideCombo);
 
         scroll = new JScrollPane(canvas);
@@ -103,6 +113,29 @@ final class MindmapSketchEditor implements SketchEditor {
         boolean on = canvas.isModelEditable();
         for (java.awt.Component comp : toolbar.getComponents()) {
             comp.setEnabled(on);
+        }
+    }
+
+    /**
+     * side コンボの表示を選択ノードの<b>実効 side</b> (枝の起点の side) に合わせる。選択が
+     * 変わってもコンボが前回値のまま残る「未反映」を防ぐ。書き換え中は {@link #syncingSide} で
+     * ActionListener をガードし、同期がユーザーの側変更として誤発火しないようにする。
+     */
+    private void syncSideCombo(MindmapNode selected) {
+        MindmapNode.Side eff = selected == null
+                ? MindmapNode.Side.AUTO : canvas.model().effectiveSideOf(selected);
+        int idx = 0;
+        for (int i = 0; i < SIDES.length; i++) {
+            if (SIDES[i] == eff) {
+                idx = i;
+                break;
+            }
+        }
+        syncingSide = true;
+        try {
+            sideCombo.setSelectedIndex(idx);
+        } finally {
+            syncingSide = false;
         }
     }
 
@@ -140,5 +173,15 @@ final class MindmapSketchEditor implements SketchEditor {
     void setSideForTest(MindmapNode node, MindmapNode.Side side) {
         canvas.setSelectedForTest(node);
         canvas.setSideOfSelected(side);
+    }
+
+    /** テスト用: 実際の選択経路 (canvas) でノードを選択する (side コンボ同期を発火する)。 */
+    void selectForTest(MindmapNode node) {
+        canvas.setSelectedForTest(node);
+    }
+
+    /** テスト用: side コンボが現在示している side (選択連動の検証用)。 */
+    MindmapNode.Side comboSideForTest() {
+        return SIDES[sideCombo.getSelectedIndex()];
     }
 }

@@ -87,6 +87,33 @@ public class MindmapSketchCodecTest {
         assertTrue(r.unsupportedLines.contains("title My Map"));
     }
 
+    @Test
+    public void parse_noSpaceNodeLine_isSupportedAndRoundTripsWithSpace() throws IOException {
+        // 記号とテキストの間に空白が無い '**Child' も PlantUML では '** Child' と同一に描画され
+        // 有効。編集ロックせず受理し、往復出力は空白付きへ正規化されること (実描画で検証)。
+        MindmapSketchCodec.ParseResult r = MindmapSketchCodec.parse(
+                "@startmindmap\n*Root\n**Child\n@endmindmap\n");
+        assertTrue("空白なしノードでもロックされないはず: " + r.unsupportedLines, r.isFullySupported());
+        assertEquals("Root", r.model.getRoot().getText());
+        assertEquals(1, r.model.getRoot().getChildren().size());
+        assertEquals("Child", r.model.getRoot().getChildren().get(0).getText());
+
+        String puml = MindmapSketchCodec.toPuml(r.model);
+        assertTrue("出力は空白付きへ正規化: " + puml, puml.contains("\n* Root\n"));
+        assertTrue(puml.contains("\n** Child\n"));
+        assertValidSvg(puml);
+    }
+
+    @Test
+    public void parse_symbolsOnlyLine_isUnsupported() {
+        // 記号のみ・空白のみ (テキスト無し) の行はモデル化できず未対応。
+        MindmapSketchCodec.ParseResult r = MindmapSketchCodec.parse(
+                "@startmindmap\n* Root\n**   \n@endmindmap\n");
+        assertFalse("記号のみの行は未対応のはず", r.isFullySupported());
+        assertEquals("Root", r.model.getRoot().getText());
+        assertEquals("記号のみ行は子に取り込まない", 0, r.model.getRoot().getChildren().size());
+    }
+
     // --- side 継承の正規化 (最重要) ----------------------------------------------
 
     @Test

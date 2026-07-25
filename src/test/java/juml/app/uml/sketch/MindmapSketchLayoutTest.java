@@ -9,6 +9,8 @@ import org.junit.Test;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -105,6 +107,32 @@ public class MindmapSketchLayoutTest {
                 rg1.y + rg1.height <= rg2.y);
         // 親 A は子帯の中央に置かれる (子 2 つ + V_GAP の帯 56 の中央)。
         assertEquals(new Rectangle(200, 48, 60, 20), r.bounds.get(a));
+    }
+
+    @Test
+    public void compute_wideLabel_columnsDoNotOverlap() {
+        // 幅が既定の列送り COL_W(170) を超える長いラベルを持つツリー。列送りが動的に広がり、
+        // 親子/隣接列の矩形が一切重ならないこと (重なると hitTest が別ノードを誤選択する)。
+        // 単一子チェーン (親子が同じ縦中央に来る最悪ケース) で確認する。
+        MindmapSketchLayout.Sizer wide =
+                n -> new Dimension("Root".equals(n.getText()) ? 260 : 200, 20);
+        MindmapNode root = node("Root", Side.AUTO);
+        MindmapNode c = node("Child", Side.RIGHT);
+        MindmapNode g = node("Grand", Side.AUTO);
+        link(root, c);
+        link(c, g);
+
+        MindmapSketchLayout.Result r = MindmapSketchLayout.compute(root, wide);
+        List<Rectangle> rects = new ArrayList<>(r.bounds.values());
+        for (int i = 0; i < rects.size(); i++) {
+            for (int j = i + 1; j < rects.size(); j++) {
+                assertFalse("矩形が重ならないこと: " + rects.get(i) + " vs " + rects.get(j),
+                        rects.get(i).intersects(rects.get(j)));
+            }
+        }
+        // 列送りは最大ノード幅(260) + COL_GAP(28) = 288 まで広がる。
+        assertEquals("列送りが最大ノード幅+余白まで広がる", 288,
+                r.bounds.get(c).x - r.bounds.get(root).x);
     }
 
     @Test

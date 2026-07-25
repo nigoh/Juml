@@ -25,8 +25,11 @@ final class MindmapSketchLayout {
 
     /** 盤面の左上マージン。 */
     static final int MARGIN = 30;
-    /** 深さ 1 段あたりの水平ストライド (ノード幅に依らず固定・決定性優先)。 */
+    /** 深さ 1 段あたりの<b>最小</b>水平ストライド。実際のストライドは最も広いノードが
+     * はみ出さないよう {@link #columnStride} で下限としてのみ用いる。 */
     static final int COL_W = 170;
+    /** 列間に必ず残す水平余白 (隣接列の矩形が重ならないための下駄。{@link #columnStride})。 */
+    static final int COL_GAP = 28;
     /** 兄弟サブツリー間の縦の間隔。 */
     static final int V_GAP = 16;
 
@@ -49,6 +52,11 @@ final class MindmapSketchLayout {
         }
     }
 
+    /** 再帰配置で持ち回る不変コンテキスト (ルート X・列送り・サイザ・出力先マップ)。 */
+    private record Ctx(int rootX, int stride, Sizer sizer,
+                       Map<MindmapNode, Rectangle> bounds, Map<MindmapNode, Boolean> onRight) {
+    }
+
     /** ルートから全ノードの絶対矩形を計算する (root==null なら空の結果)。 */
     static Result compute(MindmapNode root, Sizer sizer) {
         Map<MindmapNode, Rectangle> bounds = new IdentityHashMap<>();
@@ -60,19 +68,40 @@ final class MindmapSketchLayout {
         List<MindmapNode> right = new ArrayList<>();
         assignSides(root, left, right);
 
+        // 列送り幅は最も広いノード + 余白まで広げ、どの深さでも隣接列の矩形が重ならない
+        // ようにする (COL_W は下限)。これで長いラベルでも hitTest が別ノードを誤選択しない。
+        int stride = columnStride(root, sizer);
         int leftHeight = bandHeight(left, sizer);
         int rightHeight = bandHeight(right, sizer);
         Dimension rootDim = sizer.sizeOf(root);
         int total = Math.max(rootDim.height, Math.max(leftHeight, rightHeight));
         int maxLeftDepth = maxDepth(left, 1);
-        int rootX = MARGIN + maxLeftDepth * COL_W;
+        int rootX = MARGIN + maxLeftDepth * stride;
         int rootY = MARGIN + (total - rootDim.height) / 2;
         bounds.put(root, new Rectangle(rootX, rootY, rootDim.width, rootDim.height));
         onRight.put(root, Boolean.TRUE);
 
-        packBand(right, true, rootX, MARGIN + (total - rightHeight) / 2, sizer, bounds, onRight);
-        packBand(left, false, rootX, MARGIN + (total - leftHeight) / 2, sizer, bounds, onRight);
+        Ctx ctx = new Ctx(rootX, stride, sizer, bounds, onRight);
+        packBand(right, true, MARGIN + (total - rightHeight) / 2, ctx);
+        packBand(left, false, MARGIN + (total - leftHeight) / 2, ctx);
         return new Result(bounds, onRight);
+    }
+
+    /**
+     * 列送り幅 (深さ 1 段あたりの水平距離) を決める。全ノードの最大幅 + {@link #COL_GAP} を
+     * {@link #COL_W} と比べて広い方を採る。各ノード幅 ≤ stride - COL_GAP が保証されるため、
+     * 深さ d のノード右端は必ず深さ d+1 の列開始より COL_GAP 手前に収まり、隣接列は重ならない。
+     */
+    private static int columnStride(MindmapNode root, Sizer sizer) {
+        return Math.max(COL_W, maxNodeWidth(root, sizer) + COL_GAP);
+    }
+
+    private static int maxNodeWidth(MindmapNode node, Sizer sizer) {
+        int max = sizer.sizeOf(node).width;
+        for (MindmapNode c : node.getChildren()) {
+            max = Math.max(max, maxNodeWidth(c, sizer));
+        }
+        return max;
     }
 
     /** ルート直下の子を左右へ振り分ける (明示 side 優先、AUTO は少ない側へ貪欲・同数は右)。 */
@@ -92,12 +121,10 @@ final class MindmapSketchLayout {
         }
     }
 
-    private static void packBand(List<MindmapNode> children, boolean right, int rootX, int bandTop,
-                                 Sizer sizer, Map<MindmapNode, Rectangle> bounds,
-                                 Map<MindmapNode, Boolean> onRight) {
+    private static void packBand(List<MindmapNode> children, boolean right, int bandTop, Ctx ctx) {
         int top = bandTop;
         for (MindmapNode c : children) {
-            top = placeSubtree(c, right, 1, rootX, top, sizer, bounds, onRight) + V_GAP;
+            top = placeSubtree(c, right, 1, top, ctx) + V_GAP;
         }
     }
 
@@ -105,19 +132,16 @@ final class MindmapSketchLayout {
      * {@code node} のサブツリーを配置し、その占有帯の下端 Y を返す。ノードは自分の帯の中で
      * 縦方向中央に置く。子はさらに 1 段外側 (深さ +1) の列へ再帰的に置く。
      */
-    private static int placeSubtree(MindmapNode node, boolean right, int depth, int rootX, int top,
-                                    Sizer sizer, Map<MindmapNode, Rectangle> bounds,
-                                    Map<MindmapNode, Boolean> onRight) {
-        int h = subtreeHeight(node, sizer);
-        Dimension d = sizer.sizeOf(node);
-        int x = right ? rootX + depth * COL_W : rootX - depth * COL_W;
+    private static int placeSubtree(MindmapNode node, boolean right, int depth, int top, Ctx ctx) {
+        int h = subtreeHeight(node, ctx.sizer());
+        Dimension d = ctx.sizer().sizeOf(node);
+        int x = right ? ctx.rootX() + depth * ctx.stride() : ctx.rootX() - depth * ctx.stride();
         int y = top + (h - d.height) / 2;
-        bounds.put(node, new Rectangle(x, y, d.width, d.height));
-        onRight.put(node, right);
+        ctx.bounds().put(node, new Rectangle(x, y, d.width, d.height));
+        ctx.onRight().put(node, right);
         int childTop = top;
         for (MindmapNode c : node.getChildren()) {
-            childTop = placeSubtree(c, right, depth + 1, rootX, childTop, sizer, bounds, onRight)
-                    + V_GAP;
+            childTop = placeSubtree(c, right, depth + 1, childTop, ctx) + V_GAP;
         }
         return top + h;
     }
