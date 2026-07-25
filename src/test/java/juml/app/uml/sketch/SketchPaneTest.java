@@ -246,6 +246,46 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void loadFrom_mindmapTemplate_enablesEditing() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.MINDMAP.body()));
+        assertEquals("マインドマップとして判定されるはず", SketchDiagramType.MINDMAP,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertTrue("マインドマップテンプレートは GUI 編集可能なはず",
+                GuiActionRunner.execute(pane::isEditable));
+        assertEquals("ルートは Project", "Project",
+                GuiActionRunner.execute(() -> pane.mindmapRootForTest().getText()));
+        assertEquals("全ノード数は 6", 6,
+                (int) GuiActionRunner.execute(pane::mindmapNodeCountForTest));
+    }
+
+    @Test
+    public void mindmapEdit_syncsTextAndUndoRedo() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.MINDMAP.body());
+        });
+        GuiActionRunner.execute(pane::addMindmapChildForTest);
+        assertEquals("子追加でノード数が 7 になる", 7,
+                (int) GuiActionRunner.execute(pane::mindmapNodeCountForTest));
+        assertTrue("追加直後のテキストに新ノードが載る: " + lastPuml.get(),
+                lastPuml.get().contains("Idea"));
+        GuiActionRunner.execute(pane::undo);
+        assertEquals("Undo でノード数が 6 へ戻る", 6,
+                (int) GuiActionRunner.execute(pane::mindmapNodeCountForTest));
+        assertFalse("Undo 後のテキストからは新ノードが消える: " + lastPuml.get(),
+                lastPuml.get().contains("Idea"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertEquals("Redo でノード数が 7 へ戻る", 7,
+                (int) GuiActionRunner.execute(pane::mindmapNodeCountForTest));
+        assertTrue("Redo 後のテキストに新ノードが戻る: " + lastPuml.get(),
+                lastPuml.get().contains("Idea"));
+    }
+
+    @Test
     public void loadFrom_deploymentTemplate_enablesEditing() {
         // 配置図テンプレートは入れ子コンテナ (node "Web Server" { ... }) を含むが、
         // DeploySketchCodec が入れ子コンテナへ対応したため GUI 編集可能になる。
@@ -438,6 +478,11 @@ public class SketchPaneTest {
 
         GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.ACTIVITY.body()));
         assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.ACTIVITY);
+        assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
+                GuiActionRunner.execute(pane::canUndoForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.MINDMAP.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.MINDMAP);
         assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
                 GuiActionRunner.execute(pane::canUndoForTest));
     }

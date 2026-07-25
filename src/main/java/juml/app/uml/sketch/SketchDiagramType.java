@@ -8,7 +8,8 @@ import java.util.regex.Pattern;
 /**
  * GUI デザイナーが扱う図種。PlantUML テキストの内容から自動判定する。
  *
- * <p>まず {@code usecase} / {@code component} キーワード (いずれも一意) があれば
+ * <p>まず {@code @startmindmap} で始まる図は無条件にマインドマップと確定する
+ * ({@code @startuml} 前提の他 8 図種と衝突しない)。次に {@code usecase} / {@code component} キーワード (いずれも一意) があれば
  * ユースケース図 / コンポーネント図と確定する。次に一意マーカーを先取りで判定する:
  * {@code object 名前} 宣言 → オブジェクト図、ER 図固有マーカー (crow's-foot 関係演算子
  * {@code ||--o{} 等、または {@code entity "..." {} の列ブロック + {@code hide circle}) → ER 図、
@@ -39,7 +40,9 @@ public enum SketchDiagramType {
     /** ER (エンティティ関連) 図。 */
     ER,
     /** 配置図 (デプロイ図)。 */
-    DEPLOYMENT;
+    DEPLOYMENT,
+    /** マインドマップ ({@code @startmindmap})。 */
+    MINDMAP;
 
     /**
      * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
@@ -105,6 +108,12 @@ public enum SketchDiagramType {
     /** PlantUML テキストから図種を判定する。 */
     public static SketchDiagramType detect(String text) {
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // @startmindmap で始まる図はマインドマップと確定する (@startuml 前提の他図種と衝突なし)。
+        for (String raw : lines) {
+            if (raw.trim().startsWith("@startmindmap")) {
+                return MINDMAP;
+            }
+        }
         // usecase キーワードは他図種と衝突しないため、1 行でもあればユースケース図と確定する
         // (actor はシーケンス図と共有するため、行順に依らずここで先取りして判定する)。
         for (String raw : lines) {

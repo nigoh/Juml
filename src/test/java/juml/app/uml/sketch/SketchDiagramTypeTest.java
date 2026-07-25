@@ -225,4 +225,39 @@ public class SketchDiagramTypeTest {
         assertEquals(SketchDiagramType.COMPONENT,
                 SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
     }
+
+    @Test
+    public void detect_mindmapTemplate_isMindmap() {
+        assertEquals(SketchDiagramType.MINDMAP,
+                SketchDiagramType.detect(PumlTemplate.MINDMAP.body()));
+    }
+
+    @Test
+    public void detect_startmindmapMarker_isMindmap() {
+        assertEquals(SketchDiagramType.MINDMAP,
+                SketchDiagramType.detect("@startmindmap\n* Root\n@endmindmap\n"));
+    }
+
+    @Test
+    public void detect_mindmapMarkerDoesNotRegressOtherTemplates() {
+        // @startmindmap の先取り判定を加えても、@startuml 前提の既存 8 図種の判定が揺れないこと。
+        assertEquals(SketchDiagramType.CLASS,
+                SketchDiagramType.detect(PumlTemplate.CLASS.body()));
+        assertEquals(SketchDiagramType.SEQUENCE,
+                SketchDiagramType.detect(PumlTemplate.SEQUENCE.body()));
+        assertEquals(SketchDiagramType.ACTIVITY,
+                SketchDiagramType.detect(PumlTemplate.ACTIVITY.body()));
+        assertEquals(SketchDiagramType.STATE,
+                SketchDiagramType.detect(PumlTemplate.STATE.body()));
+        assertEquals(SketchDiagramType.USECASE,
+                SketchDiagramType.detect(PumlTemplate.USECASE.body()));
+        assertEquals(SketchDiagramType.COMPONENT,
+                SketchDiagramType.detect(PumlTemplate.COMPONENT.body()));
+        assertEquals(SketchDiagramType.OBJECT,
+                SketchDiagramType.detect(PumlTemplate.OBJECT.body()));
+        assertEquals(SketchDiagramType.ER,
+                SketchDiagramType.detect(PumlTemplate.ER.body()));
+        assertEquals(SketchDiagramType.DEPLOYMENT,
+                SketchDiagramType.detect(PumlTemplate.DEPLOYMENT.body()));
+    }
 }

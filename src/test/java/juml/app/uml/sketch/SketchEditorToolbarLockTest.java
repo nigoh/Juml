@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  * ({@code isFullySupported()==false})。その間は追加ボタンやモード切替を押しても
  * キャンバス側の editable ガードで無反応になるため、ツールバーを無効表示にして
  * 「押せるのに効かない」誤解を防ぐ (各 {@code *SketchEditor#updateToolbarEnabled} 参照)。
- * ここでは 9 種すべてのエディタで (1) 対応図では有効、(2) ロック図では無効、
+ * ここでは 10 種すべてのエディタで (1) 対応図では有効、(2) ロック図では無効、
  * (3) 対応図へ戻すと再有効、というトグルの往復を確認する。純粋な Swing 生成のみで
  * 実ディスプレイ (Robot) は不要だが、ヘッドレスでは Swing 生成が失敗するため skip する。</p>
  */
@@ -43,7 +43,12 @@ public class SketchEditorToolbarLockTest {
      * 一般コメントを未対応として扱う)。
      */
     private static String locked(String body) {
-        return body.replace("@enduml", "' a user comment the codec cannot round-trip\n@enduml");
+        String comment = "' a user comment the codec cannot round-trip\n";
+        // マインドマップは @endmindmap で閉じるため、終端マーカーは図種を問わず判定して差し込む。
+        if (body.contains("@endmindmap")) {
+            return body.replace("@endmindmap", comment + "@endmindmap");
+        }
+        return body.replace("@enduml", comment + "@enduml");
     }
 
     private static void assertToolbarTracksLock(Supplier<SketchEditor> factory, String template) {
@@ -116,5 +121,10 @@ public class SketchEditorToolbarLockTest {
     @Test
     public void erEditor_toolbarTracksLock() {
         assertToolbarTracksLock(ErSketchEditor::new, PumlTemplate.ER.body());
+    }
+
+    @Test
+    public void mindmapEditor_toolbarTracksLock() {
+        assertToolbarTracksLock(MindmapSketchEditor::new, PumlTemplate.MINDMAP.body());
     }
 }

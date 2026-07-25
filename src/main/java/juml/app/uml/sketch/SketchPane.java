@@ -42,6 +42,7 @@ public final class SketchPane extends JPanel {
     private final ObjectSketchEditor objectEditor = new ObjectSketchEditor();
     private final ErSketchEditor erEditor = new ErSketchEditor();
     private final DeploySketchEditor deployEditor = new DeploySketchEditor();
+    private final MindmapSketchEditor mindmapEditor = new MindmapSketchEditor();
     private SketchEditor active = classEditor;
     private SketchDiagramType activeType = SketchDiagramType.CLASS;
 
@@ -98,6 +99,7 @@ public final class SketchPane extends JPanel {
             case OBJECT:   return objectEditor;
             case ER:       return erEditor;
             case DEPLOYMENT: return deployEditor;
+            case MINDMAP:  return mindmapEditor;
             default:       return classEditor;
         }
     }
@@ -337,6 +339,30 @@ public final class SketchPane extends JPanel {
     /** テスト用: 実際の編集経路で配置図ノードを追加し Undo 履歴も積む。 */
     void addDeployNodeForTest(DeploySketchModel.DeployNode.Kind kind) {
         deployEditor.addNodeForTest(kind);
+    }
+
+    /** テスト用: 現在の解析済みマインドマップモデルのルート (空図なら null)。 */
+    MindmapNode mindmapRootForTest() {
+        return mindmapEditor.rootForTest();
+    }
+
+    /** テスト用: 現在の解析済みマインドマップモデルの全ノード数。 */
+    int mindmapNodeCountForTest() {
+        MindmapNode root = mindmapEditor.rootForTest();
+        return root == null ? 0 : countNodes(root);
+    }
+
+    private static int countNodes(MindmapNode n) {
+        int c = 1;
+        for (MindmapNode child : n.getChildren()) {
+            c += countNodes(child);
+        }
+        return c;
+    }
+
+    /** テスト用: 実際の編集経路でマインドマップの子ノードを追加し Undo 履歴も積む。 */
+    void addMindmapChildForTest() {
+        mindmapEditor.addChildForTest();
     }
 
     /** テスト用: 実際の編集経路 (firePumlChanged 経由) でクラスを追加し Undo 履歴も積む。 */
