@@ -229,13 +229,29 @@ final class MindmapSketchCanvas extends JPanel {
         fireEdited();
     }
 
-    /** 選択ノードの左右指定を変更する。 */
+    /**
+     * 選択ノードの左右指定を変更する。PlantUML では側は<b>枝</b> (ルート直下の起点ノード)
+     * 単位でしか意味を持たない (枝内で記号ファミリが混ざると {@code error42L})。そのため
+     * 深いノードを選択して側を変えたら、その<b>枝の起点</b>の側を変える (= 枝ごと左右へ移す)。
+     * こうしないと深いノードの ownSide は出力に反映されず、コンボが無反応に見えてしまう
+     * ({@link MindmapSketchModel#effectiveSideOf(MindmapNode)} と整合)。ルート選択時はルート
+     * 自身の記号を変える。
+     */
     void setSideOfSelected(MindmapNode.Side side) {
         if (!editable || selected == null) {
             return;
         }
-        selected.setOwnSide(side);
+        branchOriginOf(selected).setOwnSide(side);
         fireEdited();
+    }
+
+    /** {@code n} の側を決める枝の起点 (ルート自身、またはルート直下=深さ 2 の祖先)。 */
+    private MindmapNode branchOriginOf(MindmapNode n) {
+        MindmapNode branch = n;
+        while (branch.getParent() != null && branch.getParent() != model.getRoot()) {
+            branch = branch.getParent();
+        }
+        return branch;
     }
 
     private void fireEdited() {

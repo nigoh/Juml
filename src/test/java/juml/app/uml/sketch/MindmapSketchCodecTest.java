@@ -106,6 +106,43 @@ public class MindmapSketchCodecTest {
     }
 
     @Test
+    public void toPuml_explicitOppositeSideDescendant_normalizesToBranchFamilyAndRendersValidSvg()
+            throws IOException {
+        // 深いノードに枝と食い違う明示 side (LEFT 枝の子に RIGHT) があっても、出力は枝の
+        // 系統 ('-') へ正規化されること。回帰: setSideOfSelected で深いノードを反対側にすると
+        // `-- C / +++ D` を生成し、実機 renderSvg で error42L になった。
+        MindmapSketchModel model = new MindmapSketchModel();
+        MindmapNode root = new MindmapNode("Root");
+        model.setRoot(root);
+        MindmapNode c = child(model, root, "C", Side.LEFT);
+        child(model, c, "D", Side.RIGHT);
+
+        String puml = MindmapSketchCodec.toPuml(model);
+        assertTrue("深さ 2 の C は '--'", puml.contains("\n-- C\n"));
+        assertTrue("深さ 3 の D は枝の LEFT 系へ正規化され '---'", puml.contains("\n--- D\n"));
+        assertFalse("枝と食い違う '+' 系 (+++ D) は出さない: " + puml, puml.contains("+++ D"));
+        assertValidSvg(puml);
+    }
+
+    @Test
+    public void toPuml_deepExplicitSideUnderAutoBranch_staysAutoFamilyAndRendersValidSvg()
+            throws IOException {
+        // 枝の起点 (深さ 2) が AUTO なら、深い子に明示 side があっても枝全体が '*' 系のまま。
+        // 回帰: `* Root / ** C / --- D` は実機で error42L になった (深さ 2 の祖先で判定される)。
+        MindmapSketchModel model = new MindmapSketchModel();
+        MindmapNode root = new MindmapNode("Root");
+        model.setRoot(root);
+        MindmapNode c = child(model, root, "C", Side.AUTO);
+        child(model, c, "D", Side.LEFT);
+
+        String puml = MindmapSketchCodec.toPuml(model);
+        assertTrue("深さ 2 の AUTO 枝は '**'", puml.contains("\n** C\n"));
+        assertTrue("深さ 3 の D も枝の AUTO 系のまま '***'", puml.contains("\n*** D\n"));
+        assertFalse("枝と食い違う '-' 系 (--- D) は出さない: " + puml, puml.contains("--- D"));
+        assertValidSvg(puml);
+    }
+
+    @Test
     public void toPuml_emptyModel_producesMinimalDocument() {
         // 空図の toPuml は最小ドキュメント。PlantUML では "Empty description" 例外になる既知制約の
         // ため、この文字列は描画テストの対象外にする (往復描画テストは非空のみ)。
@@ -167,6 +204,22 @@ public class MindmapSketchCodecTest {
         MindmapNode b = child(model, a, "B", Side.AUTO);
         assertSame(Side.RIGHT, model.effectiveSideOf(b));
         assertSame("AUTO のみの祖先鎖は AUTO", Side.AUTO, model.effectiveSideOf(root));
+    }
+
+    @Test
+    public void model_effectiveSideOf_usesBranchOriginNotOwnSide() {
+        // 深いノードの ownSide が枝と食い違っても、実効 side は枝の起点 (深さ 2) の side。
+        // ルート自身の側は子を拘束しない (root の LEFT は子へ波及しない)。
+        MindmapSketchModel model = new MindmapSketchModel();
+        MindmapNode root = new MindmapNode("Root");
+        root.setOwnSide(Side.LEFT);
+        model.setRoot(root);
+        MindmapNode c = child(model, root, "C", Side.RIGHT);   // 枝の起点 = RIGHT
+        MindmapNode d = child(model, c, "D", Side.LEFT);        // 深いノードは LEFT 明示
+        assertSame("D の実効 side は自身の LEFT ではなく枝の RIGHT", Side.RIGHT,
+                model.effectiveSideOf(d));
+        assertSame("枝の起点 C は自身の RIGHT", Side.RIGHT, model.effectiveSideOf(c));
+        assertSame("ルートは自身の側 (子には波及しない)", Side.LEFT, model.effectiveSideOf(root));
     }
 
     @Test

@@ -26,12 +26,15 @@ import java.util.regex.Pattern;
  * 等の装飾、{@code '} コメント、記号の混在 ({@code *-*})、深さ跳躍、2 本目以降の
  * 深さ 1 行 (単一ルート制約)。</p>
  *
- * <p><b>side 継承の正規化 (最重要):</b> PlantUML では記号ファミリの不整合 (例:
- * {@code - Left} の子に生の {@code *}) が構文エラー ({@code error42L}) になる。そこで
- * {@link #toPuml} は各ノードの<b>実効 side</b> (祖先から継承した最初の非 AUTO) を
- * 計算してから記号を選ぶ。これにより {@code -} の枝の途中に AUTO の子があっても出力は
- * {@code -} 系で一貫し、構文エラーを避けられる。生の {@code *} を持つモデルは
- * 「初回ロードで正規化・2 回目以降は固定点」になる ({@link DeploySketchCodec} の
+ * <p><b>side 正規化 (最重要):</b> PlantUML では記号ファミリの不整合が構文エラー
+ * ({@code error42L}) になる。しかも不整合は「直前の親」ではなく<b>枝</b> (ルート直下=深さ 2 の
+ * ノードを起点とする部分木) 単位で判定される: {@code * Root / ** C / --- D} は深さ 2 の
+ * {@code C} が {@code *} 系なのに孫 {@code D} が {@code -} 系のため error42L になる (実機検証済み)。
+ * そこで {@link #toPuml} は各ノードの記号を<b>枝の起点の side</b>
+ * ({@link MindmapSketchModel#effectiveSideOf(MindmapNode)}) から選ぶ。これにより枝内は必ず
+ * 単一ファミリで一貫し、深いノードに食い違う ownSide があっても ({@code setSideOfSelected} や
+ * 不正入力の解析由来) 出力は枝の系統へ正規化されて構文エラーを避けられる。食い違う ownSide を
+ * 持つモデルは「初回ロードで正規化・2 回目以降は固定点」になる ({@link DeploySketchCodec} の
  * 負座標クランプと同じ往復流儀)。</p>
  */
 public final class MindmapSketchCodec {
@@ -137,9 +140,10 @@ public final class MindmapSketchCodec {
     }
 
     /**
-     * モデルを PlantUML テキストへ書き出す。各ノードは<b>実効 side</b> (祖先継承) で
-     * 記号を選ぶため、生の {@code *} を持つ子も親の {@code -} / {@code +} 系へ正規化される
-     * (記号ファミリ不整合 = 実機の {@code error42L} を避ける必須ロジック)。
+     * モデルを PlantUML テキストへ書き出す。各ノードの記号は<b>枝の起点の side</b>
+     * ({@link MindmapSketchModel#effectiveSideOf(MindmapNode)}) で選ぶため、枝内は必ず
+     * 単一ファミリで一貫し、食い違う ownSide を持つ深いノードも枝の {@code -} / {@code +} /
+     * {@code *} 系へ正規化される (記号ファミリ不整合 = 実機の {@code error42L} を避ける必須ロジック)。
      */
     public static String toPuml(MindmapSketchModel model) {
         StringBuilder sb = new StringBuilder("@startmindmap");
@@ -148,27 +152,17 @@ public final class MindmapSketchCodec {
         }
         sb.append('\n');
         if (model.getRoot() != null) {
-            emit(sb, model.getRoot(), 1);
+            emit(sb, model, model.getRoot(), 1);
         }
         sb.append("@endmindmap\n");
         return sb.toString();
     }
 
-    private static void emit(StringBuilder sb, MindmapNode n, int depth) {
-        char sym = effectiveSide(n).symbol();
+    private static void emit(StringBuilder sb, MindmapSketchModel model, MindmapNode n, int depth) {
+        char sym = model.effectiveSideOf(n).symbol();
         sb.append(String.valueOf(sym).repeat(depth)).append(' ').append(n.getText()).append('\n');
         for (MindmapNode c : n.getChildren()) {
-            emit(sb, c, depth + 1);
+            emit(sb, model, c, depth + 1);
         }
-    }
-
-    /** {@code n} を含め祖先方向へ辿り、最初の非 AUTO を実効 side とする (無ければ AUTO)。 */
-    private static MindmapNode.Side effectiveSide(MindmapNode n) {
-        for (MindmapNode cur = n; cur != null; cur = cur.getParent()) {
-            if (cur.getOwnSide() != MindmapNode.Side.AUTO) {
-                return cur.getOwnSide();
-            }
-        }
-        return MindmapNode.Side.AUTO;
     }
 }

@@ -253,6 +253,30 @@ public class MindmapSketchCanvasTest {
     }
 
     @Test
+    public void setSideOfSelected_onDeepNode_movesBranchOriginNotTheNode() {
+        // Root → C(深さ2) → D(深さ3)。D を選択して RIGHT にすると、D 自身ではなく枝の
+        // 起点 C の side が変わる (PlantUML は枝内の記号混在を許さず error42L になるため。
+        // 深いノードの ownSide を変えても出力は枝の系統へ正規化され無反応に見えてしまう)。
+        MindmapSketchModel m = new MindmapSketchModel();
+        MindmapNode root = new MindmapNode("Root");
+        m.setRoot(root);
+        MindmapNode c = new MindmapNode("C");
+        MindmapNode d = new MindmapNode("D");
+        m.addChild(root, c);
+        m.addChild(c, d);
+        MindmapSketchCanvas canvas = newCanvas();
+        GuiActionRunner.execute(() -> canvas.setModel(m, true, List.of()));
+        edits.set(0);
+        GuiActionRunner.execute(() -> {
+            canvas.setSelectedForTest(d);
+            canvas.setSideOfSelected(Side.RIGHT);
+        });
+        assertSame("枝の起点 C が RIGHT になる", Side.RIGHT, c.getOwnSide());
+        assertSame("D 自身の ownSide は AUTO のまま (枝で正規化)", Side.AUTO, d.getOwnSide());
+        assertEquals("side 変更で modelEdited が 1 回発火", 1, edits.get());
+    }
+
+    @Test
     public void paint_normalTree_doesNotThrow() {
         MindmapNode[] n = new MindmapNode[3];
         MindmapSketchCanvas canvas = newCanvas();

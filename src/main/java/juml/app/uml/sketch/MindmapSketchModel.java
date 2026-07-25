@@ -124,15 +124,29 @@ public final class MindmapSketchModel {
     }
 
     /**
-     * {@code target} を含め祖先方向へ辿り、最初に見つかった非 AUTO の
-     * {@link MindmapNode#getOwnSide()} を実効的な左右として返す。どこも AUTO なら AUTO。
+     * {@code target} の実効的な左右 (= 出力記号ファミリ) を返す。
+     *
+     * <p>PlantUML マインドマップの左右指定は<b>枝</b>単位でしか意味を持たない。枝とは
+     * ルート直下 (深さ 2) のノードを起点とする部分木で、その枝内の全ノードは同じ記号
+     * ファミリ ({@code *}/{@code -}/{@code +}) でなければ {@code error42L} になる (実機検証済み:
+     * {@code * Root / ** C / --- D} は構文エラー)。ルート自身の側は子を拘束しない
+     * ({@code * Root / -- C} は valid)。したがって実効 side は:</p>
+     * <ul>
+     *   <li>ルート → 自身の {@link MindmapNode#getOwnSide()} (自分の記号。子には波及しない)</li>
+     *   <li>それ以外 → ルート直下まで遡った祖先 (=枝の起点) の ownSide</li>
+     * </ul>
+     * <p>深いノード個別の ownSide は側の決定に用いない (PlantUML が枝内の記号混在を許さない
+     * ため。深いノードで側を変えたい場合は {@code MindmapSketchCanvas} が枝起点へ委譲する)。</p>
      */
     public MindmapNode.Side effectiveSideOf(MindmapNode target) {
-        for (MindmapNode cur = target; cur != null; cur = cur.getParent()) {
-            if (cur.getOwnSide() != MindmapNode.Side.AUTO) {
-                return cur.getOwnSide();
-            }
+        if (target == null) {
+            return MindmapNode.Side.AUTO;
         }
-        return MindmapNode.Side.AUTO;
+        MindmapNode branch = target;
+        // 親がルート (= parent.parent が null) になるまで遡る。ルート自身なら branch==target。
+        while (branch.getParent() != null && branch.getParent().getParent() != null) {
+            branch = branch.getParent();
+        }
+        return branch.getOwnSide();
     }
 }
