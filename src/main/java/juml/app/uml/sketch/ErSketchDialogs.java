@@ -71,8 +71,7 @@ final class ErSketchDialogs {
             table.getCellEditor().stopCellEditing();
         }
         String newAlias = aliasField.getText().trim();
-        ErSketchModel.Entity same = model.findEntity(newAlias);
-        if (!ALIAS.matcher(newAlias).matches() || (same != null && same != target)) {
+        if (!isValidNewAlias(newAlias, model, target)) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.er.dlg.aliasError"),
                     Messages.get("sketch.er.dlg.title"), JOptionPane.WARNING_MESSAGE);
@@ -83,6 +82,17 @@ final class ErSketchDialogs {
         target.setDisplayName(name.isEmpty() || name.equals(newAlias) ? null : name);
         applyColumns(target, columns);
         return true;
+    }
+
+    /**
+     * 新しい別名 (alias) が採用可能か判定する (PlantUML の識別子として妥当であり、かつ
+     * {@code current} 自身以外に同じ別名を持つエンティティが存在しない)。モーダルに依存
+     * しない純粋な判定のみを行うため、ユニットテストから直接呼び出せる。
+     */
+    static boolean isValidNewAlias(String candidate, ErSketchModel model,
+                                   ErSketchModel.Entity current) {
+        ErSketchModel.Entity same = model.findEntity(candidate);
+        return ALIAS.matcher(candidate).matches() && (same == null || same == current);
     }
 
     /** 表示名・別名フィールドと列テーブル・列追加/削除ボタンを組み立てる。 */

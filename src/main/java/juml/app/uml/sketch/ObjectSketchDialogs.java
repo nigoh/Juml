@@ -61,9 +61,7 @@ final class ObjectSketchDialogs {
             return false;
         }
         String newName = nameField.getText().trim();
-        ObjectInstance sameName = model.findObject(newName);
-        if (!NAME.matcher(newName).matches()
-                || (sameName != null && sameName != target)) {
+        if (!isValidNewName(newName, model, target)) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.obj.dlg.nameError"),
                     Messages.get("sketch.obj.dlg.title"), JOptionPane.WARNING_MESSAGE);
@@ -74,6 +72,16 @@ final class ObjectSketchDialogs {
         target.setStereotype(stereo.isEmpty() ? null : stereo);
         applyLines(target.getAttributes(), attrsArea.getText());
         return true;
+    }
+
+    /**
+     * 新しい名前が採用可能か判定する (PlantUML のオブジェクト名として妥当であり、かつ
+     * {@code current} 自身以外に同じ名前を持つオブジェクトが存在しない)。モーダルに依存
+     * しない純粋な判定のみを行うため、ユニットテストから直接呼び出せる。
+     */
+    static boolean isValidNewName(String candidate, ObjectSketchModel model, ObjectInstance current) {
+        ObjectInstance same = model.findObject(candidate);
+        return NAME.matcher(candidate).matches() && (same == null || same == current);
     }
 
     /**
