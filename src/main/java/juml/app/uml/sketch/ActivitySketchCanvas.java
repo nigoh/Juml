@@ -86,6 +86,12 @@ final class ActivitySketchCanvas extends JPanel {
             }
 
             @Override public void mouseReleased(MouseEvent e) {
+                // ロック中は選択も変えない (他キャンバスと整合。popup-on-release 環境で
+                // ロック中に選択ハイライトだけ動く不整合を防ぐ。showPopup 側の gate だけでは
+                // selected 副作用が残るため release 経路の入口でも弾く)。
+                if (!editable) {
+                    return;
+                }
                 if (e.isPopupTrigger()) {
                     selected = nodeAt(view.toModel(e.getPoint()));
                     repaint();

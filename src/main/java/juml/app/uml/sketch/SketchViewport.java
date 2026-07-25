@@ -83,17 +83,22 @@ final class SketchViewport {
 
         // ズームリセット (Ctrl+0): 縮小しすぎて図が見失われても等倍へ戻せるようにする。
         // UI 上にリセット手段が無いと MIN_ZOOM まで縮めたとき戻し方が分からなくなる。
-        int menuMask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
-        javax.swing.InputMap im =
-                target.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
-        javax.swing.ActionMap am = target.getActionMap();
-        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_0, menuMask),
-                "sketch-zoom-reset");
-        am.put("sketch-zoom-reset", new javax.swing.AbstractAction() {
-            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
-                setZoom(1.0);
-            }
-        });
+        // getMenuShortcutKeyMaskEx() は headless で HeadlessException を投げるため、
+        // キーボードの無い headless (純 Graphics2D 描画テスト等) ではバインド設定を省く
+        // (キャンバス構築を headless-safe に保つ。実表示時のみ Ctrl+0 を割り当てる)。
+        if (!java.awt.GraphicsEnvironment.isHeadless()) {
+            int menuMask = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+            javax.swing.InputMap im =
+                    target.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+            javax.swing.ActionMap am = target.getActionMap();
+            im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_0, menuMask),
+                    "sketch-zoom-reset");
+            am.put("sketch-zoom-reset", new javax.swing.AbstractAction() {
+                @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                    setZoom(1.0);
+                }
+            });
+        }
     }
 
     private void onWheel(MouseWheelEvent e) {

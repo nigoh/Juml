@@ -9,6 +9,9 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.GraphicsEnvironment;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -93,7 +96,7 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void erEdit_addEntity_syncsText() {
+    public void erEdit_syncsTextAndUndoRedo() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         AtomicReference<String> lastPuml = new AtomicReference<>("");
         GuiActionRunner.execute(() -> {
@@ -105,8 +108,17 @@ public class SketchPaneTest {
                 (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
         assertTrue("追加直後のテキストに新エンティティが載る: " + lastPuml.get(),
                 lastPuml.get().contains("entity Entity"));
-        assertTrue("編集後も Undo 可能な履歴が積まれる",
-                GuiActionRunner.execute(pane::canUndoForTest));
+        GuiActionRunner.execute(pane::undo);
+        assertEquals("Undo でエンティティ数が 2 件へ戻る", 2,
+                (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
+        assertFalse("Undo 後のテキストからは新エンティティが消える: " + lastPuml.get(),
+                lastPuml.get().contains("entity Entity"));
+        assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertEquals("Redo でエンティティ数が 3 件へ戻る", 3,
+                (int) GuiActionRunner.execute(() -> pane.erEntitiesForTest().size()));
+        assertTrue("Redo 後のテキストに新エンティティが戻る: " + lastPuml.get(),
+                lastPuml.get().contains("entity Entity"));
     }
 
     @Test
@@ -249,6 +261,34 @@ public class SketchPaneTest {
     }
 
     @Test
+    public void deployEdit_syncsTextAndUndoRedo() {
+        // 配置図エディタでも編集 → テキスト同期 → Undo/Redo が一貫して動くこと (他8図種と対)。
+        // 従来 addDeployNodeForTest シームは定義のみで一度も呼ばれておらず、Deploy 図の
+        // Pane レベル編集同期が未検証だった。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        AtomicReference<String> lastPuml = new AtomicReference<>("");
+        GuiActionRunner.execute(() -> {
+            pane.setOnPumlChange(lastPuml::set);
+            pane.loadFrom(PumlTemplate.DEPLOYMENT.body());
+        });
+        int before = GuiActionRunner.execute(() -> pane.deployNodesForTest().size());
+        GuiActionRunner.execute(
+                () -> pane.addDeployNodeForTest(DeploySketchModel.DeployNode.Kind.NODE));
+        assertEquals("編集経路でトップレベルノードが 1 つ増えるはず", before + 1,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+        assertTrue("追加直後のテキスト同期で新ノード Node が載るはず: " + lastPuml.get(),
+                lastPuml.get().contains("Node"));
+        GuiActionRunner.execute(pane::undo);
+        assertEquals("Undo で元のノード数へ戻るはず", before,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+        assertEquals("Undo 後は同期テキストと currentPuml が一致するはず",
+                GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertEquals("Redo でノードが再び増えるはず", before + 1,
+                (int) GuiActionRunner.execute(() -> pane.deployNodesForTest().size()));
+    }
+
+    @Test
     public void sequenceEdit_syncsTextAndUndoRedo() {
         // シーケンス図エディタでも編集 → テキスト同期 → Undo/Redo が一貫して動くこと。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
@@ -271,7 +311,7 @@ public class SketchPaneTest {
     }
 
     @Test
-    public void activityEdit_syncsTextAndUndo() {
+    public void activityEdit_syncsTextAndUndoRedo() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
         AtomicReference<String> lastPuml = new AtomicReference<>("");
         GuiActionRunner.execute(() -> {
@@ -286,6 +326,9 @@ public class SketchPaneTest {
         assertFalse("Undo 後のテキストからは新アクションが消える: " + lastPuml.get(),
                 lastPuml.get().contains(":New step;"));
         assertEquals(GuiActionRunner.execute(pane::currentPuml), lastPuml.get());
+        GuiActionRunner.execute(pane::redo);
+        assertTrue("Redo 後のテキストに新アクションが戻る: " + lastPuml.get(),
+                lastPuml.get().contains(":New step;"));
     }
 
     @Test
@@ -369,6 +412,74 @@ public class SketchPaneTest {
         GuiActionRunner.execute(pane::undo);
         assertEquals("loadFrom 後の Undo は前内容へ戻さない", after,
                 (int) GuiActionRunner.execute(() -> pane.classesForTest().size()));
+    }
+
+    @Test
+    public void loadFrom_routesAcrossDiagramTypesInSameInstance() {
+        // 1 つの稼働中インスタンスへ図種の異なるテキストを連続で loadFrom したとき、毎回
+        // (1) activeTypeForTest が期待図種になり、(2) ツールバー/キャンバスの CardLayout が
+        // 対応するカードへ切り替わり、(3) Undo 履歴が別セッション扱いでリセットされることを
+        // 検証する (bug-hunt round2 High: 図種を跨いだ再利用経路がカバーされていなかった)。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        Container toolbarCards = GuiActionRunner.execute(() -> toolbarCardsOf(pane));
+        Container canvasCards = GuiActionRunner.execute(() -> canvasCardsOf(pane));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.CLASS);
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        assertTrue("クラス図編集で Undo 履歴が積まれるはず", GuiActionRunner.execute(pane::canUndoForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.SEQUENCE.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.SEQUENCE);
+        assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
+                GuiActionRunner.execute(pane::canUndoForTest));
+        GuiActionRunner.execute(() -> pane.addParticipantForTest(SeqParticipant.Kind.PARTICIPANT));
+        assertTrue("シーケンス図編集で Undo 履歴が積まれるはず", GuiActionRunner.execute(pane::canUndoForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.ACTIVITY.body()));
+        assertRoutedTo(pane, toolbarCards, canvasCards, SketchDiagramType.ACTIVITY);
+        assertFalse("図種を跨いだ loadFrom は別セッション扱いで Undo 履歴をリセットするはず",
+                GuiActionRunner.execute(pane::canUndoForTest));
+    }
+
+    /** {@code pane} が {@code expected} 図種として判定され、両カードとも切り替わっていることを検証する。 */
+    private static void assertRoutedTo(SketchPane pane, Container toolbarCards, Container canvasCards,
+            SketchDiagramType expected) {
+        assertEquals(expected + " として判定されるはず", expected,
+                GuiActionRunner.execute(pane::activeTypeForTest));
+        assertEquals("ツールバーのカードが " + expected + " へ切り替わるはず",
+                expected.ordinal(), (int) GuiActionRunner.execute(() -> visibleCardIndex(toolbarCards)));
+        assertEquals("キャンバスのカードが " + expected + " へ切り替わるはず",
+                expected.ordinal(), (int) GuiActionRunner.execute(() -> visibleCardIndex(canvasCards)));
+    }
+
+    /**
+     * {@link SketchPane} は {@code BorderLayout} の NORTH に図種ツールバーの
+     * {@code CardLayout} 面 (さらに CENTER) を、CENTER にキャンバスの {@code CardLayout} 面を
+     * 直接置いている。内部フィールドへリフレクションせず、公開された {@link BorderLayout} の
+     * API だけでその面を取得する。
+     */
+    private static Container toolbarCardsOf(SketchPane pane) {
+        Container north = (Container) ((BorderLayout) pane.getLayout())
+                .getLayoutComponent(pane, BorderLayout.NORTH);
+        return (Container) ((BorderLayout) north.getLayout())
+                .getLayoutComponent(north, BorderLayout.CENTER);
+    }
+
+    private static Container canvasCardsOf(SketchPane pane) {
+        return (Container) ((BorderLayout) pane.getLayout())
+                .getLayoutComponent(pane, BorderLayout.CENTER);
+    }
+
+    /** CardLayout は選択中の 1 枚だけを visible にするため、その添字を返す (無ければ -1)。 */
+    private static int visibleCardIndex(Container cards) {
+        Component[] children = cards.getComponents();
+        for (int i = 0; i < children.length; i++) {
+            if (children[i].isVisible()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Test

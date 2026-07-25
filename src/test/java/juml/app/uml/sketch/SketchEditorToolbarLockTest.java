@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  * ({@code isFullySupported()==false})。その間は追加ボタンやモード切替を押しても
  * キャンバス側の editable ガードで無反応になるため、ツールバーを無効表示にして
  * 「押せるのに効かない」誤解を防ぐ (各 {@code *SketchEditor#updateToolbarEnabled} 参照)。
- * ここでは 6 種すべてのエディタで (1) 対応図では有効、(2) ロック図では無効、
+ * ここでは 9 種すべてのエディタで (1) 対応図では有効、(2) ロック図では無効、
  * (3) 対応図へ戻すと再有効、というトグルの往復を確認する。純粋な Swing 生成のみで
  * 実ディスプレイ (Robot) は不要だが、ヘッドレスでは Swing 生成が失敗するため skip する。</p>
  */
@@ -101,5 +101,20 @@ public class SketchEditorToolbarLockTest {
     @Test
     public void componentEditor_toolbarTracksLock() {
         assertToolbarTracksLock(ComponentSketchEditor::new, PumlTemplate.COMPONENT.body());
+    }
+
+    @Test
+    public void deploymentEditor_toolbarTracksLock() {
+        assertToolbarTracksLock(DeploySketchEditor::new, PumlTemplate.DEPLOYMENT.body());
+    }
+
+    @Test
+    public void objectEditor_toolbarTracksLock() {
+        assertToolbarTracksLock(ObjectSketchEditor::new, PumlTemplate.OBJECT.body());
+    }
+
+    @Test
+    public void erEditor_toolbarTracksLock() {
+        assertToolbarTracksLock(ErSketchEditor::new, PumlTemplate.ER.body());
     }
 }
