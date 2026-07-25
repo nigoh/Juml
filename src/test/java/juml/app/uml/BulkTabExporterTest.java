@@ -120,6 +120,19 @@ public class BulkTabExporterTest {
     }
 
     @Test
+    public void exportAll_ioFailure_isCollectedNotThrown() {
+        // 実在しない出力ディレクトリへ書くと各タブが IOException。exportAll は例外を外へ漏らさず
+        // 全件 failures に集計する (部分成功の核はレンダリング失敗だけでなく実 IO 失敗でも成立)。
+        // ※ root 実行では setWritable(false) が効かないため、非存在ディレクトリで確実に失敗させる。
+        File missing = new File(tmp.getRoot(), "no-such-dir");
+        BulkTabExporter.Result r = run(List.of(tab("A", OK_PUML), tab("B", OK_PUML)),
+                missing, UmlExporter.Format.PUML);
+        assertEquals(0, r.exported);
+        assertEquals("IO 失敗も全件 failures へ集計 (throw しない)", 2, r.failures.size());
+        assertFalse("ディレクトリは勝手に作られない", missing.exists());
+    }
+
+    @Test
     public void exportAll_oneFailure_othersStillExported() {
         File dir = tmp.getRoot();
         BulkTabExporter.Result r = run(List.of(tab("Bad", BAD_PUML), tab("Good", OK_PUML)),
