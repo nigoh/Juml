@@ -50,6 +50,39 @@ public class MindmapSketchEditorTest {
     }
 
     @Test
+    public void sideCombo_withNoSelection_snapsBackToAutoAndDoesNotMutate() {
+        // 選択が無い状態 (ロード直後は setModel が select(null)) でコンボを変えても、
+        // setSideOfSelected は no-op なのでコンボは Auto へ戻り、モデルも変わらないこと。
+        MindmapSketchEditor editor = GuiActionRunner.execute(MindmapSketchEditor::new);
+        int[] edits = {0};
+        GuiActionRunner.execute(() -> editor.setOnEdited(() -> edits[0]++));
+        GuiActionRunner.execute(() -> editor.load("@startmindmap\n* Root\n@endmindmap\n"));
+        // ルートは非選択のまま (setModel が select(null))。念のため明示的に選択解除する。
+        GuiActionRunner.execute(() -> editor.selectForTest(null));
+        edits[0] = 0;
+        GuiActionRunner.execute(() -> editor.userPickSideForTest(Side.LEFT));
+        assertSame("選択が無ければコンボは Auto へ戻る", Side.AUTO,
+                GuiActionRunner.execute(editor::comboSideForTest));
+        org.junit.Assert.assertEquals("選択なしの側変更はモデルを変えない", 0, edits[0]);
+    }
+
+    @Test
+    public void sideCombo_userPickOnDeepNode_reflectsBranchSide() {
+        // 深い AUTO の子を選択してコンボで Right を選ぶと、枝起点が Right になり、コンボ表示も
+        // 枝の実効 side (Right) を映すこと (setSideOfSelected の枝委譲 + 再同期の統合確認)。
+        MindmapSketchEditor editor = GuiActionRunner.execute(MindmapSketchEditor::new);
+        GuiActionRunner.execute(() -> editor.load(String.join("\n",
+                "@startmindmap", "* Root", "-- L", "--- G", "@endmindmap", "")));
+        MindmapNode g = editor.rootForTest().getChildren().get(0).getChildren().get(0);
+        GuiActionRunner.execute(() -> editor.selectForTest(g));
+        GuiActionRunner.execute(() -> editor.userPickSideForTest(Side.RIGHT));
+        assertSame("枝起点が Right になりコンボも Right を映す", Side.RIGHT,
+                GuiActionRunner.execute(editor::comboSideForTest));
+        assertSame("枝の起点 L が Right へ変わる", Side.RIGHT,
+                editor.rootForTest().getChildren().get(0).getOwnSide());
+    }
+
+    @Test
     public void sideCombo_sync_doesNotMutateModel() {
         // 選択連動でコンボを書き換えても (syncingSide ガード) 側変更・テキスト再生成が起きないこと。
         MindmapSketchEditor editor = GuiActionRunner.execute(MindmapSketchEditor::new);

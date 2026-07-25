@@ -82,6 +82,10 @@ final class MindmapSketchEditor implements SketchEditor {
                 return; // 選択連動での再表示中はユーザー操作でないので側を変えない。
             }
             canvas.setSideOfSelected(SIDES[sideCombo.getSelectedIndex()]);
+            // 実際に反映された実効 side をコンボへ再表示する。選択が無ければ setSideOfSelected は
+            // no-op なので Auto へ戻り、「有効に見えるのに無反応で表示だけ変わる」誤解を防ぐ。
+            // 深いノードでは枝起点へ正規化された結果の side を映す (コンボとテキストの食い違い防止)。
+            syncSideCombo(canvas.selectedForTest());
         });
         toolbar.add(sideCombo);
 
@@ -183,5 +187,15 @@ final class MindmapSketchEditor implements SketchEditor {
     /** テスト用: side コンボが現在示している side (選択連動の検証用)。 */
     MindmapNode.Side comboSideForTest() {
         return SIDES[sideCombo.getSelectedIndex()];
+    }
+
+    /** テスト用: ユーザーがコンボから side を選ぶ操作を模擬する (本物の ActionListener を通す)。 */
+    void userPickSideForTest(MindmapNode.Side side) {
+        for (int i = 0; i < SIDES.length; i++) {
+            if (SIDES[i] == side) {
+                sideCombo.setSelectedIndex(i); // syncingSide=false のままなのでリスナーが発火する
+                return;
+            }
+        }
     }
 }
