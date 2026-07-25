@@ -129,6 +129,8 @@ public enum ErrorCode {
     EXP_006(Area.EXP, "EXP-006"),
     /** PlantUML 共有 URL の生成・コピーに失敗しました。 */
     EXP_007(Area.EXP, "EXP-007"),
+    /** 開いているタブの一括エクスポートで一部の図の出力に失敗しました。 */
+    EXP_008(Area.EXP, "EXP-008"),
 
     // ── NOTE ──
     /** ノート付き PNG の出力に失敗しました。 */

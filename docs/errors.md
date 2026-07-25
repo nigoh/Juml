@@ -328,6 +328,13 @@ ID の形式は `領域プレフィックス + 3 桁連番`、ERROR / WARN の�
 - **Summary**: Failed to build or copy the PlantUML share URL
 - **Remedy**: Copy the PlantUML text instead (Copy button) and paste it into the PlantUML server manually. If the clipboard is unavailable, close other applications that may lock it and retry.
 
+### EXP-008
+
+- **概要**: 開いているタブの一括出力で一部のタブが失敗しました
+- **対処**: 他のタブは出力済みです。出力先フォルダの書き込み権限と空き容量を確認してください。個々の描画失敗は UML-R の対処 (図を小さくする / Graphviz を有効化) を参照してください。
+- **Summary**: One or more tabs failed during Export All Open Tabs
+- **Remedy**: Other tabs were still exported. Check write permission and free space in the output folder; for individual render failures see the UML-R remedies (shrink the diagram / enable Graphviz).
+
 
 ## NOTE — ノート / Notes
 

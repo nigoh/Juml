@@ -263,6 +263,7 @@ public class UmlMainFrame extends JFrame {
         mcb.savePumlTabAs = () -> tabPane.saveActivePumlEditor(true);
         mcb.diffPumlVsSaved = () -> tabPane.showDiffVsSavedForActiveEditor();
         mcb.chooseAndExport = this::chooseAndExport;
+        mcb.exportAllOpenTabs = this::exportAllOpenTabs;
         mcb.exportClassDiagramsPerFolder = this::exportClassDiagramsPerFolder;
         mcb.exportFunctionList = this::exportFunctionList;
         mcb.exportMemberList = this::exportMemberList;
@@ -885,6 +886,17 @@ public class UmlMainFrame extends JFrame {
      * 1 枚ずつ PlantUML クラス図 ({@code classes.puml} + {@code classes.svg}) を
      * 出力する。実処理は {@link PerFolderExporter} に委譲。
      */
+    /**
+     * File &gt; Export All Open Tabs…: 開いている全ダイアグラムタブを 1 形式で一括保存する。
+     * プロジェクト読込は不要 (自由編集エディタタブも対象)。対象が無ければ案内を出す。
+     */
+    private void exportAllOpenTabs() {
+        if (tabPane == null) {
+            return;
+        }
+        BulkTabExporter.choose(this, tabPane.exportSnapshots(), loadProgress, status);
+    }
+
     private void exportClassDiagramsPerFolder() {
         if (!cache.isLoaded()) {
             JOptionPane.showMessageDialog(this,

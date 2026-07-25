@@ -291,6 +291,19 @@ public final class DiagramTabPane {
         return openTabs.size();
     }
 
+    /**
+     * 「Export All Open Tabs…」用に、開いている全タブの読み取り専用スナップショット
+     * (ラベル・キー・描画済み PlantUML) を開いた順で返す。EDT で呼ぶこと。未描画タブは
+     * puml が null になり、{@link BulkTabExporter} 側でスキップされる。
+     */
+    public java.util.List<BulkTabExporter.Snapshot> exportSnapshots() {
+        java.util.List<BulkTabExporter.Snapshot> out = new java.util.ArrayList<>();
+        for (DiagramTab t : openTabs.values()) {
+            out.add(new BulkTabExporter.Snapshot(t.label, t.key, t.renderedPuml));
+        }
+        return out;
+    }
+
     /** 再オープン (Ctrl+Shift+T) できる閉じタブ履歴の件数。 */
     public int closedTabHistorySize() {
         return closedTabs.size();

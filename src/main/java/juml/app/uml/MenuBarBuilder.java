@@ -51,6 +51,8 @@ public final class MenuBarBuilder {
         /** File &gt; Diff vs Saved: 編集中テキストと保存ファイルの差分を表示する。 */
         public Runnable diffPumlVsSaved;
         public Runnable chooseAndExport;
+        /** File &gt; Export All Open Tabs…: 開いている全タブを 1 形式で一括保存する。 */
+        public Runnable exportAllOpenTabs;
         public Runnable exportClassDiagramsPerFolder;
         public Runnable exportFunctionList;
         public Runnable exportMemberList;
@@ -293,6 +295,14 @@ public final class MenuBarBuilder {
                 menuMask | InputEvent.SHIFT_DOWN_MASK));
         save.addActionListener(e -> cb.chooseAndExport.run());
         save.setEnabled(false);
+        // Export All Open Tabs は開いているタブが対象なので、プロジェクト読込には依存しない
+        // (exportItems の一括 enable には入れず常に有効)。タブが無ければ実行時に案内を出す。
+        JMenuItem exportAllTabs = null;
+        if (cb.exportAllOpenTabs != null) {
+            exportAllTabs = new JMenuItem(Messages.get("menubar.file.exportAllTabs"));
+            exportAllTabs.setMnemonic(KeyEvent.VK_A);
+            exportAllTabs.addActionListener(e -> cb.exportAllOpenTabs.run());
+        }
         JMenuItem perFolder = new JMenuItem(Messages.get("menubar.file.exportPerFolder"));
         perFolder.setMnemonic(KeyEvent.VK_P);
         perFolder.addActionListener(e -> cb.exportClassDiagramsPerFolder.run());
@@ -349,6 +359,9 @@ public final class MenuBarBuilder {
             m.add(diff);
         }
         m.add(save);
+        if (exportAllTabs != null) {
+            m.add(exportAllTabs);
+        }
         m.add(perFolder);
         m.add(functionList);
         m.add(memberList);
