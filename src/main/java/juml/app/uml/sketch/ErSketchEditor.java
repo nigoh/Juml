@@ -28,6 +28,8 @@ final class ErSketchEditor implements SketchEditor {
     private final JScrollPane scroll;
     private final JComboBox<String> modeCombo;
     private Runnable onEdited = () -> { };
+    /** 直近の load で未対応だった行 (コメント行ロックの1クリック解除判定に使う)。 */
+    private java.util.List<String> unsupported = java.util.List.of();
 
     /** モードコンボの並び (先頭 = 選択/移動, 次 = リレーション追加)。 */
     private static final String[] MODE_KEYS = {
@@ -93,6 +95,7 @@ final class ErSketchEditor implements SketchEditor {
     @Override
     public void load(String pumlText) {
         ErSketchCodec.ParseResult r = ErSketchCodec.parse(pumlText);
+        this.unsupported = r.unsupportedLines != null ? r.unsupportedLines : java.util.List.of();
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
         updateToolbarEnabled();
     }
@@ -116,6 +119,11 @@ final class ErSketchEditor implements SketchEditor {
     @Override
     public boolean isEditable() {
         return canvas.isModelEditable();
+    }
+
+    @Override
+    public java.util.List<String> unsupportedLines() {
+        return unsupported;
     }
 
     @Override

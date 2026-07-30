@@ -2148,6 +2148,13 @@ public final class DiagramTabPane {
             // 同時に見えるのは片方だけ (JTabbedPane) なので同期ループは起きない。
             sketchPane = new juml.app.uml.sketch.SketchPane();
             sketchPane.setOnPumlChange(sourcePanel::setText);
+            // 「編集を有効化」: 未対応がコメント行だけのロックを、そのコメント行をテキストから
+            // 除去して解除する。setText を使わず doc.remove で消すため Ctrl+Z で復元でき、除去後の
+            // テキストで Design を再読込して編集可能へ切り替える。
+            sketchPane.setOnEnableEditingRequested(() -> {
+                sourcePanel.removeCommentLines();
+                sketchPane.loadFrom(sourcePanel.getText());
+            });
             bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
             bottomTabs.addChangeListener(e -> {
                 if (bottomTabs.getSelectedComponent() == sketchPane) {

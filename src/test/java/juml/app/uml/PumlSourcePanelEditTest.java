@@ -132,6 +132,25 @@ public class PumlSourcePanelEditTest {
     }
 
     @Test
+    public void removeCommentLines_stripsCommentsKeepsCode() {
+        PumlSourcePanel panel = editable(
+                "@startuml\n' a note\nclass A\n  ' indented comment\nclass B\n@enduml\n");
+        GuiActionRunner.execute(panel::removeCommentLines);
+        assertEquals("コメント行 (' 始まり・インデント込み) だけが消える",
+                "@startuml\nclass A\nclass B\n@enduml\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
+    public void removeCommentLines_isSingleUndo() {
+        PumlSourcePanel panel = editable("' c1\nclass A\n' c2\n");
+        GuiActionRunner.execute(panel::removeCommentLines);
+        assertEquals("class A\n", GuiActionRunner.execute(panel::getText));
+        GuiActionRunner.execute(panel::undoForTest);
+        assertEquals("コメント一括除去は 1 手 (複合編集) で戻せる",
+                "' c1\nclass A\n' c2\n", GuiActionRunner.execute(panel::getText));
+    }
+
+    @Test
     public void replaceAll_replacesEveryMatch() {
         PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
         GuiActionRunner.execute(() -> {

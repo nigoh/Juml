@@ -29,6 +29,8 @@ final class ClassSketchEditor implements SketchEditor {
     private final JScrollPane scroll;
     private final JComboBox<String> modeCombo;
     private Runnable onEdited = () -> { };
+    /** 直近の load で未対応だった行 (コメント行ロックの1クリック解除判定に使う)。 */
+    private java.util.List<String> unsupported = java.util.List.of();
 
     /** モードコンボの並びに対応する関係種別 (先頭 null = 選択/移動)。 */
     private static final SketchRelation.Kind[] MODES = {
@@ -139,6 +141,7 @@ final class ClassSketchEditor implements SketchEditor {
     @Override
     public void load(String pumlText) {
         SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(pumlText);
+        this.unsupported = r.unsupportedLines != null ? r.unsupportedLines : java.util.List.of();
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
         updateToolbarEnabled();
     }
@@ -162,6 +165,11 @@ final class ClassSketchEditor implements SketchEditor {
     @Override
     public boolean isEditable() {
         return canvas.isModelEditable();
+    }
+
+    @Override
+    public java.util.List<String> unsupportedLines() {
+        return unsupported;
     }
 
     @Override

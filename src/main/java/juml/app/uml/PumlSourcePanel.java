@@ -798,6 +798,38 @@ public class PumlSourcePanel extends JPanel {
         });
     }
 
+    /**
+     * トリム後 {@code '} で始まる行 (PlantUML の行コメント) をすべて削除する (1 手で戻せる)。
+     * ビジュアルデザイナーで「コメント行だけが原因の編集ロック」を解除するために使う。
+     * {@link #setText} を使わず {@code doc.remove} で消すため通常の Ctrl+Z で復元できる。
+     */
+    public void removeCommentLines() {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        StyledDocument doc = textPane.getStyledDocument();
+        Element root = doc.getDefaultRootElement();
+        // 下から上へ削除してオフセットのずれを避ける。行末の改行も含めて 1 行分消す。
+        runAsCompound(() -> {
+            for (int ln = root.getElementCount() - 1; ln >= 0; ln--) {
+                if (!lineText(root, ln).stripLeading().startsWith("'")) {
+                    continue;
+                }
+                Element el = root.getElement(ln);
+                int start = el.getStartOffset();
+                int len = Math.min(el.getEndOffset(), doc.getLength()) - start;
+                if (len <= 0) {
+                    continue;
+                }
+                try {
+                    doc.remove(start, len);
+                } catch (BadLocationException ignored) {
+                    // 範囲外は無視。
+                }
+            }
+        });
+    }
+
     /** 指定行 (0 始まり) のテキスト (改行含む) を返す。取得失敗時は空文字。 */
     private String lineText(Element root, int lineIndex) {
         Element el = root.getElement(lineIndex);

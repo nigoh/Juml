@@ -36,4 +36,14 @@ interface SketchEditor {
 
     /** キャンバス操作でモデルが変わったときの通知先を登録する。 */
     void setOnEdited(Runnable onEdited);
+
+    /**
+     * 直近の {@link #load} で往復できず「未対応」とされた行の一覧 (空なら完全対応)。
+     * {@link SketchPane} が「PlantUML コメント行だけが原因の編集ロック」を検出し、
+     * ワンクリックでコメントを除いて編集を有効化するボタンを出すために使う。
+     * 既定は空 (未実装のエディタではボタンを出さない)。
+     */
+    default java.util.List<String> unsupportedLines() {
+        return java.util.List.of();
+    }
 }

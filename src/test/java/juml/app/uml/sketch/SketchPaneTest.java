@@ -41,6 +41,62 @@ public class SketchPaneTest {
                 () -> pane.classesForTest().size()));
     }
 
+    /** {@code @enduml} 直前へ PlantUML コメント行を差し込む (全コーデックが未対応にする)。 */
+    private static String withComment(String body) {
+        return body.replace("@enduml", "' a user comment\n@enduml");
+    }
+
+    @Test
+    public void commentOnlyLock_showsEnableEditingButton() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(withComment(PumlTemplate.CLASS.body())));
+        assertFalse("コメントを含む図は編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("未対応がコメント行だけなら comment-only lock",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertTrue("「編集を有効化」ボタンが表示される",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
+    public void cleanTemplate_hidesEnableEditingButton() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        assertTrue(GuiActionRunner.execute(pane::isEditable));
+        assertFalse("編集可能なら「編集を有効化」は非表示",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
+    public void mixedUnsupported_hidesEnableEditingButton() {
+        // コメント + コメント以外の未対応行が混在 → コメント除去だけでは解けないのでボタンは出さない。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        String mixed = PumlTemplate.CLASS.body()
+                .replace("@enduml", "' a comment\nskinparam monochrome true\n@enduml");
+        GuiActionRunner.execute(() -> pane.loadFrom(mixed));
+        assertFalse("ロックはされる", GuiActionRunner.execute(pane::isEditable));
+        assertFalse("コメント以外の未対応が混在すればボタンは出さない",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertFalse(GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
+    public void enableEditing_callbackFires_andReloadUnlocks() {
+        // ボタン押下 → 配線コールバック (実機ではコメント除去 + 再読込) で編集可能へ切り替わる。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        boolean[] fired = {false};
+        GuiActionRunner.execute(() -> pane.setOnEnableEditingRequested(() -> {
+            fired[0] = true;
+            pane.loadFrom(PumlTemplate.CLASS.body()); // コメント除去後の再読込を模す
+        }));
+        GuiActionRunner.execute(() -> pane.loadFrom(withComment(PumlTemplate.CLASS.body())));
+        assertTrue(GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+        GuiActionRunner.execute(pane::clickEnableEditingForTest);
+        assertTrue("コールバックが発火する", fired[0]);
+        assertTrue("再読込で編集可能になる", GuiActionRunner.execute(pane::isEditable));
+        assertFalse("解除後はボタンが消える",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
     @Test
     public void loadFrom_sequenceTemplate_enablesSequenceEditing() {
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
