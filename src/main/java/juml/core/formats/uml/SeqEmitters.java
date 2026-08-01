@@ -184,8 +184,14 @@ final class SeqEmitters {
             }
             for (String wl : PlantUmlCommentFormatter.wordWrap(t, o.commentMaxLength).split("\n", -1)) {
                 if (!wl.isEmpty()) {
+                    // JavaDoc 由来の行をそのまま出すと "end note" だけの行で note ブロックが
+                    // 早期終端し、以降が生の PlantUML として解釈されて図全体が描画失敗する。
+                    // "!theme x" 等はプリプロセッサ命令として実行されてしまう。他の note 経路
+                    // (PlantUmlCommentFormatter#appendNoteBody / PlantUmlSequenceComments) と
+                    // 同じく sanitizeNoteLine で無害化する (本経路だけ適用漏れだった)。
                     body.append(indent).append("  ")
-                            .append(PlantUmlCommentFormatter.escapeText(wl)).append('\n');
+                            .append(PlantUmlCommentFormatter.sanitizeNoteLine(
+                                    PlantUmlCommentFormatter.escapeText(wl))).append('\n');
                     any = true;
                 }
             }
