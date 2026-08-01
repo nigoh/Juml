@@ -86,8 +86,19 @@ public enum SketchDiagramType {
             "(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)");
     /** ER 図の列ブロックを開くエンティティ宣言 ({@code entity ... {})。 */
     private static final Pattern ER_ENTITY_BLOCK = Pattern.compile("^entity\\b.*\\{\\s*$");
-    /** ER 図でエンティティを表として描かせる {@code hide circle} 指令。 */
+    /** ER 図でエンティティを表として描かせる {@code hide circle} 指令 (ER コーデック専用)。 */
     private static final Pattern ER_HIDE_CIRCLE = Pattern.compile("^hide\\s+circle\\b.*$");
+    /**
+     * 座標コメント {@code '@pos id x y}。位置を持つ設計器 (クラス/コンポーネント/配置/ER/
+     * オブジェクト/状態/ユースケース) だけが出力し、シーケンス図・アクティビティ図の
+     * コーデックは決して出さない。したがってこの行があれば「シーケンス図ではない」と
+     * 断定でき、{@code database} / {@code actor} のような共有キーワードの持ち主を絞り込める。
+     */
+    private static final Pattern POS_COMMENT = Pattern.compile("^'@pos\\s+\\S+\\s+-?\\d+\\s+-?\\d+\\s*$");
+    /** 配置図が出す {@code database} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
+    private static final Pattern DATABASE_LINE = Pattern.compile("^database\\b.*$");
+    /** ユースケース図が出す {@code actor} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
+    private static final Pattern ACTOR_LINE = Pattern.compile("^actor\\b.*$");
     /** クラス図に固有の宣言行。 */
     private static final Pattern CLASS_LINE = Pattern.compile(
             "^(abstract\\s+)?(class|interface|enum)\\b.*$");
@@ -110,6 +121,15 @@ public enum SketchDiagramType {
         for (String raw : lines) {
             if (USECASE_LINE.matcher(raw.trim()).matches()) {
                 return USECASE;
+            }
+        }
+        // node / artifact / cloud は配置図だけが出す宣言。配置図はコンポーネントノードも
+        // 持てる (Kind.COMPONENT) ため、component より先に判定しないと「node と component が
+        // 混在する配置図」がコンポーネント図へ流れてしまう。コンポーネント図コーデックは
+        // component / interface しか扱わないので、この順序は安全。
+        for (String raw : lines) {
+            if (DEPLOYMENT_LINE.matcher(raw.trim()).matches()) {
+                return DEPLOYMENT;
             }
         }
         // component キーワード / [Id] も他図種と衝突しないため先取りで判定する。
@@ -136,14 +156,34 @@ public enum SketchDiagramType {
             entityBlock = entityBlock || ER_ENTITY_BLOCK.matcher(line).matches();
             hideCircle = hideCircle || ER_HIDE_CIRCLE.matcher(line).matches();
         }
-        if (entityBlock && hideCircle) {
+        // hide circle は ER コーデックだけが出す指令なので、列を持たない (= entity 行が
+        // ブロックを開かない) エンティティしか残っていなくても ER 図と確定できる。
+        // これを見ないと `hide circle` + `entity A` がシーケンス図の参加者宣言に吸われる。
+        if (hideCircle) {
             return ER;
         }
-        // node / artifact / cloud 宣言も配置図に固有なため先取りで判定する
-        // (database はシーケンス図の参加者と衝突するため主判定材料にしない)。
+        if (entityBlock) {
+            return ER;
+        }
+        // 座標コメントがあれば「位置を持つ設計器の出力」= シーケンス図ではないと断定できる。
+        // これを使って、綴りを共有するキーワードしか残っていない図の持ち主を決める
+        // (例: 配置図で database ノードだけ、ユースケース図でアクターだけ残した状態)。
+        boolean hasPos = false;
         for (String raw : lines) {
-            if (DEPLOYMENT_LINE.matcher(raw.trim()).matches()) {
-                return DEPLOYMENT;
+            if (POS_COMMENT.matcher(raw.trim()).matches()) {
+                hasPos = true;
+                break;
+            }
+        }
+        if (hasPos) {
+            for (String raw : lines) {
+                String line = raw.trim();
+                if (DATABASE_LINE.matcher(line).matches()) {
+                    return DEPLOYMENT;
+                }
+                if (ACTOR_LINE.matcher(line).matches()) {
+                    return USECASE;
+                }
             }
         }
         for (String raw : lines) {
