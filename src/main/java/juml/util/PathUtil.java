@@ -42,4 +42,35 @@ public class PathUtil {
     public static String getBasePath() {
         return new File(System.getProperty("user.dir")).getAbsolutePath();
     }
+
+    /** ユーザー単位のデータ格納ディレクトリを差し替えるためのシステムプロパティ (テスト用)。 */
+    public static final String USER_DATA_DIR_PROPERTY = "juml.userDataDir";
+
+    /**
+     * 設定・ログなど「起動場所に依存してはいけないもの」を置くユーザー単位の
+     * ディレクトリ ({@code ~/.juml}、Windows は {@code %LOCALAPPDATA%/Juml})。
+     *
+     * <p>{@link #getBasePath()} (= {@code user.dir}) はユーザーが任意のフォルダから
+     * {@code java -jar Juml.jar <path>} で起動するため一定しない。そこへ設定やログを置くと
+     * 起動場所ごとに別ファイルになり、設定が毎回初期値へ戻ったうえ、行った先々に
+     * {@code settings.xml} と {@code logs/} が散らばる。インストール先が書込不可なら
+     * そもそも保存できない。解析キャッシュ・下書き・プロジェクト履歴は既にこの場所へ
+     * 移してあるので、設定とログも揃える。</p>
+     *
+     * <p>テストは {@value #USER_DATA_DIR_PROPERTY} で差し替えられる。</p>
+     */
+    public static File getUserDataDir() {
+        String override = System.getProperty(USER_DATA_DIR_PROPERTY);
+        if (override != null && !override.isEmpty()) {
+            return new File(override);
+        }
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        if (os.contains("win")) {
+            String local = System.getenv("LOCALAPPDATA");
+            if (local != null && !local.isEmpty()) {
+                return new File(local, "Juml");
+            }
+        }
+        return new File(System.getProperty("user.home", "."), ".juml");
+    }
 }

@@ -28,15 +28,8 @@ public final class DbBootstrap {
 
     /** {@code ~/.juml/cache} 等、OS に応じたキャッシュベースディレクトリ。 */
     public static File defaultBaseDir() {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        if (os.contains("win")) {
-            String local = System.getenv("LOCALAPPDATA");
-            if (local != null && !local.isEmpty()) {
-                return new File(local, "Juml/cache");
-            }
-        }
-        String home = System.getProperty("user.home", ".");
-        return new File(home, ".juml/cache");
+        // 設定・ログ・下書きと同じユーザー単位の親ディレクトリ配下に置く (単一の解決元)。
+        return new File(juml.util.PathUtil.getUserDataDir(), "cache");
     }
 
     /** 指定 root に対するキャッシュサブディレクトリ ({@code <base>/<shortHash>}) を返す。 */

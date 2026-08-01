@@ -31,26 +31,61 @@ public class SettingManager {
         return instance;
     }
 
+    /**
+     * 設定を読み込む (無ければ既定値で作成する)。
+     *
+     * <p>保存先はユーザー単位の {@code ~/.juml/settings.xml} ({@link PathUtil#getUserDataDir()})。
+     * 以前は起動時のカレントディレクトリ配下に置いていたため、起動する場所を変えるだけで
+     * 設定 (テーマ・L&amp;F・言語・ウィンドウサイズ等) が毎回初期値へ戻り、行った先々に
+     * {@code settings.xml} が作られ、インストール先が書込不可だと保存自体できなかった。
+     * 解析キャッシュ・下書き・プロジェクト履歴と同じ場所へ揃える。</p>
+     *
+     * <p>旧位置に設定がありユーザー領域にまだ無い場合は、一度だけ引き継ぐ (旧ファイルは
+     * 消さずに残す。別バージョンの Juml がまだ参照している可能性があるため)。</p>
+     */
     public static SettingManager initialize() {
-        File settingFile = new File(PathUtil.getBasePath(), "settings.xml");
-        Setting setting;
+        return initialize(PathUtil.getUserDataDir());
+    }
+
+    /** 保存先ディレクトリを明示して初期化する (テスト用シーム)。 */
+    static SettingManager initialize(File dir) {
+        File settingFile = new File(dir, "settings.xml");
+        Setting setting = null;
         if (settingFile.exists()) {
-            try {
-                setting = Setting.loadFromFile(settingFile);
-            } catch (IOException e) {
-                setting = new Setting();
-            }
+            setting = tryLoad(settingFile);
         } else {
-            setting = new Setting();
-            try {
-                setting.saveToFile(settingFile);
-            } catch (IOException e) {
-                juml.util.AppLog.warn(juml.util.ErrorCode.CFG_001, "SettingManager",
-                        "Failed to save initial settings", e);
+            File legacy = new File(PathUtil.getBasePath(), "settings.xml");
+            if (legacy.isFile()) {
+                setting = tryLoad(legacy);
+                if (setting != null) {
+                    juml.util.AppLog.info("SettingManager",
+                            "Migrated settings from " + legacy.getAbsolutePath()
+                                    + " to " + settingFile.getAbsolutePath());
+                }
             }
         }
-        instance = new SettingManager(setting, settingFile);
+        boolean isNew = setting == null;
+        if (isNew) {
+            setting = new Setting();
+        }
+        SettingManager created = new SettingManager(setting, settingFile);
+        if (!settingFile.exists()) {
+            // 新規作成でも旧位置からの引き継ぎでも、ユーザー領域へ 1 度書き出して確定させる。
+            created.save();
+        }
+        instance = created;
         return instance;
+    }
+
+    /** 読み込みに失敗したら null (呼び出し側が既定値へフォールバックする)。 */
+    private static Setting tryLoad(File file) {
+        try {
+            return Setting.loadFromFile(file);
+        } catch (IOException e) {
+            juml.util.AppLog.warn(juml.util.ErrorCode.CFG_001, "SettingManager",
+                    "Failed to load settings: " + file.getAbsolutePath(), e);
+            return null;
+        }
     }
 
     public Setting getSetting() {
@@ -59,6 +94,11 @@ public class SettingManager {
 
     public void save() {
         try {
+            // 初回はユーザー領域 (~/.juml) がまだ無いことがあるので作ってから書く。
+            File parent = settingFile.getParentFile();
+            if (parent != null && !parent.isDirectory()) {
+                parent.mkdirs();
+            }
             setting.saveToFile(settingFile);
         } catch (IOException e) {
             juml.util.AppLog.warn(juml.util.ErrorCode.CFG_001, "SettingManager",
