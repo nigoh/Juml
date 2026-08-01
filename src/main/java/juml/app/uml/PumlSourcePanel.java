@@ -803,6 +803,23 @@ public class PumlSourcePanel extends JPanel {
      * ビジュアルデザイナーで「コメント行だけが原因の編集ロック」を解除するために使う。
      * {@link #setText} を使わず {@code doc.remove} で消すため通常の Ctrl+Z で復元できる。
      */
+    /**
+     * {@link #removeCommentLines()} が削除する行 (トリム済み) を、上から順に返す。
+     * 削除は元に戻せる保証が限定的な破壊的操作なので、実行前の確認ダイアログで
+     * 「何が消えるか」を利用者へ提示するために使う。
+     */
+    public java.util.List<String> commentLines() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        Element root = textPane.getStyledDocument().getDefaultRootElement();
+        for (int ln = 0; ln < root.getElementCount(); ln++) {
+            String t = lineText(root, ln);
+            if (t.stripLeading().startsWith("'")) {
+                out.add(t.strip());
+            }
+        }
+        return out;
+    }
+
     public void removeCommentLines() {
         if (!textPane.isEditable()) {
             return;

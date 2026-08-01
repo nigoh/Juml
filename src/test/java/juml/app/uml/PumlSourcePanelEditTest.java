@@ -141,6 +141,23 @@ public class PumlSourcePanelEditTest {
     }
 
     @Test
+    public void commentLines_listsExactlyWhatRemovalWouldDelete() {
+        // 確認ダイアログは「何が消えるか」をこの一覧で提示する。実際の削除対象と
+        // 食い違うと、利用者は消える内容を誤解したまま承諾してしまう。
+        PumlSourcePanel panel = editable(
+                "@startuml\n' header\nclass A\n  ' indented\nclass B\n@enduml\n");
+        java.util.List<String> listed = GuiActionRunner.execute(panel::commentLines);
+        assertEquals(java.util.List.of("' header", "' indented"), listed);
+
+        GuiActionRunner.execute(panel::removeCommentLines);
+        assertEquals("一覧に出した行だけが実際に消えること",
+                "@startuml\nclass A\nclass B\n@enduml\n",
+                GuiActionRunner.execute(panel::getText));
+        assertTrue("削除後は対象が無くなること",
+                GuiActionRunner.execute(panel::commentLines).isEmpty());
+    }
+
+    @Test
     public void removeCommentLines_isSingleUndo() {
         PumlSourcePanel panel = editable("' c1\nclass A\n' c2\n");
         GuiActionRunner.execute(panel::removeCommentLines);
