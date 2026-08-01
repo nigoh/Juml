@@ -104,7 +104,11 @@ public final class KotlinLightScanner {
         // "class" 等 (例: "This class holds ...") を実クラス宣言と誤認しないために使う。
         boolean[] nonCode = nonCodeMask(source);
 
-        // クラスヘッダごとに本体を切り出す
+        // クラスヘッダごとに本体を切り出す。ネスト型も同じループで列挙されるため、
+        // 「いま開いているクラス本体」をスタックで追って enclosingClass を決める
+        // (設定しないと Outer.Inner が Outer 抜きの QN になり、同名ネスト型が
+        //  同じ QN へ衝突して 1 ノードに統合される)。
+        KotlinHeaderScan.Nesting nesting = new KotlinHeaderScan.Nesting();
         Matcher cm = CLASS_HEADER.matcher(source);
         while (cm.find()) {
             // 種別キーワード (class/interface/object) がコメント/文字列内なら誤検出。読み飛ばす。
@@ -119,6 +123,7 @@ public final class KotlinLightScanner {
             JavaClassInfo info = new JavaClassInfo();
             info.setPackageName(pkg);
             info.setSimpleName(name);
+            info.setEnclosingClass(nesting.enclosingAt(cm.start()));
             info.setKind(mapKind(kindKw, annsAndMods));
             info.getImports().addAll(imports);
             extractAnnotations(annsAndMods, info.getAnnotations());
@@ -142,6 +147,14 @@ public final class KotlinLightScanner {
                     String paramsText = source.substring(primaryCtorParen + 1,
                             primaryCtorClose);
                     extractPrimaryCtorFields(paramsText, info);
+                }
+            }
+            // 本体を持つクラスは「開いている本体」として積み、以降のヘッダが本体内なら
+            // このクラスを enclosing とする (閉じ位置を超えたら上の while で捨てられる)。
+            if (bodyBraceOpen >= 0) {
+                int bodyEnd = matchBrace(source, bodyBraceOpen);
+                if (bodyEnd > bodyBraceOpen) {
+                    nesting.openBody(name, bodyEnd);
                 }
             }
 
@@ -227,7 +240,7 @@ public final class KotlinLightScanner {
             return;
         }
         String region = source.substring(start, end);
-        int colon = topLevelColon(region);
+        int colon = KotlinHeaderScan.topLevelColon(region);
         if (colon < 0) {
             return;
         }
@@ -239,7 +252,7 @@ public final class KotlinLightScanner {
                 break;
             }
         }
-        for (String raw : splitTopLevelCommas(list)) {
+        for (String raw : KotlinHeaderScan.splitTopLevelCommas(list)) {
             String e = raw.trim();
             if (e.isEmpty()) {
                 continue;
@@ -274,7 +287,7 @@ public final class KotlinLightScanner {
     private static void extractEnumConstants(String body, JavaClassInfo info) {
         int semi = topLevelSemicolon(body);
         String constPart = semi >= 0 ? body.substring(0, semi) : body;
-        for (String raw : splitTopLevelCommas(constPart)) {
+        for (String raw : KotlinHeaderScan.splitTopLevelCommas(constPart)) {
             String e = raw.trim();
             if (e.isEmpty()) {
                 continue;
@@ -301,26 +314,6 @@ public final class KotlinLightScanner {
                 }
             } else if (c == ';' && depth == 0) {
                 return i;
-            }
-        }
-        return -1;
-    }
-
-    /** {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。 */
-    private static int topLevelColon(String s) {
-        int depth = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '<' || c == '(' || c == '[') {
-                depth++;
-            } else if (c == '>' || c == ')' || c == ']') {
-                if (depth > 0) {
-                    depth--;
-                }
-            } else if (c == ':' && depth == 0) {
-                return i;
-            } else if ((c == '{' || c == '}') && depth == 0) {
-                return -1;
             }
         }
         return -1;
@@ -375,7 +368,7 @@ public final class KotlinLightScanner {
                         + "(?:private\\s+|protected\\s+|public\\s+|internal\\s+)?"
                         + "(?:val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*(.+?)"
                         + "(?:\\s*=.*)?\\s*$");
-        for (String p : splitTopLevelCommas(paramsText)) {
+        for (String p : KotlinHeaderScan.splitTopLevelCommas(paramsText)) {
             Matcher m = perParam.matcher(p);
             if (m.matches()) {
                 String anns = m.group(1);
@@ -570,7 +563,7 @@ public final class KotlinLightScanner {
     private static void parseParameters(String text, JavaMethodInfo mth) {
         if (text == null || text.trim().isEmpty()) return;
         // ジェネリクスを尊重した split
-        List<String> parts = splitTopLevelCommas(text);
+        List<String> parts = KotlinHeaderScan.splitTopLevelCommas(text);
         for (String p : parts) {
             String trimmed = p.trim();
             if (trimmed.isEmpty()) continue;
@@ -586,27 +579,6 @@ public final class KotlinLightScanner {
                 mth.getParameterTypes().add(s.group(2).trim());
             }
         }
-    }
-
-    private static List<String> splitTopLevelCommas(String s) {
-        List<String> out = new ArrayList<>();
-        int depth = 0;
-        StringBuilder cur = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '<' || c == '(' || c == '[' || c == '{') depth++;
-            else if (c == '>' || c == ')' || c == ']' || c == '}') {
-                if (depth > 0) depth--;
-            }
-            if (c == ',' && depth == 0) {
-                out.add(cur.toString());
-                cur.setLength(0);
-            } else {
-                cur.append(c);
-            }
-        }
-        if (cur.length() > 0) out.add(cur.toString());
-        return out;
     }
 
     /**
