@@ -98,6 +98,22 @@ public enum SketchDiagramType {
      * 断定でき、{@code database} / {@code actor} のような共有キーワードの持ち主を絞り込める。
      */
     private static final Pattern POS_COMMENT = Pattern.compile("^'@pos\\s+\\S+\\s+-?\\d+\\s+-?\\d+\\s*$");
+    /**
+     * デザイナーが出したレイアウトコメント {@code '@pos <id> <x> <y>} か。
+     *
+     * <p>「編集を有効化」のコメント除去はこの行を対象外にする (消すと全ノードの配置が
+     * リセットされる)。除去できないコメントが残る図は comment-only lock ではない。</p>
+     */
+    public static boolean isLayoutComment(String line) {
+        return line != null && POS_COMMENT.matcher(line.trim()).matches();
+    }
+
+    /** 「編集を有効化」で取り除いてよいコメント行か (レイアウトコメントは残す)。 */
+    public static boolean isRemovableComment(String line) {
+        String t = line == null ? "" : line.strip();
+        return t.startsWith("'") && !isLayoutComment(t);
+    }
+
     /** 配置図が出す {@code database} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
     private static final Pattern DATABASE_LINE = Pattern.compile("^database\\b.*$");
     /** ユースケース図が出す {@code actor} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
@@ -116,9 +132,40 @@ public enum SketchDiagramType {
                     + "|alt\\b.*|opt\\b.*|loop\\b.*|par\\b.*|group\\b.*"
                     + "|[A-Za-z_$][\\w$.]*\\s*(->>?|-->>)\\s*[A-Za-z_$].*)$");
 
+    /**
+     * ブロック本体 ({@code entity X { ... }} / {@code class A { ... }} の中身) を落として
+     * 「トップレベル宣言だけ」を返す。
+     *
+     * <p>本体の行はメンバー名であって宣言ではない。素通しすると、たとえば ER 図の列名を
+     * {@code node} にしただけで {@code DEPLOYMENT_LINE} に一致し、保存して開き直した瞬間に
+     * <b>空で編集ロックされた配置図デザイナー</b>が出る (列名は自由入力なので普通に起きる)。
+     * PlantUML 側の判定 ({@code PumlDiagramScan}) にも同じ穴があり、そちらは自由記述の
+     * 除外で塞いだ。ここはブロック本体の除外で塞ぐ。</p>
+     */
+    private static String[] topLevelLines(String[] lines) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int depth = 0;
+        for (String raw : lines) {
+            String t = raw.trim();
+            if (depth == 0) {
+                out.add(raw);
+            }
+            // 行内の波括弧で深さを更新する (宣言行の末尾 `{` はその行を宣言として残す)。
+            for (int i = 0; i < t.length(); i++) {
+                char c = t.charAt(i);
+                if (c == '{') {
+                    depth++;
+                } else if (c == '}' && depth > 0) {
+                    depth--;
+                }
+            }
+        }
+        return out.toArray(new String[0]);
+    }
+
     /** PlantUML テキストから図種を判定する。 */
     public static SketchDiagramType detect(String text) {
-        String[] lines = (text == null ? "" : text).split("\n", -1);
+        String[] lines = topLevelLines((text == null ? "" : text).split("\n", -1));
         // @startmindmap で始まる図はマインドマップと確定する (@startuml 前提の他図種と衝突なし)。
         for (String raw : lines) {
             if (raw.trim().startsWith("@startmindmap")) {

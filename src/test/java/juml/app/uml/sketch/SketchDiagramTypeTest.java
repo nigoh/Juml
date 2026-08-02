@@ -7,6 +7,8 @@ import juml.app.uml.PumlTemplate;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * {@link SketchDiagramType#detect(String)} の図種判定を検証する純ロジックテスト。
@@ -259,5 +261,45 @@ public class SketchDiagramTypeTest {
                 SketchDiagramType.detect(PumlTemplate.ER.body()));
         assertEquals(SketchDiagramType.DEPLOYMENT,
                 SketchDiagramType.detect(PumlTemplate.DEPLOYMENT.body()));
+    }
+
+    // --- ブロック本体のメンバー名で図種を誤判定しない ------------------------------
+    //
+    // 回帰: detect() が全行を平坦に走査していたため、ER 図の列名を node/cloud/artifact/
+    // component/usecase にしただけで、保存して開き直すと空で編集ロックされた別図種の
+    // デザイナーが開いていた (列名は自由入力なので普通に起きる)。
+
+    @Test
+    public void erColumnNamedLikeAnotherDiagramKeywordStaysEr() {
+        for (String column : new String[] {"node", "cloud", "artifact", "component", "usecase"}) {
+            String puml = "@startuml\nhide circle\nentity tree {\n  * id : int\n  --\n  "
+                    + column + " : text\n}\n'@pos tree 0 0\n@enduml\n";
+            assertEquals(column + " という列名で図種が変わらないこと",
+                    SketchDiagramType.ER, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
+    public void classMemberNamedLikeAnotherDiagramKeywordStaysClass() {
+        String puml = "@startuml\nclass Tree {\n  node : Node\n  component : Part\n}\n@enduml\n";
+        assertEquals(SketchDiagramType.CLASS, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void topLevelDeclarationsStillDecideTheType() {
+        // 非退行: ブロックの外にある本物の宣言はこれまでどおり効く。
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(
+                "@startuml\nnode Server {\n  database DB\n}\n@enduml\n"));
+        assertEquals(SketchDiagramType.COMPONENT, SketchDiagramType.detect(
+                "@startuml\ncomponent App\ninterface Api\n@enduml\n"));
+    }
+
+    @Test
+    public void layoutCommentIsRecognised() {
+        assertTrue(SketchDiagramType.isLayoutComment("'@pos tree 10 20"));
+        assertTrue(SketchDiagramType.isLayoutComment("  '@pos a1 -5 -6  "));
+        assertFalse(SketchDiagramType.isLayoutComment("' ordinary comment"));
+        assertFalse(SketchDiagramType.isLayoutComment("class A"));
+        assertFalse(SketchDiagramType.isLayoutComment(null));
     }
 }

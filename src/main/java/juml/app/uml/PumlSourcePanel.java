@@ -799,27 +799,27 @@ public class PumlSourcePanel extends JPanel {
     }
 
     /**
-     * トリム後 {@code '} で始まる行 (PlantUML の行コメント) をすべて削除する (1 手で戻せる)。
-     * ビジュアルデザイナーで「コメント行だけが原因の編集ロック」を解除するために使う。
-     * {@link #setText} を使わず {@code doc.remove} で消すため通常の Ctrl+Z で復元できる。
-     */
-    /**
      * {@link #removeCommentLines()} が削除する行 (トリム済み) を、上から順に返す。
      * 削除は元に戻せる保証が限定的な破壊的操作なので、実行前の確認ダイアログで
-     * 「何が消えるか」を利用者へ提示するために使う。
+     * 「何が消えるか」を提示するために使う。レイアウトコメント ({@code '@pos}) は消さない。
      */
     public java.util.List<String> commentLines() {
         java.util.List<String> out = new java.util.ArrayList<>();
         Element root = textPane.getStyledDocument().getDefaultRootElement();
         for (int ln = 0; ln < root.getElementCount(); ln++) {
             String t = lineText(root, ln);
-            if (t.stripLeading().startsWith("'")) {
+            if (juml.app.uml.sketch.SketchDiagramType.isRemovableComment(t)) {
                 out.add(t.strip());
             }
         }
         return out;
     }
 
+    /**
+     * トリム後 {@code '} で始まる行 (PlantUML の行コメント) を削除する (1 手で戻せる)。
+     * ビジュアルデザイナーで「コメント行だけが原因の編集ロック」を解除するために使う。
+     * {@link #setText} を使わず {@code doc.remove} で消すため通常の Ctrl+Z で復元できる。
+     */
     public void removeCommentLines() {
         if (!textPane.isEditable()) {
             return;
@@ -829,7 +829,7 @@ public class PumlSourcePanel extends JPanel {
         // 下から上へ削除してオフセットのずれを避ける。行末の改行も含めて 1 行分消す。
         runAsCompound(() -> {
             for (int ln = root.getElementCount() - 1; ln >= 0; ln--) {
-                if (!lineText(root, ln).stripLeading().startsWith("'")) {
+                if (!juml.app.uml.sketch.SketchDiagramType.isRemovableComment(lineText(root, ln))) {
                     continue;
                 }
                 Element el = root.getElement(ln);

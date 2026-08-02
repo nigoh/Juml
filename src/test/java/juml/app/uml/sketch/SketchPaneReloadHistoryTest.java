@@ -94,6 +94,40 @@ public class SketchPaneReloadHistoryTest {
     }
 
     @Test
+    public void layoutCommentsAreNotOfferedForRemoval() {
+        // 回帰: 「編集を有効化」が '@pos まで消し、ロック解除と引き換えに全ノードの配置が
+        // リセットされていた。'@pos はコーデックが対応済みとして読むのでロックの原因でもない。
+        String puml = "@startuml\n' メモ\ncomponent App\n'@pos App 120 40\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("除去できるコメントがあるので comment-only lock",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+
+        // '@pos だけを残してコメントを消したテキストで読み直す (実際の除去と同じ結果)。
+        String stripped = puml.replace("' メモ\n", "");
+        GuiActionRunner.execute(() -> pane.loadFrom(stripped));
+        assertTrue("解除されること", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("座標が保たれること (x=120)",
+                GuiActionRunner.execute(pane::currentPuml).contains("'@pos App 120 40"));
+    }
+
+    @Test
+    public void posOnlyLockIsNotAdvertisedAsOneClickFixable() {
+        // '@pos を未対応として扱う図種 (シーケンス図) では、消してはいけないコメントしか
+        // 残らない = 1 クリックで解除できないので「編集を有効化」を出さない
+        // (出すと押しても何も起きないボタンになる)。
+        String puml = "@startuml\nparticipant A\nA -> B : hi\n'@pos A 10 20\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertFalse("編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertFalse("comment-only lock として扱わない",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertFalse("「編集を有効化」を出さない",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
     public void firstLoadAlwaysApplies() {
         // 初回は baseline の初期値と一致しても必ず読み込む (図種判定・カード切替のため)。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
