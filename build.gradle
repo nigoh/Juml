@@ -26,7 +26,7 @@ dependencies {
     // FlatLaf (Apache-2.0). モダンでフラットな Swing Look & Feel。Light / Dark の
     // 両テーマを同梱し、OS ネイティブ LAF より統一感のある外観とダークモードを提供する。
     // fat jar に同梱され、起動時 / Preferences から切り替える (再起動不要のライブ適用)。
-    implementation 'com.formdev:flatlaf:3.5.4'
+    implementation 'com.formdev:flatlaf:3.7.2'
     implementation 'org.apache.xmlgraphics:batik-svggen:1.19'
     implementation 'org.apache.xmlgraphics:batik-dom:1.19'
     // ベクター SVG プレビュー用: PlantUML が出力した SVG を GraphicsNode として
