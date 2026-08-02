@@ -29,7 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <ul>
  *   <li><b>メモリ上のリングバッファ</b> — GUI のログビューア ({@code LogViewerDialog})
  *       が最新 N 件を表示するために参照する。</li>
- *   <li><b>ログファイル</b> — {@code <basePath>/logs/juml.log}。一定サイズで 1 世代だけ
+ *   <li><b>ログファイル</b> — {@code <userDataDir>/logs/juml.log} ({@code ~/.juml/logs})。一定サイズで 1 世代だけ
  *       ローテーション ({@code juml.log.1})。アプリ再起動後も原因調査できるようにする。</li>
  *   <li><b>リスナー</b> — ビューアが開いている間、1 件ごとにライブ追記される。</li>
  * </ul>
@@ -332,7 +332,9 @@ public final class AppLog {
 
     private static void openLogFile() {
         try {
-            File dir = new File(PathUtil.getBasePath(), "logs");
+            // 起動場所ではなくユーザー領域 (~/.juml/logs) へ書く。カレントディレクトリ配下だと
+            // 起動フォルダごとにログが散らばり、インストール先が書込不可だと記録すら残らない。
+            File dir = new File(PathUtil.getUserDataDir(), "logs");
             if (!dir.isDirectory() && !dir.mkdirs()) {
                 return;
             }

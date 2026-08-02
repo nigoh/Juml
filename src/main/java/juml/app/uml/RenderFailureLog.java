@@ -88,7 +88,7 @@ final class RenderFailureLog {
         File saved = null;
         if (!editor && puml != null && !puml.isEmpty()) {
             try {
-                File dir = new File(PathUtil.getBasePath(), "logs");
+                File dir = new File(PathUtil.getUserDataDir(), "logs");
                 if (dir.isDirectory() || dir.mkdirs()) {
                     pruneOldDumps(dir);
                     String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss-SSS")
