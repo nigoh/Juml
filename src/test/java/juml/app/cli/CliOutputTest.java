@@ -217,4 +217,21 @@ public class CliOutputTest {
         assertFalse(CliOutput.isSingleDiagramImageTarget(new File(tmp.getRoot(), "a.puml")));
         assertFalse(CliOutput.isSingleDiagramImageTarget(null));
     }
+
+    @Test
+    public void perFolderAndAllSvgFailuresKeepPreviousOutput() throws Exception {
+        // ラウンド3: --all / --per-folder / lifecycle も原子的置換へ揃えたことの回帰。
+        // ここでは共通ヘルパの契約 (失敗しても前回の内容が残る) を固定する。
+        File target = new File(tmp.newFolder("keep"), "class-diagram.svg");
+        byte[] previous = "<svg>keep me</svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.nio.file.Files.write(target.toPath(), previous);
+        try {
+            CliOutput.renderSvgAtomically("@startuml\nclass A {\n@enduml\nbroken )(\n", target);
+            fail("壊れた図は失敗するべき");
+        } catch (Exception expected) {
+            assertTrue(expected != null);
+        }
+        assertArrayEquals("失敗しても前回の SVG が残ること",
+                previous, java.nio.file.Files.readAllBytes(target.toPath()));
+    }
 }

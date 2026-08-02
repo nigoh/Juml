@@ -153,7 +153,9 @@ public final class PerFolderClassDiagrams {
                 continue;
             }
             try {
-                PlantUmlRenderer.renderSvg(puml, svgFile);
+                // 一時ファイルへ書き切ってから置換する。対象を直接開くと、描画失敗時に
+                // 前回のフォルダ図が壊れた状態で残る (renderSvg(File) は失敗時に削除もする)。
+                juml.util.AtomicFileWrite.write(svgFile, os -> PlantUmlRenderer.renderSvg(puml, os));
                 written.add(svgFile);
             } catch (IOException | juml.util.JumlException ex) {
                 // 描画失敗 (unchecked の PlantUmlRenderFailedException 含む) でも

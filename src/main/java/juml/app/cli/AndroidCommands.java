@@ -25,7 +25,6 @@ import juml.core.formats.android.settings.PreferencesXmlParser;
 import juml.core.formats.android.settings.SettingsAnalysisResult;
 import juml.core.formats.android.settings.SharedPreferencesScanner;
 import juml.core.formats.java.AndroidProjectScanner;
-import juml.core.formats.uml.PlantUmlRenderer;
 import juml.core.formats.uml.UmlGenerator;
 import juml.util.ErrorListener;
 
@@ -321,7 +320,7 @@ public final class AndroidCommands {
         SettingsAnalysisResult result = scanner.analyzeProject(fileIn, ctx.includeTests);
         PreferencesXmlParser xmlParser = new PreferencesXmlParser();
         for (juml.core.formats.android.settings.PreferenceXmlEntry e
-                : xmlParser.analyzeProject(fileIn)) {
+                : xmlParser.analyzeProject(fileIn, ctx.includeTests)) {
             result.addXmlEntry(e);
         }
         CliOutput.writeText(fileOut, MarkdownSettingsReport.render(result), "settings.md");
@@ -463,7 +462,7 @@ public final class AndroidCommands {
         File clsFile = new File(fileOut, "class-diagram.svg");
         String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(infos, clsOpts);
         try {
-            PlantUmlRenderer.renderSvg(clsPuml, clsFile);
+            CliOutput.renderSvgAtomically(clsPuml, clsFile);
             progress.wrote(clsFile, "(" + infos.size() + " class(es))");
             listener.onError(null, -1, "wrote " + clsFile.getPath());
         } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {

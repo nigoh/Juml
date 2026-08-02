@@ -373,9 +373,14 @@ public final class UmlCommands {
         // ベース名は Class.method の単純名なので、パッケージ違いの同名クラスが同じ
         // ファイル名に落ちて後の図が前の図を黙って上書きする。ナビゲーショングラフと
         // 同じ規則 (サニタイズ後に連番付きで重複解決) を通す。
+        // 単純名が重複する場合だけ完全修飾名を使う (単独なら従来のファイル名を保つ)。
+        java.util.Map<String, Integer> seen = new java.util.HashMap<>();
+        for (LifecycleSequenceDiagrams.Entry e : entries) {
+            seen.merge(e.baseName(), 1, Integer::sum);
+        }
         java.util.List<String> labels = new java.util.ArrayList<>();
         for (LifecycleSequenceDiagrams.Entry e : entries) {
-            labels.add(e.baseName());
+            labels.add(seen.get(e.baseName()) > 1 ? e.qualifiedBaseName() : e.baseName());
         }
         java.util.List<String> names = CliOutput.planDiagramNames(labels, "lifecycle");
         for (int i = 0; i < entries.size(); i++) {

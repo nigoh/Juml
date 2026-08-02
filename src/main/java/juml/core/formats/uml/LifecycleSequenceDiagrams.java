@@ -89,17 +89,28 @@ public final class LifecycleSequenceDiagrams {
     public static final class Entry {
         public final String className;
         public final String methodName;
+        /** 起点クラスの完全修飾名 (同名クラスを区別するファイル名に使う)。 */
+        public final String qualifiedName;
         public final String puml;
 
-        Entry(String className, String methodName, String puml) {
+        Entry(String className, String methodName, String qualifiedName, String puml) {
             this.className = className;
             this.methodName = methodName;
+            this.qualifiedName = qualifiedName == null ? className : qualifiedName;
             this.puml = puml;
         }
 
         /** ファイル名のベース ({@code Class.method})。拡張子は付与しない。 */
         public String baseName() {
             return className + "." + methodName;
+        }
+
+        /**
+         * 同名クラスがあるときに使う、衝突しないファイル名のベース
+         * ({@code パッケージ.Class.method})。
+         */
+        public String qualifiedBaseName() {
+            return qualifiedName + "." + methodName;
         }
     }
 
@@ -137,12 +148,15 @@ public final class LifecycleSequenceDiagrams {
                 o.title = lifecycleTitle(compType, c.getSimpleName(), m.getName());
                 String puml;
                 try {
-                    puml = PlantUmlSequenceDiagram.generate(
-                            infos, c.getSimpleName(), m.getName(), o);
+                    // 解決済みのクラスを渡す。単純名で引く版だと、パッケージ違いの同名
+                    // クラスが同じ 1 本へ解決され、両方に同一内容の図が付いてしまう
+                    // (ファイル名を重複解決しても中身が同じ 2 枚が残るだけ)。
+                    puml = PlantUmlSequenceDiagram.generate(infos, c, m, o);
                 } finally {
                     o.title = savedTitle;
                 }
-                result.add(new Entry(c.getSimpleName(), m.getName(), puml));
+                result.add(new Entry(c.getSimpleName(), m.getName(),
+                        c.getQualifiedName(), puml));
             }
         }
         return result;

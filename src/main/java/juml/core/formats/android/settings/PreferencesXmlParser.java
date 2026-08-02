@@ -39,6 +39,16 @@ public final class PreferencesXmlParser {
      * プロジェクトルート配下の res/xml/ を再帰的に走査して Preference キー定義を収集する。
      */
     public List<PreferenceXmlEntry> analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /**
+     * {@code includeTests} を指定できる版。指定しないとテストソースの
+     * {@code res/xml} が常に混ざり、{@code --include-tests} を付けていないのに
+     * テスト用の設定定義がレポートへ入ってしまう (Java 側の走査とも食い違う)。
+     */
+    public List<PreferenceXmlEntry> analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return Collections.emptyList();
         }
@@ -49,6 +59,11 @@ public final class PreferencesXmlParser {
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
                         // ビルド出力・隠しディレクトリをスキップ
+                        if (!includeTests
+                                && juml.core.formats.java.AndroidProjectScanner.isTestDir(
+                                        dir.toFile())) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
                         if ("build".equals(name) || ".gradle".equals(name)
                                 || ".git".equals(name) || "node_modules".equals(name)) {
                             return FileVisitResult.SKIP_SUBTREE;

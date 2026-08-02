@@ -164,4 +164,44 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
         assertTrue("--include-tests でテストソースも対象になること",
                 hasGraphNamed(a, "androidTest_nav.xml"));
     }
+
+    @Test
+    public void preferenceXmlScanHonoursIncludeTests() throws Exception {
+        // 回帰: --settings のうち res/xml 側だけ includeTests を無視しており、
+        // 指定していないのにテストソースの設定定義がレポートへ混ざっていた。
+        File root = tmp.newFolder("prefs-proj");
+        writePrefXml(new File(root, "app/src/main/res/xml"), "main_prefs", "main_key");
+        writePrefXml(new File(root, "app/src/androidTest/res/xml"), "test_prefs", "test_key");
+
+        juml.core.formats.android.settings.PreferencesXmlParser parser =
+                new juml.core.formats.android.settings.PreferencesXmlParser();
+        List<String> defaults = keysOf(parser.analyzeProject(root));
+        assertTrue("本番の設定は含まれる: " + defaults, defaults.contains("main_key"));
+        assertFalse("既定ではテストソースの設定を含めない: " + defaults,
+                defaults.contains("test_key"));
+
+        List<String> withTests = keysOf(parser.analyzeProject(root, true));
+        assertTrue(withTests.contains("main_key"));
+        assertTrue("--include-tests ならテストソースの設定も含める: " + withTests,
+                withTests.contains("test_key"));
+    }
+
+    private static List<String> keysOf(
+            List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
+        List<String> keys = new ArrayList<>();
+        for (juml.core.formats.android.settings.PreferenceXmlEntry e : entries) {
+            keys.add(e.key);
+        }
+        return keys;
+    }
+
+    private static void writePrefXml(File dir, String fileName, String key) throws Exception {
+        assertTrue(dir.mkdirs() || dir.isDirectory());
+        String xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+                + "<PreferenceScreen xmlns:android=\"http://schemas.android.com/apk/res/android\">\n"
+                + "  <SwitchPreference android:key=\"" + key + "\" android:title=\"T\" />\n"
+                + "</PreferenceScreen>\n";
+        Files.write(new File(dir, fileName + ".xml").toPath(),
+                xml.getBytes(StandardCharsets.UTF_8));
+    }
 }
