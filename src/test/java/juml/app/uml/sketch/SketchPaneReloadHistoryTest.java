@@ -68,6 +68,32 @@ public class SketchPaneReloadHistoryTest {
     }
 
     @Test
+    public void commentOnlyLockIsReleasedEvenWhenStrippedTextEqualsBaseline() {
+        // 回帰 (critical): baseline は「モデルを書き出したテキスト」なので未対応行 (コメント) を
+        // 含まない。そのためコメント除去後のテキストは baseline と一致することがあり、
+        // 早期 return するとモデルが未対応行を抱えたまま残って「編集を有効化」が
+        // 永久に効かなくなる (再クリックしても除去対象が無く無反応)。
+        // ここでは DiagramTabPane.confirmAndRemoveComments と同じ順序を再現する。
+        String withComment = "@startuml\n' 発注フロー\nparticipant A\nA -> B : hi\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(withComment));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("comment-only lock として扱われる",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+
+        // テキスト欄からコメント行だけを除去した状態 (= baseline と一致しうる)。
+        String stripped = withComment.replace("' 発注フロー\n", "");
+        assertEquals("この経路が成立する前提: 除去後テキストは再生成テキストと一致する",
+                GuiActionRunner.execute(pane::currentPuml), stripped);
+
+        GuiActionRunner.execute(() -> pane.loadFrom(stripped));
+        assertTrue("コメント除去後は編集可能になること",
+                GuiActionRunner.execute(pane::isEditable));
+        assertFalse("「編集を有効化」ボタンは消えること",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
     public void firstLoadAlwaysApplies() {
         // 初回は baseline の初期値と一致しても必ず読み込む (図種判定・カード切替のため)。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);

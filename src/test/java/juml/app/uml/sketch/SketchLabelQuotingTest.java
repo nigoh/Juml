@@ -9,6 +9,7 @@ import org.junit.Test;
 import java.io.ByteArrayOutputStream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -23,15 +24,88 @@ import static org.junit.Assert.assertTrue;
  */
 public class SketchLabelQuotingTest {
 
-    /** 引用符・バックスラッシュ・両方を含む、実際に打ち得るラベル。 */
+    /** 引用符・バックスラッシュ・{@code as}・末尾 {@code \} を含む、実際に打ち得るラベル。 */
     private static final String[] LABELS = {
         "App \"Prod\"", "C:\\path\\to", "say \"hi\" \\ now", "普通のラベル",
+        "App as Prod", "C:\\", "Alpha\\nBeta",
     };
 
-    private static void assertRenders(String puml) throws Exception {
+    /** SVG のテキスト要素をすべて連結して返す (描画結果そのものを見るため)。 */
+    private static String renderedText(String puml) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PlantUmlRenderer.renderSvg(puml, out);
-        assertTrue("描画できること", out.size() > 0);
+        String svg = out.toString(java.nio.charset.StandardCharsets.UTF_8);
+        StringBuilder t = new StringBuilder();
+        int i = 0;
+        while ((i = svg.indexOf("<text", i)) >= 0) {
+            int gt = svg.indexOf('>', i);
+            int close = svg.indexOf("</text>", gt);
+            if (gt < 0 || close < 0) {
+                break;
+            }
+            t.append(svg, gt + 1, close).append('\n');
+            i = close;
+        }
+        return t.toString();
+    }
+
+    private static void assertRenders(String puml) throws Exception {
+        assertTrue("描画できること", !renderedText(puml).isEmpty());
+    }
+
+    /** SVG のテキストは XML 数値参照になるため、比較用に主要な実体を戻す。 */
+    private static String unescapeXml(String s) {
+        return s.replace("&#34;", "\"").replace("&quot;", "\"")
+                .replace("&#92;", "\\").replace("&amp;", "&")
+                .replace("&lt;", "<").replace("&gt;", ">");
+    }
+
+    @Test
+    public void labelIsRenderedVerbatim_noBackslashLeaksIntoTheDiagram() throws Exception {
+        // 回帰: ラベルを \" へエスケープして書き出していた頃は、図に逆スラッシュが
+        // そのまま描画されていた (PlantUML に引用符のエスケープは無い)。
+        ComponentSketchModel model = new ComponentSketchModel();
+        model.getNodes().add(
+                new ComponentNode(ComponentNode.Kind.COMPONENT, "c1", "App \"Prod\"", 0, 0));
+        String puml = ComponentSketchCodec.toPuml(model);
+        assertFalse("生成テキストに逆スラッシュを入れないこと: " + puml, puml.contains("\\\""));
+        String text = unescapeXml(renderedText(puml));
+        assertTrue("図に App \"Prod\" と描かれること: " + text, text.contains("App \"Prod\""));
+        assertFalse("図に逆スラッシュが出ないこと: " + text, text.contains("\\\""));
+    }
+
+    @Test
+    public void backslashNewlineInLabelStaysALineBreak() throws Exception {
+        // 回帰: unescape が \n を n へ潰していたため、手書きの改行ラベルが 1 行に潰れていた。
+        String puml = "@startuml\ncomponent \"Alpha\\nBeta\" as c1\n@enduml\n";
+        ComponentSketchCodec.ParseResult r = ComponentSketchCodec.parse(puml);
+        assertTrue("編集ロックされないこと: " + r.unsupportedLines, r.isFullySupported());
+        assertEquals("ラベル中の \\n を保全すること",
+                "Alpha\\nBeta", r.model.getNodes().get(0).getLabel());
+        String text = renderedText(ComponentSketchCodec.toPuml(r.model));
+        assertTrue("改行として描画されること: " + text,
+                text.contains("Alpha") && text.contains("Beta"));
+        assertFalse("1 行に潰れないこと: " + text, text.contains("AlphanBeta"));
+    }
+
+    @Test
+    public void handWrittenQuotedLabelSurvivesTheDesigner() throws Exception {
+        // 回帰: "([^"]*)" では宣言行がマッチせず、この行が未対応に落ちて要素ごと消えていた。
+        String puml = "@startuml\ncomponent \"App \"Prod\"\" as c1\ncomponent ok\n@enduml\n";
+        ComponentSketchCodec.ParseResult r = ComponentSketchCodec.parse(puml);
+        assertTrue("編集ロックされないこと: " + r.unsupportedLines, r.isFullySupported());
+        assertEquals("2 ノードとも残ること", 2, r.model.getNodes().size());
+        assertEquals("App \"Prod\"", r.model.getNodes().get(0).getLabel());
+    }
+
+    @Test
+    public void handWrittenTrailingBackslashLabelSurvivesTheDesigner() throws Exception {
+        // 回帰: \\. を許す正規表現は閉じ引用符直前の \ を食べてしまい、行ごと未対応にしていた。
+        String puml = "@startuml\ncomponent \"C:\\\" as c1\ncomponent ok\n@enduml\n";
+        ComponentSketchCodec.ParseResult r = ComponentSketchCodec.parse(puml);
+        assertTrue("編集ロックされないこと: " + r.unsupportedLines, r.isFullySupported());
+        assertEquals("2 ノードとも残ること", 2, r.model.getNodes().size());
+        assertEquals("C:\\", r.model.getNodes().get(0).getLabel());
     }
 
     @Test

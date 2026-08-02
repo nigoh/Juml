@@ -160,10 +160,17 @@ public final class SketchPane extends JPanel {
      * <b>サブタブを往復しただけで Undo 履歴が消えて</b> 直前の操作を取り消せなくなる
      * (選択状態やスクロール位置も失われる)。テキストを実際に編集した場合は baseline と
      * 食い違うので、従来どおり読み直して履歴をリセットする。</p>
+     *
+     * <p><b>編集ロック中は必ず読み直す。</b>{@code baseline} は「モデルを書き出した
+     * テキスト」であり、未対応行 (コメント等) は元から含まれない。そのため
+     * 「編集を有効化」でコメントを除去した直後のテキストは baseline と一致してしまい、
+     * ここで早期 return するとモデルが未対応行を抱えたまま残って<b>ボタンが永久に
+     * 効かなくなる</b> (再クリックしても除去対象が無く無反応)。ロック中は履歴も無いので
+     * 読み直しで失うものはない。</p>
      */
     public void loadFrom(String pumlText) {
         String incoming = pumlText != null ? pumlText : "";
-        if (everLoaded && incoming.equals(baseline)) {
+        if (everLoaded && incoming.equals(baseline) && active.isEditable()) {
             return;
         }
         applyText(incoming);

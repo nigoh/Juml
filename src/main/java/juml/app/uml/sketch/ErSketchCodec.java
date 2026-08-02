@@ -131,7 +131,7 @@ public final class ErSketchCodec {
         Matcher alias = ENTITY_ALIAS.matcher(line);
         if (alias.matches()) {
             ErSketchModel.Entity e = obtain(model, alias.group(2),
-                    SketchLabelText.unescape(alias.group(1)));
+                    SketchLabelText.fromCaptured(alias.group(1)));
             return alias.group(3) != null
                     ? readColumns(lines, index, e, unsupported) : index;
         }
@@ -278,7 +278,7 @@ public final class ErSketchCodec {
         sb.append("entity ");
         if (e.getDisplayName() != null && !e.getDisplayName().isEmpty()
                 && !e.getDisplayName().equals(e.getAlias())) {
-            sb.append('"').append(SketchLabelText.escape(e.getDisplayName()))
+            sb.append('"').append(SketchLabelText.forOutput(e.getDisplayName()))
                     .append("\" as ").append(e.getAlias());
         } else {
             sb.append(e.getAlias());

@@ -119,7 +119,7 @@ public final class UseCaseSketchCodec {
         Matcher aa = ACTOR_ALIAS.matcher(line);
         if (aa.matches()) {
             obtain(model, UseCaseNode.Kind.ACTOR, aa.group(2),
-                    SketchLabelText.unescape(aa.group(1)));
+                    SketchLabelText.fromCaptured(aa.group(1)));
             return true;
         }
         Matcher ad = ACTOR_DECL.matcher(line);
@@ -130,7 +130,7 @@ public final class UseCaseSketchCodec {
         Matcher ua = USECASE_ALIAS.matcher(line);
         if (ua.matches()) {
             obtain(model, UseCaseNode.Kind.USECASE, ua.group(2),
-                    SketchLabelText.unescape(ua.group(1)));
+                    SketchLabelText.fromCaptured(ua.group(1)));
             return true;
         }
         Matcher ud = USECASE_DECL.matcher(line);
@@ -194,7 +194,7 @@ public final class UseCaseSketchCodec {
             sb.append(n.getKind().keyword()).append(' ');
             if (n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId())) {
-                sb.append('"').append(SketchLabelText.escape(n.getLabel()))
+                sb.append('"').append(SketchLabelText.forOutput(n.getLabel()))
                         .append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());

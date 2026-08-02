@@ -225,7 +225,7 @@ public final class DeploySketchCodec {
         Matcher alias = ALIAS.matcher(head);
         if (alias.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(alias.group(1));
-            String label = SketchLabelText.unescape(alias.group(2));
+            String label = SketchLabelText.fromCaptured(alias.group(2));
             String id = alias.group(3);
             DeployNode n = declareNode(ctx.model, kind, id, label, parent);
             ctx.labelToId.put(label, id);
@@ -234,7 +234,7 @@ public final class DeploySketchCodec {
         Matcher anon = ANON_QUOTED.matcher(head);
         if (anon.matches()) {
             DeployNode.Kind kind = DeployNode.Kind.fromKeyword(anon.group(1));
-            return declareAnon(ctx, kind, SketchLabelText.unescape(anon.group(2)), parent);
+            return declareAnon(ctx, kind, SketchLabelText.fromCaptured(anon.group(2)), parent);
         }
         Matcher decl = DECL_LOOSE.matcher(head);
         if (decl.matches()) {
@@ -398,7 +398,7 @@ public final class DeploySketchCodec {
             boolean hasLabel = n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId());
             if (hasLabel) {
-                sb.append('"').append(SketchLabelText.escape(n.getLabel()))
+                sb.append('"').append(SketchLabelText.forOutput(n.getLabel()))
                         .append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());

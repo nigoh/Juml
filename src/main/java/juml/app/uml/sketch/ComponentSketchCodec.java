@@ -128,7 +128,7 @@ public final class ComponentSketchCodec {
         Matcher ca = COMP_ALIAS.matcher(line);
         if (ca.matches()) {
             obtain(model, ComponentNode.Kind.COMPONENT, ca.group(2),
-                    SketchLabelText.unescape(ca.group(1)));
+                    SketchLabelText.fromCaptured(ca.group(1)));
             return true;
         }
         Matcher cd = COMP_DECL.matcher(line);
@@ -139,7 +139,7 @@ public final class ComponentSketchCodec {
         Matcher ia = IFACE_ALIAS.matcher(line);
         if (ia.matches()) {
             obtain(model, ComponentNode.Kind.INTERFACE, ia.group(2),
-                    SketchLabelText.unescape(ia.group(1)));
+                    SketchLabelText.fromCaptured(ia.group(1)));
             return true;
         }
         Matcher id = IFACE_DECL.matcher(line);
@@ -211,7 +211,7 @@ public final class ComponentSketchCodec {
             sb.append(n.getKind().keyword()).append(' ');
             if (n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId())) {
-                sb.append('"').append(SketchLabelText.escape(n.getLabel()))
+                sb.append('"').append(SketchLabelText.forOutput(n.getLabel()))
                         .append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());
