@@ -3,8 +3,6 @@
 
 package juml.core.formats.uml;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -112,50 +110,12 @@ final class PumlDiagramScan {
 
     // --- 向き指定 (left to right direction) の可否判定 ----------------------------
 
-    /** シーケンス図にしか現れない行 (これがあれば確実に向き指定不可)。 */
-    private static final Pattern SEQUENCE_ONLY = Pattern.compile(
-            "^(participant|activate|deactivate|create|autonumber)\\s+\\S.*"
-            + "|^autonumber$|^hide\\s+footbox$", Pattern.CASE_INSENSITIVE);
 
-    /**
-     * シーケンス図のメッセージ行 ({@code Alice -> Bob : hi} / {@code A --> B})。
-     *
-     * <p>PlantUML は宣言が 1 つも無くてもメッセージだけでシーケンス図と解釈する
-     * (実機確認: {@code A --> B} だけの図は SEQUENCE)。ここへ向き指定を入れると
-     * <b>黙ってクラス図に化ける</b> (実機確認: 同じ図が CLASS になる) ため、
-     * 構造図の手掛かりが無くメッセージだけの図は向き指定不可として扱う。</p>
-     */
-    private static final Pattern MESSAGE_ARROW = Pattern.compile(
-            "^(\"[^\"]*\"|[A-Za-z_$][\\w$.]*)\\s*(-{1,3}>{1,2}|<{1,2}-{1,3})\\s*"
-            + "(\"[^\"]*\"|[A-Za-z_$][\\w$.]*)\\s*(:.*)?$");
 
-    /**
-     * シーケンス図の参加者宣言にも、ER 図 / 配置図の要素宣言にも見える行。
-     * {@code entity} / {@code database} / {@code queue} は両方の図種で正当な宣言なので、
-     * これ単独では図種を決められない ({@link #hasStructuralDeclaration} と併用する)。
-     */
-    private static final Pattern PARTICIPANT_LIKE = Pattern.compile(
-            "^(boundary|control|entity|database|collections|queue)\\s+\\S.*",
-            Pattern.CASE_INSENSITIVE);
 
-    /** ER / 配置 / コンポーネント図など「構造図」であることを示す宣言。 */
-    private static final Pattern STRUCTURAL_DECL = Pattern.compile(
-            "^(node|artifact|cloud|folder|frame|rectangle|component|package|storage|card"
-            + "|class|abstract|interface|enum|object|usecase|state)\\s+\\S.*",
-            Pattern.CASE_INSENSITIVE);
 
-    /** ER 図の多重度記法 (crow's foot)。シーケンス図には現れない。 */
-    private static final Pattern CROWS_FOOT =
-            Pattern.compile("\\|\\|--|\\}o--|\\}\\|--|--o\\{|--\\|\\{|--o\\||\\|o--");
 
-    /** アクティビティ図 (新記法) の行。PlantUML のキーワードは大文字小文字を区別しない。 */
-    private static final Pattern ACTIVITY_LINE = Pattern.compile(
-            "^(start|stop|end)$|^(if|while)\\s*\\(.*|^(repeat|fork|split)\\b.*"
-            + "|^partition\\s+\\S.*", Pattern.CASE_INSENSITIVE);
 
-    private static boolean isActivityLine(String t) {
-        return ACTIVITY_LINE.matcher(t).matches();
-    }
 
     /**
      * 渡された PlantUML が向き指定ディレクティブ ({@code left to right direction} /
@@ -174,29 +134,45 @@ final class PumlDiagramScan {
      *
      * @return 向き指定を出してよければ true (= sequence/activity 以外)
      */
+    /**
+     * PlantUML 自身にパースさせて得た図種クラス名 (判定できなければ null)。
+     *
+     * <p>レイアウトまでは行わず構文解析だけなので、実測で 1〜50ms 程度と描画より一桁安い。
+     * 正規表現で図種を推測すると、参加者名が {@code Node} / {@code Note} のような
+     * キーワードと同綴りなだけで誤判定する類の事故が延々と出る (実際に何度も踏んだ)。
+     * <b>推測ではなく PlantUML の解釈そのもの</b>を使うのが唯一収束する方法。</p>
+     */
+    private static String parsedDiagramKind(String puml) {
+        try {
+            java.util.List<net.sourceforge.plantuml.BlockUml> blocks =
+                    new net.sourceforge.plantuml.SourceStringReader(puml).getBlocks();
+            if (blocks.isEmpty()) {
+                return null;
+            }
+            net.sourceforge.plantuml.core.Diagram d = blocks.get(0).getDiagram();
+            return d == null ? null : d.getClass().getSimpleName();
+        } catch (RuntimeException | StackOverflowError ex) {
+            return null;
+        }
+    }
+
+    /**
+     * 向き指定 ({@code left to right direction}) を受け付ける PlantUML の図種クラス。
+     *
+     * <p>実機検証: クラス図・記述図 (使用例/配置/コンポーネント)・状態図は受け付け、
+     * シーケンス図は<b>黙ってクラス図へ化け</b>、アクティビティ図は構文エラーになる。</p>
+     */
+    private static final Set<String> DIRECTION_CAPABLE_DIAGRAMS =
+            Set.of("ClassDiagram", "DescriptionDiagram", "StateDiagram");
+
+
     static boolean supportsDirection(String puml) {
         if (puml == null || puml.isEmpty()) {
             return true;
         }
-        List<String> lines = codeLines(puml);
-        boolean structural = hasStructuralDeclaration(lines);
-        for (String t : lines) {
-            if (SEQUENCE_ONLY.matcher(t).matches()) {
-                return false;
-            }
-            if (!structural && PARTICIPANT_LIKE.matcher(t).matches()) {
-                return false;
-            }
-            if (isActivityLine(t)) {
-                return false;
-            }
-            // 宣言が 1 つも無くメッセージだけの図は PlantUML がシーケンス図と解釈する。
-            // 向き指定を入れると黙ってクラス図に化けるため、ここも抑制する。
-            if (!structural && MESSAGE_ARROW.matcher(t).matches()) {
-                return false;
-            }
-        }
-        return true;
+        // パースできない図 (構文エラー、@startuml へ埋め込んだ別 DSL など) には出さない。
+        // どのみち描画は失敗するし、行を足すとエラー行番号がずれて診断を悪くするだけ。
+        return DIRECTION_CAPABLE_DIAGRAMS.contains(parsedDiagramKind(puml));
     }
 
     /** ブロックを開く自由記述 ({@code note over X} / {@code legend} など)。本文は散文。 */
@@ -239,17 +215,6 @@ final class PumlDiagramScan {
      * シーケンス図が構造図と判定されて向き指定が注入され、実レンダリングが構文エラーになっていた。
      * 逆に活動図の本文に「{@code start}」と書いても同じ事故が起きうる。</p>
      */
-    private static List<String> codeLines(String puml) {
-        String[] raw = puml.split("\n", -1);
-        boolean[] isCode = codeLineMask(raw);
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < raw.length; i++) {
-            if (isCode[i]) {
-                out.add(raw[i].trim());
-            }
-        }
-        return out;
-    }
 
     /**
      * 各行が「図の構造を表すコード行」かを判定したマスクを返す。
@@ -298,24 +263,4 @@ final class PumlDiagramScan {
         return isCode;
     }
 
-    /** ER / 配置 / クラス図など「構造図」であることを示す行があるか。 */
-    private static boolean hasStructuralDeclaration(List<String> lines) {
-        for (String t : lines) {
-            if (t.equalsIgnoreCase("hide circle") || STRUCTURAL_DECL.matcher(t).matches()) {
-                return true;
-            }
-            // 状態図の開始/終了擬似状態。シーケンス図には現れず、状態図は向き指定を受け付ける。
-            if (t.contains("[*]")) {
-                return true;
-            }
-            // `entity "User" as u {` のようにブロックを開く宣言はシーケンス図には無い。
-            if (t.endsWith("{") && PARTICIPANT_LIKE.matcher(t).matches()) {
-                return true;
-            }
-            if (CROWS_FOOT.matcher(t).find()) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

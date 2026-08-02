@@ -341,4 +341,66 @@ public class PlantUmlDirectionInjectionTest {
         assertFalse("DEFAULT では横を足さない: " + out,
                 out.contains("left to right direction"));
     }
+
+    // --- 図種判定は PlantUML 自身のパース結果を使う ------------------------------
+    //
+    // 正規表現で推測していた頃は、参加者名がキーワードと同綴りなだけで誤判定した
+    // (Node -> Server が「node 宣言」に、Note --> Bob が「note ブロック開始」に見えた)。
+    // 以下は監査で実際に壊れた入力を、そのまま仕様として固定する。
+
+    @Test
+    public void participantNamedLikeAKeywordIsStillASequence() {
+        for (String name : new String[] {
+            "Node", "Note", "Legend", "State", "Component", "Class", "Object",
+            "Package", "Interface", "Card", "Frame", "Cloud", "Storage", "Artifact"}) {
+            String puml = "@startuml\n" + name + " -> Server : ping\n"
+                    + "Server --> " + name + " : pong\n@enduml\n";
+            assertFalse(name + " という参加者名でもシーケンス図として扱うこと",
+                    PlantUmlRenderer.supportsDirection(puml));
+        }
+    }
+
+    @Test
+    public void sequenceShorthandsAreRecognised() {
+        // activate 略記 / 双方向 / 色付き / 外部からの矢印 / ロスト矢印。
+        for (String body : new String[] {
+            "Alice -> Bob ++ : hi\nBob --> Alice -- : ok",
+            "Alice <-> Bob : sync",
+            "Alice -[#red]> Bob : hi",
+            "[-> Bob : from outside",
+            "Bob ->] : to outside",
+            "Alice -\\ Bob : lost"}) {
+            assertFalse("シーケンス記法 [" + body + "] を取りこぼさないこと",
+                    PlantUmlRenderer.supportsDirection("@startuml\n" + body + "\n@enduml\n"));
+        }
+    }
+
+    @Test
+    public void alignedHeaderAndFooterBlocksDoNotHideTheDiagram() {
+        assertFalse("center header の本文で図種を見失わないこと",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\ncenter header\nnode placement overview\nendheader\n"
+                        + "Alice -> Bob : hi\n@enduml\n"));
+    }
+
+    @Test
+    public void embeddedNonUmlDslIsNotGivenADirection() {
+        // @startuml に埋め込んだ別 DSL は向き指定を受け付けない (PlantUML がパースに失敗する)。
+        assertFalse("nwdiag に向き指定を出さないこと",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nnwdiag {\n  network dmz {\n    web01;\n  }\n}\n@enduml\n"));
+    }
+
+    @Test
+    public void realStructuralDiagramsKeepTheirDirection() {
+        // 非退行: 本物の構造図では従来どおり向き指定を出す。
+        assertTrue(PlantUmlRenderer.supportsDirection(
+                "@startuml\nclass A\nclass B\nA --> B\n@enduml\n"));
+        assertTrue(PlantUmlRenderer.supportsDirection(
+                "@startuml\nnode Server {\n  database DB\n}\ncomponent C\nC --> DB\n@enduml\n"));
+        assertTrue(PlantUmlRenderer.supportsDirection(
+                "@startuml\nhide circle\nentity \"User\" as u {\n  * id : int\n}\n@enduml\n"));
+        assertTrue(PlantUmlRenderer.supportsDirection(
+                "@startuml\n[*] --> S1\nS1 --> [*]\n@enduml\n"));
+    }
 }
