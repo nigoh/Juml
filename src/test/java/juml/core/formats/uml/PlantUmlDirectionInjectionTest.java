@@ -112,6 +112,66 @@ public class PlantUmlDirectionInjectionTest {
         }
     }
 
+    // --- note / legend / title の本文 (散文) を図種判定に使わない ------------------
+    //
+    // 回帰: 本文の "state transitions are logged" が state 宣言と誤認されて構造図判定になり、
+    // シーケンス図へ向き指定が注入されて実レンダリングが構文エラーになっていた。
+
+    /** note 本文に構造図キーワードらしい散文を含むシーケンス図。 */
+    private static final String SEQ_WITH_NOTE =
+            "@startuml\ndatabase DB\nUI -> DB : select\nnote over UI\n"
+            + "state transitions are logged\nend note\n@enduml\n";
+    /** legend 本文に散文を含むシーケンス図。 */
+    private static final String SEQ_WITH_LEGEND =
+            "@startuml\ndatabase DB\nUI -> DB : select\nlegend\n"
+            + "class diagram of the same flow\nendlegend\n@enduml\n";
+    /** title / 1 行 note に散文を含むシーケンス図。 */
+    private static final String SEQ_WITH_TITLE =
+            "@startuml\ntitle node placement overview\ndatabase DB\nUI -> DB : select\n"
+            + "note right of DB : entity lifecycle\n@enduml\n";
+
+    @Test
+    public void supportsDirection_ignoresFreeTextBodies() {
+        assertFalse("note 本文の散文で構造図判定にしない",
+                PlantUmlRenderer.supportsDirection(SEQ_WITH_NOTE));
+        assertFalse("legend 本文の散文で構造図判定にしない",
+                PlantUmlRenderer.supportsDirection(SEQ_WITH_LEGEND));
+        assertFalse("title / 1 行 note の散文で構造図判定にしない",
+                PlantUmlRenderer.supportsDirection(SEQ_WITH_TITLE));
+    }
+
+    @Test
+    public void sequenceWithFreeTextRendersWithDirectionSelected() throws Exception {
+        for (String puml : new String[] {SEQ_WITH_NOTE, SEQ_WITH_LEGEND, SEQ_WITH_TITLE}) {
+            setDirection(DiagramStyle.Direction.LEFT_TO_RIGHT);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            // 修正前は向き指定が注入され PlantUmlRenderFailedException になっていた。
+            PlantUmlRenderer.renderSvg(puml, out);
+            assertTrue("向き指定を選んでいても描画できること", out.size() > 0);
+        }
+    }
+
+    @Test
+    public void supportsDirection_stillSeesRealStructuralDeclarations() {
+        // 本文除去で構造図の手掛かりまで落とさないこと (ER/配置図の判定は生きている)。
+        assertTrue("note があっても本物の ER 宣言は効く",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nhide circle\nnote as N\nsome prose\nend note\n"
+                        + "entity \"User\" as u {\n  * id : int\n}\n@enduml\n"));
+        assertTrue("note があっても本物の配置図宣言は効く",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nnote as N\nprose\nend note\nnode Server {\n"
+                        + "  database DB\n}\n@enduml\n"));
+    }
+
+    @Test
+    public void supportsDirection_ignoresCommentedOutDeclarations() {
+        // コメントアウトされた宣言も図の構造ではない。
+        assertFalse("コメント行の宣言は数えない",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\n' node Server\ndatabase DB\nUI -> DB : select\n@enduml\n"));
+    }
+
     @Test
     public void supportsDirection_falseForSequenceDeclaringEntity() {
         // 逆方向の保険: participant と entity が同居するシーケンス図は従来どおり抑制する

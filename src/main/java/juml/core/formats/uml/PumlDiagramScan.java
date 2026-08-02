@@ -3,6 +3,8 @@
 
 package juml.core.formats.uml;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -161,12 +163,9 @@ final class PumlDiagramScan {
         if (puml == null || puml.isEmpty()) {
             return true;
         }
-        boolean structural = hasStructuralDeclaration(puml);
-        for (String line : puml.split("\n", -1)) {
-            String t = line.trim();
-            if (t.isEmpty()) {
-                continue;
-            }
+        List<String> lines = codeLines(puml);
+        boolean structural = hasStructuralDeclaration(lines);
+        for (String t : lines) {
             if (SEQUENCE_ONLY.matcher(t).matches()) {
                 return false;
             }
@@ -180,13 +179,59 @@ final class PumlDiagramScan {
         return true;
     }
 
-    /** ER / 配置 / クラス図など「構造図」であることを示す行があるか。 */
-    private static boolean hasStructuralDeclaration(String puml) {
-        for (String line : puml.split("\n", -1)) {
-            String t = line.trim();
+    /** ブロックを開く自由記述 ({@code note over X} / {@code legend} など)。本文は散文。 */
+    private static final Pattern FREE_TEXT_BLOCK_START = Pattern.compile(
+            "^(note|hnote|rnote|legend|caption|title|header|footer)\\b.*");
+
+    /** 自由記述ブロックの終端 ({@code end note} / {@code endlegend} / {@code end title} 等)。 */
+    private static final Pattern FREE_TEXT_BLOCK_END = Pattern.compile(
+            "^end\\s*(note|hnote|rnote|legend|caption|title|header|footer)?\\s*$");
+
+    /** 1 行で完結する自由記述 ({@code note over A : text} / {@code title 図の名前})。 */
+    private static final Pattern FREE_TEXT_ONE_LINE = Pattern.compile(
+            "^(note|hnote|rnote)\\b.*:.*|^(title|caption|header|footer)\\s+\\S.*");
+
+    /**
+     * 図種判定に使ってよい「コード行」だけを取り出す (空行・コメント・自由記述の本文を除く)。
+     *
+     * <p>{@code note} / {@code legend} / {@code title} の本文は<b>利用者が書いた散文</b>であり、
+     * 図の構造とは無関係。ここを素通ししていたため、note に
+     * 「{@code state transitions are logged}」と書いただけで {@code state ...} 宣言と誤認され、
+     * シーケンス図が構造図と判定されて向き指定が注入され、実レンダリングが構文エラーになっていた。
+     * 逆に活動図の本文に「{@code start}」と書いても同じ事故が起きうる。</p>
+     */
+    private static List<String> codeLines(String puml) {
+        List<String> out = new ArrayList<>();
+        boolean inFreeText = false;
+        for (String raw : puml.split("\n", -1)) {
+            String t = raw.trim();
             if (t.isEmpty()) {
                 continue;
             }
+            if (inFreeText) {
+                if (FREE_TEXT_BLOCK_END.matcher(t).matches()) {
+                    inFreeText = false;
+                }
+                continue;
+            }
+            if (t.startsWith("'") || t.startsWith("/'")) {
+                continue;
+            }
+            if (FREE_TEXT_ONE_LINE.matcher(t).matches()) {
+                continue;
+            }
+            if (FREE_TEXT_BLOCK_START.matcher(t).matches()) {
+                inFreeText = true;
+                continue;
+            }
+            out.add(t);
+        }
+        return out;
+    }
+
+    /** ER / 配置 / クラス図など「構造図」であることを示す行があるか。 */
+    private static boolean hasStructuralDeclaration(List<String> lines) {
+        for (String t : lines) {
             if (t.equals("hide circle") || STRUCTURAL_DECL.matcher(t).matches()) {
                 return true;
             }
