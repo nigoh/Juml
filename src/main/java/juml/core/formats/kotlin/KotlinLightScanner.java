@@ -70,7 +70,10 @@ public final class KotlinLightScanner {
                     + "((?:private\\s+|protected\\s+|public\\s+|internal\\s+"
                     + "|lateinit\\s+|const\\s+|override\\s+)*)"
                     + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*"
-                    + "([A-Za-z_$][\\w.<>?\\[\\]\\s,]*?)(?=\\s*[=\\n{;])");
+                    // 型の直後は = / 改行 / { / ; のほか、同じ行に書いたアクセサ
+                    // (`val x: Int get() = 5`) も許す。get/set を許さないと ( で
+                    // マッチ全体が壊れ、プロパティごと抽出から落ちていた。
+                    + "([A-Za-z_$][\\w.<>?\\[\\]\\s,]*?)(?=\\s*(?:[=\\n{;]|\\bget\\b|\\bset\\b))");
     /** {@code fun name(params): ReturnType}。 */
     private static final Pattern FUN_DECL = Pattern.compile(
             "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
@@ -132,7 +135,7 @@ public final class KotlinLightScanner {
             // 次のクラス宣言位置を上限に探索し、本体 {} を持たないクラスが後続クラスの
             // ブレース/括弧を誤って取り込まないようにする。
             int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode);
-            int primaryCtorParen = findNextChar(source, headerEnd, '(');
+            int primaryCtorParen = KotlinHeaderScan.primaryCtorParenAfter(source, headerEnd);
             int bodyBraceOpen = findNextChar(source, headerEnd, '{');
             if (nextHeader >= 0 && primaryCtorParen >= nextHeader) {
                 primaryCtorParen = -1;
@@ -257,22 +260,29 @@ public final class KotlinLightScanner {
             if (e.isEmpty()) {
                 continue;
             }
-            int paren = e.indexOf('(');
+            // by 委譲 (`Repo by RepoImpl()`) は「インタフェース + 委譲先の式」なので、
+            // 括弧判定より先に ` by <expr>` を落とす。後回しにすると委譲先が呼び出し形
+            // (`by RepoImpl()` / `by MainScope()` — 最も一般的) のとき ( が先に見つかり、
+            // "Repo by RepoImpl" という架空の名前がスーパークラスとして図に出てしまう。
+            boolean delegated = KotlinHeaderScan.hasDelegation(e);
+            if (delegated) {
+                e = KotlinHeaderScan.stripDelegation(e);
+            }
+            // 型引数の中の ( ) (関数型 `(Int) -> Unit` 等) は「コンストラクタ呼び出し」では
+            // ないので、深さ 0 の ( だけを見る。
+            int paren = delegated ? -1 : KotlinHeaderScan.topLevelParen(e);
             if (paren >= 0) {
                 String sup = e.substring(0, paren).trim();
                 if (!sup.isEmpty() && info.getSuperClass() == null) {
                     info.setSuperClass(sup);
                 }
-            } else {
-                // by 委譲 ({@code B by b}) の ` by <expr>` だけを除去する。単純に空白で
-                // 切ると多引数ジェネリック (Map<String, Int>) がカンマ後の空白で切れてしまう。
-                String iface = e.replaceFirst("\\s+by\\s+.*$", "").trim();
-                if (!iface.isEmpty()) {
-                    info.getInterfaces().add(iface);
-                }
+            } else if (!e.isEmpty()) {
+                info.getInterfaces().add(e);
             }
         }
     }
+
+
 
     /** enum 定数: 先頭の (任意アノテーション付き) 識別子と、続く {@code (...)} 引数。 */
     private static final Pattern ENUM_CONST = Pattern.compile(
@@ -690,7 +700,7 @@ public final class KotlinLightScanner {
         return Character.isLetter(c) || c == '_' || c == '$';
     }
 
-    private static boolean isIdentPart(char c) {
+    static boolean isIdentPart(char c) {
         return Character.isLetterOrDigit(c) || c == '_' || c == '$';
     }
 
@@ -707,7 +717,7 @@ public final class KotlinLightScanner {
         return -1;
     }
 
-    private static int matchParen(String src, int open) {
+    static int matchParen(String src, int open) {
         if (open < 0 || open >= src.length() || src.charAt(open) != '(') return open;
         return matchBalance(src, open, '(', ')');
     }
@@ -804,7 +814,7 @@ public final class KotlinLightScanner {
      * などをコードのブレース/引用符と取り違えてクラス本体を途中で切ってしまうのを防ぐ。
      * 未終端は末尾 (通常文字列/文字リテラル/行コメントは改行) で打ち切る。</p>
      */
-    private static int skipNonCode(String src, int i) {
+    static int skipNonCode(String src, int i) {
         int n = src.length();
         char c = src.charAt(i);
         if (c == '/' && i + 1 < n) {

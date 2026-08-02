@@ -151,4 +151,72 @@ public class KotlinLightScannerNestingAndLambdaTest {
                 byName(infos, "Sibling").getEnclosingClass());
         assertEquals("com.x.Sibling", byName(infos, "Sibling").getQualifiedName());
     }
+
+    // --- 3. by 委譲 / アノテーション付き constructor / 1 行アクセサ ------------------
+
+    @Test
+    public void interfaceDelegationWithConstructorCall_isNotMistakenForSuperclass() {
+        // 回帰: `by RepoImpl()` の ( を先に見て "Repo by RepoImpl" という架空クラスを
+        // スーパークラスに据え、図にその名前の箱と継承線が出ていた。
+        String src = "package com.x\n"
+                + "class Impl : Repo by RepoImpl() {\n  fun f() {}\n}\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "Impl");
+        assertNull("委譲はスーパークラスではない: " + c.getSuperClass(), c.getSuperClass());
+        assertEquals("委譲元インタフェースが取れること",
+                java.util.List.of("Repo"), c.getInterfaces());
+    }
+
+    @Test
+    public void delegationAfterSuperclass_keepsBothSuperclassAndInterface() {
+        // 回帰: superClass が埋まっている状態では委譲インタフェースが黙って捨てられていた。
+        String src = "package com.x\n"
+                + "class VM : ViewModel(), CoroutineScope by MainScope() {\n  fun f() {}\n}\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "VM");
+        assertEquals("ViewModel", c.getSuperClass());
+        assertEquals("委譲していたインタフェースが消えないこと",
+                java.util.List.of("CoroutineScope"), c.getInterfaces());
+    }
+
+    @Test
+    public void annotatedConstructorWithArguments_stillExtractsProperties() {
+        // 回帰: @Named("main") の ( をプライマリコンストラクタの ( と誤認し、
+        // プロパティが 1 つも取れなくなっていた (@Inject は引数が無く偶然通っていた)。
+        String src = "package com.x\n"
+                + "class Repo2 @Named(\"main\") constructor(\n"
+                + "  private val api: ApiService\n"
+                + ") {\n  fun y() {}\n}\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "Repo2");
+        assertEquals("api プロパティが抽出されること", 1, c.getFields().size());
+        assertEquals("api", c.getFields().get(0).getName());
+    }
+
+    @Test
+    public void annotatedConstructorWithoutArguments_stillWorks() {
+        String src = "package com.x\n"
+                + "class Repo @Inject constructor(private val api: ApiService,"
+                + " private val db: AppDatabase) : BaseRepo()\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "Repo");
+        assertEquals(2, c.getFields().size());
+        assertEquals("BaseRepo", c.getSuperClass());
+    }
+
+    @Test
+    public void genericClassPrimaryConstructor_isStillFound() {
+        // 型パラメータ <T> を読み飛ばせること (非退行)。
+        String src = "package com.x\nclass Box<T>(val value: T, val label: String)\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "Box");
+        assertEquals(2, c.getFields().size());
+    }
+
+    @Test
+    public void inlineCustomGetterProperty_isExtracted() {
+        // 回帰: `val x: Int get() = 5` を同じ行に書くとプロパティごと落ちていた。
+        String src = "package com.x\n"
+                + "class A {\n  val x: Int get() = 5\n  var y: String = \"\"\n}\n";
+        JavaClassInfo c = byName(KotlinLightScanner.scan(src, ErrorListener.silent()), "A");
+        java.util.List<String> names = new java.util.ArrayList<>();
+        c.getFields().forEach(f -> names.add(f.getName()));
+        assertTrue("1 行アクセサのプロパティが取れること: " + names, names.contains("x"));
+        assertTrue(names.contains("y"));
+    }
 }
