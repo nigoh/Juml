@@ -195,7 +195,7 @@ public final class CliOutput {
         if (lower.endsWith(".svg")) {
             try {
                 ensureParentDir(fileOut);
-                PlantUmlRenderer.renderSvg(puml, fileOut);
+                renderSvgAtomically(puml, fileOut);
             } catch (PlantUmlRenderFailedException ex) {
                 fallbackToPuml(fileOut, puml, ex, "svg");
             }
@@ -237,6 +237,19 @@ public final class CliOutput {
      */
     private static void fallbackToPuml(File fileOut, String puml,
             PlantUmlRenderFailedException ex, String kind) throws IOException {
+        reportRenderFallback(fileOut, puml, ex, kind);
+        System.exit(2);
+    }
+
+    /**
+     * レンダリング失敗時のサイドカー {@code .puml} 保存と案内だけを行う (プロセスは落とさない)。
+     *
+     * <p>複数の図を 1 本ずつ書き出すループから使う。{@link #fallbackToPuml} をそのまま呼ぶと
+     * 途中の 1 枚が失敗しただけで残りが<b>生成すらされない</b>まま {@code exit(2)} してしまう。
+     * 呼び出し側はループを最後まで回し、失敗があれば最後にまとめて終了コードを決める。</p>
+     */
+    public static void reportRenderFallback(File fileOut, String puml,
+            PlantUmlRenderFailedException ex, String kind) throws IOException {
         File pumlFallback = siblingPumlFor(fileOut);
         writeText(pumlFallback, puml);
         System.err.println("[juml] " + fileOut.getName()
@@ -244,7 +257,26 @@ public final class CliOutput {
         System.err.println("[juml]    Saved " + pumlFallback.getPath()
                 + " -- render externally with: plantuml -t" + kind + " "
                 + pumlFallback.getName());
-        System.exit(2);
+    }
+
+    /**
+     * 画像 1 枚を書き出し、失敗しても例外にせず {@code false} を返す
+     * ({@link #reportRenderFallback} でサイドカーと案内は出す)。
+     */
+    public static boolean writeImageOrFallback(File target, String puml, String kind)
+            throws IOException {
+        try {
+            ensureParentDir(target);
+            if ("png".equals(kind)) {
+                renderPng(puml, target);
+            } else {
+                renderSvgAtomically(puml, target);
+            }
+            return true;
+        } catch (PlantUmlRenderFailedException ex) {
+            reportRenderFallback(target, puml, ex, kind);
+            return false;
+        }
     }
 
     /** 与えられた SVG ファイルと同じ親ディレクトリ・同じベース名で {@code .puml} を指す
@@ -264,11 +296,22 @@ public final class CliOutput {
      * フォールバックして「FAILED」ログを出し、次の図に進む。
      * @return レンダリングが成功したかどうか
      */
+    /**
+     * SVG を「一時ファイルへ書き切ってから原子的に置換」で書き出す。
+     *
+     * <p>{@code PlantUmlRenderer.renderSvg(String, File)} は対象を開いた時点で切り詰め、
+     * 失敗時にはファイルごと削除する。前回の出力を壊さないため、CLI からはこちらを使う
+     * (PNG は {@code UmlExporter} 経由で既に原子的)。</p>
+     */
+    public static void renderSvgAtomically(String puml, File svgFile) throws IOException {
+        juml.util.AtomicFileWrite.write(svgFile, os -> PlantUmlRenderer.renderSvg(puml, os));
+    }
+
     public static boolean renderSvgOrFallback(String puml, File svgFile,
                                                ProgressLogger progress,
                                                ErrorListener listener) throws IOException {
         try {
-            PlantUmlRenderer.renderSvg(puml, svgFile);
+            renderSvgAtomically(puml, svgFile);
             progress.wrote(svgFile);
             listener.onError(null, -1, "wrote " + svgFile.getPath());
             return true;
@@ -314,7 +357,9 @@ public final class CliOutput {
             writeText(fileOut, markdown);
         } else if (name.endsWith(".puml") || name.endsWith(".plantuml")) {
             writeText(fileOut, puml);
-        } else if (name.endsWith(".svg")) {
+        } else if (name.endsWith(".svg") || name.endsWith(".png")) {
+            // ヘルプは「.svg / .png は同梱 PlantUML で描画する」と明記している。
+            // .png を拡張子なし扱いにしていたため、画像を期待した利用者に md+puml が返っていた。
             writeUmlOutput(fileOut, puml);
         } else {
             // 拡張子なし: 同じディレクトリ・同じベース名で .md と .puml を両方書く

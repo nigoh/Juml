@@ -229,15 +229,24 @@ public final class AndroidCommands {
             }
             java.util.List<String> names = CliOutput.planDiagramNames(labels, "nav-graph");
             String ext = CliOutput.imageExtensionOf(fileOut);
+            // 1 枚の失敗でプロセスを落とすと残りのグラフが生成すらされないため、
+            // 失敗はサイドカー .puml + ログにして最後まで回し、終了コードは最後に決める。
+            int failed = 0;
             for (int i = 0; i < graphs.size(); i++) {
                 AndroidNavigationGraphInfo g = graphs.get(i);
                 File target = CliOutput.perDiagramTarget(fileOut, names.get(i), ext);
-                CliOutput.writeUmlOutput(target,
-                        PlantUmlNavigationGraphDiagram.generate(g, o));
+                if (!CliOutput.writeImageOrFallback(target,
+                        PlantUmlNavigationGraphDiagram.generate(g, o), ext)) {
+                    failed++;
+                }
             }
-            System.err.println("[juml] Wrote " + graphs.size()
-                    + " navigation graphs as separate " + ext.toUpperCase(java.util.Locale.ROOT)
+            System.err.println("[juml] Wrote " + (graphs.size() - failed) + " of "
+                    + graphs.size() + " navigation graphs as separate "
+                    + ext.toUpperCase(java.util.Locale.ROOT)
                     + " files (PlantUML image output renders one diagram per file).");
+            if (failed > 0) {
+                System.exit(2);
+            }
             return;
         }
         // 複数グラフは個別の @startuml ブロックとして連結 (PlantUML は複数図を扱える)

@@ -7,7 +7,6 @@ import juml.core.formats.android.actions.UiActionEntry;
 import juml.core.formats.android.actions.UiActionScanner;
 import juml.core.formats.java.AndroidProjectScanner;
 import juml.core.formats.uml.LifecycleSequenceDiagrams;
-import juml.core.formats.uml.PlantUmlRenderer;
 import juml.core.formats.uml.UmlGenerator;
 import juml.core.refs.ReferenceIndex;
 import juml.core.refs.ReferenceIndexBuilder;
@@ -371,11 +370,21 @@ public final class UmlCommands {
         }
         java.util.List<LifecycleSequenceDiagrams.Entry> entries =
                 LifecycleSequenceDiagrams.generateAll(infos, sqOpts);
+        // ベース名は Class.method の単純名なので、パッケージ違いの同名クラスが同じ
+        // ファイル名に落ちて後の図が前の図を黙って上書きする。ナビゲーショングラフと
+        // 同じ規則 (サニタイズ後に連番付きで重複解決) を通す。
+        java.util.List<String> labels = new java.util.ArrayList<>();
         for (LifecycleSequenceDiagrams.Entry e : entries) {
-            CliOutput.writeText(new File(outDir, e.baseName() + ".puml"), e.puml);
-            File svgFile = new File(outDir, e.baseName() + ".svg");
+            labels.add(e.baseName());
+        }
+        java.util.List<String> names = CliOutput.planDiagramNames(labels, "lifecycle");
+        for (int i = 0; i < entries.size(); i++) {
+            LifecycleSequenceDiagrams.Entry e = entries.get(i);
+            String base = names.get(i);
+            CliOutput.writeText(new File(outDir, base + ".puml"), e.puml);
+            File svgFile = new File(outDir, base + ".svg");
             try {
-                PlantUmlRenderer.renderSvg(e.puml, svgFile);
+                CliOutput.renderSvgAtomically(e.puml, svgFile);
             } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {
                 System.err.println("[juml]     -> " + svgFile.getName()
                         + " FAILED: " + ex.getMessage()
