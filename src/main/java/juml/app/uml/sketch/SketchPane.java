@@ -161,13 +161,37 @@ public final class SketchPane extends JPanel {
 
     /** テキストを図種判定つきでアクティブエディタへ反映する (履歴は触らない)。 */
     private void applyText(String pumlText) {
-        SketchDiagramType type = SketchDiagramType.detect(pumlText);
+        SketchDiagramType type = resolveType(pumlText);
         active = editorFor(type);
         activeType = type;
         toolbarCards.show(toolbarPanel, type.name());
         canvasCards.show(canvasPanel, type.name());
         active.load(pumlText);
         updateEnableEditingButton();
+    }
+
+    /**
+     * 表示する図種を決める。
+     *
+     * <p>内容だけの判定は、デザイナー自身の出力に対して壊れることがある。要素を削るほど
+     * 判定材料が減り、残ったキーワードが他図種と綴りを共有する場合に別図種へ流れてしまう
+     * (配置図で database ノードだけ / コンポーネントノードだけ / ユースケース図でアクター
+     * だけ / 全要素を消して空になった、など)。そうなると Design タブを開き直しただけで
+     * 別の設計器が現れ、自分の図が編集できなくなる。</p>
+     *
+     * <p>そこで<b>いま表示中の図種でそのテキストを完全に扱える (未対応行ゼロ) なら図種を
+     * 維持し</b>、扱えないときだけ内容判定に委ねる。テキストを本当に別図種へ書き換えた
+     * ときは現在の設計器が未対応になるため、意図どおり判定側へ切り替わる。</p>
+     */
+    private SketchDiagramType resolveType(String pumlText) {
+        SketchDiagramType detected = SketchDiagramType.detect(pumlText);
+        if (detected == activeType) {
+            return detected;
+        }
+        // 現在の設計器で完全に往復できるなら、それは「自分の図」なので維持する。
+        // load はこの後どのみち行うため、余計な副作用にはならない。
+        active.load(pumlText);
+        return active.isEditable() ? activeType : detected;
     }
 
     /** 未対応がコメント行のみ (= 除去すれば編集可能) のとき「編集を有効化」を表示する。 */
