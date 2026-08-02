@@ -39,7 +39,7 @@ dependencies {
     // で配布しており、-mit 版は class/sequence/package 図を全てサポートする (ditaa 等の
     // 未使用機能のみ欠落)。fat jar 全体を MIT 互換に保つため GPL 版ではなくこれを選ぶ。
     // graphviz/dot は不要 (PlantUmlRenderer が Smetana レイアウトを自動指定)。
-    implementation 'net.sourceforge.plantuml:plantuml-mit:1.2026.2'
+    implementation 'net.sourceforge.plantuml:plantuml-mit:1.2026.6'
     // ASM: 依存 JAR/AAR からクラスヘッダ (名前・superclass・interfaces・public members)
     // を読み取り、シーケンス図/クラス図に外部クラスを表示するために使用する。
     // .class バイトコードは SKIP_CODE で読み飛ばし、ヘッダ情報のみを抽出する。
