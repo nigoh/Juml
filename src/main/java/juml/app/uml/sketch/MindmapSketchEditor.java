@@ -105,8 +105,16 @@ final class MindmapSketchEditor implements SketchEditor {
     @Override
     public void load(String pumlText) {
         MindmapSketchCodec.ParseResult r = MindmapSketchCodec.parse(pumlText);
+        this.unsupported = r.unsupportedLines != null
+                ? r.unsupportedLines : java.util.List.of();
         canvas.setModel(r.model, r.isFullySupported(), r.unsupportedLines);
         updateToolbarEnabled();
+    }
+
+    /** 直近の {@link #load} で未対応だった行 (他の設計器と同じ契約)。 */
+    @Override
+    public java.util.List<String> unsupportedLines() {
+        return unsupported;
     }
 
     /**
@@ -152,6 +160,14 @@ final class MindmapSketchEditor implements SketchEditor {
     public boolean isEditable() {
         return canvas.isModelEditable();
     }
+
+    /**
+     * 直近の {@link #load} で未対応だった行。これを返さないと
+     * {@code SketchPane.isCommentOnlyLock} が常に「未対応行なし」と見なし、
+     * マインドマップだけ「編集を有効化」ボタンが永久に出なかった
+     * (コメント 1 行でロックされたまま 1 クリックでは解除できない)。
+     */
+    private java.util.List<String> unsupported = java.util.List.of();
 
     @Override
     public void setOnEdited(Runnable onEdited) {

@@ -128,6 +128,24 @@ public class SketchPaneReloadHistoryTest {
     }
 
     @Test
+    public void mindmapCommentLockOffersTheEnableEditingButton() {
+        // 回帰: MindmapSketchEditor だけ unsupportedLines() を返しておらず、
+        // コメント 1 行でロックされても「編集を有効化」が出ないまま解除できなかった。
+        String puml = "@startmindmap\n' メモ\n* Root\n** Child\n@endmindmap\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertEquals(SketchDiagramType.MINDMAP, GuiActionRunner.execute(pane::activeTypeForTest));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("comment-only lock として認識されること",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertTrue("「編集を有効化」が出ること",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(puml.replace("' メモ\n", "")));
+        assertTrue("解除できること", GuiActionRunner.execute(pane::isEditable));
+    }
+
+    @Test
     public void firstLoadAlwaysApplies() {
         // 初回は baseline の初期値と一致しても必ず読み込む (図種判定・カード切替のため)。
         SketchPane pane = GuiActionRunner.execute(SketchPane::new);
