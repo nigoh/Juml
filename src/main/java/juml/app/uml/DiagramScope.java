@@ -189,6 +189,35 @@ public final class DiagramScope {
                 && parseMode == null;
     }
 
+    /**
+     * このスコープの<b>全フィルタ条件</b>を表す決定的な文字列。
+     *
+     * <p>タブキーの一部 ({@code DiagramController#scopeKey}) など「別スコープを別物として
+     * 扱う」判定に使う。一部の項目を落とすと、その項目だけが違うスコープが同一キーになり、
+     * 既存タブが再利用されて<b>スコープ変更が反映されない</b>。フィールドを追加したら
+     * ここにも必ず足すこと ({@link #isEmpty()} と対になる)。</p>
+     */
+    public String signature() {
+        return String.valueOf(includedPackages)
+                + '|' + includedModules
+                + '|' + excludedPackages
+                + '|' + excludedQualifiedNames
+                + '|' + excludeExternalLibraries
+                + '|' + externalPackagePrefixes
+                + '|' + (classNameRegex != null ? classNameRegex.pattern() : "")
+                + '|' + (excludeClassNameRegex != null ? excludeClassNameRegex.pattern() : "")
+                + '|' + includedAnnotations
+                + '|' + excludedAnnotations
+                + '|' + seedQualifiedNames
+                + '|' + neighborHops
+                + '|' + maxClasses
+                + '|' + relationKinds
+                + '|' + visibilityFilter
+                + '|' + parseMode
+                + '|' + preset
+                + '|' + focusClass;
+    }
+
     public static Builder builder() {
         return new Builder();
     }

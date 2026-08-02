@@ -563,6 +563,25 @@ public class UmlMainFrame extends JFrame {
                 exportToolbarButton.setEnabled(true);
             }
         };
+        // 解析が失敗/キャンセルで終わると解析キャッシュは空になる。開いていた図タブを
+        // そのまま残すと、旧プロジェクトのラベルのまま空のキャッシュを参照し、再描画
+        // (F5 / スタイル変更 / 図種切替) で空図や別図が出る。ツリーはロード開始時点で
+        // クリア済みなので、タブ側も「未ロード」へ揃える。
+        loaderDeps.onLoadAborted = () -> {
+            tabPane.onProjectSwitched();
+            if (detachedWindows != null) {
+                detachedWindows.closeAll();
+            }
+            doxygenResultCache.clear();
+            currentProjectRoot = null;
+            controller.updateAvailableDiagrams(java.util.EnumSet.noneOf(DiagramKind.class));
+            if (exportMenuItems != null) {
+                exportMenuItems.forEach(item -> item.setEnabled(false));
+            }
+            if (exportToolbarButton != null) {
+                exportToolbarButton.setEnabled(false);
+            }
+        };
         projectLoader = new ProjectLoader(loaderDeps);
     }
 

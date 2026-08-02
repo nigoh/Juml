@@ -223,23 +223,19 @@ public final class DiagramController {
                 ToolBarBuilder.toolbarLabel(kind), iconForKind(kind), spec, null);
     }
 
-    /** スコープ内容から決定的なタブキー接尾辞を作る (null や全体図は空文字)。 */
-    private static String scopeKey(DiagramScope scope) {
+    /**
+     * スコープ内容から決定的なタブキー接尾辞を作る (null や全体図は空文字)。
+     *
+     * <p>署名は {@link DiagramScope#signature()} に委ねる。以前はここで一部の項目だけを
+     * 連結しており、除外クラス正規表現・include/exclude アノテーション・seed・プリセット・
+     * フォーカスクラスだけが違うスコープが同じキーになっていた。同じキーは既存タブへの
+     * フォーカスに解決されるため、<b>スコープを変えたのに図が変わらない</b>状態になる。</p>
+     */
+    static String scopeKey(DiagramScope scope) {
         if (scope == null) {
             return "";
         }
-        String sig = String.valueOf(scope.getIncludedPackages())
-                + '|' + scope.getExcludedPackages()
-                + '|' + scope.getIncludedModules()
-                + '|' + (scope.getClassNameRegex() != null
-                        ? scope.getClassNameRegex().pattern() : "")
-                + '|' + scope.getMaxClasses()
-                + '|' + scope.getNeighborHops()
-                + '|' + scope.getRelationKinds()
-                + '|' + scope.getVisibilityFilter()
-                + '|' + scope.isExcludeExternalLibraries()
-                + '|' + scope.getParseMode();
-        return ":" + Integer.toHexString(sig.hashCode());
+        return ":" + Integer.toHexString(scope.signature().hashCode());
     }
 
     /** これを超えるクラス数の全体図 (Class/Inheritance) は描画コストが高く事前ガードする。 */
@@ -433,13 +429,15 @@ public final class DiagramController {
                 return isBlank(state.callGraphEntry) ? null : buildCallGraphRequest(state.callGraphEntry);
             case LAYOUT:
                 return isBlank(state.currentLayoutKey) ? null
-                        : DiagramRequest.forLayout(state.currentLayoutKey, true);
+                        : keepActiveLocale(DiagramRequest.forLayout(state.currentLayoutKey, true));
             case LAYOUT_SCREEN:
                 return isBlank(state.currentLayoutKey) ? null
-                        : DiagramRequest.forLayoutScreen(state.currentLayoutKey, true);
+                        : keepActiveLocale(
+                                DiagramRequest.forLayoutScreen(state.currentLayoutKey, true));
             case LAYOUT_RENDER:
                 return isBlank(state.currentLayoutKey) ? null
-                        : DiagramRequest.forLayoutRender(state.currentLayoutKey, true);
+                        : keepActiveLocale(
+                                DiagramRequest.forLayoutRender(state.currentLayoutKey, true));
             case NAVIGATION:
                 return isBlank(state.currentNavigationKey) ? null
                         : DiagramRequest.forNavigationGraph(state.currentNavigationKey, true);
@@ -447,6 +445,23 @@ public final class DiagramController {
                 boolean links = k == DiagramKind.CLASS || k == DiagramKind.INHERITANCE;
                 return new DiagramRequest(k, null, null, true, state.currentScope, links);
         }
+    }
+
+    /**
+     * アクティブタブが選んでいる文言 locale をリクエストへ引き継ぐ。
+     *
+     * <p>レイアウト図のロケール切替は<b>タブ固有</b>の設定で、共有 {@link DiagramState} は
+     * これを持たない。引き継がないと、スコープ変更などで spec を再構築するたびに
+     * 選んだ言語が捨てられ、図が既定言語の文言へ勝手に戻ってしまう。</p>
+     */
+    private DiagramRequest keepActiveLocale(DiagramRequest spec) {
+        return keepLocaleFrom(activeTabSpec(), spec);
+    }
+
+    /** {@link #keepActiveLocale} の純ロジック部 (アクティブタブ取得と分離してテスト可能にする)。 */
+    static DiagramRequest keepLocaleFrom(DiagramRequest current, DiagramRequest spec) {
+        String locale = current != null ? current.getStringLocale() : null;
+        return locale != null && !locale.isEmpty() ? spec.withStringLocale(locale) : spec;
     }
 
     public void openScopeDialog() {

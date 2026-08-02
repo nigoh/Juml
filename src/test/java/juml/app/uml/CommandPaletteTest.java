@@ -302,7 +302,10 @@ public class CommandPaletteTest {
             CommandPalette.show(owner, commands);
             return null;
         });
-        long deadline = System.currentTimeMillis() + 5_000;
+        // 5 秒だとフルスイート実行時 (Xvfb + 他の GUI テストと同時) にダイアログの
+        // realize が間に合わず、単体では通るのに check だけ落ちるフレーキーになっていた。
+        // 正常時は最初のポーリングで見つかるため、上限を伸ばしても実行時間は増えない。
+        long deadline = System.currentTimeMillis() + 15_000;
         while (System.currentTimeMillis() < deadline) {
             JDialog found = GuiActionRunner.execute(() -> {
                 for (Window w : Window.getWindows()) {
