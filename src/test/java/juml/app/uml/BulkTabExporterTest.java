@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -130,6 +131,27 @@ public class BulkTabExporterTest {
         assertEquals(0, r.exported);
         assertEquals("IO 失敗も全件 failures へ集計 (throw しない)", 2, r.failures.size());
         assertFalse("ディレクトリは勝手に作られない", missing.exists());
+    }
+
+    @Test
+    public void exportAll_svgFailure_keepsThePreviousFile() throws Exception {
+        // 回帰: SVG 分岐だけが renderSvg(File) を直接呼んでおり、対象を切り詰めてから
+        // 描画し、失敗時はファイルごと削除していた = 前回の正しい SVG が消える。
+        // 同じ操作なのに形式 (PNG/PUML) によって上書きの安全性が違っていた。
+        File dir = tmp.getRoot();
+        File target = new File(dir, "Bad.svg");
+        byte[] previous = "<svg>previous good export</svg>".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8);
+        java.nio.file.Files.write(target.toPath(), previous);
+
+        BulkTabExporter.Result r = run(List.of(tab("Bad", BAD_PUML)), dir,
+                UmlExporter.Format.SVG);
+
+        assertEquals(0, r.exported);
+        assertEquals(1, r.failures.size());
+        assertTrue("失敗しても前回の SVG が残ること", target.isFile());
+        assertArrayEquals("前回の内容がそのまま残ること",
+                previous, java.nio.file.Files.readAllBytes(target.toPath()));
     }
 
     @Test

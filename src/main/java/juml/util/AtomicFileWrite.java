@@ -7,9 +7,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
 
 /**
  * 既存ファイルを壊さずに書き換えるための「一時ファイル → 原子的置換」ヘルパ。
@@ -57,16 +61,22 @@ public final class AtomicFileWrite {
             throw new IllegalArgumentException("target is null");
         }
         Path targetPath = target.toPath();
-        Path dir = targetPath.getParent();
+        // 親要素を持たない相対パス ("out.png" など。CLI の -o で普通に来る) では
+        // getParent() が null になる。null を Files.createTempFile へ渡すと
+        // NullPointerException になり、CLI がスタックトレースだけ吐いて 1 バイトも
+        // 出力しない。カレントディレクトリとして扱う。
+        Path dir = targetPath.getParent() != null
+                ? targetPath.getParent() : Paths.get(".");
         // 親ディレクトリは<b>作らない</b>。存在しなければ一時ファイルの作成が
         // IOException になり、呼び出し側は従来 (対象を直接開いていた頃) と同じく
         // 「保存先が無い」として失敗を報告する。勝手に mkdir すると、打ち間違えた
         // パスへ黙って書き出してしまう (BulkTabExporter の契約もこれに依存)。
         // 同一ディレクトリに作る (別ボリュームだと原子的な置換ができないため)。
-        Path tmp = Files.createTempFile(dir, ".juml-", ".tmp");
+        Path tmp = createTempIn(dir, targetPath.getFileName().toString());
         boolean moved = false;
         try {
             body.writeTo(tmp.toFile());
+            adoptPermissions(tmp, targetPath);
             replace(tmp, targetPath);
             moved = true;
         } finally {
@@ -77,6 +87,53 @@ public final class AtomicFileWrite {
                     // 一時ファイルの後始末失敗は本来の失敗を隠さない。
                 }
             }
+        }
+    }
+
+    /** 一時ファイル名の連番 (同一プロセス内の衝突を避ける)。 */
+    private static final java.util.concurrent.atomic.AtomicLong SEQ =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * {@code dir} に一時ファイルを作る。
+     *
+     * <p>{@link Files#createTempFile} を使わないのは、POSIX では必ず {@code rw-------}
+     * (0600) で作られるため。{@code ATOMIC_MOVE} は inode ごと置換するので、その権限が
+     * そのまま成果物の権限になり、<b>共有ディレクトリや Web ルートへ書き出した図が
+     * 所有者以外から読めなくなる</b> (従来の {@code FileOutputStream} は umask 準拠の
+     * 0644 だった)。{@link Files#createFile} なら umask が効く。</p>
+     */
+    private static Path createTempIn(Path dir, String baseName) throws IOException {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            Path candidate = dir.resolve("." + baseName + ".juml-"
+                    + ProcessHandle.current().pid() + "-" + SEQ.incrementAndGet() + ".tmp");
+            try {
+                return Files.createFile(candidate);
+            } catch (FileAlreadyExistsException retry) {
+                // 別プロセス/スレッドと衝突。次の名前で作り直す。
+                continue;
+            }
+        }
+        throw new IOException("could not create a temporary file in " + dir);
+    }
+
+    /**
+     * 置換先が既にあるなら、その権限を一時ファイルへ写す。
+     *
+     * <p>{@code ATOMIC_MOVE} は権限を引き継がないため、これをしないと再エクスポートの
+     * たびに元ファイルの権限 (共有用の 0644、あるいは意図的に絞った 0600) が
+     * 作成時の既定へ書き換わってしまう。POSIX でないファイルシステムでは何もしない。</p>
+     */
+    private static void adoptPermissions(Path tmp, Path target) {
+        try {
+            if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                return;
+            }
+            java.util.Set<PosixFilePermission> perms =
+                    Files.getPosixFilePermissions(target);
+            Files.setPosixFilePermissions(tmp, perms);
+        } catch (UnsupportedOperationException | IOException ignored) {
+            // POSIX 非対応 / 権限取得不可なら既定のまま置換する (書き出し自体は続行)。
         }
     }
 

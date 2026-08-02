@@ -11,9 +11,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -81,6 +84,72 @@ public class AtomicFileWriteTest {
         AtomicFileWrite.write(target, os -> os.write("hello".getBytes(StandardCharsets.UTF_8)));
         assertTrue(target.isFile());
         assertEquals("hello", Files.readString(target.toPath()));
+    }
+
+    @Test
+    public void bareRelativeFileNameWritesIntoTheCurrentDirectory() throws IOException {
+        // 回帰 (critical): 親要素を持たない相対パス ("out.png" など。CLI の -o で普通に来る) で
+        // getParent() が null になり、Files.createTempFile(null, ...) が NPE を投げていた。
+        // CLI はスタックトレースだけ吐いて 1 バイトも出力しなかった。
+        String name = "juml-atomic-write-probe.txt";
+        File target = new File(name);
+        assertNull("この検証の前提: 親要素を持たない相対パス", target.toPath().getParent());
+        try {
+            AtomicFileWrite.write(target, os -> os.write("ok".getBytes(StandardCharsets.UTF_8)));
+            assertTrue("カレントディレクトリへ書けること", target.isFile());
+            assertEquals("ok", Files.readString(target.toPath()));
+        } finally {
+            Files.deleteIfExists(target.toPath());
+        }
+    }
+
+    @Test
+    public void existingFilePermissionsAreKept() throws IOException {
+        // 回帰: createTempFile は POSIX で必ず 0600 を作り、ATOMIC_MOVE は inode ごと
+        // 置換するため権限が引き継がれない。共有ディレクトリや Web ルートへ出した図が
+        // 再エクスポート後に所有者しか読めなくなっていた。
+        File target = tmp.newFile("shared.svg");
+        java.util.Set<PosixFilePermission> perms;
+        try {
+            perms = PosixFilePermissions.fromString("rw-r--r--");
+            Files.setPosixFilePermissions(target.toPath(), perms);
+        } catch (UnsupportedOperationException notPosix) {
+            return; // POSIX でないファイルシステムでは検証対象外
+        }
+        AtomicFileWrite.write(target, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+        assertEquals("既存ファイルの権限を保つこと",
+                perms, Files.getPosixFilePermissions(target.toPath()));
+    }
+
+    @Test
+    public void restrictivePermissionsAreAlsoKept() throws IOException {
+        // 逆向きの保険: 意図的に絞った権限を勝手に緩めないこと。
+        File target = tmp.newFile("private.svg");
+        java.util.Set<PosixFilePermission> perms;
+        try {
+            perms = PosixFilePermissions.fromString("rw-------");
+            Files.setPosixFilePermissions(target.toPath(), perms);
+        } catch (UnsupportedOperationException notPosix) {
+            return;
+        }
+        AtomicFileWrite.write(target, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+        assertEquals(perms, Files.getPosixFilePermissions(target.toPath()));
+    }
+
+    @Test
+    public void newFileIsReadableByDefault() throws IOException {
+        // 新規作成は umask 準拠 (従来の FileOutputStream と同じ) であること。
+        File target = new File(tmp.newFolder("fresh"), "out.svg");
+        AtomicFileWrite.write(target, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+        try {
+            assertTrue("所有者以外にも読めるのが既定 (0600 に固定しない)",
+                    Files.getPosixFilePermissions(target.toPath())
+                            .contains(PosixFilePermission.GROUP_READ)
+                    || Files.getPosixFilePermissions(target.toPath())
+                            .contains(PosixFilePermission.OTHERS_READ));
+        } catch (UnsupportedOperationException notPosix) {
+            assertTrue(target.isFile());
+        }
     }
 
     @Test

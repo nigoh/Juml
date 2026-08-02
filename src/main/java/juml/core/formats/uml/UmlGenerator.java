@@ -370,7 +370,9 @@ public final class UmlGenerator {
         }
 
         if (mergeManifest && root.isDirectory() && !can.isCancelled()) {
-            mergeManifestInto(all, root, err);
+            // 走査と同じ includeTests で manifest も読む。渡さないと --include-tests 指定時に
+            // テストソースのクラスだけが図に出てコンポーネント種別が付かない (不揃いになる)。
+            mergeManifestInto(all, root, err, scanOpts.includeTests);
             // index 側にも反映 (header と all は別インスタンスなので個別に)
             for (JavaClassInfo c : all) {
                 if (c.getAndroidComponentType() != null) {
@@ -568,9 +570,20 @@ public final class UmlGenerator {
      */
     public static void mergeManifestInto(List<JavaClassInfo> classes, File root,
                                           ErrorListener listener) {
+        mergeManifestInto(classes, root, listener, false);
+    }
+
+    /**
+     * {@code includeTests} を指定できる {@link #mergeManifestInto(List, File, ErrorListener)}。
+     * テストソースセット ({@code src/test} / {@code src/androidTest}) の
+     * AndroidManifest.xml も対象にするかを、クラス走査側と揃えるために使う。
+     */
+    public static void mergeManifestInto(List<JavaClassInfo> classes, File root,
+                                          ErrorListener listener, boolean includeTests) {
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         try {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(root, l);
+            AndroidProjectAnalysis analysis =
+                    AndroidProjectAnalyzer.analyze(root, l, includeTests);
             for (AndroidComponentInfo c : analysis.allComponents()) {
                 String fqn = c.getName();
                 if (fqn == null || fqn.isEmpty()) {

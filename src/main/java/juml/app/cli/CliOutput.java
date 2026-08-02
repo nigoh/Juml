@@ -98,18 +98,78 @@ public final class CliOutput {
      */
     public static File perDiagramSvgTarget(File fileOut, String label, int index,
                                            String defaultBase) {
+        return perDiagramTarget(fileOut, sanitizeDiagramName(label, defaultBase, index),
+                imageExtensionOf(fileOut));
+    }
+
+    /**
+     * {@code fileOut} が「1 ファイル 1 図」しか表現できない画像出力かを判定する
+     * (拡張子 {@code .svg} / {@code .png}、または既存ディレクトリ)。
+     *
+     * <p>同梱 PlantUML の SVG/PNG 出力はどちらも先頭の {@code @startuml} ブロックしか
+     * ラスタライズしない。複数図をこの形式へ書く呼び出し側は図ごとに別ファイルへ
+     * 分割しなければ、2 枚目以降が<b>警告なく消える</b>。</p>
+     */
+    public static boolean isSingleDiagramImageTarget(File fileOut) {
+        if (fileOut == null) {
+            return false;
+        }
+        String lower = fileOut.getName().toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".svg") || lower.endsWith(".png") || fileOut.isDirectory();
+    }
+
+    /** {@code fileOut} に対応する画像拡張子 ({@code png} / それ以外は {@code svg})。 */
+    public static String imageExtensionOf(File fileOut) {
+        return fileOut != null
+                && fileOut.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".png")
+                ? "png" : "svg";
+    }
+
+    /** 図名をファイル名に使える形へ落とす (空なら {@code defaultBase-index})。 */
+    private static String sanitizeDiagramName(String label, String defaultBase, int index) {
         String safe = label == null ? "" : label.replaceAll("[^A-Za-z0-9_.-]", "_");
-        if (safe.isEmpty()) {
-            safe = defaultBase + "-" + index;
+        return safe.isEmpty() ? defaultBase + "-" + index : safe;
+    }
+
+    /**
+     * 複数図ぶんのファイル名を、<b>サニタイズ後に</b>重複解決して確定する。
+     *
+     * <p>サニタイズ前の名前で重複を解決すると、{@code a/b} と {@code a:b} のように
+     * 使えない文字だけが違う名前が同じ {@code a_b} へ落ちて再衝突し、後の図が前の図を
+     * 黙って上書きする。比較は大文字小文字を無視する (Windows/macOS の既定ファイル
+     * システムでは {@code Nav} と {@code nav} が同じファイル)。</p>
+     */
+    public static java.util.List<String> planDiagramNames(java.util.List<String> labels,
+                                                          String defaultBase) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (int i = 0; i < labels.size(); i++) {
+            String base = sanitizeDiagramName(labels.get(i), defaultBase, i);
+            String candidate = base;
+            int n = 2;
+            while (!used.add(candidate.toLowerCase(java.util.Locale.ROOT))) {
+                candidate = base + "_" + n;
+                n++;
+            }
+            out.add(candidate);
         }
+        return out;
+    }
+
+    /**
+     * 複数図を書き出すときの、図 1 枚ぶんの出力先を決める。
+     * ディレクトリ指定なら {@code <dir>/<name>.<ext>}、単一ファイル指定なら
+     * その隣に {@code <base>-<name>.<ext>} を作る。
+     */
+    public static File perDiagramTarget(File fileOut, String name, String ext) {
         if (fileOut != null && fileOut.isDirectory()) {
-            return new File(fileOut, safe + ".svg");
+            return new File(fileOut, name + "." + ext);
         }
-        String name = fileOut == null ? defaultBase + ".svg" : fileOut.getName();
-        int dot = name.lastIndexOf('.');
-        String base = dot >= 0 ? name.substring(0, dot) : name;
+        String outName = fileOut == null ? "diagram." + ext : fileOut.getName();
+        int dot = outName.lastIndexOf('.');
+        String base = dot >= 0 ? outName.substring(0, dot) : outName;
         File parent = fileOut == null ? null : fileOut.getParentFile();
-        String childName = base + "-" + safe + ".svg";
+        String childName = base + "-" + name + "." + ext;
         return parent == null ? new File(childName) : new File(parent, childName);
     }
 

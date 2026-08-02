@@ -3,7 +3,6 @@
 
 package juml.app.uml;
 
-import juml.core.formats.uml.PlantUmlRenderer;
 import juml.util.AppLog;
 import juml.util.ErrorCode;
 import juml.util.ErrorListener;
@@ -235,7 +234,11 @@ final class BulkTabExporter {
     private static void writeOne(UmlExporter.Format fmt, File out, String puml) throws Exception {
         switch (fmt) {
             case SVG:
-                PlantUmlRenderer.renderSvg(puml, out);
+                // UmlExporter を通す (PNG/PUML と同じ原子的置換にする)。以前はここだけ
+                // renderSvg(File) を直接呼んでおり、対象を切り詰めてから描画し、失敗時は
+                // ファイルごと削除していた = 前回の正しい SVG が消える。同じ操作なのに
+                // 形式によって上書きの安全性が変わっていた。
+                UmlExporter.export(UmlExporter.Format.SVG, out, puml, null);
                 break;
             case PNG:
                 BufferedImage img = PlantUmlImageRenderer.toBufferedImage(puml);

@@ -215,23 +215,29 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        // SVG 出力時は同梱 PlantUML が先頭の @startuml しかレンダリングしないため、
-        // 複数グラフはグラフごとに別ファイル (<base>-<name>.svg) へ分割して書き出す。
+        // 画像出力 (SVG/PNG) では同梱 PlantUML が先頭の @startuml しかラスタライズしない
+        // ため、複数グラフはグラフごとに別ファイル (<base>-<name>.<ext>) へ分割する。
+        // 以前は SVG しか分割しておらず、-o out.png では 2 枚目以降が警告なく消えていた。
         // .puml/.md/標準出力は連結のままでよい (PlantUML ツールが複数図を扱えるため)。
-        if (graphs.size() > 1 && CliOutput.isSvgTarget(fileOut)) {
+        if (graphs.size() > 1 && CliOutput.isSingleDiagramImageTarget(fileOut)) {
             // グラフ名はモジュール間で重複しうる (どのモジュールにも res/navigation/nav_graph.xml
             // がある構成は普通)。素の名前でファイル名を作ると後のグラフが前のグラフを黙って
             // 上書きし、「N 個書き出した」と表示しながら実際には数個しか残らない。
-            java.util.List<String> labels = uniqueLabels(graphs);
+            java.util.List<String> labels = new java.util.ArrayList<>();
+            for (AndroidNavigationGraphInfo g : graphs) {
+                labels.add(navGraphLabel(g));
+            }
+            java.util.List<String> names = CliOutput.planDiagramNames(labels, "nav-graph");
+            String ext = CliOutput.imageExtensionOf(fileOut);
             for (int i = 0; i < graphs.size(); i++) {
                 AndroidNavigationGraphInfo g = graphs.get(i);
-                File target = CliOutput.perDiagramSvgTarget(fileOut, labels.get(i), i, "nav-graph");
+                File target = CliOutput.perDiagramTarget(fileOut, names.get(i), ext);
                 CliOutput.writeUmlOutput(target,
                         PlantUmlNavigationGraphDiagram.generate(g, o));
             }
             System.err.println("[juml] Wrote " + graphs.size()
-                    + " navigation graphs as separate SVG files"
-                    + " (PlantUML SVG output renders one diagram per file).");
+                    + " navigation graphs as separate " + ext.toUpperCase(java.util.Locale.ROOT)
+                    + " files (PlantUML image output renders one diagram per file).");
             return;
         }
         // 複数グラフは個別の @startuml ブロックとして連結 (PlantUML は複数図を扱える)
@@ -246,28 +252,6 @@ public final class AndroidCommands {
     }
 
     /** nav-graph の per-file SVG ファイル名に使うラベル (fileName 優先、無ければ graphId)。 */
-    /**
-     * グラフごとのファイル名ラベルを、重複しないように連番付きで確定する
-     * ({@code nav_graph}, {@code nav_graph_2}, ...)。比較は大文字小文字を無視する
-     * (Windows/macOS の既定ファイルシステムでは {@code Nav} と {@code nav} が同じファイル)。
-     */
-    private static java.util.List<String> uniqueLabels(
-            java.util.List<AndroidNavigationGraphInfo> graphs) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        java.util.Set<String> used = new java.util.HashSet<>();
-        for (AndroidNavigationGraphInfo g : graphs) {
-            String base = navGraphLabel(g);
-            String candidate = base;
-            int n = 2;
-            while (!used.add(candidate == null ? "" : candidate.toLowerCase(java.util.Locale.ROOT))) {
-                candidate = base + "_" + n;
-                n++;
-            }
-            out.add(candidate);
-        }
-        return out;
-    }
-
     private static String navGraphLabel(AndroidNavigationGraphInfo g) {
         String name = g.getFileName();
         if (name != null && !name.isEmpty()) {

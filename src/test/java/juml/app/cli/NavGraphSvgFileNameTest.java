@@ -52,8 +52,8 @@ public class NavGraphSvgFileNameTest {
         return root;
     }
 
-    private void runNavGraphToSvgDir(File in, File outDir) throws Exception {
-        CliContext ctx = new CliContext(in, outDir, ErrorListener.silent(), null, false, null);
+    private void runNavGraphTo(File in, File out) throws Exception {
+        CliContext ctx = new CliContext(in, out, ErrorListener.silent(), null, false, null);
         PrintStream origOut = System.out;
         PrintStream origErr = System.err;
         System.setOut(new PrintStream(java.io.OutputStream.nullOutputStream(), true, "UTF-8"));
@@ -67,9 +67,46 @@ public class NavGraphSvgFileNameTest {
     }
 
     @Test
+    public void sameNamedGraphsGetDistinctPngFiles() throws Exception {
+        // 回帰: 分割条件が SVG 限定だったため、-o *.png では複数グラフが 1 枚に連結され、
+        // 同梱 PlantUML が先頭しかラスタライズせず 2 枚目以降が警告なく消えていた。
+        File outDir = tmp.newFolder("outpng");
+        File target = new File(outDir, "both.png");
+        runNavGraphTo(projectWithDuplicateGraphNames(), target);
+
+        List<String> names = Arrays.asList(outDir.list());
+        assertEquals("PNG でも 1 グラフ 1 ファイルに分割されること: " + names, 2, names.size());
+        for (String n : names) {
+            assertTrue(n + " は png であること: " + names, n.endsWith(".png"));
+            assertTrue(n + " が空でないこと", new File(outDir, n).length() > 0);
+        }
+        assertEquals("同名グラフが別ファイルになること", 2,
+                new java.util.HashSet<>(names).size());
+    }
+
+    @Test
+    public void graphNamesCollidingOnlyAfterSanitisationStayDistinct() throws Exception {
+        // ファイル名に使えない文字だけが違う名前 (a/b と a:b) は sanitize 後に同じ a_b へ
+        // 落ちる。サニタイズ前で重複解決すると、ここで再衝突して黙って上書きされる。
+        File root = tmp.newFolder("proj-sanitize");
+        String[] fileNames = {"nav+graph.xml", "nav-graph.xml", "nav graph.xml"};
+        File navDir = new File(root, "app/src/main/res/navigation");
+        assertTrue(navDir.mkdirs());
+        for (int i = 0; i < fileNames.length; i++) {
+            Files.write(new File(navDir, fileNames[i]).toPath(),
+                    String.format(NAV_XML, "g" + i).getBytes(StandardCharsets.UTF_8));
+        }
+        File outDir = tmp.newFolder("out-sanitize");
+        runNavGraphTo(root, outDir);
+
+        List<String> names = Arrays.asList(outDir.list());
+        assertEquals("サニタイズ後に衝突しても全グラフが残ること: " + names, 3, names.size());
+    }
+
+    @Test
     public void sameNamedGraphsGetDistinctSvgFiles() throws Exception {
         File outDir = tmp.newFolder("out");
-        runNavGraphToSvgDir(projectWithDuplicateGraphNames(), outDir);
+        runNavGraphTo(projectWithDuplicateGraphNames(), outDir);
 
         List<String> names = Arrays.asList(outDir.list());
         assertEquals("同名グラフでも 2 ファイル残ること: " + names, 2, names.size());
