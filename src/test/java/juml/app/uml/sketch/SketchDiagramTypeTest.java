@@ -302,4 +302,63 @@ public class SketchDiagramTypeTest {
         assertFalse(SketchDiagramType.isLayoutComment("class A"));
         assertFalse(SketchDiagramType.isLayoutComment(null));
     }
+
+    // --- 設計器の出力は必ず自分の設計器へ戻る (往復の固定点) ------------------------
+    //
+    // 回帰: 判定が行の見た目の推測だったため、rectangle/folder/frame をトップに置いた
+    // 配置図がクラス図へ流れ、開き直すと空の編集ロック済み設計器になっていた。
+    // 判定は「実際にそのコーデックが丸ごと読めるか」で裏を取る。
+
+    @Test
+    public void deploymentContainerKindsOpenAnEditableDesigner() {
+        // 回帰: rectangle/folder/frame をトップに置いた配置図がクラス図へ流れ、開き直すと
+        // 空の編集ロック済み設計器になっていた。COMPONENT だけはコンポーネント図と
+        // テキストが完全に同一になるため、どちらの設計器で開いても編集できれば十分。
+        for (DeploySketchModel.DeployNode.Kind kind
+                : DeploySketchModel.DeployNode.Kind.values()) {
+            DeploySketchModel model = new DeploySketchModel();
+            model.getNodes().add(
+                    new DeploySketchModel.DeployNode(kind, "n1", "Outer", 0, 0));
+            String puml = DeploySketchCodec.toPuml(model);
+            SketchDiagramType detected = SketchDiagramType.detect(puml);
+            if (kind == DeploySketchModel.DeployNode.Kind.COMPONENT) {
+                assertTrue(kind + " はコンポーネント図と同一テキストなのでどちらでも可: " + detected,
+                        detected == SketchDiagramType.DEPLOYMENT
+                                || detected == SketchDiagramType.COMPONENT);
+            } else {
+                assertEquals(kind + " の配置図が配置図として判定されること: " + puml,
+                        SketchDiagramType.DEPLOYMENT, detected);
+            }
+        }
+    }
+
+    @Test
+    public void erColumnNamedLikeAnotherKeywordStillOpensTheErDesigner() {
+        // ラウンド2で入れたブロック本体の除外に加え、コーデックによる裏取りでも守る。
+        for (String column : new String[] {"node", "cloud", "artifact", "component", "usecase"}) {
+            String puml = "@startuml\nhide circle\nentity tree {\n  * id : int\n  --\n  "
+                    + column + " : text\n}\n'@pos tree 0 0\n@enduml\n";
+            assertEquals(column + " という列名でも ER のまま",
+                    SketchDiagramType.ER, SketchDiagramType.detect(puml));
+            assertTrue("ER コーデックが丸ごと読めること",
+                    ErSketchCodec.parse(puml).isFullySupported());
+        }
+    }
+
+    @Test
+    public void bracesInsideCommentsAndLabelsDoNotHideTheDiagram() {
+        // 波括弧のカウントはコメントや引用ラベルの中まで数えてしまう。コーデックによる
+        // 裏取りがあるので、それでも正しい設計器が開くこと。
+        String puml = "@startuml\n' 参考 { メモ\ncomponent \"App {Prod}\" as c1\n"
+                + "interface Api\nc1 --> Api\n@enduml\n";
+        assertEquals(SketchDiagramType.COMPONENT, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void unparsableTextStillPicksADesignerToShowLocked() {
+        // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
+        String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"
+                + "!include foo.puml\n@enduml\n";
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(puml));
+    }
 }
