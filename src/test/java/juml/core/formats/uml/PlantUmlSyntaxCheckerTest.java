@@ -79,4 +79,40 @@ public class PlantUmlSyntaxCheckerTest {
         assertEquals("", PlantUmlSyntaxChecker.summarize(
                 "@startuml\nclass X [[juml://class/X]] #FFF3CD {\n}\n@enduml\n"));
     }
+
+    // --- @startuml 以外の図種を「壊れている」と誤診しない -------------------------
+    //
+    // 回帰: @startuml だけを数えていたため、マインドマップ等は必ず
+    // "missing @startuml" + count mismatch と診断されていた。この診断は
+    // PlantUmlRenderer#buildRenderFailure が原因を分類する材料なので、レイアウト
+    // 障害 (UML-R002) まで一律「構文エラー (UML-R001)」へ倒れ、利用者には
+    // 見当違いの対処法が案内されていた。
+
+    @Test
+    public void acceptsNonUmlDiagramTypes() {
+        for (String puml : new String[] {
+            "@startmindmap\n* Root\n** Child\n@endmindmap\n",
+            "@startwbs\n* Root\n** Child\n@endwbs\n",
+            "@startsalt\n{\n  Name | \"  \"\n}\n@endsalt\n",
+            "@startgantt\n[T1] lasts 3 days\n@endgantt\n",
+            "@startjson\n{\"a\": 1}\n@endjson\n",
+            "@startyaml\na: 1\n@endyaml\n"}) {
+            assertEquals("正しい非 UML 図を問題なしと判定すること: " + puml,
+                    "", PlantUmlSyntaxChecker.summarize(puml));
+        }
+    }
+
+    @Test
+    public void stillDetectsUnclosedNonUmlDiagram() {
+        assertTrue("閉じ忘れは検出する",
+                PlantUmlSyntaxChecker.check("@startmindmap\n* Root\n").stream()
+                        .anyMatch(i -> i.message.contains("count mismatch")));
+    }
+
+    @Test
+    public void ignoresDirectiveLikeTextInsideDiagram() {
+        // 行頭でない "@startuml" (ノート本文やソース図化で頻出) を宣言と数えない。
+        assertEquals("", PlantUmlSyntaxChecker.summarize(
+                "@startuml\nnote as N\n  write @startuml first\nend note\n@enduml\n"));
+    }
 }

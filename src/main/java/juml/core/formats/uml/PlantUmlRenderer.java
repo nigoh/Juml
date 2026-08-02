@@ -666,23 +666,24 @@ public final class PlantUmlRenderer {
      * キャンバスに収まり、PNG が途中で切れたり壊れたりするのを防ぐ。
      *
      * <p>{@code scale max} は図が指定サイズより大きいときだけ縮小し、小さい図は拡大しないため
-     * 通常サイズの図には影響しない。既に {@code scale} 指定がある図や {@code @startuml} を含まない
-     * 文字列はそのまま返す ({@code maxPx <= 0} も同様)。</p>
+     * 通常サイズの図には影響しない。既に {@code scale} 指定がある図や、開始ディレクティブが
+     * 無い / 注入対象外の図種 ({@link PumlDiagramScan} 参照) はそのまま返す
+     * ({@code maxPx <= 0} も同様)。</p>
+     *
+     * <p>挿入先は {@code @startuml} だけではない: マインドマップ・WBS・salt・ガント・
+     * JSON/YAML も {@code scale max} を解釈するため (実機検証済み)、これらでも巨大図の
+     * PNG 切れを防ぐ。</p>
      */
     public static String injectScaleMax(String puml, int maxPx) {
         if (puml == null) {
             return null;
         }
-        int idx = puml.indexOf("@startuml");
-        if (idx < 0 || maxPx <= 0 || hasScaleDirective(puml)) {
+        PumlDiagramScan.Start start = PumlDiagramScan.firstStart(puml);
+        if (start == null || !start.isStyleable() || maxPx <= 0 || hasScaleDirective(puml)) {
             return puml;
         }
-        String line = "scale max " + maxPx + "*" + maxPx + "\n";
-        int nl = puml.indexOf('\n', idx);
-        if (nl < 0) {
-            return puml + "\n" + line;
-        }
-        return puml.substring(0, nl + 1) + line + puml.substring(nl + 1);
+        return PumlDiagramScan.insertAfter(puml, start,
+                "scale max " + maxPx + "*" + maxPx + "\n");
     }
 
     /** 行頭 (前後空白除去後) が {@code scale} で始まる行があるか。ユーザ指定の scale を尊重するため。 */
@@ -698,51 +699,25 @@ public final class PlantUmlRenderer {
 
     /**
      * 渡された PlantUML が向き指定ディレクティブ ({@code left to right direction} /
-     * {@code top to bottom direction}) を受け付ける図種かを判定する。
-     *
-     * <p>シーケンス図・アクティビティ図はこれらを受け付けず構文エラーになる。
-     * Juml が生成するシーケンス図は必ず {@code participant} 宣言を、アクティビティ図は
-     * 必ず {@code start}/{@code stop} を含むため、これらの図種専用キーワードが
-     * 行頭に現れるかで判別する (クラス図/パッケージ図等はこれらを含まないので
-     * 誤判定しない)。</p>
+     * {@code top to bottom direction}) を受け付ける図種かを判定する
+     * (判定本体は {@link PumlDiagramScan#supportsDirection(String)})。
      *
      * @return 向き指定を出してよければ true (= sequence/activity 以外)
      */
     static boolean supportsDirection(String puml) {
-        if (puml == null || puml.isEmpty()) {
-            return true;
-        }
-        for (String line : puml.split("\n", -1)) {
-            String t = line.trim();
-            if (t.isEmpty()) {
-                continue;
-            }
-            // シーケンス図: participant 等の宣言キーワードや autonumber。
-            // ({@code actor} は使用例図 (usecase) でも向き指定可で使われ誤判定の元になるが、
-            //  Juml のシーケンス図は participant のみを出力するため対象に含めない。)
-            if (t.startsWith("participant ") || t.startsWith("boundary ")
-                    || t.startsWith("control ") || t.startsWith("entity ")
-                    || t.startsWith("database ") || t.startsWith("collections ")
-                    || t.startsWith("queue ")
-                    || t.equals("autonumber") || t.startsWith("autonumber ")) {
-                return false;
-            }
-            // アクティビティ図 (新記法): start/stop/end やアクションノード ":...;"
-            if (t.equals("start") || t.equals("stop") || t.equals("end")
-                    || t.startsWith("if (") || t.startsWith("repeat")
-                    || t.startsWith("while (") || t.startsWith("fork")
-                    || t.startsWith("split") || t.startsWith("partition ")) {
-                return false;
-            }
-        }
-        return true;
+        return PumlDiagramScan.supportsDirection(puml);
     }
 
     /**
-     * {@code @startuml} の直後に {@code !pragma layout smetana} と、現在の
+     * 開始ディレクティブの直後に {@code !pragma layout smetana} と、現在の
      * {@link #getStyle() スタイル} 由来の {@code !theme} / {@code skinparam} 行を挿入する。
      * Graphviz/dot 未インストール環境でもクラス図/コンポーネント図を描画できるようにする。
      * 既に {@code !pragma layout} 指定があれば layout 行は重複追加しない (スタイル行は追加する)。
+     *
+     * <p>スタイル行は {@code @startuml} 以外 (マインドマップ・WBS・salt・ガント・JSON/YAML)
+     * にも挿入する。これらは以前スタイル指定を一切受け取れず、日本語フォント補完が効かずに
+     * 文字化けしていた。ただし向き指定と Smetana は {@code @startuml} 専用
+     * ({@link PumlDiagramScan} の実機検証メモ参照)。</p>
      */
     public static String injectLayout(String puml) {
         return injectLayout(puml, getStyle());
@@ -771,13 +746,14 @@ public final class PlantUmlRenderer {
         if (puml == null) {
             return null;
         }
-        int idx = puml.indexOf("@startuml");
-        if (idx < 0) {
+        PumlDiagramScan.Start start = PumlDiagramScan.firstStart(puml);
+        if (start == null || !start.isStyleable()) {
             return puml;
         }
-        // シーケンス図・アクティビティ図は向き指定 (left/top ... direction) を受け付けず
-        // PlantUML 構文エラーになるため、これらでは向き指定を抑制する。
-        boolean allowDirection = supportsDirection(puml);
+        // 向き指定は @startuml 専用。マインドマップ以外の非 UML 図 (wbs/salt/gantt/json) では
+        // 構文エラー・クラッシュ・データ誤読を起こすため、まとめて抑制する (実機検証済み)。
+        // @startuml の中でもシーケンス図・アクティビティ図は受け付けないので更に絞る。
+        boolean allowDirection = start.isUml() && supportsDirection(puml);
         // ユーザがスタイルで明示的に向きを指定した (非 DEFAULT) 場合、図種ビルダが本体に
         // 直書きした向き指定 (top to bottom direction など) を取り除き、prelude 側の
         // 向き指定を最終的に有効化する。未指定 (DEFAULT) ならビルダの既定を尊重する。
@@ -785,7 +761,10 @@ public final class PlantUmlRenderer {
         if (allowDirection && style != null
                 && style.getDirection() != DiagramStyle.Direction.DEFAULT) {
             working = stripBodyDirectionLines(puml);
-            idx = working.indexOf("@startuml");
+            start = PumlDiagramScan.firstStart(working);
+            if (start == null) {
+                return working;
+            }
         }
         boolean hasLayoutPragma = hasLayoutPragmaDirective(working);
         String prelude = style != null ? style.toPlantUmlPrelude(allowDirection) : "";
@@ -797,24 +776,17 @@ public final class PlantUmlRenderer {
             fontFallback = "skinparam defaultFontName " + getFallbackFontName() + "\n";
         }
         String styleLines = prelude + fontFallback;
-        if (hasLayoutPragma && styleLines.isEmpty()) {
-            return working;
-        }
         StringBuilder injected = new StringBuilder();
-        if (!hasLayoutPragma && !graphvizAvailable) {
+        // Smetana は Graphviz を使う図種 (= @startuml) のためのフォールバック。
+        // マインドマップ等は独自レイアウトなので指定しても意味が無く、混乱の元になるため出さない。
+        if (start.isUml() && !hasLayoutPragma && !graphvizAvailable) {
             injected.append("!pragma layout smetana\n");
         }
         injected.append(styleLines);
         if (injected.length() == 0) {
             return working;
         }
-        int nl = working.indexOf('\n', idx);
-        if (nl < 0) {
-            return working + "\n" + injected.toString();
-        }
-        return working.substring(0, nl + 1)
-                + injected.toString()
-                + working.substring(nl + 1);
+        return PumlDiagramScan.insertAfter(working, start, injected.toString());
     }
 
     /**

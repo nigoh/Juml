@@ -72,6 +72,55 @@ public class PlantUmlDirectionInjectionTest {
                         "@startuml\nactor User\nUser --> (Do)\n@enduml\n"));
     }
 
+    // --- ER 図 / 配置図の entity・database を participant と誤認しない --------------
+    //
+    // 回帰: entity / database / queue はシーケンス図の参加者宣言でもあるため、
+    // これだけで「シーケンス図」と決めつけていた。その結果 ER 図・配置図では
+    // ユーザがスタイルで選んだ向き指定が黙って捨てられていた (実機では両図種とも
+    // 向き指定を正しく受け付ける)。
+
+    /** {@code hide circle} + 列ブロック付き entity = Juml の ER 図出力。 */
+    private static final String ER =
+            "@startuml\nhide circle\nentity \"User\" as u {\n  * id : int\n}\n"
+            + "entity \"Post\" as p {\n  * id : int\n}\nu ||--o{ p\n@enduml\n";
+    /** node に入れ子の database = Juml の配置図出力。 */
+    private static final String DEPLOY =
+            "@startuml\nnode Server {\n  database DB\n}\ncomponent C\nC --> DB\n@enduml\n";
+
+    @Test
+    public void supportsDirection_trueForErAndDeployment() {
+        assertTrue("ER (entity) は向き指定可", PlantUmlRenderer.supportsDirection(ER));
+        assertTrue("配置図 (database) は向き指定可", PlantUmlRenderer.supportsDirection(DEPLOY));
+    }
+
+    @Test
+    public void injectLayout_keepsDirectionForErAndDeployment() {
+        setDirection(DiagramStyle.Direction.LEFT_TO_RIGHT);
+        assertTrue("ER に向き指定が届くこと", PlantUmlRenderer.injectLayout(ER)
+                .contains("left to right direction"));
+        assertTrue("配置図に向き指定が届くこと", PlantUmlRenderer.injectLayout(DEPLOY)
+                .contains("left to right direction"));
+    }
+
+    @Test
+    public void erAndDeploymentRenderWithDirection() throws Exception {
+        for (String puml : new String[] {ER, DEPLOY}) {
+            setDirection(DiagramStyle.Direction.LEFT_TO_RIGHT);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            PlantUmlRenderer.renderSvg(puml, out);
+            assertTrue("向き指定付きでも描画できること", out.size() > 0);
+        }
+    }
+
+    @Test
+    public void supportsDirection_falseForSequenceDeclaringEntity() {
+        // 逆方向の保険: participant と entity が同居するシーケンス図は従来どおり抑制する
+        // (実機で向き指定を入れると構文エラーになる)。
+        assertFalse("entity を宣言するシーケンス図は向き指定不可",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nentity E\nparticipant B\nE -> B : m\n@enduml\n"));
+    }
+
     // --- injectLayout の挿入抑制 ---------------------------------------------
 
     @Test

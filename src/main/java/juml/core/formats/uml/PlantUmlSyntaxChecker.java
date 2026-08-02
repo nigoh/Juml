@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  *
  * <p>検出ルール (false positive を避けるため高シグナルなものに絞る):</p>
  * <ul>
- *   <li>{@code @startuml} / {@code @enduml} の対応 (数の不一致)</li>
+ *   <li>{@code @start...} / {@code @end...} の対応 (数の不一致)。図種は {@code @startuml}
+ *       だけではないため、マインドマップ等も含めて行頭ディレクティブとして数える</li>
  *   <li>クラス/ノード宣言で <b>色がリンクより前</b> ({@code #color [[link]]}) になっている。
  *       PlantUML はこの順序を構文エラー扱いし、図全体が描画失敗する。正しくは
  *       {@code [[link]] #color}</li>
@@ -65,14 +66,18 @@ public final class PlantUmlSyntaxChecker {
             return issues;
         }
 
-        int starts = countOccurrences(puml, "@startuml");
-        int ends = countOccurrences(puml, "@enduml");
+        // 図種は @startuml だけではない (@startmindmap / @startwbs / @startsalt …)。
+        // @startuml だけを数えると、マインドマップ等が常に "missing @startuml" と診断され、
+        // 描画失敗時の原因分類 (PlantUmlRenderer#buildRenderFailure) が実際はレイアウト
+        // 障害でも一律「構文エラー (UML-R001)」へ倒れてしまう。
+        int starts = PumlDiagramScan.countStarts(puml);
+        int ends = PumlDiagramScan.countEnds(puml);
         if (starts == 0) {
             issues.add(new Issue(0, "missing @startuml", ""));
         }
         if (starts != ends) {
             issues.add(new Issue(0,
-                    "@startuml/@enduml count mismatch (" + starts + " vs " + ends + ")", ""));
+                    "@start/@end count mismatch (" + starts + " vs " + ends + ")", ""));
         }
 
         String[] lines = puml.split("\n", -1);

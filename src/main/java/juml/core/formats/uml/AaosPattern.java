@@ -261,7 +261,7 @@ public final class AaosPattern {
      * <p>サポートする annotation 形式:</p>
      * <ul>
      *   <li>{@code @AddedIn(majorVersion=33)} / {@code @AddedIn(33)} → {@code "API 33+"}</li>
-     *   <li>{@code @AddedInOrBefore(majorVersion=33)} → {@code "API <=33"}</li>
+     *   <li>{@code @AddedInOrBefore(majorVersion=33)} → {@code "API ≤33"}</li>
      *   <li>{@code @MinimumPlatformSdkVersion(33)} → {@code "Plat 33+"}</li>
      *   <li>{@code @MinimumCarVersion(33)} → {@code "Car 33+"}</li>
      *   <li>{@code @ApiRequirements(minPlatformVersion=Car.PLATFORM_VERSION_TIRAMISU_0,
@@ -334,7 +334,10 @@ public final class AaosPattern {
                 if (v == null) {
                     v = extractFirstPositionalValue(args);
                 }
-                return v == null ? null : "API <=" + normalizeVersionToken(v);
+                // '<' は使わない: PlantUML はステレオタイプ内の '<' を解釈できず
+                // «API ≤33» にならずに生の "<<API <=33>>" がクラス名として描かれ、
+                // ステレオタイプ別の色分けも当たらなくなる (実機検証済み)。
+                return v == null ? null : "API ≤" + normalizeVersionToken(v);
             }
             case "MinimumPlatformSdkVersion": {
                 String v = extractFirstPositionalValue(args);
