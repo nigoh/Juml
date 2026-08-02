@@ -29,7 +29,8 @@ public final class ErSketchCodec {
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     /** {@code entity "表示名" as alias} (列ブロックの有無は末尾の {@code {} で判定)。 */
     private static final Pattern ENTITY_ALIAS = Pattern.compile(
-            "^entity\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(\\{)?\\s*$");
+            "^entity\\s+" + SketchLabelText.QUOTED_LABEL
+                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(\\{)?\\s*$");
     /** {@code entity alias} (素の識別子)。 */
     private static final Pattern ENTITY_PLAIN = Pattern.compile(
             "^entity\\s+([A-Za-z_$][\\w$]*)\\s*(\\{)?\\s*$");
@@ -129,7 +130,8 @@ public final class ErSketchCodec {
                                    String line, List<String> unsupported) {
         Matcher alias = ENTITY_ALIAS.matcher(line);
         if (alias.matches()) {
-            ErSketchModel.Entity e = obtain(model, alias.group(2), alias.group(1));
+            ErSketchModel.Entity e = obtain(model, alias.group(2),
+                    SketchLabelText.unescape(alias.group(1)));
             return alias.group(3) != null
                     ? readColumns(lines, index, e, unsupported) : index;
         }
@@ -276,7 +278,8 @@ public final class ErSketchCodec {
         sb.append("entity ");
         if (e.getDisplayName() != null && !e.getDisplayName().isEmpty()
                 && !e.getDisplayName().equals(e.getAlias())) {
-            sb.append('"').append(e.getDisplayName()).append("\" as ").append(e.getAlias());
+            sb.append('"').append(SketchLabelText.escape(e.getDisplayName()))
+                    .append("\" as ").append(e.getAlias());
         } else {
             sb.append(e.getAlias());
         }
