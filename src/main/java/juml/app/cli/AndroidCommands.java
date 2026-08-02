@@ -53,7 +53,7 @@ public final class AndroidCommands {
             return;
         }
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                     "gradle-summary.md");
         } else {
@@ -77,7 +77,7 @@ public final class AndroidCommands {
             return;
         }
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                     "manifest-summary.md");
         } else {
@@ -103,7 +103,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         PlantUmlComponentDiagram.Options o = new PlantUmlComponentDiagram.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
@@ -128,7 +128,7 @@ public final class AndroidCommands {
         }
         AndroidProjectAnalysis analysis;
         if (fileIn.isDirectory()) {
-            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             AndroidManifestInfo info = AndroidManifestParser.parse(content, listener);
@@ -161,7 +161,7 @@ public final class AndroidCommands {
         }
         AndroidProjectAnalysis analysis;
         if (fileIn.isDirectory()) {
-            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             AndroidManifestInfo info = AndroidManifestParser.parse(content, listener);
@@ -196,7 +196,7 @@ public final class AndroidCommands {
         }
         java.util.List<AndroidNavigationGraphInfo> graphs = new java.util.ArrayList<>();
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             graphs.addAll(analysis.allNavigationGraphs());
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
@@ -219,10 +219,13 @@ public final class AndroidCommands {
         // 複数グラフはグラフごとに別ファイル (<base>-<name>.svg) へ分割して書き出す。
         // .puml/.md/標準出力は連結のままでよい (PlantUML ツールが複数図を扱えるため)。
         if (graphs.size() > 1 && CliOutput.isSvgTarget(fileOut)) {
+            // グラフ名はモジュール間で重複しうる (どのモジュールにも res/navigation/nav_graph.xml
+            // がある構成は普通)。素の名前でファイル名を作ると後のグラフが前のグラフを黙って
+            // 上書きし、「N 個書き出した」と表示しながら実際には数個しか残らない。
+            java.util.List<String> labels = uniqueLabels(graphs);
             for (int i = 0; i < graphs.size(); i++) {
                 AndroidNavigationGraphInfo g = graphs.get(i);
-                String label = navGraphLabel(g);
-                File target = CliOutput.perDiagramSvgTarget(fileOut, label, i, "nav-graph");
+                File target = CliOutput.perDiagramSvgTarget(fileOut, labels.get(i), i, "nav-graph");
                 CliOutput.writeUmlOutput(target,
                         PlantUmlNavigationGraphDiagram.generate(g, o));
             }
@@ -243,6 +246,28 @@ public final class AndroidCommands {
     }
 
     /** nav-graph の per-file SVG ファイル名に使うラベル (fileName 優先、無ければ graphId)。 */
+    /**
+     * グラフごとのファイル名ラベルを、重複しないように連番付きで確定する
+     * ({@code nav_graph}, {@code nav_graph_2}, ...)。比較は大文字小文字を無視する
+     * (Windows/macOS の既定ファイルシステムでは {@code Nav} と {@code nav} が同じファイル)。
+     */
+    private static java.util.List<String> uniqueLabels(
+            java.util.List<AndroidNavigationGraphInfo> graphs) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (AndroidNavigationGraphInfo g : graphs) {
+            String base = navGraphLabel(g);
+            String candidate = base;
+            int n = 2;
+            while (!used.add(candidate == null ? "" : candidate.toLowerCase(java.util.Locale.ROOT))) {
+                candidate = base + "_" + n;
+                n++;
+            }
+            out.add(candidate);
+        }
+        return out;
+    }
+
     private static String navGraphLabel(AndroidNavigationGraphInfo g) {
         String name = g.getFileName();
         if (name != null && !name.isEmpty()) {
@@ -263,7 +288,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         PlantUmlGradleDependencyGraph.Options o = new PlantUmlGradleDependencyGraph.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
@@ -282,7 +307,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                 "summary.md");
     }
@@ -380,7 +405,7 @@ public final class AndroidCommands {
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
 
         // プロジェクト解析を 1 回だけ実行して再利用する
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
 
         // 1) Markdown サマリー
         progress.step("[1/8] Generating summary.md");

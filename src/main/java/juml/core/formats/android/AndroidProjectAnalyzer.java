@@ -29,6 +29,19 @@ public final class AndroidProjectAnalyzer {
     /** リスナー付き解析。個別ファイルの IO 失敗は listener に通知して継続。 */
     public static AndroidProjectAnalysis analyze(File projectRoot,
                                                   ErrorListener listener) throws IOException {
+        return analyze(projectRoot, listener, false);
+    }
+
+    /**
+     * {@code includeTests} を指定できる解析。
+     *
+     * <p>これが無かったため CLI の {@code --include-tests} は Android 系モード
+     * ({@code --gradle} / {@code --manifest} / {@code --deep-link} / ナビゲーショングラフ等)
+     * で<b>黙って無視され</b>、{@code src/test} / {@code src/androidTest} 配下の
+     * build.gradle・マニフェスト・ナビゲーショングラフが常に落ちていた。</p>
+     */
+    public static AndroidProjectAnalysis analyze(File projectRoot, ErrorListener listener,
+                                                  boolean includeTests) throws IOException {
         if (projectRoot == null) {
             throw new IllegalArgumentException("projectRoot is null");
         }
@@ -40,6 +53,7 @@ public final class AndroidProjectAnalyzer {
         opts.includeLayout = true;
         opts.includeNavigation = true;
         opts.includeValues = true;
+        opts.includeTests = includeTests;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
 
         // 0. gradle/libs.versions.toml があれば先に読み込み、後段のパースで参照する
