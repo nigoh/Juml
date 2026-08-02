@@ -2149,12 +2149,11 @@ public final class DiagramTabPane {
             sketchPane = new juml.app.uml.sketch.SketchPane();
             sketchPane.setOnPumlChange(sourcePanel::setText);
             // 「編集を有効化」: 未対応がコメント行だけのロックを、そのコメント行をテキストから
-            // 除去して解除する。setText を使わず doc.remove で消すため Ctrl+Z で復元でき、除去後の
-            // テキストで Design を再読込して編集可能へ切り替える。
-            sketchPane.setOnEnableEditingRequested(() -> {
-                sourcePanel.removeCommentLines();
-                sketchPane.loadFrom(sourcePanel.getText());
-            });
+            // 除去して解除する。除去は doc.remove の複合編集なので PlantUML タブの Ctrl+Z で
+            // 戻せるが、その後 GUI で 1 回でも編集すると同期 (setText) が undo 履歴を破棄する
+            // ため戻せなくなる。ライセンスヘッダ等を失いうる破壊的操作なので、消える行を
+            // 提示して明示的に確認してから実行する。
+            sketchPane.setOnEnableEditingRequested(() -> confirmAndRemoveComments());
             bottomTabs.addTab(Messages.get("tab.design"), sketchPane);
             bottomTabs.addChangeListener(e -> {
                 if (bottomTabs.getSelectedComponent() == sketchPane) {
@@ -2169,6 +2168,39 @@ public final class DiagramTabPane {
          * Design 選択時にしか走らない {@code loadFrom} を補って、古いモデルのまま次の GUI 編集で
          * 新テキストを上書き消失させるのを防ぐ。sketch 起点の setText では呼ばない (無限ループ回避)。
          */
+        /**
+         * 消えるコメント行を提示して確認を取り、承諾されたときだけ除去して Design を再読込する。
+         * キャンセルならテキストもロック状態も一切変えない。
+         */
+        private void confirmAndRemoveComments() {
+            java.util.List<String> comments = sourcePanel.commentLines();
+            if (comments.isEmpty()) {
+                return;
+            }
+            int previewMax = 10;
+            StringBuilder preview = new StringBuilder();
+            for (int i = 0; i < Math.min(previewMax, comments.size()); i++) {
+                preview.append(comments.get(i)).append('\n');
+            }
+            if (comments.size() > previewMax) {
+                preview.append(java.text.MessageFormat.format(
+                        Messages.get("sketch.enableEditing.confirm.more"),
+                        comments.size() - previewMax)).append('\n');
+            }
+            String body = java.text.MessageFormat.format(
+                    Messages.get("sketch.enableEditing.confirm.body"),
+                    comments.size(), preview.toString());
+            int answer = javax.swing.JOptionPane.showConfirmDialog(this, body,
+                    Messages.get("sketch.enableEditing.confirm.title"),
+                    javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
+            if (answer != javax.swing.JOptionPane.OK_OPTION) {
+                return;
+            }
+            sourcePanel.removeCommentLines();
+            sketchPane.loadFrom(sourcePanel.getText());
+        }
+
         void refreshDesignFromTextIfVisible() {
             if (sketchPane != null && bottomTabs.getSelectedComponent() == sketchPane) {
                 sketchPane.loadFrom(sourcePanel.getText());
