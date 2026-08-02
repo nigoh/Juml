@@ -5,6 +5,7 @@ package juml.core.formats.kotlin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Kotlin のクラスヘッダ文字列を読むための純ロジック ({@link KotlinLightScanner} から分離)。
@@ -117,5 +118,128 @@ final class KotlinHeaderScan {
         void openBody(String name, int endOffset) {
             open.add(new OpenBody(name, endOffset));
         }
+    }
+
+    /** ジェネリック引数の外側にある最初の {@code (} の位置。無ければ -1。 */
+    static int topLevelParen(String s) {
+        int depth = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                if (!isArrowGreaterThan(s, i) && depth > 0) {
+                    depth--;
+                }
+            } else if (c == '(' && depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** ` by <委譲式>` (スーパータイプ項の末尾)。 */
+    private static final Pattern DELEGATION = Pattern.compile("\\s+by\\s+.*$");
+
+    /**
+     * クラス名の直後から、<b>プライマリコンストラクタ</b>の開き括弧を探す。
+     *
+     * <p>単純に最初の {@code (} を採ると、{@code class Repo @Named("main") constructor(...)}
+     * のように引数付きアノテーションが挟まる場合にアノテーション引数の {@code (} を掴み、
+     * 本来のプロパティが 1 つも抽出されなくなる ({@code @Inject constructor(...)} は引数が
+     * 無いため偶然通り、見落とされやすい)。型パラメータ {@code <T>}・アノテーション
+     * (引数の括弧ごと)・可視性修飾子・{@code constructor} キーワードを読み飛ばして判定する。</p>
+     *
+     * @return プライマリコンストラクタの {@code (} の位置。無ければ -1
+     */
+    static int primaryCtorParenAfter(String src, int from) {
+        int i = from;
+        while (i < src.length()) {
+            int e = KotlinLightScanner.skipNonCode(src, i);
+            if (e > i) {
+                i = e;
+                continue;
+            }
+            char c = src.charAt(i);
+            if (Character.isWhitespace(c)) {
+                i++;
+            } else if (c == '(') {
+                return i;
+            } else if (c == '@') {
+                i = skipAnnotation(src, i);
+                if (i < 0) {
+                    return -1;
+                }
+            } else if (c == '<') {
+                i = skipAngles(src, i);
+                if (i < 0) {
+                    return -1;
+                }
+            } else if (KotlinLightScanner.isIdentPart(c)) {
+                int s = i;
+                while (i < src.length() && KotlinLightScanner.isIdentPart(src.charAt(i))) {
+                    i++;
+                }
+                String word = src.substring(s, i);
+                // ここで許されるのは constructor とその可視性修飾子だけ。それ以外の語
+                // (継承の where 等) が来たらプライマリコンストラクタは無い。
+                if (!"constructor".equals(word) && !"private".equals(word)
+                        && !"protected".equals(word) && !"public".equals(word)
+                        && !"internal".equals(word)) {
+                    return -1;
+                }
+            } else {
+                // ':' (継承) / '{' (本体) 等に到達 = プライマリコンストラクタ無し。
+                return -1;
+            }
+        }
+        return -1;
+    }
+
+    /** {@code @Ann} / {@code @Ann(args)} を読み飛ばした次位置。壊れていれば -1。 */
+    private static int skipAnnotation(String src, int at) {
+        int i = at + 1;
+        while (i < src.length()
+                && (KotlinLightScanner.isIdentPart(src.charAt(i)) || src.charAt(i) == '.' || src.charAt(i) == ':')) {
+            i++;
+        }
+        while (i < src.length() && Character.isWhitespace(src.charAt(i))) {
+            i++;
+        }
+        if (i < src.length() && src.charAt(i) == '(') {
+            int close = KotlinLightScanner.matchParen(src, i);
+            if (close <= i) {
+                return -1;
+            }
+            return close + 1;
+        }
+        return i;
+    }
+
+    /** 型パラメータ {@code <...>} を読み飛ばした次位置。閉じられていなければ -1。 */
+    private static int skipAngles(String src, int at) {
+        int depth = 0;
+        for (int i = at; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (c == '<') {
+                depth++;
+            } else if (c == '>' && !isArrowGreaterThan(src, i)) {
+                depth--;
+                if (depth == 0) {
+                    return i + 1;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /** スーパータイプ項が {@code by} 委譲を伴うか。 */
+    static boolean hasDelegation(String s) {
+        return DELEGATION.matcher(s).find();
+    }
+
+    /** スーパータイプ項から ` by <委譲式>` を取り除く。 */
+    static String stripDelegation(String s) {
+        return DELEGATION.matcher(s).replaceFirst("").trim();
     }
 }
