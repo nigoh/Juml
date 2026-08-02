@@ -42,8 +42,7 @@ final class StateSketchDialogs {
             return false;
         }
         String newName = nameField.getText().trim();
-        StateNode same = model.findState(newName);
-        if (!NAME.matcher(newName).matches() || (same != null && same != target)) {
+        if (!isValidNewName(newName, model, target)) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.state.dlg.nameError"),
                     Messages.get("sketch.state.dlg.title"), JOptionPane.WARNING_MESSAGE);
@@ -51,6 +50,16 @@ final class StateSketchDialogs {
         }
         model.renameState(target, newName);
         return true;
+    }
+
+    /**
+     * 新しい状態名が採用可能か判定する (PlantUML の状態名として妥当であり、かつ
+     * {@code current} 自身以外に同じ名前を持つ状態が存在しない)。モーダルに依存しない
+     * 純粋な判定のみを行うため、ユニットテストから直接呼び出せる。
+     */
+    static boolean isValidNewName(String candidate, StateSketchModel model, StateNode current) {
+        StateNode same = model.findState(candidate);
+        return NAME.matcher(candidate).matches() && (same == null || same == current);
     }
 
     /**

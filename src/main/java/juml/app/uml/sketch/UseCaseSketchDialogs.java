@@ -54,8 +54,7 @@ final class UseCaseSketchDialogs {
             return false;
         }
         String newId = idField.getText().trim();
-        UseCaseNode same = model.findNode(newId);
-        if (!ID.matcher(newId).matches() || (same != null && same != target)) {
+        if (!isValidNewId(newId, model, target)) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.uc.dlg.idError"),
                     Messages.get("sketch.uc.dlg.title"), JOptionPane.WARNING_MESSAGE);
@@ -66,6 +65,16 @@ final class UseCaseSketchDialogs {
         String label = labelField.getText().trim();
         target.setLabel(label.isEmpty() || label.equals(newId) ? null : label);
         return true;
+    }
+
+    /**
+     * 新しい id が採用可能か判定する (PlantUML の識別子として妥当であり、かつ
+     * {@code current} 自身以外に同じ id を持つ要素が存在しない)。モーダルに依存しない
+     * 純粋な判定のみを行うため、ユニットテストから直接呼び出せる。
+     */
+    static boolean isValidNewId(String candidate, UseCaseSketchModel model, UseCaseNode current) {
+        UseCaseNode same = model.findNode(candidate);
+        return ID.matcher(candidate).matches() && (same == null || same == current);
     }
 
     /**

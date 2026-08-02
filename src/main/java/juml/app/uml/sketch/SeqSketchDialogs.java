@@ -144,8 +144,7 @@ final class SeqSketchDialogs {
             return false;
         }
         String newName = nameField.getText().trim();
-        SeqParticipant sameName = model.findParticipant(newName);
-        if (!NAME.matcher(newName).matches() || (sameName != null && sameName != target)) {
+        if (!isValidNewParticipantName(newName, model, target)) {
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.seq.dlg.nameError"),
                     Messages.get("sketch.seq.dlg.partTitle"), JOptionPane.WARNING_MESSAGE);
@@ -156,5 +155,16 @@ final class SeqSketchDialogs {
         // GUI から種別を確定した参加者は明示宣言として保存する。
         target.setDeclared(true);
         return true;
+    }
+
+    /**
+     * 新しい参加者名が採用可能か判定する (PlantUML の参加者名として妥当であり、かつ
+     * {@code current} 自身以外に同じ名前を持つ参加者が存在しない)。モーダルに依存しない
+     * 純粋な判定のみを行うため、ユニットテストから直接呼び出せる。
+     */
+    static boolean isValidNewParticipantName(String candidate, SeqSketchModel model,
+                                             SeqParticipant current) {
+        SeqParticipant same = model.findParticipant(candidate);
+        return NAME.matcher(candidate).matches() && (same == null || same == current);
     }
 }
