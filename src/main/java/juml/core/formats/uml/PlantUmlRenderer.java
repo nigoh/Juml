@@ -686,10 +686,21 @@ public final class PlantUmlRenderer {
                 "scale max " + maxPx + "*" + maxPx + "\n");
     }
 
-    /** 行頭 (前後空白除去後) が {@code scale} で始まる行があるか。ユーザ指定の scale を尊重するため。 */
+    /**
+     * 行頭 (前後空白除去後) が {@code scale} で始まる行があるか。ユーザ指定の scale を尊重するため。
+     *
+     * <p>note や legend の本文に「{@code scale is 1:100}」と書いただけで指定済みと誤認しないよう、
+     * 自由記述の本文とコメントは除外して見る ({@link PumlDiagramScan#codeLineMask})。誤認すると
+     * {@code scale max} が入らず、巨大な図の PNG がキャンバス上限で切り詰められる。</p>
+     */
     private static boolean hasScaleDirective(String puml) {
-        for (String raw : puml.split("\n", -1)) {
-            String t = raw.trim();
+        String[] raw = puml.split("\n", -1);
+        boolean[] isCode = PumlDiagramScan.codeLineMask(raw);
+        for (int i = 0; i < raw.length; i++) {
+            if (!isCode[i]) {
+                continue;
+            }
+            String t = raw[i].trim();
             if (t.equals("scale") || t.startsWith("scale ")) {
                 return true;
             }
@@ -796,17 +807,20 @@ public final class PlantUmlRenderer {
      */
     private static String stripBodyDirectionLines(String puml) {
         String[] lines = puml.split("\n", -1);
+        // note / legend の本文に同じ文字列を書いている図 (レイアウト指定を解説する図など) から
+        // 利用者の文章を消さないよう、コード行だけを対象にする。
+        boolean[] isCode = PumlDiagramScan.codeLineMask(lines);
         StringBuilder sb = new StringBuilder(puml.length());
-        for (String line : lines) {
-            String t = line.trim();
-            if (t.equals("left to right direction")
-                    || t.equals("top to bottom direction")) {
+        for (int i = 0; i < lines.length; i++) {
+            String t = lines[i].trim();
+            if (isCode[i] && (t.equals("left to right direction")
+                    || t.equals("top to bottom direction"))) {
                 continue;
             }
             if (sb.length() > 0) {
                 sb.append('\n');
             }
-            sb.append(line);
+            sb.append(lines[i]);
         }
         return sb.toString();
     }

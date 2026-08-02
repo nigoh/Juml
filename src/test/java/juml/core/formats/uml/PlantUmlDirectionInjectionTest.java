@@ -151,6 +151,79 @@ public class PlantUmlDirectionInjectionTest {
         }
     }
 
+    // --- 大文字キーワード / 閉じない浮動ノート / 暗黙参加者 -----------------------
+    //
+    // PlantUML のキーワードは大文字小文字を区別しない。判定側が小文字だけを見ていたため、
+    // Note/Participant と書いた図で自由記述の除外もシーケンス判定も効かなかった。
+
+    @Test
+    public void supportsDirection_handlesCapitalisedKeywords() {
+        assertFalse("大文字 Note の本文も除外する",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\ndatabase DB\nUI -> DB : select\nNote over UI\n"
+                        + "state transitions are logged\nEnd note\n@enduml\n"));
+        assertFalse("大文字 Participant もシーケンス判定に効く",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nParticipant Alice\nParticipant Bob\n"
+                        + "Alice -> Bob : hi\n@enduml\n"));
+        assertFalse("大文字 Start もアクティビティ判定に効く",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nStart\n:do;\nStop\n@enduml\n"));
+    }
+
+    @Test
+    public void supportsDirection_floatingNoteDoesNotSwallowTheDiagram() {
+        // `note "x" as N1` は 1 行で完結する浮動ノート。ブロック開始と誤解すると
+        // end note が来ないままファイル末尾まで全行を捨て、構造図の手掛かりが消える。
+        assertTrue("浮動ノートの後ろの宣言が生きること",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\ndatabase DB\nnote \"Legend of colors\" as N1\n"
+                        + "node Server\ncomponent App\nApp --> DB\n@enduml\n"));
+    }
+
+    @Test
+    public void supportsDirection_bareEndDoesNotCloseANoteBlock() {
+        // note 本文の "end" (JavaDoc をそのまま入れる Juml のシーケンス図で普通に起きる)
+        // でブロックが閉じると、以降の散文が図の構造として読まれる。
+        assertTrue("本文の end ではブロックを閉じない",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nclass A\nnote as N\nend\nstart\nend note\n@enduml\n"));
+    }
+
+    @Test
+    public void supportsDirection_ignoresBlockComments() {
+        assertFalse("/' ... '/ の中の宣言は数えない",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\n/'\nnode Server\n'/\ndatabase DB\n"
+                        + "UI -> DB : select\n@enduml\n"));
+    }
+
+    @Test
+    public void supportsDirection_falseForImplicitParticipantSequence() {
+        // 宣言が 1 つも無くメッセージだけの図は PlantUML がシーケンス図と解釈する。
+        // 向き指定を入れると黙ってクラス図に化ける (実機で data-diagram-type が変わる)。
+        assertFalse("メッセージだけの図はシーケンス扱い",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nAlice -> Bob : hi\nBob --> Alice : ok\n@enduml\n"));
+        assertFalse("ラベル無しの矢印だけでも同じ",
+                PlantUmlRenderer.supportsDirection("@startuml\nA --> B\n@enduml\n"));
+        assertTrue("class 宣言があればクラス図として向き指定可",
+                PlantUmlRenderer.supportsDirection(
+                        "@startuml\nclass A\nclass B\nA --> B\n@enduml\n"));
+    }
+
+    @Test
+    public void implicitSequenceKeepsItsDiagramTypeWithDirectionSelected() throws Exception {
+        // 実描画で図種が変わらないことまで見る (描画は成功するので文字列では気付けない)。
+        setDirection(DiagramStyle.Direction.LEFT_TO_RIGHT);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PlantUmlRenderer.renderSvg("@startuml\nAlice -> Bob : hi\n@enduml\n", out);
+        String svg = out.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue("シーケンス図のまま描画されること: "
+                        + svg.substring(0, Math.min(400, svg.length())),
+                svg.contains("data-diagram-type=\"SEQUENCE\""));
+    }
+
     @Test
     public void supportsDirection_stillSeesRealStructuralDeclarations() {
         // 本文除去で構造図の手掛かりまで落とさないこと (ER/配置図の判定は生きている)。

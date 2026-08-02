@@ -114,8 +114,20 @@ final class PumlDiagramScan {
 
     /** シーケンス図にしか現れない行 (これがあれば確実に向き指定不可)。 */
     private static final Pattern SEQUENCE_ONLY = Pattern.compile(
-            "^(participant|activate|deactivate|create|autonumber)\\s+\\S.*|^autonumber$"
-            + "|^hide footbox$");
+            "^(participant|activate|deactivate|create|autonumber)\\s+\\S.*"
+            + "|^autonumber$|^hide\\s+footbox$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * シーケンス図のメッセージ行 ({@code Alice -> Bob : hi} / {@code A --> B})。
+     *
+     * <p>PlantUML は宣言が 1 つも無くてもメッセージだけでシーケンス図と解釈する
+     * (実機確認: {@code A --> B} だけの図は SEQUENCE)。ここへ向き指定を入れると
+     * <b>黙ってクラス図に化ける</b> (実機確認: 同じ図が CLASS になる) ため、
+     * 構造図の手掛かりが無くメッセージだけの図は向き指定不可として扱う。</p>
+     */
+    private static final Pattern MESSAGE_ARROW = Pattern.compile(
+            "^(\"[^\"]*\"|[A-Za-z_$][\\w$.]*)\\s*(-{1,3}>{1,2}|<{1,2}-{1,3})\\s*"
+            + "(\"[^\"]*\"|[A-Za-z_$][\\w$.]*)\\s*(:.*)?$");
 
     /**
      * シーケンス図の参加者宣言にも、ER 図 / 配置図の要素宣言にも見える行。
@@ -123,23 +135,26 @@ final class PumlDiagramScan {
      * これ単独では図種を決められない ({@link #hasStructuralDeclaration} と併用する)。
      */
     private static final Pattern PARTICIPANT_LIKE = Pattern.compile(
-            "^(boundary|control|entity|database|collections|queue)\\s+\\S.*");
+            "^(boundary|control|entity|database|collections|queue)\\s+\\S.*",
+            Pattern.CASE_INSENSITIVE);
 
     /** ER / 配置 / コンポーネント図など「構造図」であることを示す宣言。 */
     private static final Pattern STRUCTURAL_DECL = Pattern.compile(
             "^(node|artifact|cloud|folder|frame|rectangle|component|package|storage|card"
-            + "|class|abstract|interface|enum|object|usecase|state)\\s+\\S.*");
+            + "|class|abstract|interface|enum|object|usecase|state)\\s+\\S.*",
+            Pattern.CASE_INSENSITIVE);
 
     /** ER 図の多重度記法 (crow's foot)。シーケンス図には現れない。 */
     private static final Pattern CROWS_FOOT =
             Pattern.compile("\\|\\|--|\\}o--|\\}\\|--|--o\\{|--\\|\\{|--o\\||\\|o--");
 
-    /** アクティビティ図 (新記法) の行。 */
+    /** アクティビティ図 (新記法) の行。PlantUML のキーワードは大文字小文字を区別しない。 */
+    private static final Pattern ACTIVITY_LINE = Pattern.compile(
+            "^(start|stop|end)$|^(if|while)\\s*\\(.*|^(repeat|fork|split)\\b.*"
+            + "|^partition\\s+\\S.*", Pattern.CASE_INSENSITIVE);
+
     private static boolean isActivityLine(String t) {
-        return t.equals("start") || t.equals("stop") || t.equals("end")
-                || t.startsWith("if (") || t.startsWith("repeat")
-                || t.startsWith("while (") || t.startsWith("fork")
-                || t.startsWith("split") || t.startsWith("partition ");
+        return ACTIVITY_LINE.matcher(t).matches();
     }
 
     /**
@@ -175,21 +190,45 @@ final class PumlDiagramScan {
             if (isActivityLine(t)) {
                 return false;
             }
+            // 宣言が 1 つも無くメッセージだけの図は PlantUML がシーケンス図と解釈する。
+            // 向き指定を入れると黙ってクラス図に化けるため、ここも抑制する。
+            if (!structural && MESSAGE_ARROW.matcher(t).matches()) {
+                return false;
+            }
         }
         return true;
     }
 
     /** ブロックを開く自由記述 ({@code note over X} / {@code legend} など)。本文は散文。 */
     private static final Pattern FREE_TEXT_BLOCK_START = Pattern.compile(
-            "^(note|hnote|rnote|legend|caption|title|header|footer)\\b.*");
+            "^(note|hnote|rnote|legend|caption|title|header|footer)\\b.*",
+            Pattern.CASE_INSENSITIVE);
 
-    /** 自由記述ブロックの終端 ({@code end note} / {@code endlegend} / {@code end title} 等)。 */
+    /**
+     * 自由記述ブロックの終端。<b>種別名を必ず伴う形だけ</b>を受理する
+     * ({@code end note} / {@code endnote} / {@code endlegend} …)。素の {@code end} も
+     * PlantUML は受けるが、それを終端とみなすと本文の散文に "end" と書いただけで
+     * ブロックが閉じたことになり、以降の散文が図の構造として読まれてしまう
+     * (Juml のシーケンス図は JavaDoc をそのまま note 本文へ入れる)。
+     */
     private static final Pattern FREE_TEXT_BLOCK_END = Pattern.compile(
-            "^end\\s*(note|hnote|rnote|legend|caption|title|header|footer)?\\s*$");
+            "^end\\s*(note|hnote|rnote|legend|caption|title|header|footer)\\s*$",
+            Pattern.CASE_INSENSITIVE);
 
-    /** 1 行で完結する自由記述 ({@code note over A : text} / {@code title 図の名前})。 */
+    /**
+     * 1 行で完結する自由記述。{@code note over A : text} のようなコロン形式に加え、
+     * {@code note "text" as N1} の<b>浮動ノート</b>も 1 行で完結する
+     * (これをブロック開始と誤解すると {@code end note} が来ないままファイル末尾まで
+     * 全行を捨ててしまい、図種判定の材料が消える)。
+     */
     private static final Pattern FREE_TEXT_ONE_LINE = Pattern.compile(
-            "^(note|hnote|rnote)\\b.*:.*|^(title|caption|header|footer)\\s+\\S.*");
+            "^(note|hnote|rnote)\\b[^:]*:.*"
+            + "|^(note|hnote|rnote)\\s+\"[^\"]*\"\\s+as\\s+\\S+\\s*$"
+            + "|^(title|caption|header|footer)\\s+\\S.*", Pattern.CASE_INSENSITIVE);
+
+    /** 複数行コメント {@code /' ... '/} の開始・終了。 */
+    private static final Pattern BLOCK_COMMENT_START = Pattern.compile("^/'.*");
+    private static final Pattern BLOCK_COMMENT_END = Pattern.compile(".*'/\\s*$");
 
     /**
      * 図種判定に使ってよい「コード行」だけを取り出す (空行・コメント・自由記述の本文を除く)。
@@ -201,10 +240,35 @@ final class PumlDiagramScan {
      * 逆に活動図の本文に「{@code start}」と書いても同じ事故が起きうる。</p>
      */
     private static List<String> codeLines(String puml) {
+        String[] raw = puml.split("\n", -1);
+        boolean[] isCode = codeLineMask(raw);
         List<String> out = new ArrayList<>();
+        for (int i = 0; i < raw.length; i++) {
+            if (isCode[i]) {
+                out.add(raw[i].trim());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 各行が「図の構造を表すコード行」かを判定したマスクを返す。
+     *
+     * <p>行を捨てずに位置を保つので、元テキストを書き換える処理
+     * ({@code stripBodyDirectionLines}) からも同じ判定を共有できる。</p>
+     */
+    static boolean[] codeLineMask(String[] rawLines) {
+        boolean[] isCode = new boolean[rawLines.length];
         boolean inFreeText = false;
-        for (String raw : puml.split("\n", -1)) {
-            String t = raw.trim();
+        boolean inBlockComment = false;
+        for (int i = 0; i < rawLines.length; i++) {
+            String t = rawLines[i].trim();
+            if (inBlockComment) {
+                if (BLOCK_COMMENT_END.matcher(t).matches()) {
+                    inBlockComment = false;
+                }
+                continue;
+            }
             if (t.isEmpty()) {
                 continue;
             }
@@ -214,7 +278,12 @@ final class PumlDiagramScan {
                 }
                 continue;
             }
-            if (t.startsWith("'") || t.startsWith("/'")) {
+            if (BLOCK_COMMENT_START.matcher(t).matches()) {
+                // 1 行で閉じる /' ... '/ もある。
+                inBlockComment = !BLOCK_COMMENT_END.matcher(t).matches();
+                continue;
+            }
+            if (t.startsWith("'")) {
                 continue;
             }
             if (FREE_TEXT_ONE_LINE.matcher(t).matches()) {
@@ -224,15 +293,19 @@ final class PumlDiagramScan {
                 inFreeText = true;
                 continue;
             }
-            out.add(t);
+            isCode[i] = true;
         }
-        return out;
+        return isCode;
     }
 
     /** ER / 配置 / クラス図など「構造図」であることを示す行があるか。 */
     private static boolean hasStructuralDeclaration(List<String> lines) {
         for (String t : lines) {
-            if (t.equals("hide circle") || STRUCTURAL_DECL.matcher(t).matches()) {
+            if (t.equalsIgnoreCase("hide circle") || STRUCTURAL_DECL.matcher(t).matches()) {
+                return true;
+            }
+            // 状態図の開始/終了擬似状態。シーケンス図には現れず、状態図は向き指定を受け付ける。
+            if (t.contains("[*]")) {
                 return true;
             }
             // `entity "User" as u {` のようにブロックを開く宣言はシーケンス図には無い。
