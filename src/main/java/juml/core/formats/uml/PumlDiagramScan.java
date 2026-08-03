@@ -175,9 +175,22 @@ public final class PumlDiagramScan {
         return DIRECTION_CAPABLE_DIAGRAMS.contains(parsedDiagramKind(puml));
     }
 
-    /** ブロックを開く自由記述 ({@code note over X} / {@code legend} など)。本文は散文。 */
+    /**
+     * ブロックを開く自由記述 ({@code note over X} / {@code legend} など)。本文は散文。
+     *
+     * <p>{@code note} は<b>位置語が続く形だけ</b>を受理する ({@code over} / {@code left} /
+     * {@code right} / {@code top} / {@code bottom} / {@code of} / {@code as}、または
+     * 単独・色指定のみ)。{@code note\\b.*} だと {@code Note --> Alice} —
+     * <b>Note という名前の参加者</b>への関連 — がノートの開始に見え、{@code end note} が
+     * 来ないままファイル末尾まで全行が捨てられる。</p>
+     *
+     * <p>{@code legend} / {@code title} / {@code header} / {@code footer} は
+     * 配置語を<b>前に</b>置ける ({@code center footer} / {@code left header})。
+     * 前置きを見落とすとブロック開始と認識できず、本文の散文が宣言として読まれる。</p>
+     */
     private static final Pattern FREE_TEXT_BLOCK_START = Pattern.compile(
-            "^(note|hnote|rnote|legend|caption|title|header|footer)\\b.*",
+            "^(note|hnote|rnote)(\\s+(over|left|right|top|bottom|of|as)\\b.*|\\s*(#\\S+)?)$"
+            + "|^((left|right|center)\\s+)?(legend|caption|title|header|footer)\\b.*",
             Pattern.CASE_INSENSITIVE);
 
     /**
@@ -203,12 +216,17 @@ public final class PumlDiagramScan {
      *
      * <p>コロン形式の判定では {@code ::} を本文の区切りと数えない。数えると
      * {@code note right of Foo::doWork} (メンバー宛ノートのブロック開始) が
-     * 「1 行ノート」に見え、<b>ブロック本文の散文がマスクされずに宣言として読まれる</b>。</p>
+     * 「1 行ノート」に見え、<b>ブロック本文の散文がマスクされずに宣言として読まれる</b>。
+     * 同じ理由で<b>引用名の中のコロンも数えない</b> ({@code note over "Alice: boss"})。</p>
+     *
+     * <p>{@code title} / {@code header} / {@code footer} は配置語を前に置ける
+     * ({@code center title 図の名前})。</p>
      */
     private static final Pattern FREE_TEXT_ONE_LINE = Pattern.compile(
-            "^(note|hnote|rnote)\\b(?:[^:]|::)*:(?!:).*"
+            "^(note|hnote|rnote)\\b(?:[^:\"]|::|\"[^\"]*\")*:(?!:).*"
             + "|^(note|hnote|rnote)\\s+\"[^\"]*\"\\s+as\\s+\\S+.*$"
-            + "|^(title|caption|header|footer)\\s+\\S.*", Pattern.CASE_INSENSITIVE);
+            + "|^((left|right|center)\\s+)?(title|caption|header|footer)\\s+\\S.*",
+            Pattern.CASE_INSENSITIVE);
 
     /** 複数行コメント {@code /' ... '/} の開始・終了。 */
     private static final Pattern BLOCK_COMMENT_START = Pattern.compile("^/'.*");
