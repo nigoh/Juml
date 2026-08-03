@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  *       生ソースなので一切注入しない。</li>
  * </ul>
  */
-final class PumlDiagramScan {
+public final class PumlDiagramScan {
 
     private PumlDiagramScan() {
     }
@@ -221,8 +221,16 @@ final class PumlDiagramScan {
      *
      * <p>行を捨てずに位置を保つので、元テキストを書き換える処理
      * ({@code stripBodyDirectionLines}) からも同じ判定を共有できる。</p>
+     *
+     * <p>ビジュアル設計器の図種判定 ({@code SketchDiagramType}) も同じ穴を持つため
+     * この判定を共有する。散文を宣言として読むと、note に「{@code node Server}」と
+     * 書いた ER 図が配置図デザイナーで開いてしまう。判定が 2 箇所に分かれると
+     * 片方だけ直して再発するので、公開して 1 つに保つ。</p>
+     *
+     * @param rawLines 元テキストを行分割したもの
+     * @return 各行が構造を表すコード行なら {@code true}
      */
-    static boolean[] codeLineMask(String[] rawLines) {
+    public static boolean[] codeLineMask(String[] rawLines) {
         boolean[] isCode = new boolean[rawLines.length];
         boolean inFreeText = false;
         boolean inBlockComment = false;
