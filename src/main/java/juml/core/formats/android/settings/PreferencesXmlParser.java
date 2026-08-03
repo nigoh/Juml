@@ -35,6 +35,15 @@ public final class PreferencesXmlParser {
 
     private static final String NS_ANDROID = "http://schemas.android.com/apk/res/android";
 
+    /** シンボリックリンクなら実体へ解決する (解決できなければ元のパスのまま)。 */
+    private static Path realPathOf(File dir) {
+        try {
+            return dir.toPath().toRealPath();
+        } catch (IOException unresolvable) {
+            return dir.toPath();
+        }
+    }
+
     /**
      * プロジェクトルート配下の res/xml/ を再帰的に走査して Preference キー定義を収集する。
      */
@@ -53,7 +62,10 @@ public final class PreferencesXmlParser {
             return Collections.emptyList();
         }
         List<File> xmlFiles = new ArrayList<>();
-        Path rootPath = projectRoot.toPath();
+        // ルートがシンボリックリンクだと、リンクを辿らない走査は「ルートをファイルとして
+        // 1 件訪問して終わり」になり、結果が黙って空になる。~/work -> /mnt/src/work の
+        // ような貼り方は普通なので、ルートだけ実体へ解決してから走査する。
+        Path rootPath = realPathOf(projectRoot);
         Files.walkFileTree(rootPath, EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
@@ -71,10 +83,20 @@ public final class PreferencesXmlParser {
                                         dir.toFile())) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
-                        if ("build".equals(name) || ".gradle".equals(name)
-                                || ".git".equals(name) || "node_modules".equals(name)) {
+                        // 除外名は Java 側の走査と同じ集合を使う。ここだけ 4 つしか
+                        // 見ていなかったため、out/ や bin/ にある生成物のコピーが
+                        // settings.md に二重計上され、クラス図とも食い違っていた。
+                        if (juml.core.formats.java.AndroidProjectScanner
+                                .DEFAULT_EXCLUDED_DIRS.contains(name)) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        // 権限拒否などで 1 つ読めないだけで --settings 全体を落とさない
+                        // (AndroidProjectScanner も同じく無視して継続する)。
                         return FileVisitResult.CONTINUE;
                     }
 

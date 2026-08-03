@@ -72,6 +72,14 @@ public final class AtomicFileWrite {
         // 「保存先が無い」として失敗を報告する。勝手に mkdir すると、打ち間違えた
         // パスへ黙って書き出してしまう (BulkTabExporter の契約もこれに依存)。
         // 同一ディレクトリに作る (別ボリュームだと原子的な置換ができないため)。
+        // 書き込み不可の既存ファイルは置換しない。最後の一手が rename(2) なので、
+        // カーネルは<b>親ディレクトリ</b>の権限しか見ない。この番人が無いと、利用者が
+        // chmod 444 で保護したファイルや共有ディレクトリにある他人所有のファイルを
+        // 黙って置き換えてしまう (対象を直接開いていた頃は AccessDeniedException だった)。
+        if (Files.exists(targetPath) && !Files.isWritable(targetPath)) {
+            throw new java.nio.file.AccessDeniedException(targetPath.toString(), null,
+                    "target file is not writable");
+        }
         Path tmp = createTempIn(dir, targetPath.getFileName().toString());
         boolean moved = false;
         try {
@@ -96,15 +104,28 @@ public final class AtomicFileWrite {
      * <p>{@code ATOMIC_MOVE} はリンク自体を差し替えてしまうため、これをしないと
      * <b>リンクが普通のファイルに化け、リンク先の実体は古い内容のまま取り残される</b>。
      * 従来の {@code FileOutputStream} はリンクを辿って実体へ書いていたので、
-     * 「公開先へのシンボリックリンクに書き出す」という運用が静かに壊れる。
-     * 壊れたリンク (実体が無い) は解決できないので、そのまま扱う。</p>
+     * 「公開先へのシンボリックリンクに書き出す」という運用が静かに壊れる。</p>
+     *
+     * <p>{@code toRealPath()} は使わない。実体がまだ存在しないリンク
+     * ({@code ln -s} してから<b>初めて</b>書き出す、という普通の手順) で例外になり、
+     * リンクをそのまま置換先にしてしまう = リンクを壊したうえ、意図した場所には
+     * 1 バイトも書かれない。{@code readSymbolicLink} なら実体の有無に依らず辿れる。
+     * リンクが循環している場合だけ、諦めて元のパスを返す。</p>
      */
     private static Path resolveLink(Path target) {
-        try {
-            return Files.isSymbolicLink(target) ? target.toRealPath() : target;
-        } catch (IOException dangling) {
-            return target;
+        Path p = target;
+        for (int hop = 0; hop < 32; hop++) {
+            if (!Files.isSymbolicLink(p)) {
+                return p;
+            }
+            try {
+                Path next = Files.readSymbolicLink(p);
+                p = next.isAbsolute() ? next : p.resolveSibling(next);
+            } catch (IOException | UnsupportedOperationException unreadable) {
+                return p;
+            }
         }
+        return target;
     }
 
     /** 一時ファイル名の連番 (同一プロセス内の衝突を避ける)。 */

@@ -189,6 +189,57 @@ public class AtomicFileWriteTest {
     }
 
     @Test
+    public void symlinkWhoseDestinationDoesNotExistYetIsFollowed() throws IOException {
+        // 回帰: toRealPath() は実体が無いリンクで例外になり、リンク自体が置換先に
+        // なっていた。ln -s してから初めて書き出す (最も自然な手順) たびに
+        // リンクが普通のファイルへ化け、意図した場所には 1 バイトも書かれなかった。
+        File dir = tmp.newFolder("dangling");
+        File dest = new File(dir, "www/out.svg");
+        assertTrue(dest.getParentFile().mkdirs());
+        File link = new File(dir, "latest.svg");
+        try {
+            Files.createSymbolicLink(link.toPath(), dest.toPath());
+        } catch (UnsupportedOperationException | IOException noSymlink) {
+            return;
+        }
+
+        AtomicFileWrite.write(link, os -> os.write("new".getBytes(StandardCharsets.UTF_8)));
+
+        assertTrue("リンクのままであること", Files.isSymbolicLink(link.toPath()));
+        assertTrue("リンク先の実体が作られること", dest.isFile());
+        assertEquals("new", Files.readString(dest.toPath()));
+    }
+
+    @Test
+    public void writeProtectedTargetIsNotReplaced() throws IOException {
+        // 回帰: 最後の一手が rename(2) なので、カーネルは親ディレクトリの権限しか
+        // 見ない。番人が無いと、利用者が chmod 444 で保護したファイルや共有
+        // ディレクトリの他人所有のファイルを黙って置き換えてしまっていた
+        // (対象を直接開いていた頃は AccessDeniedException で失敗した)。
+        File target = tmp.newFile("protected.txt");
+        byte[] original = "do not touch".getBytes(StandardCharsets.UTF_8);
+        Files.write(target.toPath(), original);
+        try {
+            Files.setPosixFilePermissions(target.toPath(),
+                    PosixFilePermissions.fromString("r--r--r--"));
+        } catch (UnsupportedOperationException notPosix) {
+            return;
+        }
+        // root は権限検査を素通りするため、この保証は検証できない。
+        org.junit.Assume.assumeFalse("root では権限が効かない",
+                Files.isWritable(target.toPath()));
+
+        try {
+            AtomicFileWrite.write(target, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+            fail("書き込み不可のファイルは置換しないこと");
+        } catch (IOException expected) {
+            assertTrue(expected instanceof java.nio.file.AccessDeniedException);
+        }
+        assertArrayEquals("保護されたファイルが残ること",
+                original, Files.readAllBytes(target.toPath()));
+    }
+
+    @Test
     public void missingParentDirectoryFailsWithoutCreatingIt() throws IOException {
         // 保存先ディレクトリを勝手に作らない (打ち間違えたパスへ黙って書かない)。
         File dir = new File(tmp.getRoot(), "no-such-dir");

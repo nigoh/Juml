@@ -204,6 +204,74 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
         }
     }
 
+    @Test
+    public void symlinkedProjectRootIsWalked() throws Exception {
+        // 回帰: リンクを辿らない走査にリンクのルートを渡すと「ルートをファイルとして
+        // 1 件訪問して終わり」になり、結果が黙って空になっていた
+        // (~/work -> /mnt/src/work のような貼り方は普通)。
+        File real = tmp.newFolder("realproj");
+        writePrefXml(new File(real, "app/src/main/res/xml"), "prefs", "main_key");
+        File link = new File(tmp.getRoot(), "linkproj");
+        try {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), real.toPath());
+        } catch (UnsupportedOperationException | java.io.IOException noSymlink) {
+            return;
+        }
+
+        var parser = new juml.core.formats.android.settings.PreferencesXmlParser();
+        assertEquals("リンク経由でも実体と同じ結果になること",
+                keysOf(parser.analyzeProject(real, false)),
+                keysOf(parser.analyzeProject(link, false)));
+        assertTrue(keysOf(parser.analyzeProject(link, false)).contains("main_key"));
+    }
+
+    @Test
+    public void generatedOutputDirectoriesAreExcluded() throws Exception {
+        // 回帰: 除外名を 4 つしか見ていなかったため、out/ bin/ .idea/ .cxx/ にある
+        // 生成物のコピーが settings.md へ二重計上され、同じ実行のクラス図とも
+        // 食い違っていた。Java 側の走査と同じ集合を使う。
+        File root = tmp.newFolder("genproj");
+        writePrefXml(new File(root, "app/src/main/res/xml"), "prefs", "main_key");
+        for (String dir : new String[] {"out/target/res/xml", "bin/res/xml",
+                                        ".idea/res/xml", ".cxx/res/xml", "build/res/xml"}) {
+            writePrefXml(new File(root, dir), "prefs", dir.replace('/', '_'));
+        }
+
+        List<String> keys = keysOf(
+                new juml.core.formats.android.settings.PreferencesXmlParser()
+                        .analyzeProject(root, false));
+        assertEquals("本番の定義だけが残ること: " + keys, List.of("main_key"), keys);
+    }
+
+    @Test
+    public void unreadableDirectoryDoesNotAbortTheWholeScan() throws Exception {
+        // 回帰: SimpleFileVisitor の既定は visitFileFailed で例外を投げ直すため、
+        // 読めないディレクトリが 1 つあるだけで --settings 全体が
+        // AccessDeniedException で落ち、レポートが 1 行も出なかった。
+        File root = tmp.newFolder("guarded");
+        writePrefXml(new File(root, "app/src/main/res/xml"), "prefs", "main_key");
+        File secret = new File(root, "secret/inner");
+        assertTrue(secret.mkdirs());
+        try {
+            java.nio.file.Files.setPosixFilePermissions(secret.getParentFile().toPath(),
+                    java.nio.file.attribute.PosixFilePermissions.fromString("---------"));
+        } catch (UnsupportedOperationException notPosix) {
+            return;
+        }
+        try {
+            org.junit.Assume.assumeFalse("root では権限が効かない",
+                    java.nio.file.Files.isReadable(secret.getParentFile().toPath()));
+
+            List<String> keys = keysOf(
+                    new juml.core.formats.android.settings.PreferencesXmlParser()
+                            .analyzeProject(root, false));
+            assertTrue("読めない枝を飛ばして続行すること: " + keys, keys.contains("main_key"));
+        } finally {
+            java.nio.file.Files.setPosixFilePermissions(secret.getParentFile().toPath(),
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();
