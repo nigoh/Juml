@@ -229,7 +229,24 @@ public class AaosPatternTest {
     public void testApiLevelBadgeAddedInOrBefore() {
         JavaClassInfo c = make("android.car", "Foo", JavaClassInfo.Kind.CLASS);
         c.getAnnotations().add("AddedInOrBefore(majorVersion=33)");
-        assertEquals("API <=33", AaosPattern.apiLevelBadge(c));
+        // '<' を含めない: PlantUML がステレオタイプとして認識できなくなるため
+        // (回帰の実描画確認は PlantUmlStereotypeRenderTest)。
+        assertEquals("API ≤33", AaosPattern.apiLevelBadge(c));
+    }
+
+    @Test
+    public void testApiLevelBadgeNeverContainsAngleBrackets() {
+        for (String ann : new String[] {
+            "AddedInOrBefore(majorVersion=33)", "AddedIn(majorVersion=33)",
+            "MinimumCarVersion(35)", "MinimumPlatformSdkVersion(33)",
+            "ApiRequirements(minPlatformVersion=33, minCarVersion=35)"}) {
+            JavaClassInfo c = make("android.car", "Foo", JavaClassInfo.Kind.CLASS);
+            c.getAnnotations().add(ann);
+            String badge = AaosPattern.apiLevelBadge(c);
+            assertNotNull(ann + " のバッジが取れること", badge);
+            assertFalse("バッジに '<' を含めない (" + ann + "): " + badge, badge.contains("<"));
+            assertFalse("バッジに '>' を含めない (" + ann + "): " + badge, badge.contains(">"));
+        }
     }
 
     @Test
