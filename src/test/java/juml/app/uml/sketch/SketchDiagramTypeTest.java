@@ -374,6 +374,37 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void colouredFloatingNoteDoesNotSwallowTheRestOfTheFile() {
+        // 回帰: 浮動ノートの 1 行判定が行末で切れていたため、色を付けた
+        // note "..." as N1 #pink がブロック開始と誤解され、end note が来ないまま
+        // ファイル末尾まで全行が捨てられて、どんな図もクラス図と判定されていた。
+        String state = "@startuml\nnote \"draft\" as N1 #pink\nstate Idle\nstate Busy\n"
+                + "[*] --> Idle\nIdle --> Busy\n@enduml\n";
+        assertEquals("色付き浮動ノートで図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(state));
+
+        String plain = "@startuml\nnote \"draft\" as N1\nstate Idle\n[*] --> Idle\n@enduml\n";
+        assertEquals("色の無い浮動ノートも従来どおり",
+                SketchDiagramType.STATE, SketchDiagramType.detect(plain));
+    }
+
+    @Test
+    public void memberLevelNoteBlockBodyIsStillTreatedAsProse() {
+        // 回帰: 1 行ノートの判定が Foo::doWork の :: を本文の区切りと数えたため、
+        // メンバー宛ノートの<b>ブロック開始</b>が「1 行ノート」に見え、本文の散文が
+        // マスクされず宣言として読まれていた (JavaDoc をそのまま note へ入れる図で頻出)。
+        String block = "@startuml\nclass Foo {\n +doWork()\n}\nnote right of Foo::doWork\n"
+                + "  node Server on which it runs\nend note\n@enduml\n";
+        assertEquals("メンバー宛ノートの本文で配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(block));
+
+        String oneLine = "@startuml\nclass Foo\n"
+                + "note right of Foo::doWork : runs on node Server\n@enduml\n";
+        assertEquals("コロン形式の 1 行ノートは従来どおり本文ごと除くこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(oneLine));
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"
