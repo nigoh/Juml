@@ -196,10 +196,18 @@ public final class PumlDiagramScan {
      * {@code note "text" as N1} の<b>浮動ノート</b>も 1 行で完結する
      * (これをブロック開始と誤解すると {@code end note} が来ないままファイル末尾まで
      * 全行を捨ててしまい、図種判定の材料が消える)。
+     *
+     * <p>浮動ノートは色やステレオタイプを続けられる ({@code note "draft" as N1 #pink})。
+     * 行末で切っていたため色付き浮動ノートがブロック開始と誤解され、以降が全部
+     * 捨てられて<b>どんな図もクラス図と判定される</b>状態だった。</p>
+     *
+     * <p>コロン形式の判定では {@code ::} を本文の区切りと数えない。数えると
+     * {@code note right of Foo::doWork} (メンバー宛ノートのブロック開始) が
+     * 「1 行ノート」に見え、<b>ブロック本文の散文がマスクされずに宣言として読まれる</b>。</p>
      */
     private static final Pattern FREE_TEXT_ONE_LINE = Pattern.compile(
-            "^(note|hnote|rnote)\\b[^:]*:.*"
-            + "|^(note|hnote|rnote)\\s+\"[^\"]*\"\\s+as\\s+\\S+\\s*$"
+            "^(note|hnote|rnote)\\b(?:[^:]|::)*:(?!:).*"
+            + "|^(note|hnote|rnote)\\s+\"[^\"]*\"\\s+as\\s+\\S+.*$"
             + "|^(title|caption|header|footer)\\s+\\S.*", Pattern.CASE_INSENSITIVE);
 
     /** 複数行コメント {@code /' ... '/} の開始・終了。 */
