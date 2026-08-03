@@ -29,11 +29,13 @@ public final class ComponentSketchCodec {
     private static final Pattern COMP_DECL = Pattern.compile(
             "^component\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern COMP_ALIAS = Pattern.compile(
-            "^component\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^component\\s+" + SketchLabelText.QUOTED_LABEL
+                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern IFACE_DECL = Pattern.compile(
             "^interface\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern IFACE_ALIAS = Pattern.compile(
-            "^interface\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^interface\\s+" + SketchLabelText.QUOTED_LABEL
+                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final String ENDPOINT = "(\\[[A-Za-z_$][\\w$]*\\]|[A-Za-z_$][\\w$]*)";
     private static final Pattern RELATION = Pattern.compile(
             "^" + ENDPOINT + "\\s*(-->|\\.\\.>|--)\\s*" + ENDPOINT
@@ -125,7 +127,8 @@ public final class ComponentSketchCodec {
         }
         Matcher ca = COMP_ALIAS.matcher(line);
         if (ca.matches()) {
-            obtain(model, ComponentNode.Kind.COMPONENT, ca.group(2), ca.group(1));
+            obtain(model, ComponentNode.Kind.COMPONENT, ca.group(2),
+                    SketchLabelText.fromCaptured(ca.group(1)));
             return true;
         }
         Matcher cd = COMP_DECL.matcher(line);
@@ -135,7 +138,8 @@ public final class ComponentSketchCodec {
         }
         Matcher ia = IFACE_ALIAS.matcher(line);
         if (ia.matches()) {
-            obtain(model, ComponentNode.Kind.INTERFACE, ia.group(2), ia.group(1));
+            obtain(model, ComponentNode.Kind.INTERFACE, ia.group(2),
+                    SketchLabelText.fromCaptured(ia.group(1)));
             return true;
         }
         Matcher id = IFACE_DECL.matcher(line);
@@ -207,7 +211,8 @@ public final class ComponentSketchCodec {
             sb.append(n.getKind().keyword()).append(' ');
             if (n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId())) {
-                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
+                sb.append('"').append(SketchLabelText.forOutput(n.getLabel()))
+                        .append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());
             }

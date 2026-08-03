@@ -63,6 +63,8 @@ public final class SketchPane extends JPanel {
     private final java.util.Deque<String> undoStack = new java.util.ArrayDeque<>();
     private final java.util.Deque<String> redoStack = new java.util.ArrayDeque<>();
     private String baseline = "@startuml\n@enduml\n";
+    /** 一度でも {@link #loadFrom(String)} を通したか (初回は必ず読み込む)。 */
+    private boolean everLoaded;
     private boolean restoring;
 
     public SketchPane() {
@@ -151,11 +153,30 @@ public final class SketchPane extends JPanel {
      * PlantUML テキストを解析してキャンバスへ反映する (Design タブ選択時に呼ぶ)。
      * 図種を自動判定して対応するエディタへ切り替える。
      * 未対応構文が含まれる場合は編集不可として表示のみ行う。
+     *
+     * <p>渡されたテキストが<b>すでにキャンバスが表している内容</b> ({@code baseline}) と
+     * 同一なら何もしない。キャンバス編集は {@code onPumlChange} でテキスト欄へ反映され、
+     * その同じテキストが Design サブタブへ戻るたびに再入力されるため、無条件に読み直すと
+     * <b>サブタブを往復しただけで Undo 履歴が消えて</b> 直前の操作を取り消せなくなる
+     * (選択状態やスクロール位置も失われる)。テキストを実際に編集した場合は baseline と
+     * 食い違うので、従来どおり読み直して履歴をリセットする。</p>
+     *
+     * <p><b>編集ロック中は必ず読み直す。</b>{@code baseline} は「モデルを書き出した
+     * テキスト」であり、未対応行 (コメント等) は元から含まれない。そのため
+     * 「編集を有効化」でコメントを除去した直後のテキストは baseline と一致してしまい、
+     * ここで早期 return するとモデルが未対応行を抱えたまま残って<b>ボタンが永久に
+     * 効かなくなる</b> (再クリックしても除去対象が無く無反応)。ロック中は履歴も無いので
+     * 読み直しで失うものはない。</p>
      */
     public void loadFrom(String pumlText) {
-        applyText(pumlText);
+        String incoming = pumlText != null ? pumlText : "";
+        if (everLoaded && incoming.equals(baseline) && active.isEditable()) {
+            return;
+        }
+        applyText(incoming);
         // 新しい内容を読み込んだら Undo 履歴はリセットする (別セッション扱い)。
         baseline = active.currentPuml();
+        everLoaded = true;
         undoStack.clear();
         redoStack.clear();
         updateHistoryButtons();
@@ -210,8 +231,12 @@ public final class SketchPane extends JPanel {
             return false;
         }
         List<String> lines = active.unsupportedLines();
+        // '@pos は「編集を有効化」で消さない (消すと配置が失われる) ため、それが未対応として
+        // 残る図は 1 クリックで解除できない = comment-only lock ではない。効かないボタンを
+        // 出すと、押しても何も起きない状態になる。
         return !lines.isEmpty()
-                && lines.stream().allMatch(l -> l != null && l.trim().startsWith("'"));
+                && lines.stream().allMatch(l -> l != null && l.trim().startsWith("'")
+                        && !SketchDiagramType.isLayoutComment(l));
     }
 
     /** キャンバス操作を 1 手戻す。 */
