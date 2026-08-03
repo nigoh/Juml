@@ -131,17 +131,27 @@ public final class AndroidProjectScanner {
         // 1 件訪問して終わり」になり、結果が黙って空になる (~/work -> /mnt/src/work の
         // ような貼り方は普通)。res/xml 側だけ直すと --settings とクラス図が同じ
         // プロジェクトについて食い違うので、ここも同じ規律で実体へ解決する。
-        walk(realPathOf(root), o, result);
+        walk(realRoot(root), o, result);
         Collections.sort(result);
         return result;
     }
 
-    /** シンボリックリンクなら実体へ解決する (解決できなければ元のパスのまま)。 */
-    private static Path realPathOf(File dir) {
+    /**
+     * 走査の起点にするパス。<b>指定されたディレクトリ自身がシンボリックリンクのときだけ</b>
+     * 実体へ解決する。
+     *
+     * <p>リンクを辿らない走査にリンクを渡すと「ルートをファイルとして 1 件訪問して終わり」
+     * になり、結果が黙って空になる。一方 {@code toRealPath()} で<b>常に</b>解決すると、
+     * 親のどこかにリンクを含むだけの普通のディレクトリでも返すパスが変わり、走査結果を
+     * 元のルートと突き合わせている側 ({@code PerFolderClassDiagrams} の「ルート配下か」
+     * 判定など) が全件を「範囲外」として捨ててしまう。解決は必要な場合だけに絞る。</p>
+     */
+    public static Path realRoot(File dir) {
+        Path p = dir.toPath();
         try {
-            return dir.toPath().toRealPath();
+            return Files.isSymbolicLink(p) ? p.toRealPath() : p;
         } catch (IOException unresolvable) {
-            return dir.toPath();
+            return p;
         }
     }
 

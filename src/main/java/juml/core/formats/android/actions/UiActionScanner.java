@@ -182,7 +182,10 @@ public final class UiActionScanner {
 
     private List<UiActionEntry> analyzeLayoutFiles(File projectRoot) throws IOException {
         List<UiActionEntry> all = new ArrayList<>();
-        Files.walkFileTree(projectRoot.toPath(), EnumSet.noneOf(FileVisitOption.class),
+        // ルート自身がリンクだと、リンクを辿らない走査は 1 件訪問して終わる
+        // (レイアウト由来の UI アクションが丸ごと落ちる)。
+        Files.walkFileTree(juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
+                EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {

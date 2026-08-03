@@ -97,4 +97,38 @@ public class PerFolderClassDiagramsTest {
         assertEquals(1, result.getClassCount());
         assertTrue(new File(out, PerFolderClassDiagrams.PUML_NAME).isFile());
     }
+
+    @Test
+    public void worksWhenTheProjectIsReachedThroughASymlink() throws IOException {
+        // 回帰: 走査の起点をリンク解決するようにした際、ルートは元のまま比較していたため
+        // 全ソースが「ルート配下でない」と判定され、フォルダ別クラス図が 1 枚も
+        // 書き出されないまま成功として終わっていた。リンク越しの 2 形 (親だけがリンク /
+        // ルート自身がリンク) の両方で、実体で開いたときと同じ結果になること。
+        File real = tmp.newFolder("real");
+        File project = new File(real, "project");
+        writeFile(new File(project, "com/example/ui/Foo.java"),
+                "package com.example.ui; public class Foo {}");
+
+        File parentLink = new File(tmp.getRoot(), "parent-link");
+        File rootLink = new File(tmp.getRoot(), "root-link");
+        try {
+            Files.createSymbolicLink(parentLink.toPath(), real.toPath());
+            Files.createSymbolicLink(rootLink.toPath(), project.toPath());
+        } catch (UnsupportedOperationException | IOException noSymlink) {
+            return;
+        }
+
+        for (Object[] c : new Object[][] {{"real", project},
+                                          {"parentLink", new File(parentLink, "project")},
+                                          {"rootLink", rootLink}}) {
+            File out = tmp.newFolder("out-" + c[0]);
+            PerFolderClassDiagrams.Result result = PerFolderClassDiagrams.generate(
+                    (File) c[1], out, null, null, false, null, ErrorListener.silent());
+
+            assertEquals(c[0] + ": 1 フォルダ分が書き出されること", 1, result.getFolderCount());
+            assertEquals(c[0] + ": 1 クラス分が書き出されること", 1, result.getClassCount());
+            assertTrue(c[0] + ": 階層を保った出力があること",
+                    new File(out, "com/example/ui/" + PerFolderClassDiagrams.PUML_NAME).isFile());
+        }
+    }
 }

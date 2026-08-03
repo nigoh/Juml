@@ -300,6 +300,55 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
                 keysOf(parser.analyzeProject(link, false)));
     }
 
+    @Test
+    public void scanKeepsResultsUnderTheRootItWasGiven() throws Exception {
+        // 回帰: ルートを常に toRealPath() で解決したため、親のどこかにリンクを含むだけの
+        // 普通のディレクトリでも返すパスが変わり、走査結果を元のルートと突き合わせている
+        // 側 (フォルダ別クラス図の「ルート配下か」判定) が全件を捨てていた。
+        // 解決はルート自身がリンクのときだけに絞る。
+        File real = tmp.newFolder("under-real");
+        File proj = new File(real, "proj");
+        writeJava(new File(proj, "com/example"), "Foo");
+        File parentLink = new File(tmp.getRoot(), "under-link");
+        try {
+            java.nio.file.Files.createSymbolicLink(parentLink.toPath(), real.toPath());
+        } catch (UnsupportedOperationException | java.io.IOException noSymlink) {
+            return;
+        }
+
+        File viaLink = new File(parentLink, "proj");
+        var opts = new juml.core.formats.java.AndroidProjectScanner.Options();
+        List<File> found = juml.core.formats.java.AndroidProjectScanner.scan(viaLink, opts);
+        assertEquals("リンクを含む親経由でも 1 件見つかること", 1, found.size());
+        assertTrue("渡したルート配下のパスで返すこと: " + found.get(0),
+                found.get(0).toPath().normalize().startsWith(viaLink.toPath().normalize()));
+    }
+
+    @Test
+    public void layoutDeclaredUiActionsSurviveASymlinkedRoot() throws Exception {
+        // 回帰: ルート自身がリンクだと、リンクを辿らない走査は 1 件訪問して終わるため、
+        // レイアウト由来の UI アクションが丸ごと落ちていた。
+        File real = tmp.newFolder("ui-real");
+        File layout = new File(real, "app/src/main/res/layout");
+        assertTrue(layout.mkdirs());
+        Files.write(new File(layout, "main.xml").toPath(),
+                ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<LinearLayout "
+                + "xmlns:android=\"http://schemas.android.com/apk/res/android\">"
+                + "<Button android:onClick=\"doOk\"/></LinearLayout>")
+                        .getBytes(StandardCharsets.UTF_8));
+        File link = new File(tmp.getRoot(), "ui-link");
+        try {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), real.toPath());
+        } catch (UnsupportedOperationException | java.io.IOException noSymlink) {
+            return;
+        }
+
+        var scanner = new juml.core.formats.android.actions.UiActionScanner();
+        assertEquals("リンク経由でも実体と同じ数の UI アクションを見つけること",
+                scanner.analyzeProject(real).size(), scanner.analyzeProject(link).size());
+        assertTrue("実際に 1 件は見つかる前提", scanner.analyzeProject(link).size() > 0);
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();

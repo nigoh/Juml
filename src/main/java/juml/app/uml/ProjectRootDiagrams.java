@@ -37,7 +37,9 @@ final class ProjectRootDiagrams {
         }
         final int[] visits = {0};
         try (java.util.stream.Stream<java.nio.file.Path> walk =
-                     java.nio.file.Files.walk(projectRoot.toPath(), 12)) {
+                     java.nio.file.Files.walk(
+                             juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
+                             12)) {
             java.util.Iterator<java.nio.file.Path> it = walk.iterator();
             while (it.hasNext()) {
                 if (found.size() == 3 || ++visits[0] > AOSP_SCAN_VISIT_CAP) {

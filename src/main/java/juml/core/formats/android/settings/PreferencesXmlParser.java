@@ -35,15 +35,6 @@ public final class PreferencesXmlParser {
 
     private static final String NS_ANDROID = "http://schemas.android.com/apk/res/android";
 
-    /** シンボリックリンクなら実体へ解決する (解決できなければ元のパスのまま)。 */
-    private static Path realPathOf(File dir) {
-        try {
-            return dir.toPath().toRealPath();
-        } catch (IOException unresolvable) {
-            return dir.toPath();
-        }
-    }
-
     /**
      * プロジェクトルート配下の res/xml/ を再帰的に走査して Preference キー定義を収集する。
      */
@@ -65,7 +56,7 @@ public final class PreferencesXmlParser {
         // ルートがシンボリックリンクだと、リンクを辿らない走査は「ルートをファイルとして
         // 1 件訪問して終わり」になり、結果が黙って空になる。~/work -> /mnt/src/work の
         // ような貼り方は普通なので、ルートだけ実体へ解決してから走査する。
-        Path rootPath = realPathOf(projectRoot);
+        Path rootPath = juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot);
         Files.walkFileTree(rootPath, EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
