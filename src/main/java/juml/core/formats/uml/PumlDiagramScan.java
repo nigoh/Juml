@@ -142,6 +142,17 @@ public final class PumlDiagramScan {
      * キーワードと同綴りなだけで誤判定する類の事故が延々と出る (実際に何度も踏んだ)。
      * <b>推測ではなく PlantUML の解釈そのもの</b>を使うのが唯一収束する方法。</p>
      */
+    /**
+     * PlantUML 自身が解釈した図種クラス名 (判定できなければ null)。
+     *
+     * <p>行の見た目からの推測は、綴りを共有する識別子や自由記述のせいで穴が尽きない
+     * (このクラスの正規表現は何度も塞いでは別の穴が開いた)。設計器の図種判定にも同じ
+     * 問題があるので、最後の裏取りとしてこの答えを共有する。</p>
+     */
+    public static String parsedKind(String puml) {
+        return parsedDiagramKind(puml);
+    }
+
     private static String parsedDiagramKind(String puml) {
         try {
             java.util.List<net.sourceforge.plantuml.BlockUml> blocks =
@@ -189,7 +200,8 @@ public final class PumlDiagramScan {
      * 前置きを見落とすとブロック開始と認識できず、本文の散文が宣言として読まれる。</p>
      */
     private static final Pattern FREE_TEXT_BLOCK_START = Pattern.compile(
-            "^(note|hnote|rnote)(\\s+(over|left|right|top|bottom|of|as)\\b.*|\\s*(#\\S+)?)$"
+            "^(note|hnote|rnote)"
+            + "(\\s+(over|left|right|top|bottom|of|as|across|on)\\b.*|\\s*(#\\S+)?)$"
             + "|^((left|right|center)\\s+)?(legend|caption|title|header|footer)\\b.*",
             Pattern.CASE_INSENSITIVE);
 
