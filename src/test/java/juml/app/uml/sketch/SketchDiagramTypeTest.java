@@ -355,6 +355,25 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void proseInsideNotesIsNotReadAsDeclarations() {
+        // 回帰: note / legend / title の本文と /' ... '/ は利用者が書いた散文であって
+        // 宣言ではない。素通ししていたため、note に「node Server」と 1 行書いただけで
+        // 配置図と判定され、空で編集ロックされた配置図デザイナーが開いていた。
+        String erWithNote = "@startuml\nentity A {\n  id : int\n}\n"
+                + "note right of A\n  node Server に配置する\nend note\n@enduml\n";
+        assertEquals("note 本文の node で配置図にしない",
+                SketchDiagramType.ER, SketchDiagramType.detect(erWithNote));
+
+        String classWithLegend = "@startuml\nclass A\nlegend\n  node Server\nendlegend\n@enduml\n";
+        assertEquals("legend 本文の node で配置図にしない",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(classWithLegend));
+
+        String classWithBlockComment = "@startuml\nclass A\n/'\n node Server\n'/\n@enduml\n";
+        assertEquals("ブロックコメント本文の node で配置図にしない",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(classWithBlockComment));
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"

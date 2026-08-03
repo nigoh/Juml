@@ -143,14 +143,24 @@ public enum SketchDiagramType {
      * 除外で塞いだ。ここはブロック本体の除外で塞ぐ。</p>
      */
     private static String[] topLevelLines(String[] lines) {
+        // note / legend / title / header の本文と /' ... '/ は利用者が書いた散文であって
+        // 宣言ではない。素通しすると、note に「node Server」と 1 行書いた ER 図が
+        // 配置図と判定され、空で編集ロックされた配置図デザイナーが開く。
+        // PlantUML 側の判定と同じマスクを共有する (片方だけ直すと再発するため)。
+        boolean[] isCode = juml.core.formats.uml.PumlDiagramScan.codeLineMask(lines);
         java.util.List<String> out = new java.util.ArrayList<>();
         int depth = 0;
-        for (String raw : lines) {
-            String t = raw.trim();
-            if (depth == 0) {
-                out.add(raw);
+        for (int i = 0; i < lines.length; i++) {
+            // Juml 自身が出す座標コメント ('@pos …) は PlantUML にはコメントでも、
+            // 設計器にとっては構造の一部 (どの設計器が書いた図かを示す)。落とすと
+            // 「actor 1 つだけのユースケース図」がシーケンス図へ流れる。
+            if (!isCode[i] && !isLayoutComment(lines[i])) {
+                continue;
             }
-            depth = updateDepth(t, depth);
+            if (depth == 0) {
+                out.add(lines[i]);
+            }
+            depth = updateDepth(lines[i].trim(), depth);
         }
         return out.toArray(new String[0]);
     }
