@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2015-2026 naou and contributors
+
+package juml.app.uml.sketch;
+
+import juml.app.uml.PumlTemplate;
+import org.assertj.swing.edt.GuiActionRunner;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.awt.GraphicsEnvironment;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Design サブタブを往復しただけで Undo 履歴が消える不具合の回帰テスト。
+ *
+ * <p>キャンバス編集は {@code onPumlChange} でテキスト欄へ反映され、Design サブタブを
+ * 選び直すたびにその<b>同じテキスト</b>が {@link SketchPane#loadFrom(String)} へ戻ってくる。
+ * 以前は無条件に読み直して履歴をリセットしていたため、「図形を動かす → Source を覗く →
+ * Design に戻る → Ctrl+Z」が効かなかった。テキストを実際に書き換えた場合は従来どおり
+ * 別セッション扱いでリセットする。</p>
+ */
+public class SketchPaneReloadHistoryTest {
+
+    @Before
+    public void requireDisplay() {
+        Assume.assumeFalse("ヘッドレス環境では Swing コンポーネント生成が失敗するためスキップ",
+                GraphicsEnvironment.isHeadless());
+    }
+
+    @Test
+    public void reloadingTheSameTextKeepsUndoHistory() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        assertTrue("編集で Undo 履歴が積まれる", GuiActionRunner.execute(pane::canUndoForTest));
+
+        int classes = GuiActionRunner.execute(() -> pane.classesForTest().size());
+        // テキスト欄が保持しているのは onPumlChange で流れた currentPuml。
+        String synced = GuiActionRunner.execute(pane::currentPuml);
+        GuiActionRunner.execute(() -> pane.loadFrom(synced));
+
+        assertTrue("サブタブを往復しても Undo 履歴が残ること",
+                GuiActionRunner.execute(pane::canUndoForTest));
+        assertEquals("モデルも保たれること", classes,
+                (int) GuiActionRunner.execute(() -> pane.classesForTest().size()));
+        // 履歴が生きているので実際に取り消せる。
+        GuiActionRunner.execute(pane::undo);
+        assertEquals(classes - 1, (int) GuiActionRunner.execute(
+                () -> pane.classesForTest().size()));
+    }
+
+    @Test
+    public void reloadingChangedTextStillResetsHistory() {
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.CLASS.body()));
+        GuiActionRunner.execute(() -> pane.addClassForTest(SketchClass.Kind.CLASS));
+        assertTrue(GuiActionRunner.execute(pane::canUndoForTest));
+
+        // テキスト欄側で書き換えられた内容が来たら別セッション扱い。
+        GuiActionRunner.execute(() -> pane.loadFrom(PumlTemplate.SEQUENCE.body()));
+        assertFalse("内容が変わった読み込みは従来どおり履歴をリセットする",
+                GuiActionRunner.execute(pane::canUndoForTest));
+    }
+
+    @Test
+    public void commentOnlyLockIsReleasedEvenWhenStrippedTextEqualsBaseline() {
+        // 回帰 (critical): baseline は「モデルを書き出したテキスト」なので未対応行 (コメント) を
+        // 含まない。そのためコメント除去後のテキストは baseline と一致することがあり、
+        // 早期 return するとモデルが未対応行を抱えたまま残って「編集を有効化」が
+        // 永久に効かなくなる (再クリックしても除去対象が無く無反応)。
+        // ここでは DiagramTabPane.confirmAndRemoveComments と同じ順序を再現する。
+        String withComment = "@startuml\n' 発注フロー\nparticipant A\nA -> B : hi\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(withComment));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("comment-only lock として扱われる",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+
+        // テキスト欄からコメント行だけを除去した状態 (= baseline と一致しうる)。
+        String stripped = withComment.replace("' 発注フロー\n", "");
+        assertEquals("この経路が成立する前提: 除去後テキストは再生成テキストと一致する",
+                GuiActionRunner.execute(pane::currentPuml), stripped);
+
+        GuiActionRunner.execute(() -> pane.loadFrom(stripped));
+        assertTrue("コメント除去後は編集可能になること",
+                GuiActionRunner.execute(pane::isEditable));
+        assertFalse("「編集を有効化」ボタンは消えること",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
+    public void layoutCommentsAreNotOfferedForRemoval() {
+        // 回帰: 「編集を有効化」が '@pos まで消し、ロック解除と引き換えに全ノードの配置が
+        // リセットされていた。'@pos はコーデックが対応済みとして読むのでロックの原因でもない。
+        String puml = "@startuml\n' メモ\ncomponent App\n'@pos App 120 40\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("除去できるコメントがあるので comment-only lock",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+
+        // '@pos だけを残してコメントを消したテキストで読み直す (実際の除去と同じ結果)。
+        String stripped = puml.replace("' メモ\n", "");
+        GuiActionRunner.execute(() -> pane.loadFrom(stripped));
+        assertTrue("解除されること", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("座標が保たれること (x=120)",
+                GuiActionRunner.execute(pane::currentPuml).contains("'@pos App 120 40"));
+    }
+
+    @Test
+    public void posOnlyLockIsNotAdvertisedAsOneClickFixable() {
+        // '@pos を未対応として扱う図種 (シーケンス図) では、消してはいけないコメントしか
+        // 残らない = 1 クリックで解除できないので「編集を有効化」を出さない
+        // (出すと押しても何も起きないボタンになる)。
+        String puml = "@startuml\nparticipant A\nA -> B : hi\n'@pos A 10 20\n@enduml\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertFalse("編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertFalse("comment-only lock として扱わない",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertFalse("「編集を有効化」を出さない",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+    }
+
+    @Test
+    public void mindmapCommentLockOffersTheEnableEditingButton() {
+        // 回帰: MindmapSketchEditor だけ unsupportedLines() を返しておらず、
+        // コメント 1 行でロックされても「編集を有効化」が出ないまま解除できなかった。
+        String puml = "@startmindmap\n' メモ\n* Root\n** Child\n@endmindmap\n";
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom(puml));
+        assertEquals(SketchDiagramType.MINDMAP, GuiActionRunner.execute(pane::activeTypeForTest));
+        assertFalse("コメント入りは編集ロックされる", GuiActionRunner.execute(pane::isEditable));
+        assertTrue("comment-only lock として認識されること",
+                GuiActionRunner.execute(pane::isCommentOnlyLock));
+        assertTrue("「編集を有効化」が出ること",
+                GuiActionRunner.execute(pane::enableEditingVisibleForTest));
+
+        GuiActionRunner.execute(() -> pane.loadFrom(puml.replace("' メモ\n", "")));
+        assertTrue("解除できること", GuiActionRunner.execute(pane::isEditable));
+    }
+
+    @Test
+    public void firstLoadAlwaysApplies() {
+        // 初回は baseline の初期値と一致しても必ず読み込む (図種判定・カード切替のため)。
+        SketchPane pane = GuiActionRunner.execute(SketchPane::new);
+        GuiActionRunner.execute(() -> pane.loadFrom("@startuml\n@enduml\n"));
+        assertEquals(SketchDiagramType.CLASS, GuiActionRunner.execute(pane::activeTypeForTest));
+    }
+}

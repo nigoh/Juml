@@ -103,15 +103,32 @@ public final class SeqSketchCodec {
         return new ParseResult(model, unsupported);
     }
 
-    /** モデルを PlantUML テキストへ書き出す。 */
+    /**
+     * モデルを PlantUML テキストへ書き出す。
+     *
+     * <p>ライフライン (参加者) の左右の並びは PlantUML が
+     * 「先頭の宣言行の順 → 残りはメッセージ初出順」で決める。宣言行を持つ参加者だけを
+     * 先頭にまとめて出すと、この推論結果がモデルの並び ({@code getParticipants()} =
+     * キャンバスに見えている並び) とずれることがある:</p>
+     * <ul>
+     *   <li>ソース途中の {@code participant C} が先頭へ繰り上がり、それより前に登場していた
+     *       暗黙の参加者を追い越す (往復しただけでライフラインが並び替わる)</li>
+     *   <li>暗黙の参加者だけの図でキャンバス上の並べ替えを行っても、宣言行が 1 つも
+     *       出ないため並びが保存されない (操作が黙って失われる)</li>
+     * </ul>
+     * <p>そこで宣言行だけで推論順がモデル順と一致するかを確かめ、一致しないときに限り
+     * <b>全参加者を明示宣言</b>して並びを固定する。一致する図 (テンプレート・単純な
+     * 暗黙参加者の図) の出力は従来のままなので、余計な宣言行は増えない。</p>
+     */
     public static String toPuml(SeqSketchModel model) {
         StringBuilder sb = new StringBuilder("@startuml");
         if (!model.getDiagramName().isEmpty()) {
             sb.append(' ').append(model.getDiagramName());
         }
         sb.append('\n');
+        boolean pinAll = !declarationOrderMatchesModel(model);
         for (SeqParticipant p : model.getParticipants()) {
-            if (p.isDeclared()) {
+            if (pinAll || p.isDeclared()) {
                 sb.append(p.getKind().keyword()).append(' ').append(p.getName()).append('\n');
             }
         }
@@ -135,5 +152,35 @@ public final class SeqSketchCodec {
         }
         sb.append("@enduml\n");
         return sb.toString();
+    }
+
+    /**
+     * 「宣言行を持つ参加者だけを先頭に出す」書き方で、PlantUML が推論するライフライン順が
+     * モデルの並びと一致するか。一致しないなら全参加者を明示宣言して並びを固定する必要がある。
+     */
+    private static boolean declarationOrderMatchesModel(SeqSketchModel model) {
+        List<String> inferred = new ArrayList<>();
+        for (SeqParticipant p : model.getParticipants()) {
+            if (p.isDeclared()) {
+                inferred.add(p.getName());
+            }
+        }
+        for (SeqItem m : model.getItems()) {
+            addIfAbsent(inferred, m.getKind() == SeqItem.Kind.MESSAGE ? m.getFrom() : m.getTarget());
+            if (m.getKind() == SeqItem.Kind.MESSAGE) {
+                addIfAbsent(inferred, m.getTo());
+            }
+        }
+        List<String> expected = new ArrayList<>();
+        for (SeqParticipant p : model.getParticipants()) {
+            expected.add(p.getName());
+        }
+        return inferred.equals(expected);
+    }
+
+    private static void addIfAbsent(List<String> names, String name) {
+        if (name != null && !names.contains(name)) {
+            names.add(name);
+        }
     }
 }

@@ -7,6 +7,8 @@ import juml.app.uml.PumlTemplate;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * {@link SketchDiagramType#detect(String)} の図種判定を検証する純ロジックテスト。
@@ -259,5 +261,251 @@ public class SketchDiagramTypeTest {
                 SketchDiagramType.detect(PumlTemplate.ER.body()));
         assertEquals(SketchDiagramType.DEPLOYMENT,
                 SketchDiagramType.detect(PumlTemplate.DEPLOYMENT.body()));
+    }
+
+    // --- ブロック本体のメンバー名で図種を誤判定しない ------------------------------
+    //
+    // 回帰: detect() が全行を平坦に走査していたため、ER 図の列名を node/cloud/artifact/
+    // component/usecase にしただけで、保存して開き直すと空で編集ロックされた別図種の
+    // デザイナーが開いていた (列名は自由入力なので普通に起きる)。
+
+    @Test
+    public void erColumnNamedLikeAnotherDiagramKeywordStaysEr() {
+        for (String column : new String[] {"node", "cloud", "artifact", "component", "usecase"}) {
+            String puml = "@startuml\nhide circle\nentity tree {\n  * id : int\n  --\n  "
+                    + column + " : text\n}\n'@pos tree 0 0\n@enduml\n";
+            assertEquals(column + " という列名で図種が変わらないこと",
+                    SketchDiagramType.ER, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
+    public void classMemberNamedLikeAnotherDiagramKeywordStaysClass() {
+        String puml = "@startuml\nclass Tree {\n  node : Node\n  component : Part\n}\n@enduml\n";
+        assertEquals(SketchDiagramType.CLASS, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void topLevelDeclarationsStillDecideTheType() {
+        // 非退行: ブロックの外にある本物の宣言はこれまでどおり効く。
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(
+                "@startuml\nnode Server {\n  database DB\n}\n@enduml\n"));
+        assertEquals(SketchDiagramType.COMPONENT, SketchDiagramType.detect(
+                "@startuml\ncomponent App\ninterface Api\n@enduml\n"));
+    }
+
+    @Test
+    public void layoutCommentIsRecognised() {
+        assertTrue(SketchDiagramType.isLayoutComment("'@pos tree 10 20"));
+        assertTrue(SketchDiagramType.isLayoutComment("  '@pos a1 -5 -6  "));
+        assertFalse(SketchDiagramType.isLayoutComment("' ordinary comment"));
+        assertFalse(SketchDiagramType.isLayoutComment("class A"));
+        assertFalse(SketchDiagramType.isLayoutComment(null));
+    }
+
+    // --- 設計器の出力は必ず自分の設計器へ戻る (往復の固定点) ------------------------
+    //
+    // 回帰: 判定が行の見た目の推測だったため、rectangle/folder/frame をトップに置いた
+    // 配置図がクラス図へ流れ、開き直すと空の編集ロック済み設計器になっていた。
+    // 判定は「実際にそのコーデックが丸ごと読めるか」で裏を取る。
+
+    @Test
+    public void deploymentContainerKindsOpenAnEditableDesigner() {
+        // 回帰: rectangle/folder/frame をトップに置いた配置図がクラス図へ流れ、開き直すと
+        // 空の編集ロック済み設計器になっていた。COMPONENT だけはコンポーネント図と
+        // テキストが完全に同一になるため、どちらの設計器で開いても編集できれば十分。
+        for (DeploySketchModel.DeployNode.Kind kind
+                : DeploySketchModel.DeployNode.Kind.values()) {
+            DeploySketchModel model = new DeploySketchModel();
+            model.getNodes().add(
+                    new DeploySketchModel.DeployNode(kind, "n1", "Outer", 0, 0));
+            String puml = DeploySketchCodec.toPuml(model);
+            SketchDiagramType detected = SketchDiagramType.detect(puml);
+            if (kind == DeploySketchModel.DeployNode.Kind.COMPONENT) {
+                assertTrue(kind + " はコンポーネント図と同一テキストなのでどちらでも可: " + detected,
+                        detected == SketchDiagramType.DEPLOYMENT
+                                || detected == SketchDiagramType.COMPONENT);
+            } else {
+                assertEquals(kind + " の配置図が配置図として判定されること: " + puml,
+                        SketchDiagramType.DEPLOYMENT, detected);
+            }
+        }
+    }
+
+    @Test
+    public void erColumnNamedLikeAnotherKeywordStillOpensTheErDesigner() {
+        // ラウンド2で入れたブロック本体の除外に加え、コーデックによる裏取りでも守る。
+        for (String column : new String[] {"node", "cloud", "artifact", "component", "usecase"}) {
+            String puml = "@startuml\nhide circle\nentity tree {\n  * id : int\n  --\n  "
+                    + column + " : text\n}\n'@pos tree 0 0\n@enduml\n";
+            assertEquals(column + " という列名でも ER のまま",
+                    SketchDiagramType.ER, SketchDiagramType.detect(puml));
+            assertTrue("ER コーデックが丸ごと読めること",
+                    ErSketchCodec.parse(puml).isFullySupported());
+        }
+    }
+
+    @Test
+    public void bracesInsideCommentsAndLabelsDoNotHideTheDiagram() {
+        // 波括弧のカウントはコメントや引用ラベルの中まで数えてしまう。コーデックによる
+        // 裏取りがあるので、それでも正しい設計器が開くこと。
+        String puml = "@startuml\n' 参考 { メモ\ncomponent \"App {Prod}\" as c1\n"
+                + "interface Api\nc1 --> Api\n@enduml\n";
+        assertEquals(SketchDiagramType.COMPONENT, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void proseInsideNotesIsNotReadAsDeclarations() {
+        // 回帰: note / legend / title の本文と /' ... '/ は利用者が書いた散文であって
+        // 宣言ではない。素通ししていたため、note に「node Server」と 1 行書いただけで
+        // 配置図と判定され、空で編集ロックされた配置図デザイナーが開いていた。
+        String erWithNote = "@startuml\nentity A {\n  id : int\n}\n"
+                + "note right of A\n  node Server に配置する\nend note\n@enduml\n";
+        assertEquals("note 本文の node で配置図にしない",
+                SketchDiagramType.ER, SketchDiagramType.detect(erWithNote));
+
+        String classWithLegend = "@startuml\nclass A\nlegend\n  node Server\nendlegend\n@enduml\n";
+        assertEquals("legend 本文の node で配置図にしない",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(classWithLegend));
+
+        String classWithBlockComment = "@startuml\nclass A\n/'\n node Server\n'/\n@enduml\n";
+        assertEquals("ブロックコメント本文の node で配置図にしない",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(classWithBlockComment));
+    }
+
+    @Test
+    public void colouredFloatingNoteDoesNotSwallowTheRestOfTheFile() {
+        // 回帰: 浮動ノートの 1 行判定が行末で切れていたため、色を付けた
+        // note "..." as N1 #pink がブロック開始と誤解され、end note が来ないまま
+        // ファイル末尾まで全行が捨てられて、どんな図もクラス図と判定されていた。
+        String state = "@startuml\nnote \"draft\" as N1 #pink\nstate Idle\nstate Busy\n"
+                + "[*] --> Idle\nIdle --> Busy\n@enduml\n";
+        assertEquals("色付き浮動ノートで図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(state));
+
+        String plain = "@startuml\nnote \"draft\" as N1\nstate Idle\n[*] --> Idle\n@enduml\n";
+        assertEquals("色の無い浮動ノートも従来どおり",
+                SketchDiagramType.STATE, SketchDiagramType.detect(plain));
+    }
+
+    @Test
+    public void memberLevelNoteBlockBodyIsStillTreatedAsProse() {
+        // 回帰: 1 行ノートの判定が Foo::doWork の :: を本文の区切りと数えたため、
+        // メンバー宛ノートの<b>ブロック開始</b>が「1 行ノート」に見え、本文の散文が
+        // マスクされず宣言として読まれていた (JavaDoc をそのまま note へ入れる図で頻出)。
+        String block = "@startuml\nclass Foo {\n +doWork()\n}\nnote right of Foo::doWork\n"
+                + "  node Server on which it runs\nend note\n@enduml\n";
+        assertEquals("メンバー宛ノートの本文で配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(block));
+
+        String oneLine = "@startuml\nclass Foo\n"
+                + "note right of Foo::doWork : runs on node Server\n@enduml\n";
+        assertEquals("コロン形式の 1 行ノートは従来どおり本文ごと除くこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(oneLine));
+    }
+
+    @Test
+    public void alignmentPrefixedHeaderAndFooterBlocksAreProse() {
+        // 回帰: legend / title / header / footer は配置語を前に置ける (center footer)。
+        // 前置きを見落としてブロック開始と認識できず、本文の散文が宣言として読まれ、
+        // クラス図が配置図・オブジェクト図の設計器で開いていた。
+        String footer = "@startuml\nclass Foo\ncenter footer\nnode Server 2026\n"
+                + "endfooter\n@enduml\n";
+        assertEquals("center footer の本文で配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(footer));
+
+        String header = "@startuml\nclass Foo\nleft header\nobject storage report\n"
+                + "endheader\n@enduml\n";
+        assertEquals("left header の本文でオブジェクト図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(header));
+    }
+
+    @Test
+    public void noteTargetQuotedNameMayContainAColon() {
+        // 回帰: 引用名の中のコロンを本文の区切りと数えたため、
+        // note over "Alice: boss" が「1 行ノート」に見え、ブロック本文が宣言として読まれた。
+        String puml = "@startuml\nparticipant \"Alice: boss\" as A\nA -> A : x\n"
+                + "note over \"Alice: boss\"\n node Server\nend note\n@enduml\n";
+        assertEquals("引用名のコロンで図種を取り違えないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void participantNamedNoteDoesNotSwallowTheFile() {
+        // 回帰: note を綴りだけで判定していたため、Note という名前の参加者への関連
+        // (Note --> Alice) がノートの開始に見え、end note が来ないままファイル末尾まで
+        // 全行が捨てられていた。位置語が続く形だけをノートの開始として受理する。
+        String puml = "@startuml\nNote --> Alice\nactivate Alice\n@enduml\n";
+        assertEquals("Note という名前の参加者で図種を見失わないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void realNoteBlockFormsAreStillTreatedAsProse() {
+        // 非退行: ノート開始の受理を絞ったので、本物のブロック開始が漏れないこと。
+        for (String head : new String[] {"note over Foo", "note left of Foo",
+                                         "note right of Foo", "note as N1", "note", "note #pink"}) {
+            String puml = "@startuml\nclass Foo\n" + head + "\n node Server\n"
+                    + "end note\n@enduml\n";
+            assertEquals(head + " の本文は散文として扱うこと",
+                    SketchDiagramType.CLASS, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
+    public void plantUmlsOwnReadingOverrulesTheLineScan() {
+        // 回帰: 行走査は自由記述や綴りを共有する識別子で誤判定する。塞いでも別の形が
+        // 出てくる (note across / note on link / Legend --> Done / Title --> Footer) ので、
+        // 正規表現を完璧にすることを当てにせず、PlantUML 自身の解釈で裏を取る。
+        String noteAcross = "@startuml\nAlice -> Bob : start()\nnote across\n"
+                + "node names are written to the log\nend note\nBob -> Alice : ok\n@enduml\n";
+        assertEquals("note across のシーケンス図を配置図にしないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(noteAcross));
+
+        String noteOnLink = "@startuml\nclass A\nclass B\nA --> B\nnote on link\n"
+                + "node names are written to the log\nend note\n@enduml\n";
+        assertEquals("note on link のクラス図を配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(noteOnLink));
+
+        String namedLegend = "@startuml\nLegend --> Done\nDone --> [*]\n@enduml\n";
+        assertEquals("Legend という名前の要素で図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(namedLegend));
+
+        String namedTitle = "@startuml\nTitle --> Footer\nFooter --> [*]\n@enduml\n";
+        assertEquals("Title / Footer という名前の要素で図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(namedTitle));
+    }
+
+    @Test
+    public void everyDesignersOwnOutputStillRoundTripsToItself() {
+        // 非退行の要: PlantUML の解釈による裏取りを入れても、10 設計器それぞれの
+        // 代表的な出力が自分の設計器へ戻ること (クラス/オブジェクト/ER は PlantUML から
+        // 見ればどれも ClassDiagram、ユースケース/コンポーネント/配置はどれも
+        // DescriptionDiagram なので、裏取りが乱暴だとここで潰れる)。
+        Object[][] cases = {
+            {SketchDiagramType.CLASS, "@startuml\nclass A\nclass B\nA --> B\n@enduml\n"},
+            {SketchDiagramType.SEQUENCE, "@startuml\nAlice -> Bob : hi\n@enduml\n"},
+            {SketchDiagramType.ACTIVITY, "@startuml\nstart\n:do it;\nstop\n@enduml\n"},
+            {SketchDiagramType.STATE, "@startuml\nstate Idle\n[*] --> Idle\n@enduml\n"},
+            {SketchDiagramType.USECASE, "@startuml\nactor U\nusecase UC1\nU --> UC1\n@enduml\n"},
+            {SketchDiagramType.COMPONENT,
+                "@startuml\ncomponent C\ninterface I\nC --> I\n@enduml\n"},
+            {SketchDiagramType.OBJECT, "@startuml\nobject O1\nobject O2\nO1 --> O2\n@enduml\n"},
+            {SketchDiagramType.ER, "@startuml\nhide circle\nentity A {\n id : int\n}\n@enduml\n"},
+            {SketchDiagramType.DEPLOYMENT, "@startuml\nnode N\nartifact A\nN --> A\n@enduml\n"},
+            {SketchDiagramType.MINDMAP, "@startmindmap\n* Root\n** Child\n@endmindmap\n"},
+        };
+        for (Object[] c : cases) {
+            assertEquals(c[0] + " の出力は自分の設計器へ戻ること",
+                    c[0], SketchDiagramType.detect((String) c[1]));
+        }
+    }
+
+    @Test
+    public void unparsableTextStillPicksADesignerToShowLocked() {
+        // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
+        String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"
+                + "!include foo.puml\n@enduml\n";
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(puml));
     }
 }
