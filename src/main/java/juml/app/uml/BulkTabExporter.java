@@ -116,6 +116,17 @@ final class BulkTabExporter {
         if (outDir == null) {
             return;
         }
+        // DIRECTORIES_ONLY のチューザは「まだ無いフォルダ名を打ち込んで保存」を
+        // そのまま承認する (新しい出力先を作る普通の手順)。作らずに進むと全タブが
+        // 「保存先が無い」で失敗し、完了ダイアログにタブ数ぶんの失敗行が並ぶだけで、
+        // 本当の原因 (フォルダが無い) はどこにも出ない。ここで作る
+        // (利用者がチューザで明示的に名前を決めているので、打ち間違いの黙殺ではない)。
+        if (!outDir.isDirectory() && !outDir.mkdirs()) {
+            JOptionPane.showMessageDialog(parent,
+                    Messages.get("export.allTabs.cannotCreateDir") + outDir.getPath(),
+                    Messages.get("export.allTabs.chooseDir"), JOptionPane.ERROR_MESSAGE);
+            return;
+        }
         UmlExporter.Format fmt;
         switch (fmtCombo.getSelectedIndex()) {
             case 0:  fmt = UmlExporter.Format.SVG; break;

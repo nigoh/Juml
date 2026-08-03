@@ -272,6 +272,34 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
         }
     }
 
+    @Test
+    public void symlinkedRootIsWalkedByTheJavaScanTooSoBothHalvesAgree() throws Exception {
+        // 回帰: res/xml 側だけルートを実体へ解決すると、--settings は結果を返すのに
+        // 同じプロジェクトのクラス図は空、という食い違いが起きる。両方が同じ規律で
+        // 動くことを固定する。
+        File real = tmp.newFolder("agree-real");
+        writePrefXml(new File(real, "app/src/main/res/xml"), "prefs", "main_key");
+        writeJava(new File(real, "app/src/main/java/p"), "MainActivity");
+        File link = new File(tmp.getRoot(), "agree-link");
+        try {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), real.toPath());
+        } catch (UnsupportedOperationException | java.io.IOException noSymlink) {
+            return;
+        }
+
+        var opts = new juml.core.formats.java.AndroidProjectScanner.Options();
+        int javaViaReal = juml.core.formats.java.AndroidProjectScanner.scan(real, opts).size();
+        int javaViaLink = juml.core.formats.java.AndroidProjectScanner.scan(link, opts).size();
+        assertTrue("実体経由では Java ソースが見つかる前提", javaViaReal > 0);
+        assertEquals("リンク経由でも同じ数の Java ソースを見つけること",
+                javaViaReal, javaViaLink);
+
+        var parser = new juml.core.formats.android.settings.PreferencesXmlParser();
+        assertEquals("設定側とクラス図側が同じプロジェクトについて食い違わないこと",
+                keysOf(parser.analyzeProject(real, false)),
+                keysOf(parser.analyzeProject(link, false)));
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();

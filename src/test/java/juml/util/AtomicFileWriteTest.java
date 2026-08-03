@@ -240,6 +240,28 @@ public class AtomicFileWriteTest {
     }
 
     @Test
+    public void failureMessagesNameTheTargetNotTheTempFile() throws IOException {
+        // 回帰: 保存先ディレクトリに初めて触れるのが一時ファイルの作成なので、
+        // 「フォルダが無い」「フォルダに書けない」という最も普通の失敗を JDK が
+        // 一時パスの名前で報告していた。呼び出し側はその文言をそのままダイアログへ
+        // 出すため、利用者は選んだ覚えのない隠しファイル名 (しかも表示時には既に
+        // 消えている) を見せられていた。
+        File missingDir = new File(tmp.getRoot(), "no-such-dir");
+        File target = new File(missingDir, "MyDiagram.svg");
+        try {
+            AtomicFileWrite.write(target, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+            fail("保存先が無ければ失敗するべき");
+        } catch (IOException expected) {
+            String msg = String.valueOf(expected.getMessage());
+            assertTrue("利用者が選んだパスを名乗ること: " + msg,
+                    msg.contains("MyDiagram.svg"));
+            assertTrue("一時ファイル名を出さないこと: " + msg, !msg.contains(".juml-"));
+            assertTrue("種類を保つこと: " + expected,
+                    expected instanceof java.nio.file.NoSuchFileException);
+        }
+    }
+
+    @Test
     public void missingParentDirectoryFailsWithoutCreatingIt() throws IOException {
         // 保存先ディレクトリを勝手に作らない (打ち間違えたパスへ黙って書かない)。
         File dir = new File(tmp.getRoot(), "no-such-dir");

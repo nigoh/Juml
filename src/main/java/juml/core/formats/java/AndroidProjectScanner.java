@@ -127,9 +127,22 @@ public final class AndroidProjectScanner {
             }
             return result;
         }
-        walk(root.toPath(), o, result);
+        // ルートがシンボリックリンクだと、リンクを辿らない走査は「ルートをファイルとして
+        // 1 件訪問して終わり」になり、結果が黙って空になる (~/work -> /mnt/src/work の
+        // ような貼り方は普通)。res/xml 側だけ直すと --settings とクラス図が同じ
+        // プロジェクトについて食い違うので、ここも同じ規律で実体へ解決する。
+        walk(realPathOf(root), o, result);
         Collections.sort(result);
         return result;
+    }
+
+    /** シンボリックリンクなら実体へ解決する (解決できなければ元のパスのまま)。 */
+    private static Path realPathOf(File dir) {
+        try {
+            return dir.toPath().toRealPath();
+        } catch (IOException unresolvable) {
+            return dir.toPath();
+        }
     }
 
     private static void walk(Path rootPath, Options opts, List<File> result) {

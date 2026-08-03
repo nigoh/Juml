@@ -165,4 +165,22 @@ public class BulkTabExporterTest {
         assertEquals(1, r.failures.size());
         assertTrue("失敗一覧にラベルが含まれる", r.failures.get(0).startsWith("Bad:"));
     }
+
+    @Test
+    public void exportAll_missingOutputDirectory_failsWithTheChosenPathNotATempName() {
+        // 回帰: DIRECTORIES_ONLY のチューザは「まだ無いフォルダ名を打ち込んで保存」を
+        // 承認する。作らずに進むと全タブが失敗し、完了ダイアログにはタブ数ぶんの
+        // 隠し一時ファイル名が並ぶだけで、本当の原因 (フォルダが無い) が出なかった。
+        // 呼び出し側 (choose) がフォルダを作るようにしたが、万一届かなかった場合でも
+        // 失敗メッセージは利用者が選んだ名前を指すこと。
+        File missing = new File(tmp.getRoot(), "not-created-yet");
+        BulkTabExporter.Result r = run(List.of(tab("Alpha", OK_PUML)),
+                missing, UmlExporter.Format.SVG);
+
+        assertEquals(0, r.exported);
+        assertEquals(1, r.failures.size());
+        String failure = r.failures.get(0);
+        assertTrue("利用者が選んだ名前を指すこと: " + failure, failure.contains("Alpha.svg"));
+        assertTrue("一時ファイル名を出さないこと: " + failure, !failure.contains(".juml-"));
+    }
 }

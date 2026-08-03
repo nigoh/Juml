@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -80,7 +81,26 @@ public final class AtomicFileWrite {
             throw new java.nio.file.AccessDeniedException(targetPath.toString(), null,
                     "target file is not writable");
         }
-        Path tmp = createTempIn(dir, targetPath.getFileName().toString());
+        // 置換は rename(2) なので、対象ファイルが書けても<b>ディレクトリ</b>が書けなければ
+        // 保存できない (対象を直接開いていた頃は書けた)。原子性を捨てて直接書けば
+        // 途中失敗で対象を壊す危険が戻るので、失敗させたうえで<b>本当の原因</b>を告げる。
+        // これが無いと利用者は「対象ファイルには書けるのに保存できない」理由を掴めない。
+        if (Files.exists(dir) && !Files.isWritable(dir)) {
+            throw new java.nio.file.AccessDeniedException(targetPath.toString(), null,
+                    "output directory is not writable: " + dir);
+        }
+        Path tmp;
+        try {
+            tmp = createTempIn(dir, targetPath.getFileName().toString());
+        } catch (FileSystemException ex) {
+            // 一時ファイルの作成が、保存先ディレクトリに初めて触れる操作になる。
+            // つまり「フォルダに書けない」「フォルダが無い」という最も普通の失敗が、
+            // JDK の既定では<b>一時パス</b>を名乗って報告される。呼び出し側はこの文言を
+            // そのままダイアログへ出すので、利用者は選んだ覚えのない隠しファイル名
+            // (しかも表示時には既に消えている) を見せられることになる。
+            // 対象ファイルの名前で報告し直す。
+            throw named(ex, targetPath);
+        }
         boolean moved = false;
         try {
             body.writeTo(tmp.toFile());
@@ -96,6 +116,27 @@ public final class AtomicFileWrite {
                 }
             }
         }
+    }
+
+    /**
+     * 一時ファイル側の失敗を、利用者が指定した保存先の名前で言い直す。
+     *
+     * <p>種類 ({@code AccessDeniedException} / {@code NoSuchFileException} …) は
+     * 変えない。呼び出し側が種類で分岐する余地を残しつつ、パスだけ差し替える。</p>
+     */
+    private static FileSystemException named(FileSystemException ex, Path target) {
+        FileSystemException renamed;
+        if (ex instanceof java.nio.file.AccessDeniedException) {
+            renamed = new java.nio.file.AccessDeniedException(
+                    target.toString(), null, ex.getReason());
+        } else if (ex instanceof java.nio.file.NoSuchFileException) {
+            renamed = new java.nio.file.NoSuchFileException(
+                    target.toString(), null, ex.getReason());
+        } else {
+            renamed = new FileSystemException(target.toString(), null, ex.getReason());
+        }
+        renamed.initCause(ex);
+        return renamed;
     }
 
     /**
