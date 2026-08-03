@@ -27,11 +27,13 @@ public final class UseCaseSketchCodec {
     private static final Pattern ACTOR_DECL = Pattern.compile(
             "^actor\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern ACTOR_ALIAS = Pattern.compile(
-            "^actor\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^actor\\s+" + SketchLabelText.QUOTED_LABEL
+                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern USECASE_DECL = Pattern.compile(
             "^usecase\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern USECASE_ALIAS = Pattern.compile(
-            "^usecase\\s+\"([^\"]*)\"\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^usecase\\s+" + SketchLabelText.QUOTED_LABEL
+                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
     private static final Pattern RELATION = Pattern.compile(
             "^([A-Za-z_$][\\w$]*)\\s*(-->|\\.\\.>|--\\|>)\\s*"
                     + "([A-Za-z_$][\\w$]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
@@ -116,7 +118,8 @@ public final class UseCaseSketchCodec {
     private static boolean matchDeclaration(UseCaseSketchModel model, String line) {
         Matcher aa = ACTOR_ALIAS.matcher(line);
         if (aa.matches()) {
-            obtain(model, UseCaseNode.Kind.ACTOR, aa.group(2), aa.group(1));
+            obtain(model, UseCaseNode.Kind.ACTOR, aa.group(2),
+                    SketchLabelText.fromCaptured(aa.group(1)));
             return true;
         }
         Matcher ad = ACTOR_DECL.matcher(line);
@@ -126,7 +129,8 @@ public final class UseCaseSketchCodec {
         }
         Matcher ua = USECASE_ALIAS.matcher(line);
         if (ua.matches()) {
-            obtain(model, UseCaseNode.Kind.USECASE, ua.group(2), ua.group(1));
+            obtain(model, UseCaseNode.Kind.USECASE, ua.group(2),
+                    SketchLabelText.fromCaptured(ua.group(1)));
             return true;
         }
         Matcher ud = USECASE_DECL.matcher(line);
@@ -190,7 +194,8 @@ public final class UseCaseSketchCodec {
             sb.append(n.getKind().keyword()).append(' ');
             if (n.getLabel() != null && !n.getLabel().isEmpty()
                     && !n.getLabel().equals(n.getId())) {
-                sb.append('"').append(n.getLabel()).append("\" as ").append(n.getId());
+                sb.append('"').append(SketchLabelText.forOutput(n.getLabel()))
+                        .append("\" as ").append(n.getId());
             } else {
                 sb.append(n.getId());
             }

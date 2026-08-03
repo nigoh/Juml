@@ -98,6 +98,22 @@ public enum SketchDiagramType {
      * 断定でき、{@code database} / {@code actor} のような共有キーワードの持ち主を絞り込める。
      */
     private static final Pattern POS_COMMENT = Pattern.compile("^'@pos\\s+\\S+\\s+-?\\d+\\s+-?\\d+\\s*$");
+    /**
+     * デザイナーが出したレイアウトコメント {@code '@pos <id> <x> <y>} か。
+     *
+     * <p>「編集を有効化」のコメント除去はこの行を対象外にする (消すと全ノードの配置が
+     * リセットされる)。除去できないコメントが残る図は comment-only lock ではない。</p>
+     */
+    public static boolean isLayoutComment(String line) {
+        return line != null && POS_COMMENT.matcher(line.trim()).matches();
+    }
+
+    /** 「編集を有効化」で取り除いてよいコメント行か (レイアウトコメントは残す)。 */
+    public static boolean isRemovableComment(String line) {
+        String t = line == null ? "" : line.strip();
+        return t.startsWith("'") && !isLayoutComment(t);
+    }
+
     /** 配置図が出す {@code database} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
     private static final Pattern DATABASE_LINE = Pattern.compile("^database\\b.*$");
     /** ユースケース図が出す {@code actor} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
@@ -116,9 +132,229 @@ public enum SketchDiagramType {
                     + "|alt\\b.*|opt\\b.*|loop\\b.*|par\\b.*|group\\b.*"
                     + "|[A-Za-z_$][\\w$.]*\\s*(->>?|-->>)\\s*[A-Za-z_$].*)$");
 
-    /** PlantUML テキストから図種を判定する。 */
+    /**
+     * ブロック本体 ({@code entity X { ... }} / {@code class A { ... }} の中身) を落として
+     * 「トップレベル宣言だけ」を返す。
+     *
+     * <p>本体の行はメンバー名であって宣言ではない。素通しすると、たとえば ER 図の列名を
+     * {@code node} にしただけで {@code DEPLOYMENT_LINE} に一致し、保存して開き直した瞬間に
+     * <b>空で編集ロックされた配置図デザイナー</b>が出る (列名は自由入力なので普通に起きる)。
+     * PlantUML 側の判定 ({@code PumlDiagramScan}) にも同じ穴があり、そちらは自由記述の
+     * 除外で塞いだ。ここはブロック本体の除外で塞ぐ。</p>
+     */
+    private static String[] topLevelLines(String[] lines) {
+        // note / legend / title / header の本文と /' ... '/ は利用者が書いた散文であって
+        // 宣言ではない。素通しすると、note に「node Server」と 1 行書いた ER 図が
+        // 配置図と判定され、空で編集ロックされた配置図デザイナーが開く。
+        // PlantUML 側の判定と同じマスクを共有する (片方だけ直すと再発するため)。
+        boolean[] isCode = juml.core.formats.uml.PumlDiagramScan.codeLineMask(lines);
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int depth = 0;
+        for (int i = 0; i < lines.length; i++) {
+            // Juml 自身が出す座標コメント ('@pos …) は PlantUML にはコメントでも、
+            // 設計器にとっては構造の一部 (どの設計器が書いた図かを示す)。落とすと
+            // 「actor 1 つだけのユースケース図」がシーケンス図へ流れる。
+            if (!isCode[i] && !isLayoutComment(lines[i])) {
+                continue;
+            }
+            if (depth == 0) {
+                out.add(lines[i]);
+            }
+            depth = updateDepth(lines[i].trim(), depth);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /**
+     * 行内の波括弧で深さを更新する (宣言行の末尾 {@code &#123;} はその行を宣言として残す)。
+     *
+     * <p>コメント ({@code '} 以降) と引用ラベルの中の波括弧は数えない。数えてしまうと
+     * コメントに波括弧を 1 つ書いただけで以降の全行が判定から消え、図種を見失う。</p>
+     */
+    private static int updateDepth(String line, int depth) {
+        int d = depth;
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (inQuotes) {
+                continue;
+            } else if (c == '\'') {
+                break; // 行コメント。以降は本文ではない。
+            } else if (c == '{') {
+                d++;
+            } else if (c == '}' && d > 0) {
+                d--;
+            }
+        }
+        return d;
+    }
+
+    /**
+     * そのコーデックがこのテキストを<b>丸ごと</b>扱えるか (未対応行ゼロか)。
+     *
+     * <p>コーデックは自分が読める構文を正確に知っている。行の見た目を正規表現で
+     * 推測するより確実で、しかも設計器の出力は必ず自分のコーデックで往復できるため、
+     * 「保存 → 開き直すと別の設計器が開く」という事故が原理的に起きない。</p>
+     */
+    private static boolean fullySupportedBy(SketchDiagramType type, String text) {
+        try {
+            switch (type) {
+                case CLASS:      return SketchPumlCodec.parse(text).isFullySupported();
+                case SEQUENCE:   return SeqSketchCodec.parse(text).isFullySupported();
+                case ACTIVITY:   return ActivitySketchCodec.parse(text).isFullySupported();
+                case STATE:      return StateSketchCodec.parse(text).isFullySupported();
+                case USECASE:    return UseCaseSketchCodec.parse(text).isFullySupported();
+                case COMPONENT:  return ComponentSketchCodec.parse(text).isFullySupported();
+                case OBJECT:     return ObjectSketchCodec.parse(text).isFullySupported();
+                case ER:         return ErSketchCodec.parse(text).isFullySupported();
+                case DEPLOYMENT: return DeploySketchCodec.parse(text).isFullySupported();
+                case MINDMAP:    return MindmapSketchCodec.parse(text).isFullySupported();
+                default:         return false;
+            }
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
+
+    /**
+     * そのコーデックがこのテキストから<b>要素を 1 つも作れなかった</b>か。
+     *
+     * <p>「未対応行があって編集ロック」と「そもそも自分の図ではない」を区別するために使う。
+     * 前者はその設計器で開くのが正しい (利用者はロック解除できる) が、後者は
+     * <b>空の設計器</b>が開いて図に一切触れなくなる。後者のときだけ他コーデックを探す。</p>
+     */
+    private static boolean recognisedNothing(SketchDiagramType type, String text) {
+        try {
+            switch (type) {
+                case CLASS:      return SketchPumlCodec.parse(text).model.getClasses().isEmpty();
+                case SEQUENCE:   return SeqSketchCodec.parse(text).model.getParticipants().isEmpty();
+                case ACTIVITY:   return ActivitySketchCodec.parse(text).model.getNodes().isEmpty();
+                case STATE:      return StateSketchCodec.parse(text).model.getStates().isEmpty();
+                case USECASE:    return UseCaseSketchCodec.parse(text).model.getNodes().isEmpty();
+                case COMPONENT:  return ComponentSketchCodec.parse(text).model.getNodes().isEmpty();
+                case OBJECT:     return ObjectSketchCodec.parse(text).model.getObjects().isEmpty();
+                case ER:         return ErSketchCodec.parse(text).model.getEntities().isEmpty();
+                case DEPLOYMENT: return DeploySketchCodec.parse(text).model.getNodes().isEmpty();
+                case MINDMAP:    return MindmapSketchCodec.parse(text).model.getRoot() == null;
+                default:         return true;
+            }
+        } catch (RuntimeException ex) {
+            return true;
+        }
+    }
+
+    /**
+     * 「完全に扱えるコーデック」を探す順序。
+     *
+     * <p>空図のようにどれでも扱えるテキストがあるので順序は必要だが、下の行走査より
+     * ずっと安定している。マインドマップは開始ディレクティブが違うので最優先、
+     * 続いて固有構文を持つものから並べ、最後に受理範囲の広いクラス図を置く。</p>
+     */
+    private static final SketchDiagramType[] SUPPORT_PROBE_ORDER = {
+        MINDMAP, ER, DEPLOYMENT, USECASE, COMPONENT, OBJECT, STATE, ACTIVITY, SEQUENCE, CLASS,
+    };
+
+    /**
+     * PlantUML テキストから図種を判定する。
+     *
+     * <p>まず<b>各コーデックに実際に読ませて</b>、丸ごと扱えるものがあればそれを採る。
+     * どれも扱えないテキスト (手書きの未対応構文など) だけ、下の行走査で
+     * 「どの設計器を表示ロックで見せるか」を決める。行走査は綴りが同じだけの識別子で
+     * 誤判定しやすく (列名を {@code node} にした ER 図が配置図になる等)、監査で何度も
+     * 実害が出たため、判定の主役から降ろしてある。</p>
+     */
     public static SketchDiagramType detect(String text) {
-        String[] lines = (text == null ? "" : text).split("\n", -1);
+        String source = text == null ? "" : text;
+        SketchDiagramType scanned = detectByScanning(source);
+        // 走査の答えが実際に成り立つなら、それを採る (曖昧なテキストの優先順位は
+        // 走査側で丁寧に決めてあるので、能力だけで上書きしない)。
+        if (fullySupportedBy(scanned, source)) {
+            // コーデックが丸ごと読めたなら、そのまま採る。ここで PlantUML の読みを
+            // 被せてはいけない: PlantUML は曖昧な断片を既定でシーケンス図と読むので、
+            // 素の "A --> B" だけのクラス図がシーケンス図に化ける。
+            return scanned;
+        }
+        // 走査の答えでも要素が 1 つは取れているなら、それは「未対応行があってロック」であって
+        // 図種違いではない。利用者はロックを解除できるので、そのまま見せる。
+        if (!recognisedNothing(scanned, source)) {
+            return parserCheckedFallback(source, scanned);
+        }
+        // 走査の答えが何も認識できなかったときだけ、実際に丸ごと扱えるコーデックを探す。
+        // ここが効くのは「ER の列名が node」のように、綴りを共有する識別子で走査が別図種へ
+        // 飛んだとき。何もしないと空の編集ロック済み設計器が開いて図に触れなくなる。
+        for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
+            if (fullySupportedBy(candidate, source)) {
+                return candidate;
+            }
+        }
+        // どのコーデックも扱えないテキスト (手書きの未対応構文) は走査の答えのまま
+        // 表示ロックで見せる。ただしその一手前に PlantUML 自身の解釈で裏を取る:
+        // ここまで来た時点で「どのコーデックも読めず、走査も要素を 1 つも認識できていない」
+        // ので、走査の答えを信じる根拠が無い。
+        return parserCheckedFallback(source, scanned);
+    }
+
+    /**
+     * PlantUML 自身の解釈が許す設計器 (実機で各設計器の出力を解析して確定した対応)。
+     *
+     * <p>クラス図・オブジェクト図・ER 図は PlantUML から見ればどれも {@code ClassDiagram}、
+     * ユースケース図・コンポーネント図・配置図はどれも {@code DescriptionDiagram} なので、
+     * この対応だけでは設計器を 1 つに決められない。決められるのは<b>明らかな間違いの否定</b>で、
+     * それがここでの役目。</p>
+     */
+    private static final java.util.Map<String, java.util.Set<SketchDiagramType>> PARSED_KIND_TYPES =
+            java.util.Map.of(
+                "SequenceDiagram", java.util.Set.of(SEQUENCE),
+                "ActivityDiagram3", java.util.Set.of(ACTIVITY),
+                "StateDiagram", java.util.Set.of(STATE),
+                "MindMapDiagram", java.util.Set.of(MINDMAP),
+                "ClassDiagram", java.util.Set.of(CLASS, OBJECT, ER),
+                "DescriptionDiagram", java.util.Set.of(USECASE, COMPONENT, DEPLOYMENT));
+
+    /** 解釈が許す設計器のうち、どれとも決められないときに出す代表。 */
+    private static final java.util.Map<String, SketchDiagramType> PARSED_KIND_FALLBACK =
+            java.util.Map.of(
+                "SequenceDiagram", SEQUENCE,
+                "ActivityDiagram3", ACTIVITY,
+                "StateDiagram", STATE,
+                "MindMapDiagram", MINDMAP,
+                "ClassDiagram", CLASS,
+                "DescriptionDiagram", COMPONENT);
+
+    /**
+     * 最後の手段として、行走査の答えを PlantUML 自身の解釈で裏取りする。
+     *
+     * <p>行走査は自由記述や綴りを共有する識別子で誤判定する。塞いでも塞いでも別の形が
+     * 出てくる ({@code note across} / {@code Legend --> Done} / {@code Title --> Footer} …)
+     * ので、<b>正規表現を完璧にすることを当てにしない</b>。PlantUML が「これはシーケンス図だ」
+     * と言っているのに走査が配置図と答えたなら、走査の方が間違っている。</p>
+     *
+     * <p>ただし効かせるのは<b>コーデックが丸ごとは読めなかったとき</b>だけ。読めたものに
+     * まで被せると逆効果になる: PlantUML は曖昧な断片 (素の {@code A --> B} など) を
+     * 既定でシーケンス図と読むため、クラス図がシーケンス図に化ける。裏取りが意味を持つのは
+     * 「コーデックの答えが当てにならない」と分かっている場面に限られる。</p>
+     */
+    private static SketchDiagramType parserCheckedFallback(String source,
+                                                           SketchDiagramType guess) {
+        String kind = juml.core.formats.uml.PumlDiagramScan.parsedKind(source);
+        java.util.Set<SketchDiagramType> allowed = PARSED_KIND_TYPES.get(kind);
+        if (allowed == null || allowed.contains(guess)) {
+            // 解釈できない図 (構文エラー・未対応記法) は走査の答えのまま扱う。
+            return guess;
+        }
+        for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
+            if (allowed.contains(candidate) && fullySupportedBy(candidate, source)) {
+                return candidate;
+            }
+        }
+        return PARSED_KIND_FALLBACK.get(kind);
+    }
+
+    /** どのコーデックも完全には扱えないテキスト向けの行走査 (表示ロックする設計器を選ぶ)。 */
+    private static SketchDiagramType detectByScanning(String text) {
+        String[] lines = topLevelLines((text == null ? "" : text).split("\n", -1));
         // @startmindmap で始まる図はマインドマップと確定する (@startuml 前提の他図種と衝突なし)。
         for (String raw : lines) {
             if (raw.trim().startsWith("@startmindmap")) {
