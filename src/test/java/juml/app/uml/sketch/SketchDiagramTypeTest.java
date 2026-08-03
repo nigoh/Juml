@@ -405,6 +405,54 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void alignmentPrefixedHeaderAndFooterBlocksAreProse() {
+        // 回帰: legend / title / header / footer は配置語を前に置ける (center footer)。
+        // 前置きを見落としてブロック開始と認識できず、本文の散文が宣言として読まれ、
+        // クラス図が配置図・オブジェクト図の設計器で開いていた。
+        String footer = "@startuml\nclass Foo\ncenter footer\nnode Server 2026\n"
+                + "endfooter\n@enduml\n";
+        assertEquals("center footer の本文で配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(footer));
+
+        String header = "@startuml\nclass Foo\nleft header\nobject storage report\n"
+                + "endheader\n@enduml\n";
+        assertEquals("left header の本文でオブジェクト図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(header));
+    }
+
+    @Test
+    public void noteTargetQuotedNameMayContainAColon() {
+        // 回帰: 引用名の中のコロンを本文の区切りと数えたため、
+        // note over "Alice: boss" が「1 行ノート」に見え、ブロック本文が宣言として読まれた。
+        String puml = "@startuml\nparticipant \"Alice: boss\" as A\nA -> A : x\n"
+                + "note over \"Alice: boss\"\n node Server\nend note\n@enduml\n";
+        assertEquals("引用名のコロンで図種を取り違えないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void participantNamedNoteDoesNotSwallowTheFile() {
+        // 回帰: note を綴りだけで判定していたため、Note という名前の参加者への関連
+        // (Note --> Alice) がノートの開始に見え、end note が来ないままファイル末尾まで
+        // 全行が捨てられていた。位置語が続く形だけをノートの開始として受理する。
+        String puml = "@startuml\nNote --> Alice\nactivate Alice\n@enduml\n";
+        assertEquals("Note という名前の参加者で図種を見失わないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void realNoteBlockFormsAreStillTreatedAsProse() {
+        // 非退行: ノート開始の受理を絞ったので、本物のブロック開始が漏れないこと。
+        for (String head : new String[] {"note over Foo", "note left of Foo",
+                                         "note right of Foo", "note as N1", "note", "note #pink"}) {
+            String puml = "@startuml\nclass Foo\n" + head + "\n node Server\n"
+                    + "end note\n@enduml\n";
+            assertEquals(head + " の本文は散文として扱うこと",
+                    SketchDiagramType.CLASS, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"
