@@ -119,13 +119,20 @@ final class PumlEditorSupport {
                 .replace("\r\n", "\n").replace('\r', '\n');
     }
 
-    /** .puml テキストを UTF-8 で書き込む (親ディレクトリが無ければ作る)。 */
+    /**
+     * .puml テキストを UTF-8 で書き込む (親ディレクトリが無ければ作る)。
+     *
+     * <p>書き切ってから原子的に置換する。{@code Files.write} は対象を開いた瞬間に
+     * 切り詰めるため、途中で失敗すると<b>Ctrl+S を押しただけで利用者の .puml が
+     * 0 バイトや途中までの状態になり、編集中のバッファ以外にどこにも残らない</b>。
+     * 保存操作でソースを失うのは受け入れられないので、一時ファイル経由で書く。</p>
+     */
     static void write(File file, String text) throws IOException {
         File dir = file.getParentFile();
         if (dir != null && !dir.isDirectory()) {
             Files.createDirectories(dir.toPath());
         }
-        Files.write(file.toPath(), (text == null ? "" : text)
-                .getBytes(StandardCharsets.UTF_8));
+        byte[] bytes = (text == null ? "" : text).getBytes(StandardCharsets.UTF_8);
+        juml.util.AtomicFileWrite.write(file, os -> os.write(bytes));
     }
 }

@@ -183,17 +183,11 @@ final class DiagramNotesStore {
             // 一時ファイル → アトミック rename で書く。直接上書きだとクラッシュ・ディスク
             // フル時に途中まで書けた壊れた JSON が残り、次回起動でパース不能 → 空扱い →
             // 次の保存で全図の付箋が丸ごと失われる連鎖になる。
+            // 一時ファイル名は共有ヘルパが pid + 連番で採る。固定名 (notes.json.tmp) だと
+            // Juml を 2 つ起動しているとき同じ一時ファイルへ交互に書き込み、片方の付箋が
+            // もう片方の内容と混ざった JSON として正規化される。
             byte[] bytes = MiniJson.write(root).getBytes(StandardCharsets.UTF_8);
-            java.nio.file.Path target = jsonFile.toPath();
-            java.nio.file.Path tmp = target.resolveSibling(jsonFile.getName() + ".tmp");
-            Files.write(tmp, bytes);
-            try {
-                Files.move(tmp, target,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
-                Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
+            juml.util.AtomicFileWrite.write(jsonFile, os -> os.write(bytes));
             return true;
         } catch (IOException ex) {
             // 保存失敗を呼び出し側へ伝え、ステータスバー通知に使う (サイレント消失を防ぐ)。

@@ -153,6 +153,42 @@ public class AtomicFileWriteTest {
     }
 
     @Test
+    public void veryLongTargetNamesStillWrite() throws IOException {
+        // 回帰: 一時名は元の名前に約 20 バイトを足すため、素直に連結すると 255 バイト
+        // 上限を超え、長い名前の対象だけ "File name too long" で失敗していた
+        // (対象を直接開いていた頃は 255 バイトまで書けた)。図の題材名から生成する
+        // エクスポート名は普通に 200 バイトを超える。
+        File dir = tmp.newFolder("long");
+        for (int len : new int[] {200, 240, 250}) {
+            File target = new File(dir, "x".repeat(len - 4) + ".svg");
+            AtomicFileWrite.write(target, os -> os.write("ok".getBytes(StandardCharsets.UTF_8)));
+            assertTrue(len + " バイトの名前でも書けること", target.isFile());
+            assertEquals("ok", Files.readString(target.toPath()));
+        }
+    }
+
+    @Test
+    public void symlinkTargetsAreWrittenThrough() throws IOException {
+        // 回帰: ATOMIC_MOVE はリンク自体を差し替えるため、シンボリックリンクへ
+        // 書き出すとリンクが普通のファイルに化け、リンク先の実体は古い内容のまま
+        // 取り残されていた (公開先へのリンクに出力する運用が静かに壊れる)。
+        File dir = tmp.newFolder("sym");
+        File real = new File(dir, "real.svg");
+        Files.write(real.toPath(), "old".getBytes(StandardCharsets.UTF_8));
+        File link = new File(dir, "link.svg");
+        try {
+            Files.createSymbolicLink(link.toPath(), real.toPath());
+        } catch (UnsupportedOperationException | IOException noSymlink) {
+            return; // シンボリックリンク非対応の環境では検証対象外
+        }
+
+        AtomicFileWrite.write(link, os -> os.write("new".getBytes(StandardCharsets.UTF_8)));
+
+        assertTrue("リンクのままであること", Files.isSymbolicLink(link.toPath()));
+        assertEquals("リンク先の実体が更新されること", "new", Files.readString(real.toPath()));
+    }
+
+    @Test
     public void missingParentDirectoryFailsWithoutCreatingIt() throws IOException {
         // 保存先ディレクトリを勝手に作らない (打ち間違えたパスへ黙って書かない)。
         File dir = new File(tmp.getRoot(), "no-such-dir");

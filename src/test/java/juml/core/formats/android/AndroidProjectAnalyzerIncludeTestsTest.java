@@ -186,6 +186,24 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
                 withTests.contains("test_key"));
     }
 
+    @Test
+    public void projectRootNamedLikeTestsIsStillAnalyzed() throws Exception {
+        // 回帰: テストディレクトリ除外をルート自身にも掛けていたため、利用者が
+        // 指定したパスの名前が "…Tests" や "carservice_unit_test" だと、その中身が
+        // 本番ソースであっても走査が即打ち切られ、結果が黙って空になっていた。
+        // AndroidProjectScanner は以前からルート自身を除外判定にかけていない。
+        for (String rootName : new String[] {"MyAppTests", "carservice_unit_test", "tests"}) {
+            File root = tmp.newFolder(rootName);
+            writePrefXml(new File(root, "app/src/main/res/xml"), "prefs", "main_key");
+
+            List<String> keys = keysOf(
+                    new juml.core.formats.android.settings.PreferencesXmlParser()
+                            .analyzeProject(root, false));
+            assertTrue("ルート名が " + rootName + " でも中身を解析すること: " + keys,
+                    keys.contains("main_key"));
+        }
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();

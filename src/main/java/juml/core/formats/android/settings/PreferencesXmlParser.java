@@ -53,11 +53,18 @@ public final class PreferencesXmlParser {
             return Collections.emptyList();
         }
         List<File> xmlFiles = new ArrayList<>();
-        Files.walkFileTree(projectRoot.toPath(), EnumSet.noneOf(FileVisitOption.class),
+        Path rootPath = projectRoot.toPath();
+        Files.walkFileTree(rootPath, EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                        // ルート自身は除外判定にかけない (AndroidProjectScanner と同じ規律)。
+                        // 利用者が指定したパスそのものを名前で弾くと、"MyAppTests/" や
+                        // "carservice_unit_test/" を解析対象にしただけで結果が黙って空になる。
+                        if (dir.equals(rootPath)) {
+                            return FileVisitResult.CONTINUE;
+                        }
                         // ビルド出力・隠しディレクトリをスキップ
                         if (!includeTests
                                 && juml.core.formats.java.AndroidProjectScanner.isTestDir(

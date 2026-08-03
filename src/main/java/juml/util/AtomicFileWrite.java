@@ -60,7 +60,7 @@ public final class AtomicFileWrite {
         if (target == null) {
             throw new IllegalArgumentException("target is null");
         }
-        Path targetPath = target.toPath();
+        Path targetPath = resolveLink(target.toPath());
         // 親要素を持たない相対パス ("out.png" など。CLI の -o で普通に来る) では
         // getParent() が null になる。null を Files.createTempFile へ渡すと
         // NullPointerException になり、CLI がスタックトレースだけ吐いて 1 バイトも
@@ -90,9 +90,47 @@ public final class AtomicFileWrite {
         }
     }
 
+    /**
+     * 対象がシンボリックリンクなら、その実体パスへ解決する。
+     *
+     * <p>{@code ATOMIC_MOVE} はリンク自体を差し替えてしまうため、これをしないと
+     * <b>リンクが普通のファイルに化け、リンク先の実体は古い内容のまま取り残される</b>。
+     * 従来の {@code FileOutputStream} はリンクを辿って実体へ書いていたので、
+     * 「公開先へのシンボリックリンクに書き出す」という運用が静かに壊れる。
+     * 壊れたリンク (実体が無い) は解決できないので、そのまま扱う。</p>
+     */
+    private static Path resolveLink(Path target) {
+        try {
+            return Files.isSymbolicLink(target) ? target.toRealPath() : target;
+        } catch (IOException dangling) {
+            return target;
+        }
+    }
+
     /** 一時ファイル名の連番 (同一プロセス内の衝突を避ける)。 */
     private static final java.util.concurrent.atomic.AtomicLong SEQ =
             new java.util.concurrent.atomic.AtomicLong();
+
+    /** 多くのファイルシステム (ext4/XFS/APFS) の 1 要素あたり上限。 */
+    private static final int MAX_NAME_BYTES = 255;
+
+    /**
+     * 一時ファイル名が上限に収まるよう、元の名前部分を末尾から削る。
+     *
+     * <p>一時名は元の名前に約 20 バイトを足すので、素直に連結すると
+     * <b>長い名前の対象がここでだけ「File name too long」で失敗する</b>
+     * (対象を直接開いていた頃は 255 バイトまで書けた)。一時名の一意性は
+     * pid + 連番が担保するので、可読性のための元名は削って構わない。</p>
+     */
+    private static String trimToFit(String baseName, int maxBytes) {
+        String s = baseName;
+        while (s.length() > 0
+                && s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > maxBytes) {
+            // サロゲートペアを割らないよう 1 コードポイントずつ削る。
+            s = s.substring(0, s.offsetByCodePoints(s.length(), -1));
+        }
+        return s;
+    }
 
     /**
      * {@code dir} に一時ファイルを作る。
@@ -105,8 +143,10 @@ public final class AtomicFileWrite {
      */
     private static Path createTempIn(Path dir, String baseName) throws IOException {
         for (int attempt = 0; attempt < 100; attempt++) {
-            Path candidate = dir.resolve("." + baseName + ".juml-"
-                    + ProcessHandle.current().pid() + "-" + SEQ.incrementAndGet() + ".tmp");
+            String suffix = ".juml-" + ProcessHandle.current().pid()
+                    + "-" + SEQ.incrementAndGet() + ".tmp";
+            Path candidate = dir.resolve(
+                    "." + trimToFit(baseName, MAX_NAME_BYTES - 1 - suffix.length()) + suffix);
             try {
                 return Files.createFile(candidate);
             } catch (FileAlreadyExistsException retry) {

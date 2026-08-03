@@ -8,7 +8,6 @@ import juml.core.formats.uml.PlantUmlRenderer;
 import juml.util.ErrorListener;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
@@ -39,9 +38,13 @@ public final class CliOutput {
                     + File.separator + "report.md)");
         }
         ensureParentDir(f);
-        try (Writer w = new OutputStreamWriter(new FileOutputStream(f), StandardCharsets.UTF_8)) {
+        // 書き切ってから原子的に置換する。対象を直接開くと開いた瞬間に切り詰めるため、
+        // 大きなレポートの途中でディスクが尽きると前回の正しい出力まで失われる。
+        juml.util.AtomicFileWrite.write(f, os -> {
+            Writer w = new OutputStreamWriter(os, StandardCharsets.UTF_8);
             w.write(content);
-        }
+            w.flush();
+        });
     }
 
     /**

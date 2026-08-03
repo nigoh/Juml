@@ -107,19 +107,13 @@ final class DraftStore {
     /**
      * 一時ファイルへ書いてからアトミックに置き換える。書き込み途中でクラッシュや
      * ディスクフルが起きても、壊れかけの内容が正規の下書きとして残らない。
+     *
+     * <p>一時ファイル名は共有ヘルパが pid + 連番で採る。固定名 ({@code <target>.tmp}) だと
+     * <b>Juml を 2 つ起動しているとき同じ一時ファイルへ交互に書き込み</b>、片方の下書きが
+     * もう片方の内容と混ざった状態で正規化される。下書きは自動保存なので同時発生しやすい。</p>
      */
     private static void writeAtomically(File target, byte[] bytes) throws IOException {
-        java.nio.file.Path tmp = target.toPath().resolveSibling(target.getName() + ".tmp");
-        Files.write(tmp, bytes);
-        try {
-            Files.move(tmp, target.toPath(),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
-            // アトミック移動非対応のファイルシステムでは通常置換にフォールバックする。
-            Files.move(tmp, target.toPath(),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
+        juml.util.AtomicFileWrite.write(target, os -> os.write(bytes));
     }
 
     /** 指定タブの下書きを削除する (正常保存・クローズ時)。 */
