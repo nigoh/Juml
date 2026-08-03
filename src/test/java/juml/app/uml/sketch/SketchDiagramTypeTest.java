@@ -453,6 +453,55 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void plantUmlsOwnReadingOverrulesTheLineScan() {
+        // 回帰: 行走査は自由記述や綴りを共有する識別子で誤判定する。塞いでも別の形が
+        // 出てくる (note across / note on link / Legend --> Done / Title --> Footer) ので、
+        // 正規表現を完璧にすることを当てにせず、PlantUML 自身の解釈で裏を取る。
+        String noteAcross = "@startuml\nAlice -> Bob : start()\nnote across\n"
+                + "node names are written to the log\nend note\nBob -> Alice : ok\n@enduml\n";
+        assertEquals("note across のシーケンス図を配置図にしないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(noteAcross));
+
+        String noteOnLink = "@startuml\nclass A\nclass B\nA --> B\nnote on link\n"
+                + "node names are written to the log\nend note\n@enduml\n";
+        assertEquals("note on link のクラス図を配置図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(noteOnLink));
+
+        String namedLegend = "@startuml\nLegend --> Done\nDone --> [*]\n@enduml\n";
+        assertEquals("Legend という名前の要素で図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(namedLegend));
+
+        String namedTitle = "@startuml\nTitle --> Footer\nFooter --> [*]\n@enduml\n";
+        assertEquals("Title / Footer という名前の要素で図種を見失わないこと",
+                SketchDiagramType.STATE, SketchDiagramType.detect(namedTitle));
+    }
+
+    @Test
+    public void everyDesignersOwnOutputStillRoundTripsToItself() {
+        // 非退行の要: PlantUML の解釈による裏取りを入れても、10 設計器それぞれの
+        // 代表的な出力が自分の設計器へ戻ること (クラス/オブジェクト/ER は PlantUML から
+        // 見ればどれも ClassDiagram、ユースケース/コンポーネント/配置はどれも
+        // DescriptionDiagram なので、裏取りが乱暴だとここで潰れる)。
+        Object[][] cases = {
+            {SketchDiagramType.CLASS, "@startuml\nclass A\nclass B\nA --> B\n@enduml\n"},
+            {SketchDiagramType.SEQUENCE, "@startuml\nAlice -> Bob : hi\n@enduml\n"},
+            {SketchDiagramType.ACTIVITY, "@startuml\nstart\n:do it;\nstop\n@enduml\n"},
+            {SketchDiagramType.STATE, "@startuml\nstate Idle\n[*] --> Idle\n@enduml\n"},
+            {SketchDiagramType.USECASE, "@startuml\nactor U\nusecase UC1\nU --> UC1\n@enduml\n"},
+            {SketchDiagramType.COMPONENT,
+                "@startuml\ncomponent C\ninterface I\nC --> I\n@enduml\n"},
+            {SketchDiagramType.OBJECT, "@startuml\nobject O1\nobject O2\nO1 --> O2\n@enduml\n"},
+            {SketchDiagramType.ER, "@startuml\nhide circle\nentity A {\n id : int\n}\n@enduml\n"},
+            {SketchDiagramType.DEPLOYMENT, "@startuml\nnode N\nartifact A\nN --> A\n@enduml\n"},
+            {SketchDiagramType.MINDMAP, "@startmindmap\n* Root\n** Child\n@endmindmap\n"},
+        };
+        for (Object[] c : cases) {
+            assertEquals(c[0] + " の出力は自分の設計器へ戻ること",
+                    c[0], SketchDiagramType.detect((String) c[1]));
+        }
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"

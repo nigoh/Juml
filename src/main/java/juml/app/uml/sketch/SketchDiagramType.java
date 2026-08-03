@@ -271,12 +271,15 @@ public enum SketchDiagramType {
         // 走査の答えが実際に成り立つなら、それを採る (曖昧なテキストの優先順位は
         // 走査側で丁寧に決めてあるので、能力だけで上書きしない)。
         if (fullySupportedBy(scanned, source)) {
+            // コーデックが丸ごと読めたなら、そのまま採る。ここで PlantUML の読みを
+            // 被せてはいけない: PlantUML は曖昧な断片を既定でシーケンス図と読むので、
+            // 素の "A --> B" だけのクラス図がシーケンス図に化ける。
             return scanned;
         }
         // 走査の答えでも要素が 1 つは取れているなら、それは「未対応行があってロック」であって
         // 図種違いではない。利用者はロックを解除できるので、そのまま見せる。
         if (!recognisedNothing(scanned, source)) {
-            return scanned;
+            return parserCheckedFallback(source, scanned);
         }
         // 走査の答えが何も認識できなかったときだけ、実際に丸ごと扱えるコーデックを探す。
         // ここが効くのは「ER の列名が node」のように、綴りを共有する識別子で走査が別図種へ
@@ -287,8 +290,66 @@ public enum SketchDiagramType {
             }
         }
         // どのコーデックも扱えないテキスト (手書きの未対応構文) は走査の答えのまま
-        // 表示ロックで見せる。
-        return scanned;
+        // 表示ロックで見せる。ただしその一手前に PlantUML 自身の解釈で裏を取る:
+        // ここまで来た時点で「どのコーデックも読めず、走査も要素を 1 つも認識できていない」
+        // ので、走査の答えを信じる根拠が無い。
+        return parserCheckedFallback(source, scanned);
+    }
+
+    /**
+     * PlantUML 自身の解釈が許す設計器 (実機で各設計器の出力を解析して確定した対応)。
+     *
+     * <p>クラス図・オブジェクト図・ER 図は PlantUML から見ればどれも {@code ClassDiagram}、
+     * ユースケース図・コンポーネント図・配置図はどれも {@code DescriptionDiagram} なので、
+     * この対応だけでは設計器を 1 つに決められない。決められるのは<b>明らかな間違いの否定</b>で、
+     * それがここでの役目。</p>
+     */
+    private static final java.util.Map<String, java.util.Set<SketchDiagramType>> PARSED_KIND_TYPES =
+            java.util.Map.of(
+                "SequenceDiagram", java.util.Set.of(SEQUENCE),
+                "ActivityDiagram3", java.util.Set.of(ACTIVITY),
+                "StateDiagram", java.util.Set.of(STATE),
+                "MindMapDiagram", java.util.Set.of(MINDMAP),
+                "ClassDiagram", java.util.Set.of(CLASS, OBJECT, ER),
+                "DescriptionDiagram", java.util.Set.of(USECASE, COMPONENT, DEPLOYMENT));
+
+    /** 解釈が許す設計器のうち、どれとも決められないときに出す代表。 */
+    private static final java.util.Map<String, SketchDiagramType> PARSED_KIND_FALLBACK =
+            java.util.Map.of(
+                "SequenceDiagram", SEQUENCE,
+                "ActivityDiagram3", ACTIVITY,
+                "StateDiagram", STATE,
+                "MindMapDiagram", MINDMAP,
+                "ClassDiagram", CLASS,
+                "DescriptionDiagram", COMPONENT);
+
+    /**
+     * 最後の手段として、行走査の答えを PlantUML 自身の解釈で裏取りする。
+     *
+     * <p>行走査は自由記述や綴りを共有する識別子で誤判定する。塞いでも塞いでも別の形が
+     * 出てくる ({@code note across} / {@code Legend --> Done} / {@code Title --> Footer} …)
+     * ので、<b>正規表現を完璧にすることを当てにしない</b>。PlantUML が「これはシーケンス図だ」
+     * と言っているのに走査が配置図と答えたなら、走査の方が間違っている。</p>
+     *
+     * <p>ただし効かせるのは<b>コーデックが丸ごとは読めなかったとき</b>だけ。読めたものに
+     * まで被せると逆効果になる: PlantUML は曖昧な断片 (素の {@code A --> B} など) を
+     * 既定でシーケンス図と読むため、クラス図がシーケンス図に化ける。裏取りが意味を持つのは
+     * 「コーデックの答えが当てにならない」と分かっている場面に限られる。</p>
+     */
+    private static SketchDiagramType parserCheckedFallback(String source,
+                                                           SketchDiagramType guess) {
+        String kind = juml.core.formats.uml.PumlDiagramScan.parsedKind(source);
+        java.util.Set<SketchDiagramType> allowed = PARSED_KIND_TYPES.get(kind);
+        if (allowed == null || allowed.contains(guess)) {
+            // 解釈できない図 (構文エラー・未対応記法) は走査の答えのまま扱う。
+            return guess;
+        }
+        for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
+            if (allowed.contains(candidate) && fullySupportedBy(candidate, source)) {
+                return candidate;
+            }
+        }
+        return PARSED_KIND_FALLBACK.get(kind);
     }
 
     /** どのコーデックも完全には扱えないテキスト向けの行走査 (表示ロックする設計器を選ぶ)。 */
