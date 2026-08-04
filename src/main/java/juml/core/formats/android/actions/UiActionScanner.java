@@ -198,6 +198,14 @@ public final class UiActionScanner {
                     }
 
                     @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        // 読めないディレクトリが 1 つあるだけで走査全体を落とさない
+                        // (SimpleFileVisitor の既定は例外を投げ直す)。落とすと
+                        // レイアウト由来の UI アクションが 1 件も出ない。
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                         String name = file.getFileName() == null ? "" : file.getFileName().toString();
                         if (!name.endsWith(".xml")) return FileVisitResult.CONTINUE;
