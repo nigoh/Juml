@@ -645,6 +645,8 @@ final class DiagramNotesLayer {
         if (selectedIds.isEmpty()) {
             return false;
         }
+        // 始点を消した恐れがあるので作成モードも畳む (残すと次のクリックで宙ぶらりん)。
+        connectFromId = null;
         commit(null, () -> {
             connectors.removeIf(c -> selectedIds.contains(c.getFromId())
                     || selectedIds.contains(c.getToId()));
@@ -671,9 +673,13 @@ final class DiagramNotesLayer {
         return true;
     }
 
-    /** 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複は無視)。 */
+    /**
+     * 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複・消えた端点は無視)。
+     * 端点の実在確認は入口でも行う: 作成モード中に始点が消える経路は削除だけではない
+     * (別図への切替・再読込など)。
+     */
     private void createConnector(String fromId, String toId) {
-        if (fromId.equals(toId)) {
+        if (fromId.equals(toId) || byId(fromId) == null || byId(toId) == null) {
             return;
         }
         DiagramConnector added = new DiagramConnector(fromId, toId);

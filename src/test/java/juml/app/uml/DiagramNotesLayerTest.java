@@ -185,6 +185,34 @@ public class DiagramNotesLayerTest {
     }
 
     /**
+     * 回帰: コネクタ作成モードの途中で始点の付箋を消しても、宙ぶらりんのコネクタが
+     * できないこと。以前は {@code deleteSelected} が {@code connectFromId} を残したため、
+     * 次にクリックした付箋との間に<b>存在しない付箋を始点とするコネクタ</b>ができ、
+     * そのまま保存されていた (読み込み時の prune で最終的には消えるが、そのセッション中は
+     * 残り続ける)。8 つのスケッチキャンバスでは同種の穴を既に塞いであり、付箋レイヤだけが
+     * 取り残されていた。
+     */
+    @Test
+    public void deletingTheSourceNoteCancelsConnectorCreation() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);   // A
+        layer.addNoteAt(new Point(400, 10), 1.0);  // B
+        String idA = layer.getNotes().get(0).getId();
+
+        // A を始点にコネクタモードへ入り、確定する前に A を消す。
+        layer.startConnectorFrom(idA);
+        layer.selectOnly(idA);
+        assertTrue(layer.deleteSelected());
+        assertEquals(1, layer.getNotes().size());
+
+        // 次に B をクリックしてもコネクタはできない (始点がもう存在しない)。
+        layer.pressed(press(owner, 420, 30, 0), 1.0);
+        assertEquals("消えた付箋を始点とするコネクタを作らないこと",
+                0, layer.getConnectors().size());
+    }
+
+    /**
      * ELEMENT アンカー付箋のエクスポート座標は、対象要素の位置を解決した絶対座標に
      * なる。以前は SVG 出力が相対オフセットを絶対座標として書き、要素から離れた
      * 原点付近へ描画されていた。
