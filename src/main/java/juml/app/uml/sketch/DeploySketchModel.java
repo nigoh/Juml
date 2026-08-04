@@ -324,6 +324,13 @@ public final class DeploySketchModel {
         List<DeployNode> siblings = target.getParent() != null
                 ? target.getParent().getChildren() : nodes;
         siblings.remove(target);
+        // 最後の子を消したら親はもうコンテナではない。フラグを残すと書き出しが
+        // 「中身の無い {} だけの入れ物」になり (rectangle P {\n}) 、開き直したとき
+        // 配置図として読めなくなって空・編集ロックのクラス設計器が出る。
+        DeployNode parent = target.getParent();
+        if (parent != null && parent.getChildren().isEmpty()) {
+            parent.setContainer(false);
+        }
         List<DeployNode> subtree = new ArrayList<>();
         subtree.add(target);
         collect(target.getChildren(), subtree);

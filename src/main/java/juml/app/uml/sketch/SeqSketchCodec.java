@@ -126,7 +126,7 @@ public final class SeqSketchCodec {
             sb.append(' ').append(model.getDiagramName());
         }
         sb.append('\n');
-        boolean pinAll = !declarationOrderMatchesModel(model);
+        boolean pinAll = !declarationOrderMatchesModel(model) || !messagesIdentifySequence(model);
         for (SeqParticipant p : model.getParticipants()) {
             if (pinAll || p.isDeclared()) {
                 sb.append(p.getKind().keyword()).append(' ').append(p.getName()).append('\n');
@@ -152,6 +152,28 @@ public final class SeqSketchCodec {
         }
         sb.append("@enduml\n");
         return sb.toString();
+    }
+
+    /**
+     * メッセージ行だけで「これはシーケンス図だ」と判別できるか。
+     *
+     * <p>応答矢印 {@code -->} はクラス図の関連と綴りが同じなので判別材料にならない。
+     * 全メッセージを応答矢印にした図は、参加者の宣言行が 1 つも無いと
+     * <b>クラス図と区別が付かないテキスト</b>になる。そのまま書き出すと、開き直した図が
+     * クラス設計器で<b>編集可能な状態で</b>開き、最初の操作でシーケンス図が
+     * クラス図として書き潰される (利用者の図が黙って失われる)。</p>
+     *
+     * <p>判別できないなら参加者を明示宣言して、書き出したテキストが必ず自分の設計器へ
+     * 戻るようにする。宣言行が増えるだけで図の見た目は変わらない。</p>
+     */
+    private static boolean messagesIdentifySequence(SeqSketchModel model) {
+        for (SeqItem m : model.getItems()) {
+            if (m.getKind() == SeqItem.Kind.MESSAGE
+                    && m.getArrow() != SeqItem.Arrow.REPLY) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

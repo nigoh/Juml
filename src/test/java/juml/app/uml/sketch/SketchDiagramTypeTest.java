@@ -502,6 +502,96 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void parenthesisedUseCaseDiagramsOpenInTheUseCaseDesigner() {
+        // 回帰: PlantUML の解釈による裏取りが、どの候補も丸ごと読めないときに
+        // 代表値 (記述図 → コンポーネント) をそのまま返していた。コンポーネント
+        // コーデックは actor も (Usecase) も読めないので、使用例図が<b>空で編集
+        // ロックされたコンポーネント設計器</b>で開き、図に一切触れなくなっていた。
+        // 括弧形式は PlantUML の使用例図ドキュメントが一貫して使う書き方。
+        String puml = "@startuml\nactor User\nUser --> (Login)\n@enduml\n";
+        assertEquals(SketchDiagramType.USECASE, SketchDiagramType.detect(puml));
+
+        String twoActors = "@startuml\nleft to right direction\nactor A\nactor B\n"
+                + "A --> (UC1)\nB --> (UC2)\n@enduml\n";
+        assertEquals(SketchDiagramType.USECASE, SketchDiagramType.detect(twoActors));
+    }
+
+    @Test
+    public void deploymentNestedInsideAComponentStaysDeployment() {
+        // 回帰: 走査の答えが部分的に読めるだけで打ち切っていたため、配置図コーデックなら
+        // 全部読める図でもコンポーネント設計器が一部だけ認識して編集ロックで開いていた。
+        // (入れ子の artifact はトップレベルに現れないので走査はコンポーネント図と読む)
+        String puml = "@startuml Infra\ncomponent \"App Tier\" as app {\n"
+                + "  artifact \"svc.jar\" as jar\n}\ndatabase \"PG\" as db\n"
+                + "jar --> db : jdbc\n'@pos app 10 10\n'@pos jar 0 0\n'@pos db 260 10\n@enduml\n";
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(puml));
+    }
+
+    @Test
+    public void aCodecThatMerelyReadsTheTextDoesNotGetToClaimIt() {
+        // 回帰 (critical): 「最初に丸ごと読めた設計器を採る」段階に裏取りが無かったため、
+        // ユースケースコーデック (actor 宣言と --> 関連を読める) が無関係な図を横取りし、
+        // <b>編集可能な状態で</b>開いていた。最初の操作で元の図が書き潰される。
+        // PlantUML 自身の解釈で候補を絞る。
+        String rightGeneralization = "@startuml\nDog --|> Animal\nAnimal --> Food : eats\n@enduml\n";
+        assertEquals("--|> のクラス図をユースケース図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(rightGeneralization));
+
+        String quotedParticipant = "@startuml\nBrowser --> Api : request\n"
+                + "Api --> \"Order DB\" : query\n@enduml\n";
+        assertEquals("引用名のシーケンス図を配置図にしないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(quotedParticipant));
+    }
+
+    @Test
+    public void actorNamedAfterAKeywordStaysASequenceDiagram() {
+        // 回帰: 応答矢印だけの図で参加者を明示宣言するようにしたが、ACTOR 種別は
+        // "actor X" を出す。これはユースケースコーデックも丸ごと読めるため、
+        // 参加者名が走査キーワード (cloud/node/artifact/usecase/component) と同綴りだと
+        // 走査がシーケンス図から逸れ、ユースケース設計器が編集可能で開いていた。
+        for (String name : new String[] {"cloud", "node", "artifact", "usecase", "component"}) {
+            String puml = "@startuml\nactor " + name + "\nactor User\n"
+                    + name + " --> User : ack\nUser --> " + name + " : done\n@enduml\n";
+            assertEquals(name + " という名前の actor でシーケンス図を見失わないこと",
+                    SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
+    public void designerOutputsPlantUmlReadsAsAClassDiagramStillOpenTheirOwnDesigner() {
+        // 回帰: 要素が interface だけ / 中身の無い入れ物だけになると、PlantUML は
+        // コンポーネント図も配置図も ClassDiagram と読む。その解釈で候補を
+        // {CLASS,OBJECT,ER} に絞っていたため、本来読めるコーデックが候補から外れ、
+        // 空で編集ロックされたクラス設計器が開いていた。
+        String labelledInterfaces = "@startuml Ports\ninterface \"ILogger\" as ILog\n"
+                + "interface \"IRepo\" as IRep\nILog --> IRep\n"
+                + "'@pos ILog 10 20\n'@pos IRep 210 20\n@enduml\n";
+        assertEquals("表示名付き interface のコンポーネント図",
+                SketchDiagramType.COMPONENT, SketchDiagramType.detect(labelledInterfaces));
+
+        String emptyContainer = "@startuml\nrectangle Rect {\n}\n\n'@pos Rect 60 40\n@enduml\n";
+        assertEquals("中身の無い入れ物だけの配置図",
+                SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(emptyContainer));
+    }
+
+    @Test
+    public void layoutCommentsRuleOutThePositionlessDesigners() {
+        // 回帰: '@pos を書くのは位置を持つ設計器だけで、シーケンス図・アクティビティ図の
+        // コーデックは決して出さない。にもかかわらず、未対応行が 1 行混じった途端に
+        // PlantUML の「曖昧な断片は既定でシーケンス」という読みが通ってしまい、
+        // 配置図がシーケンス設計器で開いていた。
+        String withUnsupported = "@startuml\ndatabase A\ndatabase B\nA --> B\n"
+                + "' plain comment\n'@pos A 50 50\n'@pos B 250 50\n@enduml\n";
+        assertEquals("未対応行が混じっても座標付きの図はシーケンスにしないこと",
+                SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(withUnsupported));
+
+        String baseline = "@startuml\ndatabase A\ndatabase B\nA --> B\n\n"
+                + "'@pos A 50 50\n'@pos B 250 50\n@enduml\n";
+        assertEquals("非退行: 未対応行が無い場合",
+                SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(baseline));
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"

@@ -444,4 +444,26 @@ public class DeploySketchCodecTest {
         assertFalse("PlantUML が構文エラーを報告した:\n" + gen1, svg.contains("Syntax Error"));
         assertTrue("SVG が生成されるはず", svg.contains("<svg"));
     }
+
+    @Test
+    public void emptiedContainerStopsBeingAContainer() {
+        // 回帰: addChild が親を container にするのに、最後の子を消しても戻していなかった。
+        // 中身の無い入れ物 (rectangle P {\n}) が書き出され、開き直すと配置図として
+        // 読めず、空で編集ロックされたクラス設計器が出ていた。
+        DeploySketchModel model = new DeploySketchModel();
+        DeployNode parent = new DeployNode(DeployNode.Kind.RECTANGLE, "Rect", null, 10, 10);
+        DeployNode child = new DeployNode(DeployNode.Kind.NODE, "Inner", null, 0, 0);
+        model.getNodes().add(parent);
+        model.addChild(parent, child);
+        assertTrue("前提: 子を足すと入れ物になる", parent.isContainer());
+
+        model.removeNode(child);
+
+        assertFalse("最後の子を消したら入れ物ではなくなること", parent.isContainer());
+        String puml = DeploySketchCodec.toPuml(model);
+        assertFalse("中身の無い {} を書き出さないこと: " + puml, puml.contains("{"));
+        assertEquals("書き出したテキストが自分の設計器へ戻ること: " + puml,
+                juml.app.uml.sketch.SketchDiagramType.DEPLOYMENT,
+                juml.app.uml.sketch.SketchDiagramType.detect(puml));
+    }
 }
