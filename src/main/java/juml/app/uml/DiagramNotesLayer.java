@@ -239,6 +239,8 @@ final class DiagramNotesLayer {
             ids.add(n.getId());
         }
         selectedIds.retainAll(ids);
+        // 始点が履歴で消えたら作成モードも畳む (残すと次のクリックが食われる)。
+        connectFromId = ids.contains(connectFromId) ? connectFromId : null;
         mode = Mode.NONE;
         active = null;
     }
@@ -674,10 +676,7 @@ final class DiagramNotesLayer {
         return true;
     }
 
-    /**
-     * 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複・消えた端点は無視)。
-     * 端点の実在確認は入口でも残す: 呼び出し側の取りこぼしに対する二重の防御。
-     */
+    /** 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複・消えた端点は無視)。 */
     private void createConnector(String fromId, String toId) {
         if (fromId.equals(toId) || byId(fromId) == null || byId(toId) == null) {
             return;
