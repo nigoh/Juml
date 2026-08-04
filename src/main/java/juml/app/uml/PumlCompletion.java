@@ -262,8 +262,10 @@ final class PumlCompletion {
                     .withScore(score));
         }
         // 3. 本文中の識別子。矢印の直後 (相手の名前を書く位置) では最優先にする。
+        // 補足は付けない: 種別見出し (「本文」) だけで出所は足りていて、重ねると
+        // 1 行が長くなるぶんポップアップが横に広がるだけになる。
         boolean naming = AFTER_ARROW.matcher(ctx.linePrefix()).matches();
-        String detail = Messages.get("puml.completion.detail.identifier");
+        String detail = "";
         List<String> ids = bufferIdentifiers(ctx, prefix, seen);
         for (int i = 0; i < ids.size(); i++) {
             String id = ids.get(i);

@@ -294,10 +294,24 @@ public class PumlCompletionEngineTest {
     @Test
     public void arrowCompletion_carriesItsMeaningAsDetail() {
         // <|-- と *-- の違いは覚えにくい。説明が無ければ候補として役に立たない。
-        List<PumlCompletionItem> items = at(CLS, "Foo <|", false);
-        for (PumlCompletionItem i : items) {
-            assertFalse("矢印候補には意味の説明が要る: " + i.label(), i.detail().isBlank());
+        for (String typed : new String[] {"Foo <|-", "Foo --", "Foo ..", "Foo *-"}) {
+            List<PumlCompletionItem> items = at(CLS, typed, false);
+            assertFalse("矢印候補が出ていない: " + typed, items.isEmpty());
+            for (PumlCompletionItem i : items) {
+                assertEquals(Kind.ARROW, i.kind());
+                assertFalse("矢印候補には意味の説明が要る: " + i.label(), i.detail().isBlank());
+            }
         }
+    }
+
+    @Test
+    public void arrowCompletion_needsADashOrDotBeforeItTriggers() {
+        // PlantUML の矢印は必ず - か . を含む。それを条件にしないと "<<" が
+        // 矢印扱いになってステレオタイプ補完と食い合い、"Foo o" のような
+        // 打ちかけの語まで矢印と誤認する。
+        assertEquals("", PumlCompletion.arrowPrefix("Foo <|", 6));
+        assertEquals("", PumlCompletion.arrowPrefix("(A) ..> (B) : <<", 16));
+        assertEquals("<|-", PumlCompletion.arrowPrefix("Foo <|-", 7));
     }
 
     @Test

@@ -289,19 +289,21 @@ final class PumlCompletionDictionary {
      */
     private static List<Entry> buildArrows() {
         List<Entry> out = new ArrayList<>();
-        // クラス図。親→子 (<|--) と子→親 (--|>) の双方を載せる。どちらの向きで
-        // 書くかは書き手の癖なので、片方だけだと「打ちかけたが候補が出ない」になる。
+        // クラス図。宣言順が同点候補の並び順になるので、日常的に使うものから並べる
+        // (よく使う矢印ほど矢印キーを押さずに済む)。親→子 (<|--) と子→親 (--|>) は
+        // どちらの向きで書くかが書き手の癖なので双方を載せる。片方だけだと
+        // 「打ちかけたのに候補が出ない」になる。
+        // -->/<-- は関連 (クラス図) と遷移 (状態図) の双方で日常的に使う。
+        arrow(out, "-->", "puml.arrow.assoc", Group.CLASS, Group.STATE,
+                Group.ACTIVITY, Group.USECASE, Group.COMPONENT);
         arrow(out, "<|--", Group.CLASS, "puml.arrow.inherit");
         arrow(out, "--|>", Group.CLASS, "puml.arrow.inherit");
-        arrow(out, "<|..", Group.CLASS, "puml.arrow.realize");
-        arrow(out, "..|>", Group.CLASS, "puml.arrow.realize");
         arrow(out, "*--", Group.CLASS, "puml.arrow.compose");
         arrow(out, "--*", Group.CLASS, "puml.arrow.compose");
         arrow(out, "o--", Group.CLASS, "puml.arrow.aggregate");
         arrow(out, "--o", Group.CLASS, "puml.arrow.aggregate");
-        // -->/<-- は関連 (クラス図) と遷移 (状態図) の双方で日常的に使う。
-        arrow(out, "-->", "puml.arrow.assoc", Group.CLASS, Group.STATE,
-                Group.ACTIVITY, Group.USECASE, Group.COMPONENT);
+        arrow(out, "<|..", Group.CLASS, "puml.arrow.realize");
+        arrow(out, "..|>", Group.CLASS, "puml.arrow.realize");
         arrow(out, "..>", "puml.arrow.depend", Group.CLASS, Group.USECASE,
                 Group.COMPONENT);
         arrow(out, "<..", Group.CLASS, "puml.arrow.depend");

@@ -57,6 +57,9 @@ final class PumlCompletionPopup {
     /** 一度に見せる候補行数 (それ以上はスクロール)。 */
     private static final int VISIBLE_ROWS = 8;
 
+    /** 行幅に足す余白 (フォント代替で描画幅が計測値を超えても切れないように)。 */
+    private static final int ROW_WIDTH_SLACK = 16;
+
     private final JTextComponent pane;
     /** 確定時の挿入先: (接頭辞, 候補) を受け取り本文へ反映する。 */
     private final BiConsumer<String, PumlCompletionItem> onAccept;
@@ -181,6 +184,7 @@ final class PumlCompletionPopup {
         ensureWindow();
         list.setSelectedIndex(0);
         list.setVisibleRowCount(Math.min(VISIBLE_ROWS, model.size()));
+        list.setFixedCellWidth(widestRow());
         // スクリーンリーダー向けに、候補件数と先頭候補をエディタの accessible name へ
         // 反映する (フォーカスを奪わない JWindow の候補リストは単独では読み上げられない
         // ため、フォーカスのあるエディタ側で件数・選択候補をアナウンスできるようにする)。
@@ -195,6 +199,24 @@ final class PumlCompletionPopup {
         if (!window.isVisible()) {
             window.setVisible(true);
         }
+    }
+
+    /**
+     * 全候補を実際に描いてみたときの最大幅 (+ 余白)。
+     *
+     * <p>{@link JList} 任せの幅計算だと、日本語の補足がフォント代替で描かれる際に
+     * 実際の描画幅が計測値を上回り、行末が切れることがある。候補は多くても
+     * {@value PumlCompletion#MAX_CANDIDATES} 件なので、全行を測って明示的に決める。</p>
+     */
+    private int widestRow() {
+        ListCellRenderer<? super PumlCompletionItem> renderer = list.getCellRenderer();
+        int width = 0;
+        for (int i = 0; i < model.size(); i++) {
+            Component c = renderer.getListCellRendererComponent(
+                    list, model.get(i), i, false, false);
+            width = Math.max(width, c.getPreferredSize().width);
+        }
+        return width + ROW_WIDTH_SLACK;
     }
 
     /** キャレット行の直下のスクリーン座標。解決できなければ null。 */
@@ -315,7 +337,9 @@ final class PumlCompletionPopup {
                 case SNIPPET:    return Messages.get("puml.completion.kind.snippet") + "  ";
                 case ARROW:      return Messages.get("puml.completion.kind.arrow") + "  ";
                 case IDENTIFIER: return Messages.get("puml.completion.kind.identifier") + "  ";
-                case VALUE:      return Messages.get("puml.completion.kind.value") + "  ";
+                // 引数値の補足は「!theme のテーマ名」のように何の値かまで言うので、
+                // 種別見出しを重ねても幅が増えるだけになる。
+                case VALUE:
                 case KEYWORD:
                 default:         return "";
             }
