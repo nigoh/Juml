@@ -134,6 +134,7 @@ final class DiagramNotesLayer {
         history.clear();
         mode = Mode.NONE;
         active = null;
+        connectFromId = null; // 中身が総入れ替えなので作成中コネクタの始点も無効
         if (onModelChanged != null) {
             onModelChanged.run();
         }
@@ -675,8 +676,7 @@ final class DiagramNotesLayer {
 
     /**
      * 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複・消えた端点は無視)。
-     * 端点の実在確認は入口でも行う: 作成モード中に始点が消える経路は削除だけではない
-     * (別図への切替・再読込など)。
+     * 端点の実在確認は入口でも残す: 呼び出し側の取りこぼしに対する二重の防御。
      */
     private void createConnector(String fromId, String toId) {
         if (fromId.equals(toId) || byId(fromId) == null || byId(toId) == null) {

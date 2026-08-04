@@ -192,6 +192,37 @@ public class DiagramNotesLayerTest {
      * 残り続ける)。8 つのスケッチキャンバスでは同種の穴を既に塞いであり、付箋レイヤだけが
      * 取り残されていた。
      */
+    /**
+     * 回帰: 付箋一覧の総入れ替え (図種の切替・再読込) でもコネクタ作成モードを畳むこと。
+     *
+     * <p>{@code createConnector} の端点チェックは「宙ぶらりんのコネクタができる」ことは
+     * 防ぐが、モード自体は残っていた。すると盤面全体が十字カーソルのままになり、
+     * 次の左クリックが {@code connectFromId != null} の分岐に食われて、付箋の選択も
+     * ドラッグもできない (利用者は 2 回クリックする必要がある)。</p>
+     */
+    @Test
+    public void reloadingNotesCancelsConnectorCreation() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);
+        String idA = layer.getNotes().get(0).getId();
+        layer.startConnectorFrom(idA);
+
+        // 図種切替相当: 中身を別の付箋一覧へ総入れ替えする。
+        DiagramNote other = new DiagramNote();
+        other.setX(400);
+        other.setY(10);
+        layer.setNotes(java.util.List.of(other));
+
+        // モードが畳まれていること自体を見る。カーソルが十字のままなら作成モードが生きており、
+        // 次のクリックは pressed() の connectFromId 分岐に食われる。
+        assertNotEquals("盤面が十字カーソルのまま残らないこと",
+                java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.CROSSHAIR_CURSOR),
+                layer.cursorFor(new Point(420, 30), 1.0));
+        layer.pressed(press(owner, 420, 30, 0), 1.0);
+        assertEquals("宙ぶらりんのコネクタもできないこと", 0, layer.getConnectors().size());
+    }
+
     @Test
     public void deletingTheSourceNoteCancelsConnectorCreation() {
         JPanel owner = new JPanel();
