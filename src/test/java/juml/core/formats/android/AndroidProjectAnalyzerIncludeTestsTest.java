@@ -349,6 +349,53 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
         assertTrue("実際に 1 件は見つかる前提", scanner.analyzeProject(link).size() > 0);
     }
 
+    @Test
+    public void manifestTypeGoesToTheDeclaredClassNotAnotherWithTheSameName() throws Exception {
+        // 回帰: 完全修飾名で一致しないと常に単純名へ落として最初の 1 件を採っていたため、
+        // manifest が com.b.MainActivity を宣言していても com.a の方に種別が付き、
+        // 宣言された側には何も付かなかった。ライフサイクル図は種別を持つクラスしか
+        // 回らないので、同名 N 件に対して図が 1 枚しか出ず中身も別クラスになる。
+        File root = tmp.newFolder("dup-names");
+        writeManifestFor(new File(root, "app/src/main"), "com.b.MainActivity");
+
+        List<JavaClassInfo> classes = new ArrayList<>();
+        classes.add(classNamed("com.a", "MainActivity"));
+        classes.add(classNamed("com.b", "MainActivity"));
+
+        UmlGenerator.mergeManifestInto(classes, root, ErrorListener.silent(), false);
+
+        assertNull("宣言されていない同名クラスには付けないこと",
+                classes.get(0).getAndroidComponentType());
+        assertEquals("宣言されたクラスに付けること",
+                "Activity", classes.get(1).getAndroidComponentType());
+    }
+
+    @Test
+    public void packagelessManifestNameStillRescuesAUniqueSimpleName() throws Exception {
+        // 非退行: manifest 側が package を省略した書き方は従来どおり救済する
+        // (候補が 1 つに定まる場合のみ)。
+        File root = tmp.newFolder("rescue");
+        writeManifestFor(new File(root, "app/src/main"), ".OnlyActivity");
+
+        List<JavaClassInfo> classes = new ArrayList<>();
+        classes.add(classNamed("com.x", "OnlyActivity"));
+
+        UmlGenerator.mergeManifestInto(classes, root, ErrorListener.silent(), false);
+
+        assertEquals("Activity", classes.get(0).getAndroidComponentType());
+    }
+
+    private static void writeManifestFor(File sourceSetDir, String activityName) throws Exception {
+        assertTrue(sourceSetDir.mkdirs() || sourceSetDir.isDirectory());
+        String xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+                + "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
+                + "    package=\"com.x\">\n  <application>\n"
+                + "    <activity android:name=\"" + activityName + "\" />\n"
+                + "  </application>\n</manifest>\n";
+        Files.write(new File(sourceSetDir, "AndroidManifest.xml").toPath(),
+                xml.getBytes(StandardCharsets.UTF_8));
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();
