@@ -10,6 +10,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.File;
 import java.io.IOException;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -157,5 +158,80 @@ public class CliOutputTest {
                 CliOutput.perDiagramSvgTarget(out, "a/b", 0, "nav-graph").getName());
         assertEquals("g-nav-graph-2.svg",
                 CliOutput.perDiagramSvgTarget(out, "", 2, "nav-graph").getName());
+    }
+
+    // --- ラウンド2: 画像出力の原子性 / .png の扱い / 名前の重複解決 -----------------
+
+    @Test
+    public void impactOutputRendersPngLikeTheHelpSays() throws Exception {
+        // 回帰: .png が「拡張子なし」扱いに落ち、画像を期待した利用者に md+puml が返っていた。
+        File target = new File(tmp.newFolder("impact"), "report.png");
+        CliOutput.writeImpactOutput(target, "# md", "@startuml\nclass A\n@enduml\n");
+        assertTrue("report.png が作られること", target.isFile());
+        assertTrue("PNG として書かれること", target.length() > 0);
+        assertFalse("md へフォールバックしないこと",
+                new File(target.getParentFile(), "report.md").exists());
+    }
+
+    @Test
+    public void svgRenderFailureKeepsThePreviousFile() throws Exception {
+        // 回帰: CLI の .svg 経路だけ対象を直接開いており、失敗時に前回の SVG が消えていた。
+        File target = new File(tmp.newFolder("svgout"), "d.svg");
+        byte[] previous = "<svg>previous</svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.nio.file.Files.write(target.toPath(), previous);
+        boolean ok = CliOutput.writeImageOrFallback(target,
+                "@startuml\nclass A {\n@enduml\nbroken )(\n", "svg");
+        assertFalse("壊れた図はレンダリング失敗すること", ok);
+        assertArrayEquals("失敗しても前回の SVG が残ること",
+                previous, java.nio.file.Files.readAllBytes(target.toPath()));
+        assertTrue("サイドカー .puml が残ること",
+                new File(target.getParentFile(), "d.puml").isFile());
+    }
+
+    @Test
+    public void planDiagramNamesDedupesAfterSanitising() {
+        // サニタイズで同じ名前へ落ちる組み合わせも重複解決すること。
+        java.util.List<String> names = CliOutput.planDiagramNames(
+                java.util.Arrays.asList("nav+graph", "nav graph", "nav_graph", "nav_graph"),
+                "diagram");
+        assertEquals(4, names.size());
+        assertEquals("すべて異なること", 4, new java.util.HashSet<>(names).size());
+        for (String n : names) {
+            assertFalse("使えない文字が残らないこと: " + n, n.contains("+") || n.contains(" "));
+        }
+    }
+
+    @Test
+    public void planDiagramNamesFallsBackForBlankLabels() {
+        java.util.List<String> names = CliOutput.planDiagramNames(
+                java.util.Arrays.asList("", null, "  "), "nav-graph");
+        assertEquals(3, names.size());
+        assertEquals("空ラベルでも衝突しないこと", 3, new java.util.HashSet<>(names).size());
+    }
+
+    @Test
+    public void isSingleDiagramImageTargetCoversPngAndSvg() throws IOException {
+        assertTrue(CliOutput.isSingleDiagramImageTarget(new File(tmp.getRoot(), "a.svg")));
+        assertTrue(CliOutput.isSingleDiagramImageTarget(new File(tmp.getRoot(), "a.PNG")));
+        assertTrue(CliOutput.isSingleDiagramImageTarget(tmp.newFolder("d2")));
+        assertFalse(CliOutput.isSingleDiagramImageTarget(new File(tmp.getRoot(), "a.puml")));
+        assertFalse(CliOutput.isSingleDiagramImageTarget(null));
+    }
+
+    @Test
+    public void perFolderAndAllSvgFailuresKeepPreviousOutput() throws Exception {
+        // ラウンド3: --all / --per-folder / lifecycle も原子的置換へ揃えたことの回帰。
+        // ここでは共通ヘルパの契約 (失敗しても前回の内容が残る) を固定する。
+        File target = new File(tmp.newFolder("keep"), "class-diagram.svg");
+        byte[] previous = "<svg>keep me</svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.nio.file.Files.write(target.toPath(), previous);
+        try {
+            CliOutput.renderSvgAtomically("@startuml\nclass A {\n@enduml\nbroken )(\n", target);
+            fail("壊れた図は失敗するべき");
+        } catch (Exception expected) {
+            assertTrue(expected != null);
+        }
+        assertArrayEquals("失敗しても前回の SVG が残ること",
+                previous, java.nio.file.Files.readAllBytes(target.toPath()));
     }
 }

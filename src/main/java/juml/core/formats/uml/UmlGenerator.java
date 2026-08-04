@@ -370,7 +370,9 @@ public final class UmlGenerator {
         }
 
         if (mergeManifest && root.isDirectory() && !can.isCancelled()) {
-            mergeManifestInto(all, root, err);
+            // 走査と同じ includeTests で manifest も読む。渡さないと --include-tests 指定時に
+            // テストソースのクラスだけが図に出てコンポーネント種別が付かない (不揃いになる)。
+            mergeManifestInto(all, root, err, scanOpts.includeTests);
             // index 側にも反映 (header と all は別インスタンスなので個別に)
             for (JavaClassInfo c : all) {
                 if (c.getAndroidComponentType() != null) {
@@ -568,19 +570,28 @@ public final class UmlGenerator {
      */
     public static void mergeManifestInto(List<JavaClassInfo> classes, File root,
                                           ErrorListener listener) {
+        mergeManifestInto(classes, root, listener, false);
+    }
+
+    /**
+     * {@code includeTests} を指定できる {@link #mergeManifestInto(List, File, ErrorListener)}。
+     * テストソースセット ({@code src/test} / {@code src/androidTest}) の
+     * AndroidManifest.xml も対象にするかを、クラス走査側と揃えるために使う。
+     */
+    public static void mergeManifestInto(List<JavaClassInfo> classes, File root,
+                                          ErrorListener listener, boolean includeTests) {
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         try {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(root, l);
+            AndroidProjectAnalysis analysis =
+                    AndroidProjectAnalyzer.analyze(root, l, includeTests);
             for (AndroidComponentInfo c : analysis.allComponents()) {
                 String fqn = c.getName();
                 if (fqn == null || fqn.isEmpty()) {
                     continue;
                 }
-                for (JavaClassInfo cls : classes) {
-                    if (matches(cls, fqn)) {
-                        cls.setAndroidComponentType(c.getKind().label());
-                        break;
-                    }
+                JavaClassInfo target = resolveDeclaredClass(classes, fqn);
+                if (target != null) {
+                    target.setAndroidComponentType(c.getKind().label());
                 }
             }
         } catch (IOException ex) {
@@ -588,17 +599,38 @@ public final class UmlGenerator {
         }
     }
 
-    private static boolean matches(JavaClassInfo cls, String fqn) {
-        if (cls.getQualifiedName().equals(fqn)) {
-            return true;
+    /**
+     * manifest が宣言したコンポーネントに対応するクラスを 1 つ決める (決まらなければ null)。
+     *
+     * <p>完全修飾名の一致を最優先する。以前は一致が無いと<b>常に</b>単純名へ落として
+     * 最初に見つかったものを採っていたため、{@code com.a.MainActivity} と
+     * {@code com.b.MainActivity} が同居するプロジェクトでは、manifest が
+     * {@code com.b.MainActivity} を宣言していても<b>先に並んでいた com.a の方</b>に
+     * 種別が付き、宣言された側には何も付かなかった。クラス図のステレオタイプが別クラスに
+     * 付くだけでなく、ライフサイクル図は種別を持つクラスしか回らないので、
+     * <b>同名 N 件に対して図が 1 枚しか出ず、しかも中身が別クラス</b>になっていた。</p>
+     *
+     * <p>単純名での救済 (manifest 側が package を省略した書き方) は残すが、
+     * 候補が 1 つに定まるときだけにする。複数該当するなら当てずっぽうで付けない。</p>
+     */
+    private static JavaClassInfo resolveDeclaredClass(List<JavaClassInfo> classes, String fqn) {
+        for (JavaClassInfo cls : classes) {
+            if (cls.getQualifiedName().equals(fqn)) {
+                return cls;
+            }
         }
-        // simple name match (manifest 側で package が省略されている場合の救済)
         int dot = fqn.lastIndexOf('.');
-        if (dot >= 0) {
-            String simple = fqn.substring(dot + 1);
-            return cls.getSimpleName().equals(simple);
+        String simple = dot >= 0 ? fqn.substring(dot + 1) : fqn;
+        JavaClassInfo only = null;
+        for (JavaClassInfo cls : classes) {
+            if (cls.getSimpleName().equals(simple)) {
+                if (only != null) {
+                    return null; // 同名が複数。どれか分からないので付けない。
+                }
+                only = cls;
+            }
         }
-        return cls.getSimpleName().equals(fqn);
+        return only;
     }
 
     /** クラス図 PlantUML テキストを Java ソース文字列 1 つから生成。 */

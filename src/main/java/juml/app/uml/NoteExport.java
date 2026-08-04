@@ -20,7 +20,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -58,15 +57,8 @@ final class NoteExport {
         }
         // 一時ファイルへ書いてから原子的に置換する。既存ファイルへ直接書いて途中で失敗
         // (ディスク満杯/権限変化) すると、直前の正しい SVG が破損した状態で残るため。
-        java.nio.file.Path targetPath = target.toPath();
-        java.nio.file.Path tmp = targetPath.resolveSibling(targetPath.getFileName() + ".tmp");
-        Files.write(tmp, svg.getBytes(StandardCharsets.UTF_8));
-        try {
-            Files.move(tmp, targetPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
-            Files.move(tmp, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
+        final String out = svg;
+        juml.util.AtomicFileWrite.write(target, os -> os.write(out.getBytes(StandardCharsets.UTF_8)));
     }
 
     /**
@@ -125,7 +117,13 @@ final class NoteExport {
             @Override
             protected Void doInBackground() {
                 try {
-                    ImageIO.write(img, "png", target);
+                    // SVG 側と同じく一時ファイル経由で置換する。対象へ直接書くと、
+                    // エンコード失敗やディスク満杯で前回の PNG が壊れた状態で失われる。
+                    juml.util.AtomicFileWrite.writeFile(target, tmp -> {
+                        if (!ImageIO.write(img, "png", tmp)) {
+                            throw new java.io.IOException("no PNG encoder available for export");
+                        }
+                    });
                 } catch (Exception ex) {
                     failure = ex;
                 }

@@ -160,7 +160,15 @@ final class DiagramExport {
             file = new File(file.getParentFile(), file.getName() + ".png");
         }
         try {
-            ImageIO.write(img, "png", file);
+            // 一時ファイルへ書き切ってから置換する。対象へ直接書くと、エンコード失敗や
+            // ディスク満杯で前回保存した PNG が壊れた状態で失われる。ImageIO.write は
+            // エンコーダが無いと例外ではなく false を返すので、それも失敗として扱う。
+            final File target = file;
+            juml.util.AtomicFileWrite.writeFile(target, tmp -> {
+                if (!ImageIO.write(img, "png", tmp)) {
+                    throw new IOException("no PNG encoder available for export");
+                }
+            });
         } catch (IOException ex) {
             javax.swing.JOptionPane.showMessageDialog(parent,
                     Messages.get("git.export.failed") + ex.getMessage());

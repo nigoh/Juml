@@ -400,9 +400,13 @@ final class ExportController {
             return;
         }
         rememberExportDirectory(chosen);
-        try (java.io.OutputStream os = new java.io.FileOutputStream(chosen)) {
-            juml.core.formats.uml.MemberWorkbookExporter.write(classes, os);
-            status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
+        final File target = chosen;
+        try {
+            // 一時ファイルへ書き切ってから置換する。対象へ直接書くと、生成途中の失敗
+            // (ディスク満杯・POI の例外) で前回出力した xlsx が壊れた状態で失われる。
+            juml.util.AtomicFileWrite.write(target,
+                    os -> juml.core.formats.uml.MemberWorkbookExporter.write(classes, os));
+            status.setText(Messages.get("status.saved") + target.getAbsolutePath());
         } catch (Exception ex) {
             juml.util.AppLog.error(juml.util.ErrorCode.EXP_004, "ExportController",
                     "Member workbook export failed: " + chosen.getAbsolutePath(), ex);

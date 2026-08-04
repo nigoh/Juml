@@ -25,7 +25,6 @@ import juml.core.formats.android.settings.PreferencesXmlParser;
 import juml.core.formats.android.settings.SettingsAnalysisResult;
 import juml.core.formats.android.settings.SharedPreferencesScanner;
 import juml.core.formats.java.AndroidProjectScanner;
-import juml.core.formats.uml.PlantUmlRenderer;
 import juml.core.formats.uml.UmlGenerator;
 import juml.util.ErrorListener;
 
@@ -53,7 +52,7 @@ public final class AndroidCommands {
             return;
         }
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                     "gradle-summary.md");
         } else {
@@ -77,7 +76,7 @@ public final class AndroidCommands {
             return;
         }
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                     "manifest-summary.md");
         } else {
@@ -103,7 +102,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         PlantUmlComponentDiagram.Options o = new PlantUmlComponentDiagram.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
@@ -128,7 +127,7 @@ public final class AndroidCommands {
         }
         AndroidProjectAnalysis analysis;
         if (fileIn.isDirectory()) {
-            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             AndroidManifestInfo info = AndroidManifestParser.parse(content, listener);
@@ -161,7 +160,7 @@ public final class AndroidCommands {
         }
         AndroidProjectAnalysis analysis;
         if (fileIn.isDirectory()) {
-            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
             AndroidManifestInfo info = AndroidManifestParser.parse(content, listener);
@@ -196,7 +195,7 @@ public final class AndroidCommands {
         }
         java.util.List<AndroidNavigationGraphInfo> graphs = new java.util.ArrayList<>();
         if (fileIn.isDirectory()) {
-            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+            AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
             graphs.addAll(analysis.allNavigationGraphs());
         } else {
             String content = AndroidProjectScanner.readFile(fileIn);
@@ -215,20 +214,38 @@ public final class AndroidCommands {
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
         }
-        // SVG 出力時は同梱 PlantUML が先頭の @startuml しかレンダリングしないため、
-        // 複数グラフはグラフごとに別ファイル (<base>-<name>.svg) へ分割して書き出す。
+        // 画像出力 (SVG/PNG) では同梱 PlantUML が先頭の @startuml しかラスタライズしない
+        // ため、複数グラフはグラフごとに別ファイル (<base>-<name>.<ext>) へ分割する。
+        // 以前は SVG しか分割しておらず、-o out.png では 2 枚目以降が警告なく消えていた。
         // .puml/.md/標準出力は連結のままでよい (PlantUML ツールが複数図を扱えるため)。
-        if (graphs.size() > 1 && CliOutput.isSvgTarget(fileOut)) {
+        if (graphs.size() > 1 && CliOutput.isSingleDiagramImageTarget(fileOut)) {
+            // グラフ名はモジュール間で重複しうる (どのモジュールにも res/navigation/nav_graph.xml
+            // がある構成は普通)。素の名前でファイル名を作ると後のグラフが前のグラフを黙って
+            // 上書きし、「N 個書き出した」と表示しながら実際には数個しか残らない。
+            java.util.List<String> labels = new java.util.ArrayList<>();
+            for (AndroidNavigationGraphInfo g : graphs) {
+                labels.add(navGraphLabel(g));
+            }
+            java.util.List<String> names = CliOutput.planDiagramNames(labels, "nav-graph");
+            String ext = CliOutput.imageExtensionOf(fileOut);
+            // 1 枚の失敗でプロセスを落とすと残りのグラフが生成すらされないため、
+            // 失敗はサイドカー .puml + ログにして最後まで回し、終了コードは最後に決める。
+            int failed = 0;
             for (int i = 0; i < graphs.size(); i++) {
                 AndroidNavigationGraphInfo g = graphs.get(i);
-                String label = navGraphLabel(g);
-                File target = CliOutput.perDiagramSvgTarget(fileOut, label, i, "nav-graph");
-                CliOutput.writeUmlOutput(target,
-                        PlantUmlNavigationGraphDiagram.generate(g, o));
+                File target = CliOutput.perDiagramTarget(fileOut, names.get(i), ext);
+                if (!CliOutput.writeImageOrFallback(target,
+                        PlantUmlNavigationGraphDiagram.generate(g, o), ext)) {
+                    failed++;
+                }
             }
-            System.err.println("[juml] Wrote " + graphs.size()
-                    + " navigation graphs as separate SVG files"
-                    + " (PlantUML SVG output renders one diagram per file).");
+            System.err.println("[juml] Wrote " + (graphs.size() - failed) + " of "
+                    + graphs.size() + " navigation graphs as separate "
+                    + ext.toUpperCase(java.util.Locale.ROOT)
+                    + " files (PlantUML image output renders one diagram per file).");
+            if (failed > 0) {
+                System.exit(2);
+            }
             return;
         }
         // 複数グラフは個別の @startuml ブロックとして連結 (PlantUML は複数図を扱える)
@@ -263,7 +280,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         PlantUmlGradleDependencyGraph.Options o = new PlantUmlGradleDependencyGraph.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
             o.includeLegend = false;
@@ -282,7 +299,7 @@ public final class AndroidCommands {
             System.exit(1);
             return;
         }
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
         CliOutput.writeText(fileOut, TextSummaryReport.toMarkdown(analysis),
                 "summary.md");
     }
@@ -303,7 +320,7 @@ public final class AndroidCommands {
         SettingsAnalysisResult result = scanner.analyzeProject(fileIn, ctx.includeTests);
         PreferencesXmlParser xmlParser = new PreferencesXmlParser();
         for (juml.core.formats.android.settings.PreferenceXmlEntry e
-                : xmlParser.analyzeProject(fileIn)) {
+                : xmlParser.analyzeProject(fileIn, ctx.includeTests)) {
             result.addXmlEntry(e);
         }
         CliOutput.writeText(fileOut, MarkdownSettingsReport.render(result), "settings.md");
@@ -380,7 +397,7 @@ public final class AndroidCommands {
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
 
         // プロジェクト解析を 1 回だけ実行して再利用する
-        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener);
+        AndroidProjectAnalysis analysis = AndroidProjectAnalyzer.analyze(fileIn, listener, ctx.includeTests);
 
         // 1) Markdown サマリー
         progress.step("[1/8] Generating summary.md");
@@ -445,7 +462,7 @@ public final class AndroidCommands {
         File clsFile = new File(fileOut, "class-diagram.svg");
         String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(infos, clsOpts);
         try {
-            PlantUmlRenderer.renderSvg(clsPuml, clsFile);
+            CliOutput.renderSvgAtomically(clsPuml, clsFile);
             progress.wrote(clsFile, "(" + infos.size() + " class(es))");
             listener.onError(null, -1, "wrote " + clsFile.getPath());
         } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {

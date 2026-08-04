@@ -182,7 +182,10 @@ public final class UiActionScanner {
 
     private List<UiActionEntry> analyzeLayoutFiles(File projectRoot) throws IOException {
         List<UiActionEntry> all = new ArrayList<>();
-        Files.walkFileTree(projectRoot.toPath(), EnumSet.noneOf(FileVisitOption.class),
+        // ルート自身がリンクだと、リンクを辿らない走査は 1 件訪問して終わる
+        // (レイアウト由来の UI アクションが丸ごと落ちる)。
+        Files.walkFileTree(juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
+                EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -191,6 +194,14 @@ public final class UiActionScanner {
                                 || ".git".equals(name) || "node_modules".equals(name)) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        // 読めないディレクトリが 1 つあるだけで走査全体を落とさない
+                        // (SimpleFileVisitor の既定は例外を投げ直す)。落とすと
+                        // レイアウト由来の UI アクションが 1 件も出ない。
                         return FileVisitResult.CONTINUE;
                     }
 

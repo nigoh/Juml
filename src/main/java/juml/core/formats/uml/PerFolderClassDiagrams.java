@@ -116,7 +116,7 @@ public final class PerFolderClassDiagrams {
             return new Result(0, 0, Collections.emptyList());
         }
 
-        Path rootPath = projectRoot.getAbsoluteFile().toPath().normalize();
+        Path rootPath = realPathOfDir(projectRoot.getAbsoluteFile());
         List<File> written = new ArrayList<>(byFolder.size() * 2);
         int total = byFolder.size();
         int done = 0;
@@ -153,7 +153,9 @@ public final class PerFolderClassDiagrams {
                 continue;
             }
             try {
-                PlantUmlRenderer.renderSvg(puml, svgFile);
+                // 一時ファイルへ書き切ってから置換する。対象を直接開くと、描画失敗時に
+                // 前回のフォルダ図が壊れた状態で残る (renderSvg(File) は失敗時に削除もする)。
+                juml.util.AtomicFileWrite.write(svgFile, os -> PlantUmlRenderer.renderSvg(puml, os));
                 written.add(svgFile);
             } catch (IOException | juml.util.JumlException ex) {
                 // 描画失敗 (unchecked の PlantUmlRenderFailedException 含む) でも
@@ -208,7 +210,7 @@ public final class PerFolderClassDiagrams {
             ClassIndex index,
             ErrorListener err) {
         Map<File, List<JavaClassInfo>> byFolder = new LinkedHashMap<>();
-        Path rootPath = projectRoot.getAbsoluteFile().toPath().normalize();
+        Path rootPath = realPathOfDir(projectRoot.getAbsoluteFile());
         for (JavaClassInfo info : classes) {
             if (info == null) {
                 continue;
@@ -223,15 +225,34 @@ public final class PerFolderClassDiagrams {
             if (parent == null) {
                 continue;
             }
-            Path parentPath = parent.toPath().normalize();
+            // 走査がリンクを解決した実体パスを返すことがあるので、比較する側も同じ形に
+            // 揃える。揃えないと全ソースが「ルート配下でない」と判定され、フォルダ別
+            // クラス図が 1 枚も書き出されないまま成功として終わる。
+            Path parentPath = realPathOfDir(parent);
             if (!parentPath.startsWith(rootPath)) {
                 err.onError(info.getQualifiedName(), -1,
                         "skip: source outside project root (per-folder)");
                 continue;
             }
-            byFolder.computeIfAbsent(parent, k -> new ArrayList<>()).add(info);
+            byFolder.computeIfAbsent(parentPath.toFile(), k -> new ArrayList<>()).add(info);
         }
         return byFolder;
+    }
+
+    /**
+     * ディレクトリを、走査結果と突き合わせられる正規形にする
+     * (シンボリックリンクを解決し、{@code .}/{@code ..} を畳む)。
+     *
+     * <p>ルートとソースを別々の形で比べると、リンクを含むパスで開いたプロジェクトの
+     * ソースが全件「ルート配下でない」と判定され、1 枚も書き出されないまま成功として
+     * 終わってしまう。</p>
+     */
+    private static Path realPathOfDir(File dir) {
+        try {
+            return dir.toPath().toRealPath();
+        } catch (java.io.IOException unresolvable) {
+            return dir.toPath().normalize();
+        }
     }
 
     private static File resolveSubDir(Path rootPath, File folder, File outputDir) {

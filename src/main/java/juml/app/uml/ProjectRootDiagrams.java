@@ -36,25 +36,68 @@ final class ProjectRootDiagrams {
             return found;
         }
         final int[] visits = {0};
-        try (java.util.stream.Stream<java.nio.file.Path> walk =
-                     java.nio.file.Files.walk(projectRoot.toPath(), 12)) {
-            java.util.Iterator<java.nio.file.Path> it = walk.iterator();
-            while (it.hasNext()) {
-                if (found.size() == 3 || ++visits[0] > AOSP_SCAN_VISIT_CAP) {
-                    break;
-                }
-                java.nio.file.Path p = it.next();
-                String name = p.getFileName() != null ? p.getFileName().toString() : "";
-                if (java.nio.file.Files.isDirectory(p)) {
-                    if (name.endsWith(".intermediates")) {
-                        found.add(DiagramKind.INTERMEDIATES);
-                    }
-                } else if (name.equals("Android.bp")) {
-                    found.add(DiagramKind.SOONG);
-                } else if (name.equals("build.ninja")) {
-                    found.add(DiagramKind.BUILD_NINJA);
-                }
-            }
+        // Files.walk のイテレータは読めないディレクトリに当たると UncheckedIOException を
+        // 投げ、しかも再開できない。AOSP ツリーには権限の無い枝が普通にあるので、それだけで
+        // Soong / build.ninja / .intermediates の図が丸ごとメニューから消えていた。
+        // 読めない枝を飛ばして続けられる walkFileTree に変える。
+        try {
+            java.nio.file.Files.walkFileTree(
+                    juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
+                    // リンクは辿らない。以前ここで「Files.walk の既定は辿る」と書いて
+                    // FOLLOW_LINKS を入れたが、実測すると Files.walk の既定は<b>辿らない</b>
+                    // (リンク越しのファイルは 0 件)。前提が誤りで、辿るようにしたことで
+                    // リンク先の巨大ツリーを走査して訪問上限を使い切り、その先にある
+                    // 本物の AOSP マーカーへ届かず図が全部消えるようになっていた。
+                    java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), 12,
+                    new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                        @Override
+                        public java.nio.file.FileVisitResult preVisitDirectory(
+                                java.nio.file.Path dir,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            if (done()) {
+                                return java.nio.file.FileVisitResult.TERMINATE;
+                            }
+                            String name = dir.getFileName() != null
+                                    ? dir.getFileName().toString() : "";
+                            if (name.endsWith(".intermediates")) {
+                                found.add(DiagramKind.INTERMEDIATES);
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(java.nio.file.Path p,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            if (done()) {
+                                return java.nio.file.FileVisitResult.TERMINATE;
+                            }
+                            String name = p.getFileName() != null
+                                    ? p.getFileName().toString() : "";
+                            if (name.equals("Android.bp")) {
+                                found.add(DiagramKind.SOONG);
+                            } else if (name.equals("build.ninja")) {
+                                found.add(DiagramKind.BUILD_NINJA);
+                            } else if (name.endsWith(".intermediates")
+                                    && java.nio.file.Files.isDirectory(p)) {
+                                // 深さ上限ちょうどのディレクトリは preVisitDirectory ではなく
+                                // visitFile へ渡される (walkFileTree の仕様)。ここで拾わないと
+                                // 深さ 12 の .intermediates だけ検出できない。
+                                found.add(DiagramKind.INTERMEDIATES);
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFileFailed(
+                                java.nio.file.Path file, java.io.IOException exc) {
+                            // 読めない枝は飛ばして続行する (走査全体を落とさない)。
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        private boolean done() {
+                            return found.size() == 3 || ++visits[0] > AOSP_SCAN_VISIT_CAP;
+                        }
+                    });
         } catch (java.io.IOException | RuntimeException ex) {
             // 走査失敗時は「AOSP 入力なし」とみなす (空集合)。図が消えるだけで害はない。
             juml.util.AppLog.warn(juml.util.ErrorCode.PRJ_001, "ProjectRootDiagrams",

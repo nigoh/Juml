@@ -199,9 +199,15 @@ public final class ProjectAnalysisCache {
         // 一度だけ求めて共有する。save 側に渡すことで 0 クラスのファイル
         // (package-info.java 等) も DB に記録され、毎回ミスするのを防ぐ。
         List<File> currentSources = null;
+        // 陳腐化検出に使う mtime/size は「パースした内容と対になる値」でなければならない。
+        // save 時に採り直すと、パース中に編集されたファイルへ「新しい stat + 古い解析結果」
+        // を書いてしまい、以降そのファイルは編集しても再解析されなくなる。走査した直後
+        // (= パース前) に採取して save へ持ち回す。
+        List<DiskAnalysisCache.SourceStat> scannedStats = null;
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
                 currentSources = scanSourceFiles(root, scanOpts);
+                scannedStats = DiskAnalysisCache.statAll(currentSources);
                 if (c.isCancelled()) {
                     return;
                 }
@@ -242,7 +248,7 @@ public final class ProjectAnalysisCache {
         // 解析成功後にディスクキャッシュを更新 (Stage A 情報を永続化)
         if (o.lazyDetails && o.useDiskCache && disk != null) {
             try {
-                disk.save(root, classes, index, currentSources);
+                disk.saveScanned(root, classes, index, scannedStats);
             } catch (IOException ex) {
                 l.onError(juml.util.ErrorCode.CACHE_002, null, -1, "disk cache save failed: " + ex.getMessage());
             }

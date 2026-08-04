@@ -142,13 +142,68 @@ public final class DiskAnalysisCache {
     }
 
     /**
+     * 走査時点 (パース前) のソース状態。
+     *
+     * <p>陳腐化検出に使う {@code mtime}/{@code size} は<b>パースした内容と対になる値</b>
+     * でなければならない。{@link #saveScanned} はこの値をそのまま DB へ書く。</p>
+     */
+    public static final class SourceStat {
+        private final File file;
+        private final long mtime;
+        private final long size;
+
+        public SourceStat(File file, long mtime, long size) {
+            this.file = file;
+            this.mtime = mtime;
+            this.size = size;
+        }
+
+        public File getFile() {
+            return file;
+        }
+    }
+
+    /** {@code sources} の現在の mtime/size を採取する。<b>パースを始める前</b>に呼ぶこと。 */
+    public static List<SourceStat> statAll(List<File> sources) {
+        List<SourceStat> out = new ArrayList<>();
+        if (sources != null) {
+            for (File f : sources) {
+                out.add(new SourceStat(f, f.lastModified(), f.length()));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 走査時点の状態 ({@link #statAll}) を添えて保存する。
+     *
+     * <p>{@code mtime}/{@code size} を保存時に採り直すと、<b>パース中に編集された
+     * ファイル</b>について「新しい stat + 古い解析結果」を書いてしまう。次回ロードの
+     * 陳腐化チェックは stat 一致で通ってしまうため、そのファイルは編集しても二度と
+     * 再解析されない (恒久的に古い内容が出続ける)。走査時点の値を書けば、パース中の
+     * 編集は次回「変更あり」と判定され、正しく再解析される。</p>
+     */
+    public void saveScanned(File projectRoot, List<JavaClassInfo> classes, ClassIndex index,
+            List<SourceStat> scanned) throws IOException {
+        saveInternal(projectRoot, classes, index, scanned);
+    }
+
+    /**
      * {@code allSources} を渡すと、クラスを 1 つも生まなかったソース
      * ({@code package-info.java} や空ファイル等) についても空の {@code files} 行を
      * 記録する。こうしないと陳腐化チェックで DB に無いこれらのファイルが毎回
      * 「追加された」と判定され、ディスクキャッシュが恒久的にヒットしなくなる。
+     *
+     * <p>この形は stat をここで採るため、パース中に編集されたファイルを取りこぼす。
+     * 走査時点の stat を持っている呼び出し側は {@link #saveScanned} を使うこと。</p>
      */
     public void save(File projectRoot, List<JavaClassInfo> classes, ClassIndex index,
             List<File> allSources) throws IOException {
+        saveInternal(projectRoot, classes, index, statAll(allSources));
+    }
+
+    private void saveInternal(File projectRoot, List<JavaClassInfo> classes, ClassIndex index,
+            List<SourceStat> scanned) throws IOException {
         if (classes == null || index == null) {
             return;
         }
@@ -164,19 +219,24 @@ public final class DiskAnalysisCache {
                 dbFile, projectRoot.getAbsolutePath(), TOOL_VERSION)) {
             IndexWriter writer = new IndexWriter(db.connection());
             Map<File, List<JavaClassInfo>> byFile = groupBySourceFile(classes, index);
+            Map<File, SourceStat> stats = new LinkedHashMap<>();
             // 走査対象だがクラスを生まなかったファイルも 0 クラス行として登録し、
             // 陳腐化チェックの「DB のファイル集合 == 走査したファイル集合」を保つ。
-            if (allSources != null) {
-                for (File src : allSources) {
-                    byFile.putIfAbsent(src, java.util.Collections.emptyList());
+            if (scanned != null) {
+                for (SourceStat st : scanned) {
+                    stats.put(st.file, st);
+                    byFile.putIfAbsent(st.file, java.util.Collections.emptyList());
                 }
             }
             for (Map.Entry<File, List<JavaClassInfo>> e : byFile.entrySet()) {
                 File source = e.getKey();
                 String relPath = relativize(projectRoot, source);
                 String module = moduleOf(e.getValue(), index);
-                long mtime = source.lastModified();
-                long size = source.length();
+                // 走査時点の値を最優先で使う。走査一覧に無いファイル (呼び出し側が
+                // 一覧を渡さなかった場合) だけ現在値へフォールバックする。
+                SourceStat st = stats.get(source);
+                long mtime = st != null ? st.mtime : source.lastModified();
+                long size = st != null ? st.size : source.length();
                 writer.upsertFile(relPath, IndexWriter.KIND_JAVA, mtime, size,
                         module, null, e.getValue(), null);
             }

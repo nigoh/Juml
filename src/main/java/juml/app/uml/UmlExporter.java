@@ -4,6 +4,7 @@
 package juml.app.uml;
 
 import juml.core.formats.uml.PlantUmlRenderer;
+import juml.util.AtomicFileWrite;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -11,7 +12,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -82,12 +82,16 @@ public final class UmlExporter {
         if (outFile == null) {
             throw new IllegalArgumentException("outFile is null");
         }
+        // どの形式も「一時ファイルへ書き切ってから原子的に置換」する。対象へ直接書くと、
+        // 描画失敗・エンコーダ不在・ディスク満杯のときに<b>前回エクスポートした正しい
+        // ファイルが壊れた状態で失われる</b> (上書き確認に「はい」と答えただけなのに、
+        // 新しい内容も古い内容も残らない)。
         switch (format) {
             case SVG:
                 if (puml == null) {
                     throw new IllegalArgumentException("puml is required for SVG export");
                 }
-                PlantUmlRenderer.renderSvg(puml, outFile);
+                AtomicFileWrite.write(outFile, os -> PlantUmlRenderer.renderSvg(puml, os));
                 break;
             case PNG:
                 if (image == null) {
@@ -96,21 +100,23 @@ public final class UmlExporter {
                     // 文言をそのままダイアログに出していた。空図/出力なしを明示する。
                     throw new IllegalArgumentException(juml.util.Messages.get("export.emptyDiagram"));
                 }
-                // ImageIO.write は書き出せるエンコーダが無いと false を返す (例外は投げない)。
-                // 結果を無視すると 0 バイトのファイルを残したまま成功扱いになるため検査する。
-                if (!ImageIO.write(image, "png", outFile)) {
-                    java.nio.file.Files.deleteIfExists(outFile.toPath());
-                    throw new IOException("no PNG encoder available for export");
-                }
+                AtomicFileWrite.writeFile(outFile, tmp -> {
+                    // ImageIO.write は書き出せるエンコーダが無いと false を返す (例外は投げない)。
+                    // 結果を無視すると 0 バイトのファイルを残したまま成功扱いになるため検査する。
+                    if (!ImageIO.write(image, "png", tmp)) {
+                        throw new IOException("no PNG encoder available for export");
+                    }
+                });
                 break;
             case PUML:
                 if (puml == null) {
                     throw new IllegalArgumentException("puml is required for PUML export");
                 }
-                try (Writer w = new OutputStreamWriter(
-                        new FileOutputStream(outFile), StandardCharsets.UTF_8)) {
+                AtomicFileWrite.write(outFile, os -> {
+                    Writer w = new OutputStreamWriter(os, StandardCharsets.UTF_8);
                     w.write(puml);
-                }
+                    w.flush();
+                });
                 break;
             default:
                 throw new IllegalStateException("Unsupported format: " + format);

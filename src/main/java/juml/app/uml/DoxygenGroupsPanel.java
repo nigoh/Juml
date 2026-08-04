@@ -86,8 +86,9 @@ public final class DoxygenGroupsPanel extends JPanel {
             return;
         }
         if (DoxygenLocator.useDoxygenBinary(fc.getSelectedFile())) {
-            statusLabel.setText(Messages.get("doxygen.status.set")
-                    + " " + DoxygenLocator.getDoxygenPath());
+            // 文言は {0} 付き (DoxygenPanel と共有)。連結すると "{0}" が literal で出る。
+            statusLabel.setText(java.text.MessageFormat.format(
+                    Messages.get("doxygen.status.set"), DoxygenLocator.getDoxygenPath()));
             refreshLocateVisibility();
         } else {
             statusLabel.setText(Messages.get("doxygen.status.notExecutable")
@@ -116,7 +117,8 @@ public final class DoxygenGroupsPanel extends JPanel {
                     locateButton.setEnabled(false);
                     statusLabel.setText(Messages.get("doxygen.status.running"));
                 },
-                msg -> statusLabel.setText(Messages.get("doxygen.status.failed") + " " + msg),
+                msg -> statusLabel.setText(java.text.MessageFormat.format(
+                        Messages.get("doxygen.status.failed"), msg)),
                 () -> {
                     runButton.setEnabled(true);
                     locateButton.setEnabled(true);

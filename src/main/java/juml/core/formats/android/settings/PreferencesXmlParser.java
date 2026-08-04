@@ -39,20 +39,55 @@ public final class PreferencesXmlParser {
      * プロジェクトルート配下の res/xml/ を再帰的に走査して Preference キー定義を収集する。
      */
     public List<PreferenceXmlEntry> analyzeProject(File projectRoot) throws IOException {
+        return analyzeProject(projectRoot, false);
+    }
+
+    /**
+     * {@code includeTests} を指定できる版。指定しないとテストソースの
+     * {@code res/xml} が常に混ざり、{@code --include-tests} を付けていないのに
+     * テスト用の設定定義がレポートへ入ってしまう (Java 側の走査とも食い違う)。
+     */
+    public List<PreferenceXmlEntry> analyzeProject(File projectRoot, boolean includeTests)
+            throws IOException {
         if (projectRoot == null || !projectRoot.isDirectory()) {
             return Collections.emptyList();
         }
         List<File> xmlFiles = new ArrayList<>();
-        Files.walkFileTree(projectRoot.toPath(), EnumSet.noneOf(FileVisitOption.class),
+        // ルートがシンボリックリンクだと、リンクを辿らない走査は「ルートをファイルとして
+        // 1 件訪問して終わり」になり、結果が黙って空になる。~/work -> /mnt/src/work の
+        // ような貼り方は普通なので、ルートだけ実体へ解決してから走査する。
+        Path rootPath = juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot);
+        Files.walkFileTree(rootPath, EnumSet.noneOf(FileVisitOption.class),
                 Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                        // ルート自身は除外判定にかけない (AndroidProjectScanner と同じ規律)。
+                        // 利用者が指定したパスそのものを名前で弾くと、"MyAppTests/" や
+                        // "carservice_unit_test/" を解析対象にしただけで結果が黙って空になる。
+                        if (dir.equals(rootPath)) {
+                            return FileVisitResult.CONTINUE;
+                        }
                         // ビルド出力・隠しディレクトリをスキップ
-                        if ("build".equals(name) || ".gradle".equals(name)
-                                || ".git".equals(name) || "node_modules".equals(name)) {
+                        if (!includeTests
+                                && juml.core.formats.java.AndroidProjectScanner.isTestDir(
+                                        dir.toFile())) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
+                        // 除外名は Java 側の走査と同じ集合を使う。ここだけ 4 つしか
+                        // 見ていなかったため、out/ や bin/ にある生成物のコピーが
+                        // settings.md に二重計上され、クラス図とも食い違っていた。
+                        if (juml.core.formats.java.AndroidProjectScanner
+                                .DEFAULT_EXCLUDED_DIRS.contains(name)) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        // 権限拒否などで 1 つ読めないだけで --settings 全体を落とさない
+                        // (AndroidProjectScanner も同じく無視して継続する)。
                         return FileVisitResult.CONTINUE;
                     }
 

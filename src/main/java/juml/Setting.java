@@ -9,7 +9,6 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Properties;
 
@@ -411,9 +410,14 @@ public class Setting {
         props.setProperty("app.autoFitOnRender", Boolean.toString(autoFitOnRender));
         props.setProperty("app.lastExportDirectory", lastExportDirectory);
 
-        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f))) {
+        // 書き切ってから原子的に置換する。対象を直接開くと、開いた瞬間に切り詰めるため
+        // 保存中のクラッシュ・ディスクフルで設定ファイルが 0 バイトや途中までの XML になり、
+        // 次回起動で全設定 (ウィンドウ位置・テーマ・言語・最近使ったパス) が既定へ戻る。
+        juml.util.AtomicFileWrite.write(f, os -> {
+            BufferedOutputStream bos = new BufferedOutputStream(os);
             props.storeToXML(bos, "Juml Settings");
-        }
+            bos.flush();
+        });
     }
 
     /**
