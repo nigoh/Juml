@@ -41,6 +41,15 @@ final class SketchMultiDiagram {
     /**
      * 開始行を組み立てる。図名を持つときだけ区切りを入れる。
      *
+     * <p><b>既知の限界</b>: codec は開始行を {@code substring(token.length()).trim()} で
+     * 読むため<b>区切りそのものを捨てている</b>。そのため図名が {@code (} で始まる 2 つの
+     * ケースを区別できない — 実測で {@code @startuml(id=X)} は「区切り無し」= ファイル名
+     * 指定なし ({@code d.svg}、id は別途 {@code id=(\w+)} で拾われる)、
+     * {@code @startuml (foo)} は「区切りあり」= ファイル名 {@code (foo)} で
+     * {@code (foo).svg}。ここでは前者 (PlantUML が複数図記法として文書化している方) を
+     * 優先して区切りを入れない。後者は空白を失う。
+     * 正しく直すには 10 個のモデルが図名だけでなく<b>読んだ区切り</b>を保持する必要がある。</p>
+     *
      * <p>区切りは常に空白 1 つ、ではない。PlantUML の複数図記法
      * {@code @startuml(id=NAME)} はトークンに {@code (} が<b>接している</b>ことが構文で、
      * 空白を入れると意味が変わる: 実測で {@code @startuml(id=FIRST)} は {@code d.svg} を
@@ -54,7 +63,13 @@ final class SketchMultiDiagram {
         if (name == null || name.isEmpty()) {
             return startToken;
         }
-        return name.startsWith("(") ? startToken + name : startToken + ' ' + name;
+        // PlantUML 1.2026.6 の StartUtils.patternFilename は開始語の直後の区切りを
+        // 「空白 <b>または {</b>」と定めている。{ は区切りそのものなので、空白を足すと
+        // 別物になる (実測: `@startuml{foo}` -> foo.svg / `@startuml {foo}` -> {foo.svg)。
+        if (name.startsWith("{") || name.startsWith("(")) {
+            return startToken + name;
+        }
+        return startToken + ' ' + name;
     }
 
     static void reportExtraDiagrams(String[] lines, String startToken, List<String> unsupported) {

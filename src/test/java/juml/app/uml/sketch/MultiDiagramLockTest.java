@@ -189,6 +189,29 @@ public class MultiDiagramLockTest {
         }
     }
 
+    /**
+     * 回帰: {@code &#123;} も開始語の区切りなので、空白を足さないこと。
+     *
+     * <p>PlantUML の区切りは「空白<b>または</b> {@code &#123;}」。{@code (} だけを特別扱い
+     * していたため {@code @startuml&#123;foo&#125;} が空白を得て、出力ファイル名が
+     * {@code foo.svg} から {@code &#123;foo.svg} へ変わっていた。1 文字ぶんの数え上げは
+     * その 1 文字の外で必ず破れる。</p>
+     */
+    @Test
+    public void theBraceSeparatorRoundTripsAsWritten() {
+        for (String start : List.of("@startuml{foo}", "@startuml{a b}")) {
+            SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(start + "\nclass A\n@enduml\n");
+            assertTrue("単一図は編集可能のままであること: " + start, r.isFullySupported());
+            String out = SketchPumlCodec.toPuml(r.model);
+            assertEquals("区切りの { に空白を足さないこと", start,
+                    out.substring(0, out.indexOf('\n')));
+        }
+        MindmapSketchCodec.ParseResult m =
+                MindmapSketchCodec.parse("@startmindmap{foo}\n* Root\n@endmindmap\n");
+        String out = MindmapSketchCodec.toPuml(m.model);
+        assertEquals("@startmindmap{foo}", out.substring(0, out.indexOf('\n')));
+    }
+
     /** 回帰: mindmap の id 記法も同じこと。 */
     @Test
     public void theMindmapStartLineRoundTripsAsWritten() {
