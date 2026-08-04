@@ -299,11 +299,11 @@ public final class DiagramTabPane {
     public java.util.List<BulkTabExporter.Snapshot> exportSnapshots() {
         java.util.List<BulkTabExporter.Snapshot> out = new java.util.ArrayList<>();
         for (DiagramTab t : openTabs.values()) {
-            // ソースとして書き出すのでバッファ側を採る (単一タブの書き出しと同じ規則)。
-            // renderedPuml のままだと、まだ一度も描けていない新規タブが null になり
-            // BulkTabExporter に「skip」として黙って数えられるだけで、本文ごと落ちる。
+            // 形式は後で選ばれるので両方渡す。.puml はソースなのでバッファ側 (未描画の
+            // 新規タブが renderedPuml=null で丸ごと skip されるのも防ぐ)、SVG/PNG は
+            // 「いま見えている図」なので最後に描けたテキスト。単一タブの書き出しと同じ規則。
             out.add(new BulkTabExporter.Snapshot(t.label, t.key,
-                    t.pumlForExport(UmlExporter.Format.PUML)));
+                    t.pumlForExport(UmlExporter.Format.PUML), t.renderedPuml));
         }
         return out;
     }

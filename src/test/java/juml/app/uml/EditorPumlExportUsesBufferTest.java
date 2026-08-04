@@ -121,7 +121,10 @@ public class EditorPumlExportUsesBufferTest {
         java.util.List<BulkTabExporter.Snapshot> snaps =
                 GuiActionRunner.execute(() -> pane.exportSnapshots());
         assertEquals(1, snaps.size());
-        assertEquals("バルク書き出しも現在のバッファを使うこと", TYPED, snaps.get(0).puml);
+        assertEquals("バルク書き出しのソース側も現在のバッファを使うこと",
+                TYPED, snaps.get(0).sourcePuml);
+        assertEquals("画像側は最後に描けたテキストのままであること",
+                RENDERED, snaps.get(0).renderedPuml);
     }
 
     @Test
