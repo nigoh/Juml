@@ -327,6 +327,26 @@ public class KotlinLambdaAndDelegateTest {
         assertTrue(methodNames(c).containsAll(List.of("first", "second")));
     }
 
+    /**
+     * 回帰: 1 行で書いた本体の最後のメンバーを落とさないこと。
+     *
+     * <p>宣言の後に来てよい文字を数え上げていて {@code }} が抜けていた。1 行本体の最後の
+     * メンバーは改行ではなく {@code }} で終わるので、先読みが成立せずマッチごと失敗し、
+     * そのメンバーが図から消える。</p>
+     */
+    @Test
+    public void theLastMemberOfASingleLineBodyIsKept() {
+        // 初期化子や本体があると `=` や `{` が先に終端になるので、ここは
+        // 「} でしか終われない」宣言 = 抽象メンバーで確かめる。
+        JavaClassInfo iface = scanOne("package com.x\ninterface I { fun f(): Int }\n");
+        assertTrue("1 行本体の抽象関数が残ること: " + methodNames(iface),
+                methodNames(iface).contains("f"));
+
+        JavaClassInfo prop = scanOne("package com.x\ninterface P { val n: Int }\n");
+        assertTrue("1 行本体の抽象プロパティが残ること: " + fieldNames(prop),
+                fieldNames(prop).contains("n"));
+    }
+
     /** 非退行: 普通のフィールドとメソッドの抽出は変わらないこと。 */
     @Test
     public void plainMembersAreUnchanged() {
