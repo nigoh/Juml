@@ -8,10 +8,7 @@ import juml.util.ErrorListener;
 import juml.util.ProgressListener;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -264,10 +261,15 @@ public final class PerFolderClassDiagrams {
         return new File(outputDir, rel.toString());
     }
 
+    /**
+     * 書き切ってから原子的に置換する。
+     *
+     * <p>隣に出す {@code classes.svg} は既にこの経路なのに {@code classes.puml} だけ
+     * 対象を直接開いていたため、同じ再生成で片方だけ前回の内容を失う不揃いがあった
+     * (書き込み途中で失敗すると .puml が途中までの状態で残る)。</p>
+     */
     private static void writeText(File f, String content) throws IOException {
-        try (Writer w = new OutputStreamWriter(
-                new FileOutputStream(f), StandardCharsets.UTF_8)) {
-            w.write(content);
-        }
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        juml.util.AtomicFileWrite.write(f, os -> os.write(bytes));
     }
 }

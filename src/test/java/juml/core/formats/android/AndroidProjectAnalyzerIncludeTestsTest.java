@@ -396,6 +396,49 @@ public class AndroidProjectAnalyzerIncludeTestsTest {
                 xml.getBytes(StandardCharsets.UTF_8));
     }
 
+    @Test
+    public void uiActionLayoutScanHonoursIncludeTestsAndTheSharedExclusions() throws Exception {
+        // 回帰: レイアウト走査だけが includeTests を無視し、除外名も 4 つしか見て
+        // いなかった。--include-tests を付けていないのにテストソースの layout が入り、
+        // out/ bin/ .idea/ .cxx/ にある生成物のコピーも二重計上され、同じ実行の
+        // Java 側走査と結果が食い違っていた。
+        File root = tmp.newFolder("uiscan");
+        writeLayout(new File(root, "app/src/main/res/layout"), "prodBtn");
+        writeLayout(new File(root, "app/src/androidTest/res/layout"), "testBtn");
+        for (String gen : new String[] {"out/target/res/layout", "bin/res/layout",
+                                        ".idea/res/layout", ".cxx/res/layout",
+                                        "build/res/layout"}) {
+            writeLayout(new File(root, gen), "genBtn");
+        }
+
+        var scanner = new juml.core.formats.android.actions.UiActionScanner();
+        List<String> ids = actionIds(scanner.analyzeProject(root, false));
+        assertEquals("本番の layout だけを拾うこと: " + ids, 1, ids.size());
+        assertTrue(ids.get(0).contains("prodBtn"));
+
+        List<String> withTests = actionIds(scanner.analyzeProject(root, true));
+        assertEquals("--include-tests ならテストソースの layout も拾うこと: " + withTests,
+                2, withTests.size());
+    }
+
+    private static List<String> actionIds(
+            List<juml.core.formats.android.actions.UiActionEntry> entries) {
+        List<String> out = new ArrayList<>();
+        for (var e : entries) {
+            out.add(e.componentId + "/" + e.handler);
+        }
+        return out;
+    }
+
+    private static void writeLayout(File dir, String id) throws Exception {
+        assertTrue(dir.mkdirs() || dir.isDirectory());
+        Files.write(new File(dir, "main.xml").toPath(),
+                ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<LinearLayout "
+                + "xmlns:android=\"http://schemas.android.com/apk/res/android\">"
+                + "<Button android:id=\"@+id/" + id + "\" android:onClick=\"on_" + id
+                + "\"/></LinearLayout>").getBytes(StandardCharsets.UTF_8));
+    }
+
     private static List<String> keysOf(
             List<juml.core.formats.android.settings.PreferenceXmlEntry> entries) {
         List<String> keys = new ArrayList<>();
