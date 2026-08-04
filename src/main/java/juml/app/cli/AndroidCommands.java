@@ -451,6 +451,12 @@ public final class AndroidCommands {
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
                 UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener,
                         mergeManifest);
+        // --exclude-package / --exclude-name-regex / --annotation / --exclude-annotation は
+        // 素の -c だけが適用していた。--all でも同じ絞り込みを効かせる (以前は指定しても
+        // 黙って全クラスが出ていた)。methods.txt もこの infos を使うので一貫する。
+        if (overrides != null) {
+            infos = UmlCommands.applyCliClassFilters(infos, overrides);
+        }
         juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
                 new juml.core.formats.uml.PlantUmlClassDiagram.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
