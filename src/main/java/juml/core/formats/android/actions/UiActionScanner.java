@@ -109,7 +109,7 @@ public final class UiActionScanner {
         }
 
         // Layout XML をスキャン
-        all.addAll(analyzeLayoutFiles(projectRoot));
+        all.addAll(analyzeLayoutFiles(projectRoot, includeTests));
         return all;
     }
 
@@ -180,7 +180,8 @@ public final class UiActionScanner {
         return entries;
     }
 
-    private List<UiActionEntry> analyzeLayoutFiles(File projectRoot) throws IOException {
+    private List<UiActionEntry> analyzeLayoutFiles(File projectRoot, boolean includeTests)
+            throws IOException {
         List<UiActionEntry> all = new ArrayList<>();
         // ルート自身がリンクだと、リンクを辿らない走査は 1 件訪問して終わる
         // (レイアウト由来の UI アクションが丸ごと落ちる)。
@@ -190,8 +191,17 @@ public final class UiActionScanner {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                        if ("build".equals(name) || ".gradle".equals(name)
-                                || ".git".equals(name) || "node_modules".equals(name)) {
+                        // --include-tests を付けていないのにテストソースの layout が
+                        // 混ざると、同じ実行の Java 側走査と結果が食い違う。
+                        if (!includeTests && juml.core.formats.java.AndroidProjectScanner
+                                .isTestDir(dir.toFile())) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        // 除外名は Java 側の走査と同じ集合を使う。ここだけ 4 つしか
+                        // 見ていなかったため、out/ bin/ .idea/ .cxx/ にある生成物の
+                        // コピーが二重計上されていた。
+                        if (juml.core.formats.java.AndroidProjectScanner
+                                .DEFAULT_EXCLUDED_DIRS.contains(name)) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
                         return FileVisitResult.CONTINUE;
