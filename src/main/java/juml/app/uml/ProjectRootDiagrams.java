@@ -43,7 +43,11 @@ final class ProjectRootDiagrams {
         try {
             java.nio.file.Files.walkFileTree(
                     juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
-                    java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), 12,
+                    // リンクを辿るのは従来 (Files.walk の既定) と同じ。AOSP では out/ や
+                    // .intermediates を別ボリュームへリンクする構成が普通で、辿らないと
+                    // 図が黙ってメニューから消える。循環は walkFileTree が検出して
+                    // visitFileFailed へ渡すので、下の CONTINUE で飛ばせる。
+                    java.util.EnumSet.of(java.nio.file.FileVisitOption.FOLLOW_LINKS), 12,
                     new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
                         @Override
                         public java.nio.file.FileVisitResult preVisitDirectory(
@@ -72,6 +76,12 @@ final class ProjectRootDiagrams {
                                 found.add(DiagramKind.SOONG);
                             } else if (name.equals("build.ninja")) {
                                 found.add(DiagramKind.BUILD_NINJA);
+                            } else if (name.endsWith(".intermediates")
+                                    && java.nio.file.Files.isDirectory(p)) {
+                                // 深さ上限ちょうどのディレクトリは preVisitDirectory ではなく
+                                // visitFile へ渡される (walkFileTree の仕様)。ここで拾わないと
+                                // 深さ 12 の .intermediates だけ検出できない。
+                                found.add(DiagramKind.INTERMEDIATES);
                             }
                             return java.nio.file.FileVisitResult.CONTINUE;
                         }
