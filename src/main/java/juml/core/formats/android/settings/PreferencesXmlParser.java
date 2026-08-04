@@ -167,8 +167,12 @@ public final class PreferencesXmlParser {
             return;
         }
         String tag = el.getLocalName() != null ? el.getLocalName() : el.getTagName();
-        // タグ名が "Preference" で終わる要素を対象とする
-        if (tag != null && tag.endsWith("Preference")) {
+        // タグ名が "Preference" / "PreferenceCompat" で終わる要素を対象とする。
+        // AndroidX の SwitchPreferenceCompat (Android Studio の Settings Activity
+        // テンプレートが生成する要素) は "Compat" で終わるため、"Preference" だけを見ると
+        // その android:key が黙って落ち、設定項目数も表も 1 件少なく出てしまう。
+        // 容器要素 (PreferenceScreen / PreferenceCategory) はどちらの接尾辞にも当たらない。
+        if (tag != null && (tag.endsWith("Preference") || tag.endsWith("PreferenceCompat"))) {
             String key = attrAndroid(el, "key");
             if (!key.isEmpty()) {
                 String defVal = attrAndroid(el, "defaultValue");

@@ -106,6 +106,7 @@ public final class PlantUmlDeepLinkDiagram {
         List<String> schemes = new ArrayList<>();
         List<String[]> authorities = new ArrayList<>();
         List<AndroidDataSpec> paths = new ArrayList<>();
+        List<String> mimeTypes = new ArrayList<>();
         for (AndroidDataSpec d : f.getDataSpecs()) {
             addIfNew(schemes, d.getScheme());
             if (notBlank(d.getHost())) {
@@ -114,9 +115,10 @@ public final class PlantUmlDeepLinkDiagram {
                     authorities.add(hp);
                 }
             }
-            if (hasPath(d)) {
+            if (hasPath(d) && paths.stream().noneMatch(x -> samePath(x, d))) {
                 paths.add(d);
             }
+            addIfNew(mimeTypes, d.getMimeType());
         }
         // どのプールも空なら「指定なし」を 1 件として扱い、直積が 1 本残るようにする。
         if (schemes.isEmpty()) {
@@ -128,13 +130,18 @@ public final class PlantUmlDeepLinkDiagram {
         if (paths.isEmpty()) {
             paths.add(null);
         }
+        if (mimeTypes.isEmpty()) {
+            mimeTypes.add(null);
+        }
         List<AndroidDataSpec> out = new ArrayList<>();
         for (String scheme : schemes) {
             for (String[] authority : authorities) {
                 for (AndroidDataSpec path : paths) {
-                    AndroidDataSpec merged = merge(scheme, authority, path);
-                    if (merged.hasUriComponent()) {
-                        out.add(merged);
+                    for (String mime : mimeTypes) {
+                        AndroidDataSpec merged = merge(scheme, authority, path, mime);
+                        if (merged.hasUriComponent()) {
+                            out.add(merged);
+                        }
                     }
                 }
             }
@@ -142,13 +149,14 @@ public final class PlantUmlDeepLinkDiagram {
         return out;
     }
 
-    /** scheme / authority / path 系を 1 つの spec へ束ねる。 */
+    /** scheme / authority / path 系 / mimeType を 1 つの spec へ束ねる。 */
     private static AndroidDataSpec merge(String scheme, String[] authority,
-                                         AndroidDataSpec path) {
+                                         AndroidDataSpec path, String mimeType) {
         AndroidDataSpec merged = new AndroidDataSpec();
         merged.setScheme(scheme);
         merged.setHost(authority[0]);
         merged.setPort(authority[1]);
+        merged.setMimeType(mimeType);
         if (path != null) {
             merged.setPath(path.getPath());
             merged.setPathPrefix(path.getPathPrefix());
@@ -157,6 +165,16 @@ public final class PlantUmlDeepLinkDiagram {
             merged.setPathAdvancedPattern(path.getPathAdvancedPattern());
         }
         return merged;
+    }
+
+    /** path 系 5 属性がすべて等しいか (プールの重複排除用)。 */
+    private static boolean samePath(AndroidDataSpec a, AndroidDataSpec b) {
+        return java.util.Objects.equals(a.getPath(), b.getPath())
+                && java.util.Objects.equals(a.getPathPrefix(), b.getPathPrefix())
+                && java.util.Objects.equals(a.getPathPattern(), b.getPathPattern())
+                && java.util.Objects.equals(a.getPathSuffix(), b.getPathSuffix())
+                && java.util.Objects.equals(
+                        a.getPathAdvancedPattern(), b.getPathAdvancedPattern());
     }
 
     private static boolean hasPath(AndroidDataSpec d) {

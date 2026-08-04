@@ -31,6 +31,12 @@ public class DeepLinkDataMergeTest {
         return d;
     }
 
+    /** mimeType 付きの {@code <data>} を作る。 */
+    private static AndroidDataSpec withMime(AndroidDataSpec d, String mimeType) {
+        d.setMimeType(mimeType);
+        return d;
+    }
+
     private static AndroidProjectAnalysis analysisWith(AndroidDataSpec... specs) {
         AndroidProjectAnalysis a = new AndroidProjectAnalysis();
         AndroidManifestInfo m = new AndroidManifestInfo();
@@ -115,5 +121,42 @@ public class DeepLinkDataMergeTest {
         assertTrue(found.contains("https://b.com"));
         assertTrue(found.contains("http://a.com"));
         assertTrue(found.contains("http://b.com"));
+    }
+
+    /**
+     * 回帰: path 属性を複数の {@code <data>} で共有する www / non-www 記法で、
+     * ノードが二重に出ないこと。
+     *
+     * <p>scheme と authority はプールに入れる時点で重複排除していたのに path だけ素通しで、
+     * 共有された {@code pathPrefix} がプールへ 2 回入り直積が丸ごと 2 倍になっていた。</p>
+     */
+    @Test
+    public void sharedPathAcrossDataElementsDoesNotDoubleTheNodes() {
+        String puml = PlantUmlDeepLinkDiagram.generate(analysisWith(
+                data("https", "example.com", "/promo"),
+                data("https", "m.example.com", "/promo")), null);
+
+        java.util.List<String> found = uris(puml);
+        assertEquals("host 2 つぶんの 2 本だけになること: " + found, 2, found.size());
+        assertTrue(found.contains("https://example.com/promo*"));
+        assertTrue(found.contains("https://m.example.com/promo*"));
+    }
+
+    /**
+     * 回帰: URI 属性と {@code mimeType} を併せ持つ {@code <data>} で MIME 制約が消えないこと。
+     *
+     * <p>直積へ移したとき merge() が mimeType を写していなかったため、
+     * {@code content://media} が「あらゆる content://media を受ける」図になり、
+     * 実際の {@code image/*} 限定が出力のどこにも残らなかった。</p>
+     */
+    @Test
+    public void mimeTypeSurvivesTheMerge() {
+        String puml = PlantUmlDeepLinkDiagram.generate(analysisWith(
+                withMime(data("content", "media", null), "image/*")), null);
+
+        java.util.List<String> found = uris(puml);
+        assertEquals("ノードは 1 本: " + found, 1, found.size());
+        assertTrue("URI が出ること: " + found, found.get(0).startsWith("content://media"));
+        assertTrue("MIME 制約もラベルに残ること: " + found, found.get(0).contains("image/*"));
     }
 }

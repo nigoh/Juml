@@ -39,11 +39,16 @@ public final class SharedPreferencesScanner {
 
     /** get* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。
      *  グループ 4: デフォルト値 (存在すれば)。キーは文字列リテラルだけでなく定数参照
-     *  ({@code getString(KEY_TOKEN, "")}) も許容する (Android では定数キーが一般的)。 */
+     *  ({@code getString(KEY_TOKEN, "")}) も許容する (Android では定数キーが一般的)。
+     *
+     *  <p>デフォルト値は入れ子の括弧を 1 段だけ許す。{@code [^)]+?} だと
+     *  {@code getString("theme", ThemeUtil.defaultTheme())} の内側の {@code )} を
+     *  get 呼び出しの終端と取り違え、初期値が {@code (ThemeUtil.defaultTheme()} という
+     *  括弧の閉じない、原文のどこにも無い文字列として表に出ていた。</p> */
     private static final Pattern GET_VALUE = Pattern.compile(
             "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
                     + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))"
-                    + "(?:\\s*,\\s*([^)]+?))?\\s*\\)");
+                    + "(?:\\s*,\\s*((?:[^()]|\\([^()]*\\))+?))?\\s*\\)");
 
     /** put* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。 */
     private static final Pattern PUT_VALUE = Pattern.compile(

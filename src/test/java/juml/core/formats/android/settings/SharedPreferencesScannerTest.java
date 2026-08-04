@@ -126,4 +126,31 @@ public class SharedPreferencesScannerTest {
         assertFalse(entries.isEmpty());
         assertEquals("MyFragment.java", entries.get(0).shortFileName());
     }
+
+    /**
+     * 回帰: 初期値がメソッド呼び出しでも括弧の途中で切れないこと。
+     *
+     * <p>デフォルト値の捕捉が {@code [^)]+?} だったため、
+     * {@code getString("theme", ThemeUtil.defaultTheme())} では内側の {@code )} を
+     * get 呼び出しの終端と取り違え、初期値が {@code ThemeUtil.defaultTheme(} という
+     * 括弧の閉じない、原文のどこにも現れない文字列としてレポートの表に出ていた。</p>
+     */
+    @Test
+    public void nestedCallDefaultValueIsNotTruncated() {
+        String src = "prefs.getString(\"theme\", ThemeUtil.defaultTheme());\n"
+                + "prefs.getBoolean(\"dark\", isDark(ctx));\n";
+
+        List<SharedPreferencesEntry> entries = scanner.analyzeSource(src, "Test.java");
+
+        assertEquals(2, entries.size());
+        for (SharedPreferencesEntry e : entries) {
+            String d = e.defaultValue == null ? "" : e.defaultValue;
+            long open = d.chars().filter(c -> c == '(').count();
+            long close = d.chars().filter(c -> c == ')').count();
+            assertEquals("初期値の括弧が閉じていること: " + d, open, close);
+        }
+        // 非リテラルの初期値は (...) で包んで表示する既存の約束に従う。
+        assertEquals("(ThemeUtil.defaultTheme())", entries.get(0).defaultValue);
+        assertEquals("(isDark(ctx))", entries.get(1).defaultValue);
+    }
 }
