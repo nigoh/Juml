@@ -171,7 +171,13 @@ public final class DiagramScope {
         return focusClass;
     }
 
-    /** 何のフィルタも持たない (= 全件通過) ならば true。 */
+    /**
+     * 何のフィルタも持たない (= 全件通過) ならば true。
+     *
+     * <p>呼び出し側は true のスコープを {@code null} へ潰すので、<b>出力を変える設定は
+     * 必ずここに数えること</b> ({@link #signature()} と対になる)。数え漏らすと、その設定
+     * だけを持つスコープが「空」と判定されて黙って捨てられる。</p>
+     */
     public boolean isEmpty() {
         return includedPackages.isEmpty()
                 && includedModules.isEmpty()
@@ -183,6 +189,7 @@ public final class DiagramScope {
                 && includedAnnotations.isEmpty()
                 && excludedAnnotations.isEmpty()
                 && seedQualifiedNames.isEmpty()
+                && focusClass.isEmpty()
                 && maxClasses <= 0
                 && relationKinds.containsAll(EnumSet.allOf(RelationKind.class))
                 && visibilityFilter == VisibilityFilter.ALL

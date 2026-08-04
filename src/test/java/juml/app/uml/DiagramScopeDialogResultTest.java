@@ -240,6 +240,27 @@ public class DiagramScopeDialogResultTest {
                 + scope.signature(), scope.isEmpty());
     }
 
+    /**
+     * 回帰: 引き継いだ整形しか持たない結果を「空」と判定しないこと。
+     *
+     * <p>呼び出し側 ({@code DiagramEntryDialogs}) は {@code picked.isEmpty()} なら結果を
+     * {@code null} へ潰す。{@code focusClass} を {@code isEmpty()} に数えていなかったため、
+     * せっかく {@code carryOverUnshownSettings} で運んだ強調クラスが、そのすぐあとに
+     * 捨てられていた — 強調したクラスがあるタブでスコープダイアログを開いて何も変えずに
+     * OK を押すだけで強調が外れる。引き継ぎを入れた変更自体が無効化されていた。</p>
+     */
+    @Test
+    public void aCarriedOverFocusClassMakesTheResultNonEmpty() throws Exception {
+        create(Collections.emptyList(),
+                DiagramScope.builder().focusClass("com.example.Order").build());
+
+        DiagramScope scope = buildScope();
+
+        assertEquals("com.example.Order", scope.getFocusClass());
+        assertFalse("強調クラスだけでも空スコープ (=キャンセル相当) にしないこと: "
+                + scope.signature(), scope.isEmpty());
+    }
+
     /** 非退行: HEADERS_ONLY を選んだら「絞っている」= 空ではないこと。 */
     @Test
     public void headersOnlyIsNotAnEmptyScope() throws Exception {

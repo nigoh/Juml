@@ -218,6 +218,24 @@ public class DiagramScopeTest {
         assertFalse(DiagramScope.builder().excludeClass("p.A").build().isEmpty());
     }
 
+    /**
+     * 回帰: 強調クラスだけを持つスコープを「空」と数えないこと。
+     *
+     * <p>{@code focusClass} は {@code signature()} には数えていたのに {@code isEmpty()} には
+     * 数えていなかった。Scope ダイアログの呼び出し側は {@code picked.isEmpty()} なら
+     * {@code null} へ潰すため、「このクラスを強調」したあとダイアログを開いて OK を
+     * 押しただけで強調が黙って外れていた。ダイアログが強調を引き継ぐようにした
+     * ({@code carryOverUnshownSettings}) のに、その引き継いだ値が捨てられていたので、
+     * 引き継ぎの意味が無くなっていた。</p>
+     */
+    @Test
+    public void focusClassAloneIsNotAnEmptyScope() {
+        assertFalse("強調クラスは出力を変えるので空ではない",
+                DiagramScope.builder().focusClass("p.C").build().isEmpty());
+        // 非退行: 解除した (空文字) 場合はこれまでどおり空。
+        assertTrue(DiagramScope.builder().focusClass("").build().isEmpty());
+    }
+
     @Test
     public void testExcludeClassFilters() {
         DiagramScope s = DiagramScope.builder()
