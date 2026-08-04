@@ -59,6 +59,8 @@ public class PumlSourcePanel extends JPanel {
     private final GotoLineBar gotoBar;
     /** 入力追従の補完ポップアップ (編集モードで生成)。 */
     private PumlCompletionPopup completionPopup;
+    /** 雛形挿入とタブストップ巡回 (補完確定・挿入パレットの共通経路)。 */
+    private PumlEditInsertions insertions;
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
 
@@ -147,26 +149,25 @@ public class PumlSourcePanel extends JPanel {
 
     /**
      * スニペット文字列を現在のキャレット位置へ挿入する (編集不可なら無視)。
-     * {@code ${caret}} マーカー ({@link PumlSnippets#CARET}) があれば取り除き、
-     * その位置へキャレットを移す (続きをすぐ入力できるようにする)。
+     * {@link PumlSnippetTemplate} のプレースホルダを展開し、最初の穴を選択状態にする
+     * ({@code Tab} で次の穴へ送れる)。編集モードで無ければ何もしない。
      */
     void insertSnippet(String text) {
         if (!textPane.isEditable() || text == null || text.isEmpty()) {
             return;
         }
-        int marker = text.indexOf(PumlSnippets.CARET);
-        String body = marker >= 0 ? text.replace(PumlSnippets.CARET, "") : text;
-        StyledDocument doc = textPane.getStyledDocument();
-        int pos = Math.max(0, Math.min(textPane.getCaretPosition(), doc.getLength()));
-        try {
-            doc.insertString(pos, body, null);
-            // marker はマーカー除去前の位置。除去しても手前の文字数は変わらないので pos+marker。
-            int caret = marker >= 0 ? pos + marker : pos + body.length();
-            textPane.setCaretPosition(Math.min(caret, doc.getLength()));
-        } catch (BadLocationException ignored) {
-            return;
+        insertions().insertTemplate(text);
+    }
+
+    /**
+     * 雛形挿入とタブストップ巡回の実体。読み取り専用ペインでも
+     * {@link #insertSnippet(String)} 経由の呼び出しに備えて遅延生成する。
+     */
+    private PumlEditInsertions insertions() {
+        if (insertions == null) {
+            insertions = new PumlEditInsertions(textPane, this::runAsCompound);
         }
-        textPane.requestFocusInWindow();
+        return insertions;
     }
 
     /** 図種別グループのサブメニューを持つスニペット挿入パレットを構築する。 */
@@ -206,6 +207,11 @@ public class PumlSourcePanel extends JPanel {
         // removeAllHighlights でハイライトだけ消え、次候補ジャンプが旧オフセットを新文書へ適用して
         // キャレット誤配置や BadLocationException を招く (JavaSourcePanel と同じ差し替え時の契約)。
         findBar.reset();
+        // 巡回中のタブストップも旧内容基準。全文差し替え後は指し先が意味を失うので捨てる
+        // (残すと Tab が本来のインデントへ戻らないまま無関係な位置を選びにいく)。
+        if (insertions != null) {
+            insertions.cancel();
+        }
         replaceDocText(text);
         textPane.setCaretPosition(0);
         copyButton.setEnabled(!text.isEmpty());
@@ -484,7 +490,28 @@ public class PumlSourcePanel extends JPanel {
     void applyCompletionForTest(String candidate) {
         int at = textPane.getCaretPosition();
         String prefix = PumlCompletion.wordPrefix(getText(), at);
-        insertCompletion(at, prefix, candidate);
+        insertions().insertCompletion(at, prefix, PumlCompletionItem
+                .word(PumlCompletionItem.Kind.KEYWORD, candidate, ""));
+    }
+
+    /** テスト用: 補完候補 (文脈込み) を確定する。 */
+    void applyCompletionItemForTest(PumlCompletionItem item) {
+        int at = textPane.getCaretPosition();
+        String prefix = item.kind() == PumlCompletionItem.Kind.ARROW
+                ? PumlCompletion.arrowPrefix(getText(), at)
+                : PumlCompletion.wordPrefix(getText(), at);
+        insertions().insertCompletion(at, prefix, item);
+    }
+
+    /** テスト用: 残っているタブストップ数 (巡回していなければ 0)。 */
+    int tabStopsRemainingForTest() {
+        return insertions().remainingStopsForTest();
+    }
+
+    /** テスト用: 現在の選択文字列 (タブストップが選択されているかの確認に使う)。 */
+    String selectedTextForTest() {
+        String sel = textPane.getSelectedText();
+        return sel == null ? "" : sel;
     }
 
     /** テスト用: 名前付きエディタアクション (juml-newline 等) を実行する。 */
@@ -644,43 +671,13 @@ public class PumlSourcePanel extends JPanel {
         am.put("juml-outdent", action(() -> indentSelection(true)));
         // VS Code 相当の編集キー (Enter 自動インデント・自動閉じペア・行移動/複製/削除)。
         PumlEditorKeys.install(textPane, this::runAsCompound);
+        // 雛形の穴を Tab で巡る配線。素の Tab インデントより優先し、補完ポップアップには
+        // 譲る必要があるため、PumlEditorKeys の後・補完ポップアップの前に入れる。
+        insertions().install(im, am);
         // 入力追従補完 (Ctrl+Space の明示起動も内包)。Enter/Tab/Up/Down の委譲があるため
-        // PumlEditorKeys の後にインストールする。
-        completionPopup = new PumlCompletionPopup(textPane, (prefix, candidate) ->
-                insertCompletion(textPane.getCaretPosition(), prefix, candidate));
-    }
-
-    /** 打ちかけの語 {@code prefix} (キャレット直前) を候補で置換する。 */
-    private void insertCompletion(int at, String prefix, String candidate) {
-        if (!textPane.isEditable()) {
-            return;
-        }
-        // 候補生成 (PumlCompletion.matches) は大文字小文字を区別しないため、検証も
-        // case-insensitive で行う ("CLA" → "class" の確定を黙殺しない)。対応しない
-        // 確定 (陳腐化ポップアップ由来) は無視する。
-        if (!candidate.toLowerCase(java.util.Locale.ROOT)
-                .startsWith(prefix.toLowerCase(java.util.Locale.ROOT))) {
-            return;
-        }
-        StyledDocument doc = textPane.getStyledDocument();
-        int caret = Math.min(at, doc.getLength());
-        int start = Math.max(0, caret - prefix.length());
-        // 語中で確定した場合はキャレット後方の語の残り (例: "cl|a" の a) も含めて
-        // 置換する ("classa" のような残余崩れを防ぐ)。
-        int end = PumlCompletion.wordEnd(getText(), caret);
-        // remove + insert を 1 個の複合編集にまとめ、Ctrl+Z 1 回で確定前へ戻せるようにする
-        // (分かれていると 1 回目の Undo で接頭辞ごと消える)。
-        runAsCompound(() -> {
-            try {
-                // 接頭辞ごと候補で置換し、大文字小文字のゆらぎも候補どおりに揃える。
-                doc.remove(start, end - start);
-                doc.insertString(start, candidate, null);
-            } catch (BadLocationException ignored) {
-                // 競合編集で範囲がずれた場合は何もしない (致命的でない)。
-            }
-        });
-        textPane.setCaretPosition(Math.min(start + candidate.length(), doc.getLength()));
-        textPane.requestFocusInWindow();
+        // 最後にインストールする。
+        completionPopup = new PumlCompletionPopup(textPane, (prefix, item) ->
+                insertions().insertCompletion(textPane.getCaretPosition(), prefix, item));
     }
 
     private static javax.swing.AbstractAction action(Runnable r) {
