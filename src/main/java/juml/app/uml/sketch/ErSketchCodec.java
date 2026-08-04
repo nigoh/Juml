@@ -39,6 +39,18 @@ public final class ErSketchCodec {
             "^(\\*\\s*)?(" + SketchIdentifier.BARE + ")\\s*(?::\\s*(.*\\S))?\\s*$");
     /** PK ブロックと一般列を分ける区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
     private static final Pattern DIVIDER = Pattern.compile("^(--|==|__|\\.\\.)+\\s*$");
+
+    /**
+     * その行が PK ブロックの区切り線として読まれるか。
+     *
+     * <p>列名の検証 ({@code ErSketchDialogs}) からも使う。区切りトークンには {@code __} が
+     * 含まれるため、識別子として妥当な {@code __} や {@code ____} も<b>区切り線として
+     * 読み直されて列が消える</b>。判定をここに 1 本化して、コーデックとダイアログが
+     * 食い違わないようにする。</p>
+     */
+    static boolean isDividerLine(String line) {
+        return line != null && DIVIDER.matcher(line).matches();
+    }
     /** crow's-foot リレーション。左右のカーディナリティトークンは他図種と衝突しない。 */
     private static final Pattern RELATION = Pattern.compile(
             "^(" + SketchIdentifier.BARE + ")\\s*(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)"
@@ -192,7 +204,7 @@ public final class ErSketchCodec {
             if (line.equals("}")) {
                 break;
             }
-            if (line.isEmpty() || DIVIDER.matcher(line).matches()) {
+            if (line.isEmpty() || isDividerLine(line)) {
                 continue;
             }
             Matcher col = COLUMN.matcher(line);
