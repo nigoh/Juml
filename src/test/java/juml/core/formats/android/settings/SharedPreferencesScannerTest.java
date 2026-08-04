@@ -453,6 +453,51 @@ public class SharedPreferencesScannerTest {
                 keysOf(src, "T.java").isEmpty());
     }
 
+    /**
+     * 回帰: 初期値の中に入れ子になった get も報告すること (put 側と同じ結果になること)。
+     *
+     * <p>読み取りのループだけが「閉じ括弧の先」まで飛ばしていたため、初期値の中の get が
+     * 丸ごと見えなくなっていた。まったく同じ入れ子を put の第 2 引数に書くと両方報告される
+     * ので、同じコードが読みと書きで違う答えを返していた。「旧キーが無ければ新キーを読む」
+     * は移行コードの定番なので、消えるのは実在するキーのほう。</p>
+     */
+    @Test
+    public void aGetNestedInsideAnotherGetsDefaultIsAlsoReported() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String s = prefs.getString(KEY_NEW, prefs.getString(KEY_OLD, \"\"));\n";
+
+        java.util.Set<String> keys = keysOf(src, "T.java");
+
+        assertTrue("外側のキー: " + keys, keys.contains("KEY_NEW"));
+        assertTrue("入れ子のキーも報告すること: " + keys, keys.contains("KEY_OLD"));
+    }
+
+    /** 非退行: put の第 2 引数に入れ子の get があるときの挙動 (従来から両方拾えている)。 */
+    @Test
+    public void aGetNestedInsideAPutIsStillReported() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "editor.putString(KEY_NEW, prefs.getString(KEY_OLD, \"\"));\n";
+
+        java.util.Set<String> keys = keysOf(src, "T.java");
+
+        assertTrue(keys.contains("KEY_NEW"));
+        assertTrue(keys.contains("KEY_OLD"));
+    }
+
+    /** 非退行: 1 行に並んだ 2 つの独立した get を二重に数えないこと。 */
+    @Test
+    public void twoIndependentGetsOnOneLineAreCountedOnce() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String a = prefs.getString(\"one\", \"\"); String b = prefs.getString(\"two\", \"\");\n";
+
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, "T.java")) {
+            keys.add(e.key);
+        }
+
+        assertEquals("重複なく 2 件: " + keys, java.util.List.of("one", "two"), keys);
+    }
+
     private static int count(String s, char c) {
         int n = 0;
         for (int i = 0; i < s.length(); i++) {

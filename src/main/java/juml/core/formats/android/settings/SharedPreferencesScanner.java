@@ -282,9 +282,14 @@ public final class SharedPreferencesScanner {
             int from = 0;
             while (from <= line.length() && gm.find(from)) {
                 int[] span = defaultArgumentSpan(line, gm.end());
-                // 走査した閉じ括弧の先から次を探す。デフォルト値の中身を再走査すると
-                // 同じ呼び出しを二重に数えかねない。
-                from = span != null ? span[1] + 1 : gm.end();
+                // 次はキーの直後から探す。閉じ括弧の先まで飛ばしていたため、初期値の中に
+                // 入れ子になった get が丸ごと見えなくなっていた
+                // (`prefs.getString(KEY_NEW, prefs.getString(KEY_OLD, ""))` で KEY_OLD が
+                // 落ちる)。put 側は素の find() なので同じ入れ子を両方報告する — 同じ
+                // 入れ子が読みと書きで違う結果になるのは、どちらかが必ず間違っている。
+                // 二重計上の心配は無い: find は<b>キーの後ろ</b>から再開するので、外側の
+                // 呼び出しが自分自身に再びマッチすることはない。
+                from = gm.end();
                 if (!isPreferencesReceiver(gm.group(1), nonPrefsVars)) {
                     continue;
                 }
