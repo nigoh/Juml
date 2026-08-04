@@ -114,6 +114,12 @@ public class UmlMainFrame extends JFrame {
     private final ExportController exportController = new ExportController(this, state, status,
             () -> tabPane != null ? tabPane.activePreviewPanel() : null);
 
+    {
+        // .puml と共有 URL はソースの書き出しなので、エディタタブでは現在のバッファを渡す。
+        exportController.setSourcePumlSupplier(
+                () -> tabPane != null ? tabPane.activeSourcePuml() : null);
+    }
+
     DiagramKind currentKind = DiagramKind.CLASS;
     /** 現在ロード中のプロジェクトルート。null なら未ロード。 */
     private File currentProjectRoot;

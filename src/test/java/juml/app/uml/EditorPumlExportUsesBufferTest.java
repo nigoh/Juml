@@ -103,4 +103,31 @@ public class EditorPumlExportUsesBufferTest {
         assertEquals(RENDERED, pumlForExport(tab, UmlExporter.Format.SVG));
         assertEquals(RENDERED, pumlForExport(tab, UmlExporter.Format.PNG));
     }
+
+    /**
+     * 回帰: {@code .puml} を書き出す経路は 3 つある (タブの右クリック / File メニュー・
+     * Ctrl+Shift+S / Export All Open Tabs) のに、当初は 1 つしか直していなかった。
+     * どれも同じ現在のバッファを返すこと。経路ごとに答えが違うのが一番たちが悪い。
+     */
+    @Test
+    public void allPumlExportRoutesAgreeOnTheCurrentBuffer() throws Exception {
+        editorTabWithUnrenderedEdit();
+
+        // 1. File メニュー / Ctrl+Shift+S / 共有 URL が使う経路
+        assertEquals("activeSourcePuml が現在のバッファを返すこと",
+                TYPED, pane.activeSourcePuml());
+
+        // 2. Export All Open Tabs が使う経路
+        java.util.List<BulkTabExporter.Snapshot> snaps =
+                GuiActionRunner.execute(() -> pane.exportSnapshots());
+        assertEquals(1, snaps.size());
+        assertEquals("バルク書き出しも現在のバッファを使うこと", TYPED, snaps.get(0).puml);
+    }
+
+    @Test
+    public void activeRenderedPumlStillReportsTheRenderedText() throws Exception {
+        // 非退行: 画像経路が使う「最後に描けたテキスト」は据え置き。
+        editorTabWithUnrenderedEdit();
+        assertEquals(RENDERED, pane.activeRenderedPuml());
+    }
 }

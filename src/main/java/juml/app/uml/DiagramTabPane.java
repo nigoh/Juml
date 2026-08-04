@@ -299,7 +299,11 @@ public final class DiagramTabPane {
     public java.util.List<BulkTabExporter.Snapshot> exportSnapshots() {
         java.util.List<BulkTabExporter.Snapshot> out = new java.util.ArrayList<>();
         for (DiagramTab t : openTabs.values()) {
-            out.add(new BulkTabExporter.Snapshot(t.label, t.key, t.renderedPuml));
+            // ソースとして書き出すのでバッファ側を採る (単一タブの書き出しと同じ規則)。
+            // renderedPuml のままだと、まだ一度も描けていない新規タブが null になり
+            // BulkTabExporter に「skip」として黙って数えられるだけで、本文ごと落ちる。
+            out.add(new BulkTabExporter.Snapshot(t.label, t.key,
+                    t.pumlForExport(UmlExporter.Format.PUML)));
         }
         return out;
     }
@@ -384,6 +388,20 @@ public final class DiagramTabPane {
     public String activeRenderedPuml() {
         DiagramTab t = activeTab();
         return t != null ? t.renderedPuml : null;
+    }
+
+    /**
+     * フォーカス中タブを<b>ソースとして</b>書き出すときの PlantUML テキスト
+     * (エディタタブなら現在のバッファ、生成図なら描画済みテキスト。無ければ null)。
+     *
+     * <p>{@code .puml} を書き出す経路はタブの右クリック・File メニュー・共有 URL と複数あり、
+     * どれも同じ答えを返さなければならない。{@code activeRenderedPuml()} は最後に<b>描けた</b>
+     * テキストなので、エディタタブでは 600ms のデバウンス分と、構文エラー中は無期限に遅れる。
+     * ソースの書き出しにはこちらを使うこと。</p>
+     */
+    public String activeSourcePuml() {
+        DiagramTab t = activeTab();
+        return t != null ? t.pumlForExport(UmlExporter.Format.PUML) : null;
     }
 
     /**
@@ -2995,7 +3013,7 @@ public final class DiagramTabPane {
          * 直前の正常な図を保持する仕様上さらに古い。以前はそれを書き出していたため、
          * 打ち込んだばかりの行が<b>黙って欠けた .puml</b> が保存されていた。</p>
          */
-        private String pumlForExport(UmlExporter.Format fmt) {
+        String pumlForExport(UmlExporter.Format fmt) {
             if (fmt == UmlExporter.Format.PUML && isEditor()) {
                 return sourcePanel.getText();
             }

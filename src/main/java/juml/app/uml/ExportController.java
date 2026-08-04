@@ -27,6 +27,27 @@ final class ExportController {
     private final java.util.function.Supplier<SvgPreviewPanel> activePreview;
     /** 保存ダイアログの提案ファイル名の元になるアクティブタブ名の供給元。null を返してよい。 */
     private java.util.function.Supplier<String> baseNameSupplier = () -> null;
+    /**
+     * アクティブタブを<b>ソースとして</b>書き出すときの PlantUML 供給元。null を返してよい。
+     *
+     * <p>画像 (SVG/PNG) は「いま見えている図」なので {@code state.currentPuml}
+     * (= 最後に描けたテキスト) で正しいが、{@code .puml} と共有 URL は<b>ソース</b>なので
+     * エディタタブでは現在のバッファでなければならない。{@code state.currentPuml} は
+     * {@code mirrorToState} が {@code renderedPuml} を写すだけなので、600ms のデバウンス分と、
+     * 構文エラー中は無期限に遅れる。未設定なら従来どおり {@code state.currentPuml} を使う。</p>
+     */
+    private java.util.function.Supplier<String> sourcePumlSupplier = () -> null;
+
+    /** {@link #sourcePumlSupplier} を設定する (UmlMainFrame の配線から呼ぶ)。 */
+    void setSourcePumlSupplier(java.util.function.Supplier<String> supplier) {
+        this.sourcePumlSupplier = supplier != null ? supplier : () -> null;
+    }
+
+    /** ソース書き出し用の PlantUML (供給元が無ければ描画済みテキストへフォールバック)。 */
+    private String sourcePuml() {
+        String s = sourcePumlSupplier.get();
+        return s != null && !s.isEmpty() ? s : state.currentPuml;
+    }
 
     ExportController(Frame parent, DiagramState state, JLabel status) {
         this(parent, state, status, () -> null);
@@ -86,7 +107,7 @@ final class ExportController {
             return;
         }
         try {
-            String url = PlantUmlUrlSharer.buildUrl(state.currentPuml);
+            String url = PlantUmlUrlSharer.buildUrl(sourcePuml());
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard()
                     .setContents(new java.awt.datatransfer.StringSelection(url), null);
             status.setText(Messages.get("export.urlCopied"));
@@ -245,7 +266,8 @@ final class ExportController {
         }
         // PUML はテキスト書き出しのみで軽いので EDT で実行する。
         try {
-            UmlExporter.export(fmt, chosen, state.currentPuml, null);
+            UmlExporter.export(fmt, chosen,
+                    fmt == UmlExporter.Format.PUML ? sourcePuml() : state.currentPuml, null);
             status.setText(Messages.get("status.saved") + chosen.getAbsolutePath());
         } catch (Exception ex) {
             reportExportFailure(chosen, ex);
