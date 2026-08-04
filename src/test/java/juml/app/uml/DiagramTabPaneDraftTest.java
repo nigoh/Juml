@@ -267,4 +267,29 @@ public class DiagramTabPaneDraftTest {
         assertTrue(canExit);
         assertTrue("自分の下書きは消えること", store.loadAll().isEmpty());
     }
+
+    /**
+     * 回帰: 保存経路も「自分が書いた下書きだけ」を消すこと。
+     *
+     * <p>閉じる経路には所有権の判定を入れたのに保存経路が無条件のままだったため、
+     * 同じ下書きが「タブを閉じれば残る / Ctrl+S を押せば消える」と食い違っていた。
+     * 復元プロンプトで Esc (=保持) を選んだあと、その .puml を開いて保存するだけで、
+     * 利用者が一度も破棄を選んでいない未保存の作業が失われる。</p>
+     */
+    @Test
+    public void savingACleanFileTabKeepsAnotherSessionsDraft() throws Exception {
+        File f = tmp.newFile("saved.puml");
+        Files.write(f.toPath(), "@startuml\nclass OnDisk\n@enduml\n".getBytes("UTF-8"));
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + f.getAbsolutePath(), crashed, f, "saved.puml");
+
+        GuiActionRunner.execute(() -> pane.openPumlEditor("@startuml\nclass OnDisk\n@enduml\n",
+                f, false));
+        boolean saved = GuiActionRunner.execute(() -> pane.closeActiveTabSavingToForTest(f));
+
+        assertTrue("保存自体は成功すること", saved);
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きが残ること: " + after.size(), 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
 }

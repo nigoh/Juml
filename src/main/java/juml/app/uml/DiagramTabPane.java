@@ -823,8 +823,14 @@ public final class DiagramTabPane {
         // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
         // タブが重複生成される (dedup の一貫性が崩れる)。
         migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
-        drafts.delete(draftKeyBeforeMigrate);
-        drafts.delete(tab.key);
+        // 消すのは<b>このタブが書いた</b>下書きだけ。閉じる経路と同じ所有権の判定に揃える。
+        // ファイル紐付きタブのキーは "PUML:<絶対パス>" で前セッションの下書きと同じになるため、
+        // 無条件に消すと、保持を選んだクラッシュ下書きが「開いて Ctrl+S しただけ」で失われる
+        // (閉じた場合は残るのに保存すると消える、という食い違いにもなっていた)。
+        if (tab.draftWritten) {
+            drafts.delete(draftKeyBeforeMigrate);
+            drafts.delete(tab.key);
+        }
         // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
         int idx = tabs.indexOfComponent(tab);
