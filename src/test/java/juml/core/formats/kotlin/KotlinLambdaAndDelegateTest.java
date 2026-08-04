@@ -347,6 +347,109 @@ public class KotlinLambdaAndDelegateTest {
                 fieldNames(prop).contains("n"));
     }
 
+    /**
+     * 回帰: プロパティと関数と<b>コンストラクタ引数</b>が、同じ型を同じように読むこと。
+     *
+     * <p>型の読み取りを走査へ替えたのはプロパティの経路だけで、関数の戻り値と
+     * コンストラクタ引数は文字クラスと生の正規表現のままだった。同じ型を書く場所を
+     * 変えただけで結果が変わる — 経路ごとに別実装だと必ずこうなる。</p>
+     */
+    @Test
+    public void allThreeDeclarationPathsReadTheSameTypesAlike() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class C(\n"
+                + "    val ctorStar: Class<*>,\n"
+                + "    val ctorFn: (Int) -> Unit\n"
+                + ") {\n"
+                + "    val propStar: Class<*>? = null\n"
+                + "    val propFn: (Int) -> Unit = {}\n"
+                + "    fun funStar(): Class<*> { return C::class.java }\n"
+                + "    fun funFn(): (Int) -> Unit { return {} }\n"
+                + "    fun funNullableFn(): ((Int) -> Unit)? = null\n"
+                + "}\n");
+
+        for (String f : List.of("ctorStar", "ctorFn", "propStar", "propFn")) {
+            assertTrue("プロパティ/引数が落ちていること: " + f + " -> " + fieldNames(c),
+                    fieldNames(c).contains(f));
+        }
+        for (String m : List.of("funStar", "funFn", "funNullableFn")) {
+            assertTrue("メソッドが落ちていること: " + m + " -> " + methodNames(c),
+                    methodNames(c).contains(m));
+        }
+        assertEquals("スター射影が戻り値でも保たれること", "Class<*>",
+                c.getMethods().stream().filter(m -> "funStar".equals(m.getName()))
+                        .map(juml.core.formats.uml.JavaMethodInfo::getReturnType)
+                        .findFirst().orElse(null));
+    }
+
+    /** 回帰: 入れ子の既定引数を持つメソッドを落とさないこと (引数リストは括弧の対応で切る)。 */
+    @Test
+    public void aMethodWithANestedDefaultArgumentIsKept() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class C {\n"
+                + "    fun load(keys: List<String> = listOf(build(\"a\"), build(\"b\"))) {}\n"
+                + "    fun other() {}\n"
+                + "}\n");
+
+        assertTrue("入れ子既定引数のメソッドが残ること: " + methodNames(c),
+                methodNames(c).contains("load"));
+        assertTrue(methodNames(c).contains("other"));
+    }
+
+    /**
+     * 回帰: コメントアウトされた宣言をメンバーにしないこと。
+     *
+     * <p>クラスヘッダの走査は最初から非コード領域を除いていたのに、メンバー抽出だけが
+     * 生テキストを見ていた。存在しないメンバーが図に出るのは、消えるのと同じかそれ以上に
+     * 読み手を誤らせる。</p>
+     */
+    @Test
+    public void commentedOutDeclarationsAreNotMembers() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class E {\n"
+                + "    // fun legacy(): String\n"
+                + "    // val oldFlag: Boolean\n"
+                + "    /** Prefer fun close(): Unit over dispose. */\n"
+                + "    fun open() {}\n"
+                + "}\n");
+
+        assertFalse("コメント内の関数はメンバーではない: " + methodNames(c),
+                methodNames(c).contains("legacy"));
+        assertFalse("KDoc 内の関数も同じ: " + methodNames(c), methodNames(c).contains("close"));
+        assertFalse("コメント内のプロパティも同じ: " + fieldNames(c),
+                fieldNames(c).contains("oldFlag"));
+        assertTrue("本物のメソッドは残ること: " + methodNames(c), methodNames(c).contains("open"));
+    }
+
+    /** 回帰: 引数の行末コメントが<b>次の</b>引数を消さないこと。 */
+    @Test
+    public void aTrailingCommentInsideTheConstructorKeepsTheNextParameter() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class A(\n"
+                + "    val id: Long, // primary key\n"
+                + "    val name: String,\n"
+                + "    val age: Int\n"
+                + ")\n");
+
+        assertTrue("コメントの次の引数が残ること: " + fieldNames(c),
+                fieldNames(c).containsAll(List.of("id", "name", "age")));
+    }
+
+    /** 回帰: 括弧の中のコメントで型が途中で切れないこと。 */
+    @Test
+    public void aCommentInsideBracketsDoesNotTruncateTheType() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class A {\n"
+                + "    val cb: (Int /* id */) -> Unit = {}\n"
+                + "    val z: Int = 0\n"
+                + "}\n");
+
+        assertTrue("半端なコメントを型に含めないこと: " + typeOf(c, "cb"),
+                !typeOf(c, "cb").contains("/*") || typeOf(c, "cb").contains("*/"));
+        assertTrue("矢印まで読めていること: " + typeOf(c, "cb"), typeOf(c, "cb").contains("->"));
+        assertTrue(fieldNames(c).contains("z"));
+    }
+
     /** 非退行: 普通のフィールドとメソッドの抽出は変わらないこと。 */
     @Test
     public void plainMembersAreUnchanged() {

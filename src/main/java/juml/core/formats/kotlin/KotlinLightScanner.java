@@ -90,18 +90,15 @@ public final class KotlinLightScanner {
             "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
                     + "((?:public\\s+|private\\s+|protected\\s+|internal\\s+"
                     + "|open\\s+|abstract\\s+|final\\s+|override\\s+|suspend\\s+|inline\\s+)*)"
-                    + "fun\\s+(?:<[^>]+>\\s+)?"
-                    // 引数リストは 1 レベルのネスト () を許す (既定引数 listOf() 等で
-                    // 最初の ) で切れて関数まるごと脱落するのを防ぐ)。
-                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(((?:[^()]|\\([^()]*\\))*)\\)"
-                    // 戻り値の型の直後に来てよいもの: = / { / 改行 / } のほか
-                    // <b>本体の終わり</b>。ここへ渡ってくるのはクラス本体を切り出した
-                    // 部分文字列で、閉じ波括弧は含まれない。そのため 1 行で書いた本体の
-                    // 最後の抽象メンバー (`interface I { fun f(): Int }`) は型の後ろに
-                    // 何も無く、終端を文字で数え上げるかぎり必ず先読みが失敗して
-                    // マッチごと落ちていた (複数行に書けば改行があるので通る、という
-                    // 書き方依存の食い違いになっていた)。
-                    + "(?:\\s*:\\s*([A-Za-z_$][\\w.<>?\\[\\]\\s,]*?))?(?=\\s*(?:[={}\\n]|$))");
+                    // 名前と引数リストの開き括弧まで。引数リストと戻り値の型は
+                    // <b>正規表現で切らない</b> — どちらもプロパティの型とまったく同じ
+                    // 理由で、数え上げるかぎり必ず取りこぼす。実際、引数は 1 段の入れ子
+                    // しか許しておらず入れ子既定引数でメソッドごと落ち、戻り値の型は
+                    // 文字クラス方式のままだったので `Class<*>` や `(Int) -> Unit` を
+                    // 返すメソッドが<b>丸ごと消えて</b>いた (同じ型をプロパティに書けば
+                    // 通る、という経路依存の食い違い)。引数は括弧の対応で、戻り値の型は
+                    // プロパティと同じ {@link KotlinBlockMask#propertyTypeEnd} で読む。
+                    + "fun\\s+(?:<[^>]+>\\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
 
     /** Kotlin ソースから {@link JavaClassInfo} のリストを抽出する。 */
     public static List<JavaClassInfo> scan(String source, ErrorListener listener) {
@@ -198,7 +195,16 @@ public final class KotlinLightScanner {
                     // ローカル val/var/fun をクラスメンバとして誤抽出しないようにする。
                     // 型本体 (nested class / object / companion object) は従来どおり降りて
                     // メンバをホイストするため、マスク対象にしない。
+                    // コメント・文字列の中身も「メンバー宣言として読まない」領域に
+                    // 含める。クラスヘッダの走査は最初から nonCodeMask を見ていたのに
+                    // メンバー抽出だけが生テキストを見ていたため、コメントアウトした
+                    // `// fun legacy(): String` や KDoc 中の `fun close()` が
+                    // <b>実在するメンバーとして</b>図に出ていた。
                     boolean[] codeMask = KotlinBlockMask.codeBlockMask(body);
+                    boolean[] nonCodeInBody = nonCodeMask(body);
+                    for (int k = 0; k < codeMask.length && k < nonCodeInBody.length; k++) {
+                        codeMask[k] |= nonCodeInBody[k];
+                    }
                     extractProperties(body, info, codeMask);
                     extractFunctions(body, info, codeMask);
                 }
@@ -396,7 +402,13 @@ public final class KotlinLightScanner {
                         + "(?:private\\s+|protected\\s+|public\\s+|internal\\s+)?"
                         + "(?:val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*(.+?)"
                         + "(?:\\s*=.*)?\\s*$");
-        for (String p : KotlinHeaderScan.splitTopLevelCommas(paramsText)) {
+        for (String raw : KotlinHeaderScan.splitTopLevelCommas(paramsText)) {
+            // 引数の先頭に付いたコメントを落としてから照合する。前の引数の行末コメントは
+            // カンマの<b>後ろ</b>にあるので次の引数の先頭に付き、`^\s*` では食えないため
+            // その引数だけが黙って消えていた (コメントを 1 行上へ動かすと復活する、という
+            // 書き方依存の欠落)。クラス本体側は走査でコメントを飛ばしているのに、この
+            // 経路だけが生テキストのままだった。
+            String p = stripLeadingComments(raw);
             Matcher m = perParam.matcher(p);
             if (m.matches()) {
                 String anns = m.group(1);
@@ -410,6 +422,23 @@ public final class KotlinLightScanner {
                 info.getFields().add(f);
             }
         }
+    }
+
+    /** 先頭に並んだ空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
+    private static String stripLeadingComments(String s) {
+        int i = 0;
+        while (i < s.length()) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                i++;
+                continue;
+            }
+            int e = skipNonCode(s, i);
+            if (e <= i) {
+                break;
+            }
+            i = e;
+        }
+        return s.substring(i);
     }
 
     /**
@@ -478,16 +507,28 @@ public final class KotlinLightScanner {
             String anns = m.group(1);
             String mods = m.group(2);
             String name = m.group(3);
-            String paramsText = m.group(4);
-            String returnType = m.group(5);
+            // 引数リストは括弧の対応で切る (m.end() - 1 が開き括弧)。
+            int close = matchParen(body, m.end() - 1);
+            if (close <= m.end() - 1) {
+                continue; // 閉じていない = 宣言として読めない
+            }
+            String paramsText = body.substring(m.end(), close);
+            // 戻り値の型はプロパティとまったく同じ走査で読む。
+            int afterSig = close + 1;
+            String returnType = null;
+            int colon = nextNonSpaceChar(body, afterSig);
+            if (colon >= 0 && body.charAt(colon) == ':') {
+                int typeEnd = KotlinBlockMask.propertyTypeEnd(body, colon + 1);
+                returnType = body.substring(colon + 1, typeEnd).trim();
+                afterSig = typeEnd;
+            }
             JavaMethodInfo mth = new JavaMethodInfo();
             mth.setName(name);
-            mth.setReturnType(returnType == null ? "Unit" : returnType.trim());
+            mth.setReturnType(returnType == null || returnType.isEmpty() ? "Unit" : returnType);
             mth.setVisibility(visibilityOf(mods));
             extractAnnotations(anns, mth.getAnnotations());
             parseParameters(paramsText, mth);
             // メソッド本体内の呼び出しを抽出。ブロック本体か式本体かを判定。
-            int afterSig = m.end();
             int next = nextNonSpaceChar(body, afterSig);
             if (next >= 0 && body.charAt(next) == '{') {
                 int braceEnd = matchBrace(body, next);

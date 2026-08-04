@@ -115,7 +115,14 @@ final class KotlinBlockMask {
         for (int i = from; i < s.length(); i++) {
             int e = KotlinLightScanner.skipNonCode(s, i);
             if (e > i) {
-                return depth == 0 ? i : e - 1; // コメント/文字列は型の外
+                // 入れ子の外なら型はそこで終わり。内側なら<b>読み飛ばして続ける</b>。
+                // ここで e-1 を返していたため、括弧の中にコメントや文字列があると
+                // 型がその途中で切れ、`(Int /* id *` のような半端な文字列が図に出ていた。
+                if (depth == 0) {
+                    return i;
+                }
+                i = e - 1;
+                continue;
             }
             char c = s.charAt(i);
             // 関数型の矢印。`>` を閉じ括弧として扱う前に判定しないと `-> Unit` が切れる。
