@@ -19,15 +19,23 @@ final class KotlinBlockMask {
 
 
     /**
-     * クラス本体文字列のうち「コードブロック」(関数本体・getter/setter・二次コンストラクタ本体・
-     * init ブロック) の中身を true にしたマスクを返す。
+     * クラス本体文字列のうち、メンバー宣言として読んではいけない {@code &#123;…&#125;} の
+     * 中身を true にしたマスクを返す。
      *
-     * <p>ローカルの {@code val}/{@code var}/{@code fun} をクラスのフィールド/メソッドとして
-     * 誤抽出しないために使う。判定は {@code {} の直前の非空白文字が {@code )} (関数/アクセサ/
-     * コンストラクタのシグネチャ末尾)、または直前の語が {@code init} の場合をコードブロックとみなす。
-     * 型本体 ({@code class}/{@code object}/{@code companion object}/{@code enum}/{@code interface})
-     * の {@code {} はマスクせず走査を継続するため、ネストした型やコンパニオンのメンバは従来どおり
-     * 抽出 (ホイスト) される。ラムダ ({@code = { ... }}) はコードブロックだが稀なため対象外。</p>
+     * <p>判定は<b>反転</b>している。クラス本体に現れる波括弧のうち、中身が「囲むクラスの
+     * メンバー」なのは {@code companion object} の本体<b>だけ</b>で、それ以外は関数本体・
+     * アクセサ・{@code init}・二次コンストラクタ・ラムダ代入・{@code by} 委譲・
+     * {@code when} / {@code if} の枝・匿名 {@code object} と、すべて実装の中身である。
+     * 名前付きネスト型も独立した {@link juml.core.formats.uml.JavaClassInfo} として別途
+     * 出力されるので、囲む型へホイストしてはいけない。</p>
+     *
+     * <p>以前は逆に「コードブロックらしい形」を列挙していた ({@code )} の直後 /
+     * {@code init} / {@code = &#123;} / {@code by 識別子 &#123;})。列挙は必ず取りこぼす:
+     * {@code Config().apply &#123; … &#125;}、{@code flow &#123; … &#125;}、
+     * {@code MyAdapter &#123; … &#125;}、{@code by Holder.make &#123; … &#125;}、
+     * {@code when &#123; … &#125;} がどれも素通りし、ラムダ内のローカル変数とローカル関数が
+     * <b>存在しないメンバー</b>としてクラス図に並んでいた。許可する形を数え上げる代わりに、
+     * 許可する形が 1 つしかないことを使う。</p>
      */
     static boolean[] codeBlockMask(String body) {
         int n = body.length();
@@ -35,81 +43,29 @@ final class KotlinBlockMask {
         for (int i = 0; i < n; i++) {
             int e = KotlinLightScanner.skipNonCode(body, i);
             if (e > i) { i = e - 1; continue; }
-            char c = body.charAt(i);
-            if (c != '{') { continue; }
-            int p = i - 1;
-            while (p >= 0 && Character.isWhitespace(body.charAt(p))) p--;
-            boolean codeBlock = false;
-            if (p >= 0) {
-                char pc = body.charAt(p);
-                if (pc == ')') {
-                    codeBlock = true;
-                } else if (KotlinLightScanner.isIdentPart(pc)) {
-                    int ws = p;
-                    while (ws >= 0 && KotlinLightScanner.isIdentPart(body.charAt(ws))) ws--;
-                    if ("init".equals(body.substring(ws + 1, p + 1))) {
-                        codeBlock = true;
-                    }
+            if (body.charAt(i) != '{') { continue; }
+            if (isCompanionObjectBody(body, i)) {
+                continue; // companion のメンバは従来どおり外側へホイストする
+            }
+            int close = KotlinLightScanner.matchBrace(body, i);
+            if (close > i) {
+                for (int k = i; k <= close && k < n; k++) {
+                    mask[k] = true;
                 }
-            }
-            if (!codeBlock && isInitialiserBlock(body, p)) {
-                codeBlock = true;
-            }
-            // 名前付きネスト型 (class / interface / object / enum) の本体はマスクする。
-            // これらは独立した JavaClassInfo エントリとして別途出力されるため、囲む型へ
-            // ホイストするとメンバが重複・誤付与される。ただし companion object だけは
-            // 従来どおり外側へホイストする (Outer.CONST のように静的的に参照されるため)。
-            if (!codeBlock && isNestedTypeHeader(body, i)) {
-                codeBlock = true;
-            }
-            if (codeBlock) {
-                int close = KotlinLightScanner.matchBrace(body, i);
-                if (close > i) {
-                    for (int k = i; k <= close && k < n; k++) {
-                        mask[k] = true;
-                    }
-                    i = close; // ブロック全体 (入れ子のコードブロック含む) を一括スキップ
-                }
+                i = close; // ブロック全体 (入れ子含む) を一括スキップ
             }
         }
         return mask;
     }
 
     /**
-     * {@code p} ({@code &#123;} の直前の非空白位置) から見て、初期化式のブロック
-     * (ラムダ代入 / {@code by} 委譲) かどうか。マスクしないとラムダの中身がクラス本体として
-     * 走査され、ローカル変数とローカル関数が<b>存在しないメンバー</b>として図に出る。
+     * {@code bracePos} の {@code &#123;} が {@code companion object} の本体開始か。
+     *
+     * <p>companion のメンバだけは囲むクラスへホイストする ({@code Outer.CONST} のように
+     * 静的メンバとして参照されるため)。直前の文境界 ({@code ;} / {@code &#125;} /
+     * {@code &#123;}) までをヘッダとみなして判定する。</p>
      */
-    private static boolean isInitialiserBlock(String body, int p) {
-        if (p < 0 || (body.charAt(p) != '=' && !KotlinLightScanner.isIdentPart(body.charAt(p)))) {
-            return false;
-        }
-        if (body.charAt(p) == '=') {
-            return true;
-        }
-        // `by lazy {` = 「by + 識別子 + {」。`by X(...) {` は直前が ) なので別経路で拾う。
-        int s = p;
-        while (s >= 0 && KotlinLightScanner.isIdentPart(body.charAt(s))) {
-            s--;
-        }
-        while (s >= 0 && Character.isWhitespace(body.charAt(s))) {
-            s--;
-        }
-        int we = s;
-        while (s >= 0 && KotlinLightScanner.isIdentPart(body.charAt(s))) {
-            s--;
-        }
-        return we > s && "by".equals(body.substring(s + 1, we + 1));
-    }
-
-    /**
-     * {@code body} の位置 {@code bracePos} の {@code &#123;} が、名前付きネスト型
-     * (class / interface / object / enum) の本体開始かどうかを判定する。直前の文
-     * 境界 ({@code ;} / {@code &#125;} / {@code &#123;}) までのヘッダに型宣言キーワードが
-     * 含まれ、かつ {@code companion object} でなければ true。companion object は
-     * 外側へホイストしたいので false を返す (従来どおり降りて抽出する)。
-     */
-    private static boolean isNestedTypeHeader(String body, int bracePos) {
+    private static boolean isCompanionObjectBody(String body, int bracePos) {
         int hs = bracePos - 1;
         while (hs >= 0) {
             char ch = body.charAt(hs);
@@ -118,10 +74,7 @@ final class KotlinBlockMask {
             }
             hs--;
         }
-        String header = body.substring(hs + 1, bracePos);
-        if (header.matches("(?s).*\\bcompanion\\s+object\\b.*")) {
-            return false;
-        }
-        return header.matches("(?s).*\\b(class|interface|object|enum)\\b.*");
+        return body.substring(hs + 1, bracePos)
+                .matches("(?s).*\\bcompanion\\s+object\\b.*");
     }
 }

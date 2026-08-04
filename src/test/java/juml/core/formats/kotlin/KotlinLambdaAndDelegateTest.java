@@ -165,6 +165,86 @@ public class KotlinLambdaAndDelegateTest {
         assertTrue(methodNames(c).contains("m"));
     }
 
+    /**
+     * 回帰: ラムダを受け取るあらゆる形の中身をクラスのメンバーにしないこと。
+     *
+     * <p>マスクする形を {@code = &#123;} と {@code by 識別子 &#123;} の 2 つだけ列挙して
+     * いたため、それ以外は全部素通りしていた。列挙は必ず取りこぼす。</p>
+     */
+    @Test
+    public void localsInsideAnyLambdaShapeAreNotClassMembers() {
+        String[] shapes = {
+            "    val cfg: Config = Config().apply {\n"
+                    + "        val ghost: Int = 1\n        fun phantom(): Int = ghost\n    }\n",
+            "    val stream = flow {\n"
+                    + "        val ghost: Int = 1\n        fun phantom(): Int = ghost\n    }\n",
+            "    val adapter = MyAdapter {\n"
+                    + "        val ghost: Int = 1\n        fun phantom(): Int = ghost\n    }\n",
+            "    val v: Int by Holder.make {\n"
+                    + "        val ghost: Int = 1\n        fun phantom(): Int = ghost\n    }\n",
+            "    val w: Int = when {\n"
+                    + "        else -> {\n            val ghost: Int = 1\n"
+                    + "            fun phantom(): Int = ghost\n        }\n    }\n",
+            "    val u: Int = if (c) {\n        val ghost: Int = 1\n"
+                    + "        fun phantom(): Int = ghost\n    } else {\n        2\n    }\n",
+        };
+        for (String shape : shapes) {
+            JavaClassInfo c = scanOne("package com.x\nclass A {\n" + shape
+                    + "    fun real() {}\n}\n");
+            assertFalse("ラムダ内のローカル変数が漏れている: " + shape + " -> " + fieldNames(c),
+                    fieldNames(c).contains("ghost"));
+            assertFalse("ラムダ内のローカル関数が漏れている: " + shape + " -> " + methodNames(c),
+                    methodNames(c).contains("phantom"));
+            assertTrue("本物のメソッドは残ること: " + shape + " -> " + methodNames(c),
+                    methodNames(c).contains("real"));
+        }
+    }
+
+    /** 非退行: companion object のメンバーは従来どおり外側のクラスへ出ること。 */
+    @Test
+    public void companionMembersAreStillHoisted() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class A {\n"
+                + "    companion object {\n"
+                + "        const val TAG: String = \"A\"\n"
+                + "        fun create(): A { return A() }\n"
+                + "    }\n"
+                + "    fun real() {}\n"
+                + "}\n");
+
+        assertTrue("companion の定数は外側へ出ること: " + fieldNames(c), fieldNames(c).contains("TAG"));
+        assertTrue("companion の関数も外側へ出ること: " + methodNames(c),
+                methodNames(c).contains("create"));
+        assertTrue(methodNames(c).contains("real"));
+    }
+
+    /**
+     * 回帰: 関数型のプロパティを、修飾が付いても取りこぼさないこと。
+     *
+     * <p>「括弧 1 組 + {@code ->} + 英字始まり」しか型として通していなかったため、
+     * nullable コールバック {@code (() -> Unit)?}、コルーチンの
+     * {@code suspend () -> Unit}、DSL の {@code Foo.() -> Unit} はプロパティごと
+     * 図から消えていた。どれも Android / Compose では定型。</p>
+     */
+    @Test
+    public void decoratedFunctionTypePropertiesAreExtracted() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class A {\n"
+                + "    val onClick: (() -> Unit)? = null\n"
+                + "    val loader: suspend () -> Unit = {}\n"
+                + "    val builder: Foo.() -> Unit = {}\n"
+                + "    val transform: ((Int) -> Int) -> Unit = {}\n"
+                + "    val plain: Int = 1\n"
+                + "}\n");
+
+        List<String> names = fieldNames(c);
+        assertTrue("nullable コールバック: " + names, names.contains("onClick"));
+        assertTrue("suspend 関数型: " + names, names.contains("loader"));
+        assertTrue("レシーバ付き関数型: " + names, names.contains("builder"));
+        assertTrue("入れ子の関数型: " + names, names.contains("transform"));
+        assertTrue("非退行: 普通の型: " + names, names.contains("plain"));
+    }
+
     /** 非退行: 普通のフィールドとメソッドの抽出は変わらないこと。 */
     @Test
     public void plainMembersAreUnchanged() {
