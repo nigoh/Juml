@@ -64,8 +64,13 @@ public class DiagramScopeDialogResultTest {
     }
 
     private DiagramScopeDialog create(List<String> packages, DiagramScope initial) {
-        dlg = GuiActionRunner.execute(() ->
-                new DiagramScopeDialog(null, packages, Collections.emptyList(), initial));
+        return create(packages, initial, true);
+    }
+
+    private DiagramScopeDialog create(List<String> packages, DiagramScope initial,
+                                      boolean carryOverShaping) {
+        dlg = GuiActionRunner.execute(() -> new DiagramScopeDialog(
+                null, packages, Collections.emptyList(), initial, carryOverShaping));
         return dlg;
     }
 
@@ -183,5 +188,34 @@ public class DiagramScopeDialogResultTest {
         assertTrue(scope.getSeedQualifiedNames().isEmpty());
         assertTrue(scope.getFocusClass().isEmpty());
         assertTrue(scope.getExcludedQualifiedNames().isEmpty());
+    }
+
+    /**
+     * 回帰: 新しい図のスコープを選ばせる導線 ({@code promptForScope}) では引き継がないこと。
+     *
+     * <p>そこでの {@code initial} は「最後にアクティブだった別のタブ」の写しでしかない。
+     * 引き継ぐと前の図の起点が新しい図へ紛れ込み、起点 BFS が母集合を絞り切って<b>空の図</b>に
+     * なるうえ、起点を消す UI はどこにも無い。</p>
+     *
+     * <p>逆に、可視性・最大クラス数・近傍ホップ数などは<b>ウィジェットとして見えている</b>ので、
+     * 別タブの値で初期化されること自体は利便であり退行ではない。ここで固定するのは
+     * 「画面に出ていない整形だけが漏れない」ことに限る。</p>
+     */
+    @Test
+    public void newDiagramScopeDoesNotInheritTheOtherTabsShaping() throws Exception {
+        DiagramScope otherTab = DiagramScope.builder()
+                .seed("com.example.Order")
+                .focusClass("com.example.Order")
+                .excludeClass("com.example.Noise")
+                .neighborHops(1)
+                .build();
+        create(Collections.emptyList(), otherTab, false);
+
+        DiagramScope scope = buildScope();
+
+        assertTrue("別タブの起点を引き継がないこと", scope.getSeedQualifiedNames().isEmpty());
+        assertTrue("別タブの強調クラスを引き継がないこと", scope.getFocusClass().isEmpty());
+        assertTrue("別タブの個別非表示を引き継がないこと",
+                scope.getExcludedQualifiedNames().isEmpty());
     }
 }

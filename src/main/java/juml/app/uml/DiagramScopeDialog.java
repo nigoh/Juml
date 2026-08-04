@@ -74,12 +74,28 @@ public final class DiagramScopeDialog extends JDialog {
      */
     private final DiagramScope carriedOver;
 
+    /**
+     * 既存の図のスコープを<b>編集する</b>ためのダイアログ (画面に無い設定は引き継ぐ)。
+     */
     public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
                               DiagramScope initial) {
+        this(owner, packages, modules, initial, true);
+    }
+
+    /**
+     * @param carryOverShaping {@code initial} の起点・強調・個別非表示を引き継ぐか。
+     *     同じ図のスコープを編集するときだけ {@code true} にすること。<b>新しい図の</b>
+     *     スコープを選ばせる用途 ({@code DiagramEntryDialogs.promptForScope}) では
+     *     {@code initial} が「最後にアクティブだった別のタブ」の写しでしかないため、
+     *     引き継ぐと前の図の起点が新しい図に紛れ込み、BFS がその起点で母集合を絞り切って
+     *     <b>空の図</b>になる (起点を消す UI はどこにも無い)。
+     */
+    public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
+                              DiagramScope initial, boolean carryOverShaping) {
         super(owner, Messages.get("dlg.scope.title"), ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
-        this.carriedOver = initial;
+        this.carriedOver = carryOverShaping ? initial : null;
 
         packageList = new JList<>(packages.toArray(new String[0]));
         packageList.setVisibleRowCount(8);
