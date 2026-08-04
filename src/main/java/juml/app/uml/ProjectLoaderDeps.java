@@ -31,4 +31,9 @@ public final class ProjectLoaderDeps {
     public Consumer<CancelToken> cancelTokenSetter;
     public Consumer<File> projectRootSetter;
     public Consumer<File> onLoadSuccess;
+    /**
+     * 解析が失敗/キャンセルで終わったときの後始末 (省略可)。
+     * 呼び出し側は「解析キャッシュが空になった」前提で UI を揃える。
+     */
+    public Runnable onLoadAborted;
 }

@@ -40,6 +40,7 @@ public final class ProjectLoader {
     private final Consumer<CancelToken> cancelTokenSetter;
     private final Consumer<File> projectRootSetter;
     private final Consumer<File> onLoadSuccess;
+    private final Runnable onLoadAborted;
 
     private SwingWorker<?, ?> activeWorker;
     private CancelToken activeCancelToken;
@@ -58,6 +59,7 @@ public final class ProjectLoader {
         this.cancelTokenSetter = deps.cancelTokenSetter;
         this.projectRootSetter = deps.projectRootSetter;
         this.onLoadSuccess = deps.onLoadSuccess;
+        this.onLoadAborted = deps.onLoadAborted != null ? deps.onLoadAborted : () -> { };
     }
 
     /** プロジェクト解析を開始する。EDT から呼ぶこと。 */
@@ -166,6 +168,7 @@ public final class ProjectLoader {
                     // 半端に入った解析結果を残さない (UI は「未ロード」を表示しているため)。
                     cache.clear();
                     refIndexCache.invalidate();
+                    abortCleanup();
                     juml.util.AppLog.error(juml.util.ErrorCode.PRJ_001, "ProjectLoader",
                             "Project analysis failed: " + root.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
@@ -181,6 +184,7 @@ public final class ProjectLoader {
                     // ツリーは空のままなので、キャッシュも空へ揃えて食い違いを防ぐ。
                     cache.clear();
                     refIndexCache.invalidate();
+                    abortCleanup();
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }
@@ -202,6 +206,24 @@ public final class ProjectLoader {
         workerRef[0] = worker;
         activeWorker = worker;
         worker.execute();
+    }
+
+    /**
+     * 解析が失敗/キャンセルで終わったときの後始末。
+     *
+     * <p>この経路では解析キャッシュを空にするが、<b>開いていた図タブはそのまま残っていた</b>。
+     * 前のプロジェクトを読み込み済みの状態で新しいプロジェクトのロードに失敗すると、
+     * タブは旧プロジェクトのラベル・付箋を保ったまま空のキャッシュを参照することになり、
+     * 再描画 (F5 / スタイル変更 / 図種切替) で空図や別図が出る。ツリーはロード開始時点で
+     * {@code treePanel.clear()} 済みなので、タブ側も同じ「未ロード」状態へ揃える。</p>
+     */
+    void abortCleanup() {
+        state.sequenceEntry = null;
+        state.activityEntry = null;
+        state.callGraphEntry = null;
+        state.sequenceHiddenParticipants.clear();
+        state.currentScope = null;
+        onLoadAborted.run();
     }
 
     /**
@@ -265,6 +287,7 @@ public final class ProjectLoader {
                 if (error != null) {
                     cache.clear();
                     refIndexCache.invalidate();
+                    abortCleanup();
                     juml.util.AppLog.error(juml.util.ErrorCode.PRJ_002, "ProjectLoader",
                             "Archive read failed: " + archive.getAbsolutePath(), error);
                     JOptionPane.showMessageDialog(parentFrame,
@@ -278,6 +301,7 @@ public final class ProjectLoader {
                     // 「ツリーは空・キャッシュは読込済み」の食い違いを防ぐ。
                     cache.clear();
                     refIndexCache.invalidate();
+                    abortCleanup();
                     statusLabel.setText(Messages.get("status.cancelled"));
                     return;
                 }
