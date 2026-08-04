@@ -305,15 +305,13 @@ public enum SketchDiagramType {
                 return candidate;
             }
         }
-        // 走査の答えでも要素が 1 つは取れているなら、それは「未対応行があってロック」であって
-        // 図種違いではない。利用者はロックを解除できるので、そのまま見せる。
-        if (!recognisedNothing(scanned, source)) {
-            return parserCheckedFallback(source, scanned);
-        }
-        // どのコーデックも扱えないテキスト (手書きの未対応構文) は走査の答えのまま
-        // 表示ロックで見せる。ただしその一手前に PlantUML 自身の解釈で裏を取る:
-        // ここまで来た時点で「どのコーデックも読めず、走査も要素を 1 つも認識できていない」
-        // ので、走査の答えを信じる根拠が無い。
+        // ここまで来たら、どのコーデックもこのテキストを丸ごとは読めない (手書きの未対応
+        // 構文が混じっている等)。走査の答えを PlantUML 自身の解釈で裏取りしてから、
+        // 表示ロックで見せる設計器を決める。
+        //
+        // 以前ここには「走査が要素を 1 つでも認識していれば走査の答えを採る」ための分岐が
+        // あったが、両分岐が同じ式を返す死んだコードになっていた (全体を読めるコーデックを
+        // 探す処理を上へ移したときの取り残し)。
         return parserCheckedFallback(source, scanned);
     }
 
@@ -331,7 +329,12 @@ public enum SketchDiagramType {
                 "ActivityDiagram3", java.util.Set.of(ACTIVITY),
                 "StateDiagram", java.util.Set.of(STATE),
                 "MindMapDiagram", java.util.Set.of(MINDMAP),
-                "ClassDiagram", java.util.Set.of(CLASS, OBJECT, ER),
+                // 実測: コンポーネント図でも配置図でも、要素が interface だけ /
+                // 中身の無い rectangle だけになると PlantUML は ClassDiagram と読む。
+                // この集合は「明らかに違う設計器を否定する」ための拒否権であって選定では
+                // ないので、実際に起こり得る対応を漏らさず入れる。選定は
+                // fullySupportedBy が行う (各コーデックは自分の構文しか丸ごと読めない)。
+                "ClassDiagram", java.util.Set.of(CLASS, OBJECT, ER, COMPONENT, DEPLOYMENT),
                 "DescriptionDiagram", java.util.Set.of(USECASE, COMPONENT, DEPLOYMENT));
 
     /** 解釈が許す設計器のうち、どれとも決められないときに出す代表。 */
@@ -357,6 +360,41 @@ public enum SketchDiagramType {
      * 既定でシーケンス図と読むため、クラス図がシーケンス図に化ける。裏取りが意味を持つのは
      * 「コーデックの答えが当てにならない」と分かっている場面に限られる。</p>
      */
+    /** 座標を持たない設計器 (これらのコーデックは {@code '@pos} を決して出さない)。 */
+    private static final java.util.Set<SketchDiagramType> POSITIONLESS_DESIGNERS =
+            java.util.Set.of(SEQUENCE, ACTIVITY);
+
+    /**
+     * 座標コメントを持つ図から、座標を出さない設計器を候補から外す。
+     *
+     * <p>{@code '@pos} を書くのは位置を持つ設計器だけで、シーケンス図・アクティビティ図の
+     * コーデックは決して出さない。したがってこの行がある図を PlantUML が
+     * {@code SequenceDiagram} と読んでも、それは<b>曖昧な断片を既定でシーケンスと読む</b>
+     * 動作であって、どの設計器が書いたかの証拠にはならない。除外しないと、未対応行が
+     * 1 行混じっただけで配置図・ユースケース図・ER 図がシーケンス設計器へ飛ぶ。</p>
+     *
+     * <p>除外の結果が空になったら制約なしとして扱う (呼び出し側が走査の答えを保つ)。</p>
+     */
+    private static java.util.Set<SketchDiagramType> withoutPositionlessDesigners(
+            java.util.Set<SketchDiagramType> allowed, String source) {
+        if (allowed == null || !hasLayoutComment(source)) {
+            return allowed;
+        }
+        java.util.Set<SketchDiagramType> kept = new java.util.HashSet<>(allowed);
+        kept.removeAll(POSITIONLESS_DESIGNERS);
+        return kept;
+    }
+
+    /** Juml の設計器が書いた図か (座標コメントを 1 行でも含むか)。 */
+    private static boolean hasLayoutComment(String text) {
+        for (String line : (text == null ? "" : text).split("\n", -1)) {
+            if (isLayoutComment(line)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** PlantUML 自身の解釈が許す設計器 (解釈できなければ null = 制約なし)。 */
     private static java.util.Set<SketchDiagramType> parsedKindTypes(String source) {
         return PARSED_KIND_TYPES.get(juml.core.formats.uml.PumlDiagramScan.parsedKind(source));
@@ -365,8 +403,9 @@ public enum SketchDiagramType {
     private static SketchDiagramType parserCheckedFallback(String source,
                                                            SketchDiagramType guess) {
         String kind = juml.core.formats.uml.PumlDiagramScan.parsedKind(source);
-        java.util.Set<SketchDiagramType> allowed = PARSED_KIND_TYPES.get(kind);
-        if (allowed == null || allowed.contains(guess)) {
+        java.util.Set<SketchDiagramType> allowed = withoutPositionlessDesigners(
+                PARSED_KIND_TYPES.get(kind), source);
+        if (allowed == null || allowed.isEmpty() || allowed.contains(guess)) {
             // 解釈できない図 (構文エラー・未対応記法) は走査の答えのまま扱う。
             return guess;
         }
