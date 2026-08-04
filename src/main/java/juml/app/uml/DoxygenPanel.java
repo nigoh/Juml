@@ -143,12 +143,29 @@ public final class DoxygenPanel extends JPanel {
                 });
     }
 
-    /** 共有キャッシュ更新時にツリーを作り直す (自タブの実行・他タブの実行どちらでも)。 */
+    /**
+     * 共有キャッシュ更新時にツリーを作り直す (自タブの実行・他タブの実行どちらでも)。
+     *
+     * <p>プロジェクト切替では {@link DoxygenResultCache#clear()} が結果を捨てて
+     * ({@code getModel() == null}) 通知してくる。以前はここで null を素通りさせていたため、
+     * <b>前プロジェクトのツリーと API リファレンスが新プロジェクトのものとして残り続けて</b>
+     * いた。兄弟タブ (Groups/TODO) と同じく、破棄されたら表示も空へ戻す。</p>
+     */
     private void onModelUpdated() {
         DoxModel model = resultCache.getModel();
-        if (model != null) {
-            populateTree(model);
+        if (model == null) {
+            clearTree();
+            return;
         }
+        populateTree(model);
+    }
+
+    /** 結果が無い状態 (初期状態・プロジェクト切替直後) の表示へ戻す。 */
+    private void clearTree() {
+        rootNode.removeAllChildren();
+        treeModel.reload();
+        detail.setText(placeholderHtml());
+        statusLabel.setText(Messages.get("doxygen.placeholder"));
     }
 
     /** パース結果をツリーへ流し込む。 */

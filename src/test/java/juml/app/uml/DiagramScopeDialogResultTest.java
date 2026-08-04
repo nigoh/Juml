@@ -60,8 +60,12 @@ public class DiagramScopeDialogResultTest {
     }
 
     private DiagramScopeDialog create(List<String> packages) {
+        return create(packages, null);
+    }
+
+    private DiagramScopeDialog create(List<String> packages, DiagramScope initial) {
         dlg = GuiActionRunner.execute(() ->
-                new DiagramScopeDialog(null, packages, Collections.emptyList(), null));
+                new DiagramScopeDialog(null, packages, Collections.emptyList(), initial));
         return dlg;
     }
 
@@ -142,5 +146,42 @@ public class DiagramScopeDialogResultTest {
         assertTrue("com.a が include に入る", scope.getIncludedPackages().contains("com.a"));
         assertTrue("com.c が include に入る", scope.getIncludedPackages().contains("com.c"));
         assertTrue("未選択の com.b は入らない", !scope.getIncludedPackages().contains("com.b"));
+    }
+
+    /**
+     * 回帰: ダイアログにウィジェットが無い設定 (起点・強調・個別の非表示) を
+     * OK が消さないこと。以前はまっさらなビルダから組み直していたため、可視性を
+     * 変えただけで「このクラスを強調」も 1-hop 図の起点も失われていた。
+     */
+    @Test
+    public void okKeepsShapingTheDialogDoesNotShow() throws Exception {
+        DiagramScope initial = DiagramScope.builder()
+                .seed("com.example.Order")
+                .focusClass("com.example.Order")
+                .excludeClass("com.example.Noise")
+                .neighborHops(1)
+                .build();
+        create(Collections.emptyList(), initial);
+
+        DiagramScope scope = buildScope();
+
+        assertEquals("起点が保たれること",
+                Collections.singleton("com.example.Order"), scope.getSeedQualifiedNames());
+        assertEquals("強調クラスが保たれること",
+                "com.example.Order", scope.getFocusClass());
+        assertTrue("個別に隠したクラスが保たれること",
+                scope.getExcludedQualifiedNames().contains("com.example.Noise"));
+    }
+
+    /** 元スコープが無い (新規) ときは何も引き継がず、空のまま組み上がること。 */
+    @Test
+    public void okWithoutInitialScopeLeavesShapingEmpty() throws Exception {
+        create(Collections.emptyList());
+
+        DiagramScope scope = buildScope();
+
+        assertTrue(scope.getSeedQualifiedNames().isEmpty());
+        assertTrue(scope.getFocusClass().isEmpty());
+        assertTrue(scope.getExcludedQualifiedNames().isEmpty());
     }
 }

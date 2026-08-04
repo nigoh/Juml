@@ -62,12 +62,24 @@ public final class DiagramScopeDialog extends JDialog {
     private final JRadioButton parseModeFull;
     private final JRadioButton parseModeHeaders;
     private DiagramScope result;
+    /**
+     * このダイアログにウィジェットが無い設定を持ち回るための元スコープ (null 可)。
+     *
+     * <p>OK は毎回まっさらなビルダから組み直すため、以前は<b>ダイアログが知らない設定を
+     * 押すだけで消していた</b>: プレビュー右クリックの「このクラスを強調」(focusClass)・
+     * 個別クラスの非表示 (excludedQualifiedNames)・ツリーのダブルクリックで開いた
+     * 1-hop 図の起点 (seedQualifiedNames) が、可視性を変えただけで失われる。とくに起点が
+     * 消えると「このクラスの近傍」がプロジェクト全体の図へ化ける。整形の解除には専用の
+     * 「整形をリセット」メニューがあるのだから、ここで黙って解除してはいけない。</p>
+     */
+    private final DiagramScope carriedOver;
 
     public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
                               DiagramScope initial) {
         super(owner, Messages.get("dlg.scope.title"), ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
+        this.carriedOver = initial;
 
         packageList = new JList<>(packages.toArray(new String[0]));
         packageList.setVisibleRowCount(8);
@@ -379,7 +391,28 @@ public final class DiagramScopeDialog extends JDialog {
         Object presetSel = presetCombo.getSelectedItem();
         b.preset(presetSel instanceof DiagramPreset
                 ? (DiagramPreset) presetSel : DiagramPreset.CUSTOM);
+        carryOverUnshownSettings(b);
         return b.build();
+    }
+
+    /**
+     * このダイアログにウィジェットが無い設定を元スコープから引き継ぐ。
+     *
+     * <p>ここまでの組み立ては<b>ダイアログが持つウィジェットの値だけ</b>を反映している
+     * (集合系のビルダは加算なので、元スコープから積み上げると選択解除が効かなくなる)。
+     * 逆に言えば、画面に出ていない設定はここで明示的に運ばないと消える。運ぶのは
+     * 起点クラス・強調クラス・個別に隠したクラス・外部ライブラリ判定の接頭辞の 4 つ。</p>
+     */
+    private void carryOverUnshownSettings(DiagramScope.Builder b) {
+        if (carriedOver == null) {
+            return;
+        }
+        b.seeds(carriedOver.getSeedQualifiedNames());
+        b.focusClass(carriedOver.getFocusClass());
+        for (String hidden : carriedOver.getExcludedQualifiedNames()) {
+            b.excludeClass(hidden);
+        }
+        b.externalPackagePrefixes(carriedOver.getExternalPackagePrefixes());
     }
 
     private static void selectAll(JList<String> list, Set<String> values) {
