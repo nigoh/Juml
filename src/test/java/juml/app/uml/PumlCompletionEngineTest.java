@@ -256,6 +256,22 @@ public class PumlCompletionEngineTest {
     }
 
     @Test
+    public void comments_getNoCandidates() {
+        // コメントは散文。説明を書いている間ずっとポップアップが出ると邪魔にしかならない。
+        assertTrue(at(CLS, "' this is a cla", false).isEmpty());
+        assertTrue(at(CLS, "  ' indented cla", false).isEmpty());
+        assertTrue("矢印の打ちかけもコメント中では出さない",
+                at(CLS, "' a note --", false).isEmpty());
+    }
+
+    @Test
+    public void blockComments_getNoCandidatesEither() {
+        assertTrue(at(CLS, "/' explaining\nthe cla", false).isEmpty());
+        assertFalse("閉じたあとは通常どおり候補を出す",
+                at(CLS, "/' explaining '/\ncla", false).isEmpty());
+    }
+
+    @Test
     public void identifiers_nearestToTheCaretComeFirst() {
         // 大きな図では「さっき書いた名前」をまた書くことが多い。
         String doc = "@startuml\nclass AlphaOne\nclass AlphaTwo\nclass AlphaThree\n"

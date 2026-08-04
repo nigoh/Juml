@@ -122,6 +122,16 @@ public class PumlSourcePanelTabStopTest {
     }
 
     @Test
+    public void replacingTheWholeText_endsTheWalk() {
+        // 全文差し替え後は指し先が意味を失う。残すと Tab が本来のインデントへ戻らない。
+        PumlSourcePanel panel = editable("al", 2);
+        GuiActionRunner.execute(() -> panel.applyCompletionItemForTest(snippet("alt")));
+        assertTrue(GuiActionRunner.execute(panel::tabStopsRemainingForTest) > 0);
+        GuiActionRunner.execute(() -> panel.setText("@startuml\n@enduml\n"));
+        assertEquals(0, (int) GuiActionRunner.execute(panel::tabStopsRemainingForTest));
+    }
+
+    @Test
     public void multiLineSnippet_isIndentedToMatchTheCurrentLine() {
         PumlSourcePanel panel = editable("alt outer\n  lo\n", 14);
         GuiActionRunner.execute(() -> panel.applyCompletionItemForTest(snippet("loop")));

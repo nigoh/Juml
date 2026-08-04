@@ -156,6 +156,11 @@ final class PumlCompletion {
      */
     static List<PumlCompletionItem> items(String text, int caret, boolean explicit) {
         PumlCompletionContext ctx = PumlCompletionContext.at(text, caret);
+        // コメントの中は散文であって PlantUML の構文ではない。ここで候補を出すと、
+        // 説明を書いている最中ずっとポップアップが視界を塞ぐだけになる。
+        if (ctx.inComment()) {
+            return List.of();
+        }
         String prefix = ctx.prefix();
         // 矢印を打ちかけているなら矢印だけを出す (キーワードが混ざっても選べない)。
         if (prefix.isEmpty()) {
@@ -278,60 +283,18 @@ final class PumlCompletion {
 
     /**
      * 本文に現れる識別子のうち補完に値するもの。宣言済みの名前 (クラス名・参加者名) を
-     * 先に、その他の語を後に返す。それぞれの中ではキャレットに近い順に並べる。
+     * 先に、その他の語を後に、それぞれキャレットに近い順で返す。
      * {@code seen} (辞書で既に出した語) と打ち終わった語は除く。
      */
     private static List<String> bufferIdentifiers(PumlCompletionContext ctx, String prefix,
                                                   Set<String> seen) {
-        Set<String> declared = new LinkedHashSet<>();
-        for (String name : ctx.declaredNames()) {
-            if (!seen.contains(name) && !name.equalsIgnoreCase(prefix)) {
-                declared.add(name);
+        List<String> out = new ArrayList<>();
+        for (String id : ctx.namesByNearness()) {
+            if (!seen.contains(id) && !id.equalsIgnoreCase(prefix)) {
+                out.add(id);
             }
         }
-        Set<String> out = new LinkedHashSet<>(nearestFirst(declared, ctx));
-        String text = ctx.text();
-        Matcher m = IDENTIFIER.matcher(text);
-        while (m.find()) {
-            String id = m.group();
-            if (seen.contains(id) || id.equalsIgnoreCase(prefix) || id.length() < 2) {
-                continue;
-            }
-            // ディレクティブの綴りの一部 (@startuml の "startuml"、!theme の "theme") は
-            // 識別子ではない。辞書側がディレクティブ全体を候補に持っているので、
-            // ここで裸の綴りを混ぜると同じものが二重に並ぶだけになる。
-            char before = m.start() > 0 ? text.charAt(m.start() - 1) : ' ';
-            if (before == '@' || before == '!') {
-                continue;
-            }
-            out.add(id);
-        }
-        List<String> others = new ArrayList<>(out);
-        others.removeAll(declared);
-        List<String> ordered = new ArrayList<>(nearestFirst(declared, ctx));
-        ordered.addAll(nearestFirst(others, ctx));
-        return ordered;
-    }
-
-    /**
-     * キャレットに最も近い出現位置の順に並べ替える。同着は元の順序を保つ。
-     */
-    private static List<String> nearestFirst(java.util.Collection<String> names,
-                                             PumlCompletionContext ctx) {
-        String text = ctx.text();
-        int caret = ctx.caretForTest();
-        List<String> out = new ArrayList<>(names);
-        out.sort(Comparator.comparingInt(n -> nearestDistance(text, n, caret)));
         return out;
-    }
-
-    /** {@code name} の出現のうちキャレットに最も近いものまでの距離。 */
-    private static int nearestDistance(String text, String name, int caret) {
-        int best = Integer.MAX_VALUE;
-        for (int i = text.indexOf(name); i >= 0; i = text.indexOf(name, i + 1)) {
-            best = Math.min(best, Math.abs(caret - i));
-        }
-        return best;
     }
 
     /** 得点降順に並べ、上限件数で打ち切る。同点は生成順 (辞書順) を保つ。 */

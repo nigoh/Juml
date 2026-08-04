@@ -207,6 +207,11 @@ public class PumlSourcePanel extends JPanel {
         // removeAllHighlights でハイライトだけ消え、次候補ジャンプが旧オフセットを新文書へ適用して
         // キャレット誤配置や BadLocationException を招く (JavaSourcePanel と同じ差し替え時の契約)。
         findBar.reset();
+        // 巡回中のタブストップも旧内容基準。全文差し替え後は指し先が意味を失うので捨てる
+        // (残すと Tab が本来のインデントへ戻らないまま無関係な位置を選びにいく)。
+        if (insertions != null) {
+            insertions.cancel();
+        }
         replaceDocText(text);
         textPane.setCaretPosition(0);
         copyButton.setEnabled(!text.isEmpty());
