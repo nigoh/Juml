@@ -499,8 +499,7 @@ final class DiagramNotesLayer {
                     s.setX(nx);
                     s.setY(ny);
                 } else {
-                    s.setX(Math.max(0, nx));
-                    s.setY(Math.max(0, ny));
+                    placeFree(s, nx, ny);
                 }
             }
         } else if (!active.isLocked()) {
@@ -617,8 +616,8 @@ final class DiagramNotesLayer {
     void addNoteAt(Point p, double zoom) {
         double w = 280 / zoom;
         double h = 160 / zoom;
-        DiagramNote n = new DiagramNote(clampToContent(p.x / zoom, w, true),
-                clampToContent(p.y / zoom, h, false), w, h, "");
+        DiagramNote n = new DiagramNote(0, 0, w, h, "");
+        placeFree(n, p.x / zoom, p.y / zoom);
         commit(null, () -> {
             notes.add(n);
             selectedIds.clear();
@@ -634,6 +633,12 @@ final class DiagramNotesLayer {
      * いた。図の大きさを知るのは所有パネルだけなので、呼び出し側に渡させず (足し忘れた
      * 経路がまた外へ置く) ここで問い合わせる。
      */
+    /** FREE 付箋の原点を書き出し範囲内へ寄せて設定する (置き換え・移動・複製の共通経路)。 */
+    private void placeFree(DiagramNote n, double x, double y) {
+        n.setX(clampToContent(x, n.getWidth(), true));
+        n.setY(clampToContent(y, n.getHeight(), false));
+    }
+
     private double clampToContent(double v, double size, boolean horizontal) {
         double limit = owner instanceof SvgPreviewPanel p
                 ? (horizontal ? p.contentWidth() : p.contentHeight()) : 0;
@@ -749,8 +754,7 @@ final class DiagramNotesLayer {
                     n.setX(nx);
                     n.setY(ny);
                 } else {
-                    n.setX(Math.max(0, nx));
-                    n.setY(Math.max(0, ny));
+                    placeFree(n, nx, ny);
                 }
             }
         });
@@ -766,8 +770,7 @@ final class DiagramNotesLayer {
             selectedIds.clear();
             for (DiagramNote s : sel) {
                 DiagramNote d = s.duplicate();
-                d.setX(s.getX() + PASTE_OFFSET);
-                d.setY(s.getY() + PASTE_OFFSET);
+                placeFree(d, s.getX() + PASTE_OFFSET, s.getY() + PASTE_OFFSET);
                 notes.add(d);
                 selectedIds.add(d.getId());
             }
@@ -796,8 +799,7 @@ final class DiagramNotesLayer {
             selectedIds.clear();
             for (DiagramNote c : clipboard) {
                 DiagramNote d = c.duplicate();
-                d.setX(c.getX() + PASTE_OFFSET);
-                d.setY(c.getY() + PASTE_OFFSET);
+                placeFree(d, c.getX() + PASTE_OFFSET, c.getY() + PASTE_OFFSET);
                 notes.add(d);
                 selectedIds.add(d.getId());
             }
