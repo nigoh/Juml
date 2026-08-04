@@ -2981,8 +2981,25 @@ public final class DiagramTabPane {
         }
 
         private void exportTabAs(UmlExporter.Format fmt) {
-            DiagramTabSupport.exportPuml(this, renderedPuml, previewPanel, fmt,
+            DiagramTabSupport.exportPuml(this, pumlForExport(fmt), previewPanel, fmt,
                     DiagramTabPane.this::reportStatus);
+        }
+
+        /**
+         * エクスポートに渡す PlantUML テキストを選ぶ。
+         *
+         * <p>画像 (SVG/PNG) は「いま見えている図」を書き出すのが正しいので、最後に描けた
+         * {@code renderedPuml} を使う。一方 <b>{@code .puml} はソースの書き出し</b>なので、
+         * エディタタブでは<b>現在のバッファ</b>を使う。{@code renderedPuml} は 600ms の
+         * デバウンス待ちのあいだ古いままだし、編集中のテキストが構文エラーなら
+         * 直前の正常な図を保持する仕様上さらに古い。以前はそれを書き出していたため、
+         * 打ち込んだばかりの行が<b>黙って欠けた .puml</b> が保存されていた。</p>
+         */
+        private String pumlForExport(UmlExporter.Format fmt) {
+            if (fmt == UmlExporter.Format.PUML && isEditor()) {
+                return sourcePanel.getText();
+            }
+            return renderedPuml;
         }
     }
 
