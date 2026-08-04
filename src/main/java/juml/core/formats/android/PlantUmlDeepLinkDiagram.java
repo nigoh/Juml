@@ -106,7 +106,7 @@ public final class PlantUmlDeepLinkDiagram {
         List<String> schemes = new ArrayList<>();
         List<String[]> authorities = new ArrayList<>();
         List<AndroidDataSpec> paths = new ArrayList<>();
-        List<String> mimeTypes = new ArrayList<>();
+        List<String> mimeTypes = mimeTypePool(f);
         for (AndroidDataSpec d : f.getDataSpecs()) {
             addIfNew(schemes, d.getScheme());
             if (notBlank(d.getHost())) {
@@ -115,10 +115,11 @@ public final class PlantUmlDeepLinkDiagram {
                     authorities.add(hp);
                 }
             }
-            if (hasPath(d) && paths.stream().noneMatch(x -> samePath(x, d))) {
-                paths.add(d);
+            for (AndroidDataSpec matcher : pathMatchers(d)) {
+                if (paths.stream().noneMatch(x -> samePath(x, matcher))) {
+                    paths.add(matcher);
+                }
             }
-            addIfNew(mimeTypes, d.getMimeType());
         }
         // どのプールも空なら「指定なし」を 1 件として扱い、直積が 1 本残るようにする。
         if (schemes.isEmpty()) {
@@ -177,10 +178,42 @@ public final class PlantUmlDeepLinkDiagram {
                         a.getPathAdvancedPattern(), b.getPathAdvancedPattern());
     }
 
-    private static boolean hasPath(AndroidDataSpec d) {
-        return notBlank(d.getPath()) || notBlank(d.getPathPrefix())
-                || notBlank(d.getPathPattern()) || notBlank(d.getPathSuffix())
-                || notBlank(d.getPathAdvancedPattern());
+    /**
+     * 1 つの {@code <data>} が持つ path 系属性を<b>1 属性 = 1 マッチャ</b>へ分解する。
+     *
+     * <p>Android は {@code path} / {@code pathPrefix} / {@code pathPattern} /
+     * {@code pathSuffix} / {@code pathAdvancedPattern} を属性ごとに独立したマッチャとして
+     * 登録する ({@code addDataPath} が属性の数だけ呼ばれる)。要素をそのままプールへ入れると
+     * 表示側の {@link AndroidDataSpec#effectivePath()} が<b>最初の 1 つ</b>しか返さないため、
+     * 1 要素に複数書いた分の入口が図にもサマリーにも出てこなかった。同じ意味を要素 2 つに
+     * 分けて書けば 2 本出る、という記法依存の食い違いにもなっていた。</p>
+     */
+    /** この intent-filter が挙げる mimeType の重複排除済みプール (図と MIME 専用表示で共有)。 */
+    private static List<String> mimeTypePool(AndroidIntentFilter f) {
+        List<String> pool = new ArrayList<>();
+        for (AndroidDataSpec d : f.getDataSpecs()) {
+            addIfNew(pool, d.getMimeType());
+        }
+        return pool;
+    }
+
+    private static List<AndroidDataSpec> pathMatchers(AndroidDataSpec d) {
+        List<AndroidDataSpec> out = new ArrayList<>();
+        addPathMatcher(out, d.getPath(), AndroidDataSpec::setPath);
+        addPathMatcher(out, d.getPathPrefix(), AndroidDataSpec::setPathPrefix);
+        addPathMatcher(out, d.getPathPattern(), AndroidDataSpec::setPathPattern);
+        addPathMatcher(out, d.getPathSuffix(), AndroidDataSpec::setPathSuffix);
+        addPathMatcher(out, d.getPathAdvancedPattern(), AndroidDataSpec::setPathAdvancedPattern);
+        return out;
+    }
+
+    private static void addPathMatcher(List<AndroidDataSpec> out, String value,
+                                       java.util.function.BiConsumer<AndroidDataSpec, String> set) {
+        if (notBlank(value)) {
+            AndroidDataSpec one = new AndroidDataSpec();
+            set.accept(one, value);
+            out.add(one);
+        }
     }
 
     private static boolean notBlank(String s) {
@@ -207,11 +240,14 @@ public final class PlantUmlDeepLinkDiagram {
                         appended = true;
                     }
                     if (!appended && o.showMimeOnly) {
-                        // scheme/host が無く mimeType だけのケースも拾う。
-                        for (AndroidDataSpec spec : f.getDataSpecs()) {
-                            if (spec.getMimeType() != null) {
-                                links.add(new Link(c, f, spec, true));
-                            }
+                        // scheme/host が無く mimeType だけのケースも拾う。ここも直積側と同じ
+                        // 重複排除済みプールを通す。生の要素列を回していたため、manifest
+                        // マージで同じ <data> が 2 回入ると見分けの付かないノードが 2 つ出て、
+                        // グループ見出しも「2 件」と嘘の数を出していた。
+                        for (String mime : mimeTypePool(f)) {
+                            AndroidDataSpec spec = new AndroidDataSpec();
+                            spec.setMimeType(mime);
+                            links.add(new Link(c, f, spec, true));
                         }
                     }
                 }

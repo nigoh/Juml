@@ -182,6 +182,86 @@ public class DeepLinkDataMergeTest {
         assertFalse("host だけの偽 URI を出さないこと:\n" + md, md.contains("`*://example.com`"));
     }
 
+    /**
+     * 回帰: 1 つの {@code <data>} に path 系属性を複数書いたら、その数だけ入口が出ること。
+     *
+     * <p>Android は {@code path} / {@code pathPrefix} / {@code pathPattern} …を属性ごとに
+     * 独立したマッチャとして登録する。要素をまるごとプールへ入れていたため、表示側の
+     * {@code effectivePath()} が<b>最初の 1 つ</b>だけを返し、残りの入口が図にもサマリーにも
+     * 出てこなかった。同じ意味を要素 2 つに分けて書けば 2 本出るので、記法の書き方だけで
+     * 報告件数が変わるという食い違いにもなっていた。</p>
+     */
+    @Test
+    public void severalPathAttributesInOneDataElementAreSeveralEntryPoints() {
+        AndroidDataSpec d = data("https", "a.com", "/pre");
+        d.setPath("/exact");
+        d.setPathPattern("/p.*t");
+
+        java.util.List<String> found = uris(PlantUmlDeepLinkDiagram.generate(analysisWith(d), null));
+
+        assertEquals("path / pathPrefix / pathPattern の 3 本が出ること: " + found, 3, found.size());
+        assertTrue(found.contains("https://a.com/exact"));
+        assertTrue(found.contains("https://a.com/pre*"));
+        assertTrue(found.contains("https://a.com/p.*t"));
+    }
+
+    /** 回帰: 同じ入口を要素 1 つで書いても要素 2 つに分けて書いても結果が一致すること。 */
+    @Test
+    public void packingPathAttributesIntoOneElementDoesNotChangeTheResult() {
+        AndroidDataSpec packed = data("https", "a.com", "/pre");
+        packed.setPath("/exact");
+
+        java.util.List<String> one = uris(
+                PlantUmlDeepLinkDiagram.generate(analysisWith(packed), null));
+        java.util.List<String> two = uris(PlantUmlDeepLinkDiagram.generate(analysisWith(
+                data("https", "a.com", null), data("https", "a.com", "/pre")), null));
+        // 2 要素版は path=/exact を持たないので、比較のため同じ内容で組み直す。
+        AndroidDataSpec exact = data("https", "a.com", null);
+        exact.setPath("/exact");
+        java.util.List<String> split = uris(PlantUmlDeepLinkDiagram.generate(analysisWith(
+                exact, data("https", "a.com", "/pre")), null));
+
+        assertEquals("要素の詰め方で件数が変わらないこと: packed=" + one + " split=" + split,
+                new java.util.HashSet<>(split), new java.util.HashSet<>(one));
+        assertTrue("参考: host だけの分割版は 1 本のまま: " + two, two.size() >= 1);
+    }
+
+    /**
+     * 回帰: 同じ {@code mimeType} の {@code <data>} が 2 つあっても MIME 専用ノードは 1 つ。
+     *
+     * <p>直積側はどのプールも重複排除していたのに、MIME 専用のフォールバックだけが生の
+     * 要素列を回していた。manifest マージ (sourceSet / ライブラリ) で同じ要素が重なるのは
+     * 日常的で、見分けの付かないノードが 2 つ並び、グループ見出しも「2 件」と嘘をついていた。</p>
+     */
+    @Test
+    public void duplicateMimeOnlyDataElementsProduceOneNode() {
+        AndroidDataSpec a = new AndroidDataSpec();
+        a.setMimeType("image/*");
+        AndroidDataSpec b = new AndroidDataSpec();
+        b.setMimeType("image/*");
+
+        String puml = PlantUmlDeepLinkDiagram.generate(analysisWith(a, b), null);
+
+        java.util.List<String> found = uris(puml);
+        assertEquals("同じ MIME 制約はノード 1 つ: " + found, 1, found.size());
+        assertTrue(found.get(0).contains("image/*"));
+        assertTrue("グループ見出しも 1 件と数えること:\n" + puml, puml.contains("MIME-only (1)"));
+    }
+
+    /** 非退行: 異なる mimeType が 2 つあれば 2 ノードのまま。 */
+    @Test
+    public void distinctMimeOnlyDataElementsStillProduceTwoNodes() {
+        AndroidDataSpec a = new AndroidDataSpec();
+        a.setMimeType("image/*");
+        AndroidDataSpec b = new AndroidDataSpec();
+        b.setMimeType("video/*");
+
+        java.util.List<String> found = uris(
+                PlantUmlDeepLinkDiagram.generate(analysisWith(a, b), null));
+
+        assertEquals("別々の MIME は 2 ノード: " + found, 2, found.size());
+    }
+
     /** 回帰: サマリーでも mimeType 制約が落ちないこと。 */
     @Test
     public void markdownSummaryKeepsTheMimeConstraint() {

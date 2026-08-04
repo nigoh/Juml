@@ -241,4 +241,111 @@ public class SharedPreferencesScannerTest {
         assertTrue(keys.contains("inline_chain"));
         assertTrue(keys.contains("conventional_name"));
     }
+
+    /** 与えたソースから拾えたキーの集合。 */
+    private java.util.Set<String> keysOf(String src, String path) {
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, path)) {
+            keys.add(e.key);
+        }
+        return keys;
+    }
+
+    /**
+     * 回帰: Kotlin の {@code Bundle} も「設定ではない受け手」として弾くこと。
+     *
+     * <p>除外リストは Java の {@code 型 名} 順しか見ていなかった。Kotlin は
+     * {@code 名: 型} と逆順で、型推論なら型注釈すら無いため {@code .kt} では 1 件も
+     * 集まらず、除外がまるごと効いていなかった ({@code analyzeProject} は
+     * {@code includeKotlin = true} で {@code .kt} も読む)。結果、
+     * {@code onSaveInstanceState} の一時退避や解析用 {@code Bundle} のキーが、
+     * 同じファイルに実在するストア名の下に「保存される設定」として並んでいた。</p>
+     */
+    @Test
+    public void kotlinBundleReceiversAreNotCountedAsSettings() {
+        String src = "class ProfileActivity {\n"
+                + "    private val prefs = getSharedPreferences(\"profile_prefs\", 0)\n"
+                + "    override fun onSaveInstanceState(outState: Bundle) {\n"
+                + "        outState.putString(\"draft_bio\", bio)\n"
+                + "    }\n"
+                + "    override fun onCreate(savedInstanceState: Bundle?) {\n"
+                + "        savedInstanceState.putInt(\"tab\", 1)\n"
+                + "    }\n"
+                + "    private fun track(event: String) {\n"
+                + "        val params = Bundle()\n"
+                + "        params.putString(\"item_id\", event)\n"
+                + "    }\n"
+                + "    fun nickname(): String = prefs.getString(\"nickname\", \"\")\n"
+                + "}\n";
+
+        java.util.Set<String> keys = keysOf(src, "ProfileActivity.kt");
+
+        assertTrue("本物の設定キーは残ること: " + keys, keys.contains("nickname"));
+        assertFalse("引数の Bundle は設定ではない: " + keys, keys.contains("draft_bio"));
+        assertFalse("nullable な引数の Bundle も同じ: " + keys, keys.contains("tab"));
+        assertFalse("型推論で作った Bundle も同じ: " + keys, keys.contains("item_id"));
+    }
+
+    /** 非退行: Kotlin の本物の SharedPreferences 受け手は弾かないこと。 */
+    @Test
+    public void kotlinPreferenceReceiversAreStillDetected() {
+        String src = "class S {\n"
+                + "    private val prefs by lazy { getSharedPreferences(\"s\", 0) }\n"
+                + "    val a = prefs.getString(\"by_lazy\", \"\")\n"
+                + "    val b = PreferenceManager.getDefaultSharedPreferences(this)"
+                + ".getString(\"default_sp\", \"\")\n"
+                + "    val c = this.prefs.getString(\"qualified\", \"\")\n"
+                + "}\n";
+
+        java.util.Set<String> keys = keysOf(src, "S.kt");
+
+        assertTrue("by lazy の受け手: " + keys, keys.contains("by_lazy"));
+        assertTrue("getDefaultSharedPreferences: " + keys, keys.contains("default_sp"));
+        assertTrue("this. 修飾: " + keys, keys.contains("qualified"));
+    }
+
+    /**
+     * 回帰: 入れ子や文字列リテラルを含む初期値を、途中で切って表に出さないこと。
+     *
+     * <p>初期値の切り出しを正規表現でやっていたため、許す入れ子の段数を増やしても
+     * その 1 段先で必ず破れた。表に出ていたのは
+     * {@code (String.format("%s/%s", host()} のような<b>括弧の閉じない、原文のどこにも
+     * 無い文字列</b>で、リテラル中の {@code )} でも同じことが起きていた。</p>
+     */
+    @Test
+    public void nestedAndLiteralParenDefaultsAreNotTruncated() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String u = prefs.getString(\"url\", String.format(\"%s/%s\", host(), path));\n"
+                + "int r = prefs.getInt(\"retry\", Math.max(1, cfg.min(2)));\n"
+                + "String g = prefs.getString(\"greeting\", \"Hi :) there\");\n";
+
+        java.util.Map<String, String> defaults = new java.util.HashMap<>();
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, "T.java")) {
+            defaults.put(e.key, e.defaultValue);
+        }
+
+        assertEquals("2 段入れ子の初期値が丸ごと残ること",
+                "(String.format(\"%s/%s\", host(), path))", defaults.get("url"));
+        assertEquals("入れ子の呼び出しも同じ",
+                "(Math.max(1, cfg.min(2)))", defaults.get("retry"));
+        assertEquals("リテラル中の ) で切らないこと", "Hi :) there", defaults.get("greeting"));
+        // 式として表示する形 (丸括弧で包んだもの) は括弧が釣り合っていること。
+        // 文字列リテラルの中身はそのまま出すので対象外 ("Hi :) there" は釣り合わなくてよい)。
+        for (java.util.Map.Entry<String, String> e : defaults.entrySet()) {
+            if (e.getValue().startsWith("(")) {
+                assertEquals("式の初期値は括弧が釣り合うこと: " + e,
+                        count(e.getValue(), '('), count(e.getValue(), ')'));
+            }
+        }
+    }
+
+    private static int count(String s, char c) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == c) {
+                n++;
+            }
+        }
+        return n;
+    }
 }

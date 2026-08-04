@@ -39,13 +39,32 @@ public final class SharedPreferencesScanner {
     private static final String RECEIVER =
             "([A-Za-z_][A-Za-z0-9_.]*(?:\\s*\\([^()]*\\))?)?";
 
+    /** <b>明らかに設定ではない</b>型。ここを増やすと取りこぼしが増えるので安易に足さない。 */
+    private static final String NON_PREFS_TYPES =
+            "(?:Bundle|JSONObject|JSONArray|ContentValues|Intent|Cursor|Properties|"
+                    + "Map|HashMap|ArrayMap)";
+
     /**
-     * {@code Bundle b} / {@code JSONObject o} のように<b>明らかに設定ではない</b>型で
-     * 宣言された変数名 (グループ 2)。グループ 1 は型名。
+     * 上記の型で宣言された変数名を拾うパターン (どれも<b>グループ 1 が変数名</b>)。
+     *
+     * <p>以前は Java の {@code 型 名} 順だけを見ていた。Kotlin は {@code 名: 型} と
+     * 逆順で書き、型推論なら型注釈すら無いため、{@code .kt} では 1 件も集まらなかった
+     * ({@code analyzeProject} は {@code includeKotlin = true} で {@code .kt} も読む)。
+     * その結果、{@code onSaveInstanceState(outState: Bundle)} の {@code putString} や
+     * 解析用の {@code val params = Bundle()} が、同じファイルに実在するストア名の下に
+     * 「保存される設定キー」として並んでいた — 除外リストを入れる前と同じ症状が、
+     * いまの Android で主流の言語側だけ残っていた。</p>
      */
-    private static final Pattern NON_PREFS_VAR = Pattern.compile(
-            "\\b(Bundle|JSONObject|JSONArray|ContentValues|Intent|Cursor|Properties|"
-                    + "Map|HashMap|ArrayMap)\\s*(?:<[^>]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\b");
+    private static final List<Pattern> NON_PREFS_VAR_PATTERNS = List.of(
+            // Java: `Bundle b` / `Map<String, String> m`
+            Pattern.compile("\\b" + NON_PREFS_TYPES
+                    + "\\s*(?:<[^>]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\b"),
+            // Kotlin の型注釈: `outState: Bundle` / `saved: Bundle?` / `m: HashMap<String, Int>`
+            // 末尾の (?![\w.]) は `x ? a : Bundle.EMPTY` の `a` や `BundleCompat` を弾く。
+            Pattern.compile("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*" + NON_PREFS_TYPES + "(?![\\w.])"),
+            // Kotlin の型推論: `val params = Bundle()` / `var j = JSONObject()`
+            Pattern.compile("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*"
+                    + NON_PREFS_TYPES + "\\s*(?:<[^>]*>)?\\s*\\("));
 
     /** {@code getSharedPreferences("name", ...)} のストア名抽出。グループ 1: ストア名。 */
     private static final Pattern GET_SP = Pattern.compile(
@@ -55,18 +74,67 @@ public final class SharedPreferencesScanner {
     private static final Pattern GET_DEFAULT_SP = Pattern.compile(
             "getDefaultSharedPreferences\\s*\\(");
 
-    /** get* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。
-     *  グループ 4: デフォルト値 (存在すれば)。キーは文字列リテラルだけでなく定数参照
-     *  ({@code getString(KEY_TOKEN, "")}) も許容する (Android では定数キーが一般的)。
+    /**
+     * get* 呼び出しの<b>キーまで</b>。グループ 1: 受け手。グループ 2: 型。
+     * グループ 3: 文字列キー。グループ 4: 定数名キー。キーは文字列リテラルだけでなく
+     * 定数参照 ({@code getString(KEY_TOKEN, "")}) も許容する (Android では定数キーが一般的)。
      *
-     *  <p>デフォルト値は入れ子の括弧を 1 段だけ許す。{@code [^)]+?} だと
-     *  {@code getString("theme", ThemeUtil.defaultTheme())} の内側の {@code )} を
-     *  get 呼び出しの終端と取り違え、初期値が {@code (ThemeUtil.defaultTheme()} という
-     *  括弧の閉じない、原文のどこにも無い文字列として表に出ていた。</p> */
+     * <p>デフォルト値は<b>正規表現で切らない</b>。括弧の対応は正規表現で数えられないため、
+     * 何段許すかを増やしてもその 1 段先で必ず破れる: 1 段許した版は
+     * {@code getString("url", String.format("%s/%s", host(), path))} を
+     * {@code (String.format("%s/%s", host()} と、閉じない・原文のどこにも無い文字列として
+     * 表に出していた。文字列リテラル中の {@code )} ({@code "Hi :) there"}) でも同じ。
+     * 代わりに {@link #defaultArgumentSpan} が括弧の深さと文字列/文字リテラルを見ながら
+     * 走査する。</p>
+     */
     private static final Pattern GET_VALUE = Pattern.compile(
             RECEIVER + "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
-                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))"
-                    + "(?:\\s*,\\s*((?:(?:[^()]|\\([^()]*\\))+?|[^)]+?)))?\\s*\\)");
+                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))");
+
+    /**
+     * キー直後から get 呼び出しの閉じ括弧までを走査し、
+     * {@code {デフォルト値の開始位置, 閉じ括弧の位置}} を返す。
+     *
+     * <p>デフォルト値が無ければ開始位置は -1。行内で括弧が閉じていなければ {@code null}
+     * (次行へ続く連鎖などは判定材料にしない)。括弧の深さは {@code ( [ {} を数え、
+     * 文字列リテラル・文字リテラルの中身はエスケープを見ながら読み飛ばす。</p>
+     */
+    private static int[] defaultArgumentSpan(String line, int afterKey) {
+        int depth = 0;
+        int valueStart = -1;
+        boolean inString = false;
+        boolean inChar = false;
+        for (int i = afterKey; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inString || inChar) {
+                if (c == '\\') {
+                    i++;
+                } else if (inString && c == '"') {
+                    inString = false;
+                } else if (inChar && c == '\'') {
+                    inChar = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '\'') {
+                inChar = true;
+            } else if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ']' || c == '}') {
+                depth--;
+            } else if (c == ')') {
+                if (depth == 0) {
+                    return new int[]{valueStart, i};
+                }
+                depth--;
+            } else if (c == ',' && depth == 0 && valueStart < 0) {
+                valueStart = i + 1;
+            }
+        }
+        return null;
+    }
 
     /** put* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。 */
     private static final Pattern PUT_VALUE = Pattern.compile(
@@ -108,12 +176,14 @@ public final class SharedPreferencesScanner {
         return result;
     }
 
-    /** このファイルで「設定ではない」型として宣言されている変数名を集める。 */
+    /** このファイルで「設定ではない」型として宣言されている変数名を集める (Java / Kotlin 両方)。 */
     private static java.util.Set<String> collectNonPreferencesVars(String src) {
         java.util.Set<String> vars = new java.util.LinkedHashSet<>();
-        Matcher m = NON_PREFS_VAR.matcher(src);
-        while (m.find()) {
-            vars.add(m.group(2));
+        for (Pattern p : NON_PREFS_VAR_PATTERNS) {
+            Matcher m = p.matcher(src);
+            while (m.find()) {
+                vars.add(m.group(1));
+            }
         }
         return vars;
     }
@@ -169,21 +239,27 @@ public final class SharedPreferencesScanner {
 
             // 読み取り (get*)
             Matcher gm = GET_VALUE.matcher(line);
-            while (gm.find()) {
+            int from = 0;
+            while (from <= line.length() && gm.find(from)) {
+                int[] span = defaultArgumentSpan(line, gm.end());
+                // 走査した閉じ括弧の先から次を探す。デフォルト値の中身を再走査すると
+                // 同じ呼び出しを二重に数えかねない。
+                from = span != null ? span[1] + 1 : gm.end();
                 if (!isPreferencesReceiver(gm.group(1), nonPrefsVars)) {
                     continue;
                 }
                 String type = gm.group(2);
                 String strKey = gm.group(3);
                 String constKey = gm.group(4);
+                boolean hasDefault = span != null && span[0] >= 0;
                 // 定数名キーは Context.getString(int resId) のリソース取得と紛らわしい。
                 // SharedPreferences.getString は必ずデフォルト値 (第2引数) を伴うので、
                 // リテラルでない定数キーはデフォルト値が無い / リソース参照なら除外する。
-                if (strKey == null && (gm.group(5) == null || isResourceRef(constKey))) {
+                if (strKey == null && (!hasDefault || isResourceRef(constKey))) {
                     continue;
                 }
                 String key = strKey != null ? strKey : constKey;
-                String defVal = gm.group(5) != null ? gm.group(5).trim() : "";
+                String defVal = hasDefault ? line.substring(span[0], span[1]).trim() : "";
                 // 文字列リテラルのみのデフォルト値を抽出。
                 // 単一の `"` (長さ 1) では substring(1, 0) が例外になるため長さでガードする。
                 if (defVal.length() >= 2 && defVal.startsWith("\"") && defVal.endsWith("\"")) {
