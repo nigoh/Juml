@@ -1569,8 +1569,16 @@ public final class DiagramTabPane {
         if (tab.isEditor()) {
             // 意図してタブを閉じた (保存 or 破棄済み) ので下書きは消す。閉じたタブは
             // Ctrl+Shift+T の再オープン履歴が担い、下書き復元の対象にしない。
+            //
+            // ただし<b>自分が書いた下書きだけ</b>を消す。ファイル紐付きタブのキーは
+            // "PUML:<絶対パス>" で、前セッションのクラッシュ下書きと<b>同じキー</b>になる。
+            // 無条件に消すと、復元プロンプトで Esc (= 保持) を選んだあと同じ .puml を開いて
+            // 何も打たずに閉じただけで、保持したはずの下書きが消える。タブ予算による
+            // クリーンタブの自動クローズなら利用者の操作すら要らない。
             tab.stopDraftTimer();
-            drafts.delete(liveKey);
+            if (tab.draftWritten) {
+                drafts.delete(liveKey);
+            }
             // 補完ポップアップの JWindow は階層外リソースなので明示的に破棄する。
             tab.sourcePanel.disposeEditorResources();
         }
@@ -1635,7 +1643,9 @@ public final class DiagramTabPane {
         // (残すと正常終了なのに次回起動で偽のクラッシュ復元プロンプトが出る)。
         for (DiagramTab t : discarded) {
             t.stopDraftTimer();
-            drafts.delete(t.key);
+            if (t.draftWritten) {
+                drafts.delete(t.key);
+            }
         }
         return true;
     }
@@ -1895,6 +1905,8 @@ public final class DiagramTabPane {
         private java.io.File editorFile;
         /** 自由編集エディタ: 未保存の変更があるか。 */
         private boolean dirty;
+        /** このタブ自身が下書きを書いたか (書いていない下書きを閉じるときに消さないため)。 */
+        private boolean draftWritten;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
         /** 自由編集エディタ: 編集の 3 秒後に下書きへ自動保存するタイマ。 */
@@ -2302,6 +2314,7 @@ public final class DiagramTabPane {
             // 次回起動で偽のクラッシュ復元プロンプトが出る。
             if (isEditor() && dirty) {
                 drafts.save(key, sourcePanel.getText(), editorFile, label);
+                draftWritten = true;
             }
         }
 

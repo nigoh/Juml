@@ -222,4 +222,49 @@ public class DiagramTabPaneDraftTest {
                 texts.contains("@startuml\nclass BrandNew\n@enduml\n"));
         assertEquals("2 件が別キーで共存すること", 2, after.size());
     }
+
+    /**
+     * 回帰: 前セッションの下書きと同じキーになるファイル紐付きタブを、開いて何も打たずに
+     * 閉じただけで下書きが消えないこと。
+     *
+     * <p>ファイル紐付きタブのキーは {@code PUML:<絶対パス>} なので、同じ .puml のクラッシュ
+     * 下書きと<b>完全に同じキー</b>になる。{@code closeTab} が無条件に delete していたため、
+     * 復元プロンプトで Esc (=「破棄しない」と明示された選択肢) を選んだあと、その .puml を
+     * 開いて閉じるだけで失われていた。タブ予算によるクリーンタブの自動クローズなら、
+     * 利用者の操作すら要らずに同じ削除が起きる。</p>
+     */
+    @Test
+    public void closingACleanFileTabKeepsAnotherSessionsDraft() throws Exception {
+        File f = tmp.newFile("shared.puml");
+        Files.write(f.toPath(), "@startuml\nclass OnDisk\n@enduml\n".getBytes("UTF-8"));
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + f.getAbsolutePath(), crashed, f, "shared.puml");
+        assertEquals(1, store.loadAll().size());
+
+        // 復元せずに同じファイルを開き、何も打たずに閉じる。
+        GuiActionRunner.execute(() -> pane.openPumlEditor("@startuml\nclass OnDisk\n@enduml\n",
+                f, false));
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きが残ること", 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
+
+    /**
+     * 非退行: 自分で書いた下書きは、閉じるときにきちんと消えること。
+     * (dirty なタブを closeActiveTab で閉じるとモーダル確認が出るため、
+     * 既存テストと同じく confirmDiscardAllEdits の「破棄」経路で閉じる。)
+     */
+    @Test
+    public void closingATabThatWroteItsOwnDraftStillDeletesIt() {
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertEquals(1, store.loadAll().size());
+
+        boolean canExit = GuiActionRunner.execute(() ->
+                pane.confirmDiscardAllEdits(label -> javax.swing.JOptionPane.NO_OPTION));
+
+        assertTrue(canExit);
+        assertTrue("自分の下書きは消えること", store.loadAll().isEmpty());
+    }
 }
