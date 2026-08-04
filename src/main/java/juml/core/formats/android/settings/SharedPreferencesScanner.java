@@ -75,6 +75,22 @@ public final class SharedPreferencesScanner {
             "getDefaultSharedPreferences\\s*\\(");
 
     /**
+     * キー引数: 文字列リテラル (グループ a) か定数名 (グループ b)。
+     *
+     * <p>先読みで<b>引数の区切りに接していること</b>を要求する。これが言明すべき不変条件で、
+     * 「直後が {@code (} でないこと」のような個別の形の否定ではない。否定を数え上げると
+     * その外側が必ず残る: 実測で {@code useNew ? KEY_NEW : KEY_OLD} は {@code useNew}、
+     * {@code PREFIX + name} は {@code PREFIX}、{@code KEYS[0]} は {@code KEYS}、
+     * {@code Foo.<String>bar()} は {@code Foo.} (識別子ですらない) をキーとして報告して
+     * いた。どれも本物のキーは報告されないうえ、キー名として通りそうな見た目なので
+     * 読み手には区別が付かない。</p>
+     *
+     * <p>get と put で同じ定数を使う。put 側にだけ入れ忘れて同じ欠陥が残っていた。</p>
+     */
+    private static final String KEY_ARG =
+            "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*)(?=\\s*[,)]))";
+
+    /**
      * get* 呼び出しの<b>キーまで</b>。グループ 1: 受け手。グループ 2: 型。
      * グループ 3: 文字列キー。グループ 4: 定数名キー。キーは文字列リテラルだけでなく
      * 定数参照 ({@code getString(KEY_TOKEN, "")}) も許容する (Android では定数キーが一般的)。
@@ -89,10 +105,7 @@ public final class SharedPreferencesScanner {
      */
     private static final Pattern GET_VALUE = Pattern.compile(
             RECEIVER + "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
-                    // 定数名キーの直後が ( なら、それはキーではなく<b>呼び出しの関数名</b>。
-                    // 末尾の \) を外したとき、キー引数が呼び出しの場合に呼ばれる側の名前
-                    // (`ctx.getString` / `buildKey`) をキーとして報告するようになっていた。
-                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*)(?!\\s*\\())");
+                    + KEY_ARG);
 
     /**
      * キー直後から get 呼び出しの閉じ括弧までを走査し、
@@ -166,7 +179,7 @@ public final class SharedPreferencesScanner {
     /** put* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。 */
     private static final Pattern PUT_VALUE = Pattern.compile(
             RECEIVER + "\\.put(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
-                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))");
+                    + KEY_ARG);
 
     /**
      * プロジェクト全体をスキャンして結果を返す。
@@ -282,7 +295,14 @@ public final class SharedPreferencesScanner {
                 // 定数名キーは Context.getString(int resId) のリソース取得と紛らわしい。
                 // SharedPreferences.getString は必ずデフォルト値 (第2引数) を伴うので、
                 // リテラルでない定数キーはデフォルト値が無い / リソース参照なら除外する。
-                if (strKey == null && (!hasDefault || isResourceRef(constKey))) {
+                //
+                // ただし「無い」と言えるのは行内で括弧が閉じているときだけ。span == null は
+                // <b>この行では分からない</b>という意味で、引数を折り返した
+                // `prefs.getString(KEY_THEME,\n        DEFAULT_THEME)` がそれに当たる。
+                // これを「無い」と同一視していたため、読み書き両方している設定キーが
+                // 「書くだけで読まない」ように見えていた (put 側は同じ折り返しでも残る)。
+                boolean knownNoDefault = span != null && span[0] < 0;
+                if (strKey == null && (knownNoDefault || isResourceRef(constKey))) {
                     continue;
                 }
                 String key = strKey != null ? strKey : constKey;

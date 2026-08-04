@@ -124,10 +124,8 @@ public final class SeqSketchCodec {
      * 暗黙参加者の図) の出力は従来のままなので、余計な宣言行は増えない。</p>
      */
     public static String toPuml(SeqSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         boolean pinAll = !declarationOrderMatchesModel(model) || !messagesIdentifySequence(model);
         for (SeqParticipant p : model.getParticipants()) {

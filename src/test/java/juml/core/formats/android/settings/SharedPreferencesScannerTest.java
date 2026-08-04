@@ -385,6 +385,74 @@ public class SharedPreferencesScannerTest {
         assertEquals("非退行: 本物のリテラルは中身だけ", "Tokyo", defaults.get("plain"));
     }
 
+    /**
+     * 回帰: キー引数が定数でない<b>あらゆる形</b>で、先頭の識別子をキーにしないこと。
+     *
+     * <p>「直後が {@code (} でない」という個別の形の否定だけを入れていたため、その外側が
+     * まるごと残っていた。三項・連結・添字・限定呼び出しはどれも先頭の識別子を報告し、
+     * しかも {@code useNew} や {@code PREFIX} はキー名として通りそうな見た目なので
+     * 読み手には本物と区別が付かない。get と put の両方で確かめる。</p>
+     */
+    @Test
+    public void onlyACompleteConstantOrLiteralIsTakenAsTheKey() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String a = prefs.getString(useNew ? KEY_NEW : KEY_OLD, \"\");\n"
+                + "String b = prefs.getString(PREFIX + name, \"\");\n"
+                + "String c = prefs.getString(KEYS[0], \"\");\n"
+                + "String d = prefs.getString(Foo.<String>bar(), \"\");\n"
+                + "editor.putString(useNew ? KEY_NEW : KEY_OLD, v);\n"
+                + "editor.putString(buildKey(id), v);\n"
+                + "editor.putString(ctx.getString(R.string.k), v);\n"
+                + "String ok = prefs.getString(KEY_THEME, \"light\");\n";
+
+        java.util.Set<String> keys = keysOf(src, "T.java");
+
+        for (String bogus : java.util.List.of("useNew", "PREFIX", "KEYS", "Foo.",
+                "buildKey", "ctx.getString")) {
+            assertFalse("式の先頭の識別子をキーにしないこと: " + bogus + " in " + keys,
+                    keys.contains(bogus));
+        }
+        assertTrue("本物の定数キーは残ること: " + keys, keys.contains("KEY_THEME"));
+    }
+
+    /**
+     * 回帰: 引数を折り返した定数キーの読み取りを落とさないこと。
+     *
+     * <p>「初期値が無い = {@code Context.getString(resId)} だから除外」という判定が、
+     * 「初期値がこの行に無い」まで巻き込んでいた。put 側は同じ折り返しでも残るので、
+     * 読み書きしているキーが「書くだけで読まない」ように見えていた。</p>
+     */
+    @Test
+    public void aWrappedConstantKeyReadIsNotDropped() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String t = prefs.getString(KEY_THEME,\n"
+                + "        DEFAULT_THEME);\n"
+                + "editor.putString(KEY_THEME,\n"
+                + "        theme);\n";
+
+        boolean read = false;
+        boolean write = false;
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, "T.java")) {
+            if ("KEY_THEME".equals(e.key)) {
+                read |= !e.isWrite;
+                write |= e.isWrite;
+            }
+        }
+
+        assertTrue("折り返した読み取りも記録されること", read);
+        assertTrue("非退行: 書き込みも記録されること", write);
+    }
+
+    /** 非退行: 引数が 1 つだけの Context.getString(resId) は従来どおり除外すること。 */
+    @Test
+    public void contextGetStringWithNoDefaultIsStillIgnored() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String s = ctx.getString(titleRes);\n";
+
+        assertTrue("初期値の無い定数キーは設定ではない: " + keysOf(src, "T.java"),
+                keysOf(src, "T.java").isEmpty());
+    }
+
     private static int count(String s, char c) {
         int n = 0;
         for (int i = 0; i < s.length(); i++) {

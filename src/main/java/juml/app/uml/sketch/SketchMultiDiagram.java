@@ -38,6 +38,25 @@ final class SketchMultiDiagram {
      * @param startToken  この codec が開始行として受け付けるトークン ({@code "@startuml"} 等)
      * @param unsupported 未対応行の収集先
      */
+    /**
+     * 開始行を組み立てる。図名を持つときだけ区切りを入れる。
+     *
+     * <p>区切りは常に空白 1 つ、ではない。PlantUML の複数図記法
+     * {@code @startuml(id=NAME)} はトークンに {@code (} が<b>接している</b>ことが構文で、
+     * 空白を入れると意味が変わる: 実測で {@code @startuml(id=FIRST)} は {@code d.svg} を
+     * 出すが、{@code @startuml (id=FIRST)} は {@code (id=FIRST)} を<b>出力ファイル名</b>と
+     * 解釈して {@code (id=FIRST).svg} を出す。codec は残りを図名として読むだけなので、
+     * 図名が {@code (} で始まるなら書き戻しでも接したままにしないと、設計器で 1 回
+     * 動かしただけで id が消えて成果物の名前が変わり、{@code !include file!ID} も
+     * 解決しなくなる。10 個の codec が同じ組み立てをしていたのでここへ寄せる。</p>
+     */
+    static String startLine(String startToken, String name) {
+        if (name == null || name.isEmpty()) {
+            return startToken;
+        }
+        return name.startsWith("(") ? startToken + name : startToken + ' ' + name;
+    }
+
     static void reportExtraDiagrams(String[] lines, String startToken, List<String> unsupported) {
         if (lines == null) {
             return;

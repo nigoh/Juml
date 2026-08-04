@@ -145,10 +145,8 @@ public final class ActivitySketchCodec {
 
     /** モデルを PlantUML テキストへ書き出す (ブランチは 2 スペース字下げ)。 */
     public static String toPuml(ActivitySketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         emit(sb, model.getNodes(), 0);
         sb.append("@enduml\n");

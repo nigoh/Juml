@@ -160,10 +160,8 @@ public final class MindmapSketchCodec {
      * {@code *} 系へ正規化される (記号ファミリ不整合 = 実機の {@code error42L} を避ける必須ロジック)。
      */
     public static String toPuml(MindmapSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startmindmap");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startmindmap", model.getDiagramName()));
         sb.append('\n');
         if (model.getRoot() != null) {
             emit(sb, model, model.getRoot(), 1);

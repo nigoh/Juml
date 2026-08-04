@@ -7,6 +7,7 @@ import org.junit.Test;
 
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -166,6 +167,38 @@ public class MultiDiagramLockTest {
         SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(text);
 
         assertLocked("class(mixed)", r.isFullySupported(), r.unsupportedLines);
+    }
+
+    /**
+     * 回帰: 開始行を<b>読んだとおりに</b>書き戻すこと。
+     *
+     * <p>組み立てが「トークン + 空白 + 図名」の 1 形だけだった。PlantUML の
+     * {@code @startuml(id=NAME)} はトークンに {@code (} が接していることが構文なので、
+     * 空白が入ると意味が変わる — 実測で {@code (id=FIRST)} が<b>出力ファイル名</b>と
+     * 解釈される。単一図なら番人は鳴らないので設計器は編集可能で開き、1 回動かしただけで
+     * id が失われ、成果物の名前が変わり {@code !include file!ID} も解決しなくなる。</p>
+     */
+    @Test
+    public void theStartLineRoundTripsAsWritten() {
+        for (String start : List.of("@startuml(id=FIRST)", "@startuml Named", "@startuml")) {
+            SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(start + "\nclass Alpha\n@enduml\n");
+            assertTrue("単一図は編集可能のままであること: " + start, r.isFullySupported());
+            String out = SketchPumlCodec.toPuml(r.model);
+            assertEquals("開始行が読んだとおりに戻ること", start,
+                    out.substring(0, out.indexOf('\n')));
+        }
+    }
+
+    /** 回帰: mindmap の id 記法も同じこと。 */
+    @Test
+    public void theMindmapStartLineRoundTripsAsWritten() {
+        String start = "@startmindmap(id=M)";
+        MindmapSketchCodec.ParseResult r =
+                MindmapSketchCodec.parse(start + "\n* Root\n** A\n@endmindmap\n");
+
+        assertTrue(r.isFullySupported());
+        String out = MindmapSketchCodec.toPuml(r.model);
+        assertEquals(start, out.substring(0, out.indexOf('\n')));
     }
 
     /**
