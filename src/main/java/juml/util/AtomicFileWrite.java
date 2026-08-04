@@ -81,6 +81,16 @@ public final class AtomicFileWrite {
             throw new java.nio.file.AccessDeniedException(targetPath.toString(), null,
                     "target file is not writable");
         }
+        // 通常ファイル以外 (デバイスノード・FIFO・ソケット) は<b>置換してはいけない</b>。
+        // 中身を持つファイルではなくカーネル側の口なので、置き換えると口そのものが消える:
+        // {@code -o /dev/null} を指定しただけで /dev/null が普通のファイルに化け、
+        // システム全体に影響する。原子性は「前回の内容を守る」ための仕組みであって、
+        // 守るべき内容を持たないこれらの対象では意味がない。そのまま開いて書く。
+        if (Files.exists(targetPath) && !Files.isRegularFile(targetPath)
+                && !Files.isDirectory(targetPath)) {
+            body.writeTo(targetPath.toFile());
+            return;
+        }
         // 置換は rename(2) なので、対象ファイルが書けても<b>ディレクトリ</b>が書けなければ
         // 保存できない (対象を直接開いていた頃は書けた)。原子性を捨てて直接書けば
         // 途中失敗で対象を壊す危険が戻るので、失敗させたうえで<b>本当の原因</b>を告げる。

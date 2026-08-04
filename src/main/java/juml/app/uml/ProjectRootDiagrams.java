@@ -43,11 +43,12 @@ final class ProjectRootDiagrams {
         try {
             java.nio.file.Files.walkFileTree(
                     juml.core.formats.java.AndroidProjectScanner.realRoot(projectRoot),
-                    // リンクを辿るのは従来 (Files.walk の既定) と同じ。AOSP では out/ や
-                    // .intermediates を別ボリュームへリンクする構成が普通で、辿らないと
-                    // 図が黙ってメニューから消える。循環は walkFileTree が検出して
-                    // visitFileFailed へ渡すので、下の CONTINUE で飛ばせる。
-                    java.util.EnumSet.of(java.nio.file.FileVisitOption.FOLLOW_LINKS), 12,
+                    // リンクは辿らない。以前ここで「Files.walk の既定は辿る」と書いて
+                    // FOLLOW_LINKS を入れたが、実測すると Files.walk の既定は<b>辿らない</b>
+                    // (リンク越しのファイルは 0 件)。前提が誤りで、辿るようにしたことで
+                    // リンク先の巨大ツリーを走査して訪問上限を使い切り、その先にある
+                    // 本物の AOSP マーカーへ届かず図が全部消えるようになっていた。
+                    java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), 12,
                     new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
                         @Override
                         public java.nio.file.FileVisitResult preVisitDirectory(

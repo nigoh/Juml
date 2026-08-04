@@ -262,6 +262,40 @@ public class AtomicFileWriteTest {
     }
 
     @Test
+    public void deviceNodesAndFifosAreWrittenThroughNotReplaced() throws Exception {
+        // 回帰 (critical): デバイスノードや FIFO は「中身を持つファイル」ではなく
+        // カーネル側の口。原子的置換で差し替えると口そのものが消えるため、
+        // juml -o /dev/null と指定しただけで /dev/null が普通のファイルに化けていた。
+        // 原子性は前回の内容を守る仕組みで、守る内容の無いこれらには意味がない。
+        File fifo = new File(tmp.newFolder("special"), "pipe");
+        Process mk = new ProcessBuilder("mkfifo", fifo.getPath()).start();
+        if (mk.waitFor() != 0) {
+            return; // mkfifo が無い環境では検証対象外
+        }
+        assertTrue("この検証の前提: 通常ファイルではない",
+                !Files.isRegularFile(fifo.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS));
+
+        // FIFO は読み手が付くまで open がブロックするので、読み捨てる側を先に用意する。
+        Thread reader = new Thread(() -> {
+            try (java.io.InputStream in = Files.newInputStream(fifo.toPath())) {
+                while (in.read() != -1) {
+                    continue;
+                }
+            } catch (IOException ignored) {
+                // 読み側の失敗は本検証の対象ではない
+            }
+        });
+        reader.setDaemon(true);
+        reader.start();
+
+        AtomicFileWrite.write(fifo, os -> os.write("x".getBytes(StandardCharsets.UTF_8)));
+        reader.join(5000);
+
+        assertTrue("FIFO のままであること (普通のファイルへ化けない)",
+                !Files.isRegularFile(fifo.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS));
+    }
+
+    @Test
     public void missingParentDirectoryFailsWithoutCreatingIt() throws IOException {
         // 保存先ディレクトリを勝手に作らない (打ち間違えたパスへ黙って書かない)。
         File dir = new File(tmp.getRoot(), "no-such-dir");
