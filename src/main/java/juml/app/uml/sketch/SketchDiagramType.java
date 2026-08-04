@@ -66,13 +66,13 @@ public enum SketchDiagramType {
      * {@code [Id]} (Id は識別子)。{@code [*]} は識別子でないので状態図と衝突しない。
      */
     private static final Pattern COMPONENT_LINE = Pattern.compile(
-            "^(component" + DECL_ARG + "|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
+            "^(component" + DECL_ARG + "|\\[" + SketchIdentifier.BARE + "\\]\\s*)$");
     /**
      * オブジェクト図に固有の行。{@code object 名前} 宣言は他図種と衝突しないため、これが
      * 1 行でもあればオブジェクト図と確定できる。
      */
     private static final Pattern OBJECT_LINE = Pattern.compile(
-            "^object\\s+[A-Za-z_$].*$");
+            "^object\\s+" + SketchIdentifier.HEAD_ONLY + ".*$");
     /**
      * 配置図に固有の宣言行。{@code node} / {@code artifact} / {@code cloud} は他図種と
      * 衝突しないため、これらが 1 行でもあれば配置図と確定できる。{@code database} は
@@ -89,7 +89,7 @@ public enum SketchDiagramType {
      * 端点に含む遷移。素の {@code A --> B} はクラス図の関連と曖昧なため判定材料にしない。
      */
     private static final Pattern STATE_LINE = Pattern.compile(
-            "^(state\\s+[A-Za-z_$].*|\\[\\*\\]\\s*-->.*|.*-->\\s*\\[\\*\\].*)$");
+            "^(state\\s+" + SketchIdentifier.HEAD_ONLY + ".*|\\[\\*\\]\\s*-->.*|.*-->\\s*\\[\\*\\].*)$");
     /**
      * ER 図に固有の crow's-foot (IE) リレーション演算子 ({@code ||--o{} 等)。左右の
      * カーディナリティトークン ({@code |} / {@code o} / {@code {} / {@code }} の組) は
@@ -141,7 +141,7 @@ public enum SketchDiagramType {
                     + "|database\\b.*|queue\\b.*|collections\\b.*"
                     + "|activate\\b.*|deactivate\\b.*|autonumber\\b.*"
                     + "|alt\\b.*|opt\\b.*|loop\\b.*|par\\b.*|group\\b.*"
-                    + "|[A-Za-z_$][\\w$.]*\\s*(->>?|-->>)\\s*[A-Za-z_$].*)$");
+                    + "|" + SketchIdentifier.DOTTED + "\\s*(->>?|-->>)\\s*" + SketchIdentifier.HEAD_ONLY + ".*)$");
 
     /**
      * ブロック本体 ({@code entity X { ... }} / {@code class A { ... }} の中身) を落として

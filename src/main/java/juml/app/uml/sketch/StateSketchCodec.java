@@ -24,10 +24,10 @@ public final class StateSketchCodec {
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     private static final Pattern STATE_DECL = Pattern.compile(
-            "^state\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^state\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern TRANSITION = Pattern.compile(
-            "^(\\[\\*\\]|[A-Za-z_$][\\w$]*)\\s*-->\\s*"
-                    + "(\\[\\*\\]|[A-Za-z_$][\\w$]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
+            "^(\\[\\*\\]|" + SketchIdentifier.BARE + ")\\s*-->\\s*"
+                    + "(\\[\\*\\]|" + SketchIdentifier.BARE + ")(?:\\s*:\\s*(.*\\S))?\\s*$");
 
     /** 位置未指定状態を格子状に自動配置する際の間隔。 */
     private static final int GRID_X = 200;

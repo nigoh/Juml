@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 final class ErSketchDialogs {
 
     /** PlantUML の別名 (alias) として安全な識別子。 */
-    private static final Pattern ALIAS = Pattern.compile("[A-Za-z_$][\\w$]*");
+    private static final Pattern ALIAS = SketchIdentifier.BARE_PATTERN;
 
     private ErSketchDialogs() {
     }
@@ -77,11 +77,36 @@ final class ErSketchDialogs {
                     Messages.get("sketch.er.dlg.title"), JOptionPane.WARNING_MESSAGE);
             return false;
         }
+        String badColumn = firstUnwritableColumn(columns);
+        if (badColumn != null) {
+            JOptionPane.showMessageDialog(parent,
+                    Messages.get("sketch.er.dlg.columnError") + badColumn,
+                    Messages.get("sketch.er.dlg.title"), JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
         model.renameEntity(target, newAlias);
         String name = nameField.getText().trim();
         target.setDisplayName(name.isEmpty() || name.equals(newAlias) ? null : name);
         applyColumns(target, columns);
         return true;
+    }
+
+    /**
+     * 書き出して読み直したときに失われる列名があれば最初の 1 件を返す (無ければ null)。
+     *
+     * <p>ER の列行は引用符を持てないため、識別子として読み戻せない名前は保存できない。
+     * とくに区切り線と同じ {@code --} / {@code ==} / {@code ..} は書き出した瞬間に
+     * PK ブロックの仕切りとして読み直され、<b>警告も編集ロックも無いまま列が消える</b>
+     * (空白を含む名前や {@code }} は列ブロックを壊す)。入口で断る方が失うより良い。</p>
+     */
+    static String firstUnwritableColumn(DefaultTableModel columns) {
+        for (int row = 0; row < columns.getRowCount(); row++) {
+            String name = str(columns.getValueAt(row, 1)).trim();
+            if (!name.isEmpty() && !ALIAS.matcher(name).matches()) {
+                return name;
+            }
+        }
+        return null;
     }
 
     /**

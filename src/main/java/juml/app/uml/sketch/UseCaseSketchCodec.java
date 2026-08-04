@@ -25,18 +25,18 @@ public final class UseCaseSketchCodec {
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     private static final Pattern ACTOR_DECL = Pattern.compile(
-            "^actor\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^actor\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern ACTOR_ALIAS = Pattern.compile(
             "^actor\\s+" + SketchLabelText.QUOTED_LABEL
-                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+                    + "\\s+as\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern USECASE_DECL = Pattern.compile(
-            "^usecase\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^usecase\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern USECASE_ALIAS = Pattern.compile(
             "^usecase\\s+" + SketchLabelText.QUOTED_LABEL
-                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+                    + "\\s+as\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern RELATION = Pattern.compile(
-            "^([A-Za-z_$][\\w$]*)\\s*(-->|\\.\\.>|--\\|>)\\s*"
-                    + "([A-Za-z_$][\\w$]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
+            "^(" + SketchIdentifier.BARE + ")\\s*(-->|\\.\\.>|--\\|>)\\s*"
+                    + "(" + SketchIdentifier.BARE + ")(?:\\s*:\\s*(.*\\S))?\\s*$");
 
     private static final int GRID_X = 200;
     private static final int GRID_Y = 120;

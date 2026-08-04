@@ -30,19 +30,19 @@ public final class ErSketchCodec {
     /** {@code entity "表示名" as alias} (列ブロックの有無は末尾の {@code {} で判定)。 */
     private static final Pattern ENTITY_ALIAS = Pattern.compile(
             "^entity\\s+" + SketchLabelText.QUOTED_LABEL
-                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(\\{)?\\s*$");
+                    + "\\s+as\\s+(" + SketchIdentifier.BARE + ")\\s*(\\{)?\\s*$");
     /** {@code entity alias} (素の識別子)。 */
     private static final Pattern ENTITY_PLAIN = Pattern.compile(
-            "^entity\\s+([A-Za-z_$][\\w$]*)\\s*(\\{)?\\s*$");
+            "^entity\\s+(" + SketchIdentifier.BARE + ")\\s*(\\{)?\\s*$");
     /** 列行: 先頭 {@code *} で主キー、{@code : 型} は任意。 */
     private static final Pattern COLUMN = Pattern.compile(
-            "^(\\*\\s*)?([A-Za-z_$][\\w$]*)\\s*(?::\\s*(.*\\S))?\\s*$");
+            "^(\\*\\s*)?(" + SketchIdentifier.BARE + ")\\s*(?::\\s*(.*\\S))?\\s*$");
     /** PK ブロックと一般列を分ける区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
     private static final Pattern DIVIDER = Pattern.compile("^(--|==|__|\\.\\.)+\\s*$");
     /** crow's-foot リレーション。左右のカーディナリティトークンは他図種と衝突しない。 */
     private static final Pattern RELATION = Pattern.compile(
-            "^([A-Za-z_$][\\w$]*)\\s*(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)"
-                    + "\\s*([A-Za-z_$][\\w$]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
+            "^(" + SketchIdentifier.BARE + ")\\s*(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)"
+                    + "\\s*(" + SketchIdentifier.BARE + ")(?:\\s*:\\s*(.*\\S))?\\s*$");
 
     /** 位置未指定エンティティを格子状に自動配置する際の間隔。 */
     private static final int GRID_X = 260;
