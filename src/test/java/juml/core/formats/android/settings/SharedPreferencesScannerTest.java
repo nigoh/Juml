@@ -339,6 +339,52 @@ public class SharedPreferencesScannerTest {
         }
     }
 
+    /**
+     * 回帰: キー引数が呼び出しのとき、呼ばれる側の名前をキーとして報告しないこと。
+     *
+     * <p>初期値を走査へ移したとき、キーの直後に閉じ括弧を要求していた条件も一緒に外れた。
+     * その結果 {@code ctx.getString(R.string.pref_theme_key)} の<b>関数名</b>である
+     * {@code ctx.getString} が「設定キー」として一覧に並ぶようになった。本当のキーは
+     * strings.xml 側にあり静的には解決できないので、出すなら何も出さないのが正しい。</p>
+     */
+    @Test
+    public void aCallUsedAsTheKeyArgumentIsNotReportedAsAKey() {
+        String src = "SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(c);\n"
+                + "String t = prefs.getString(ctx.getString(R.string.pref_theme_key), \"light\");\n"
+                + "String u = prefs.getString(buildKey(id), \"\");\n";
+
+        java.util.Set<String> keys = keysOf(src, "T.java");
+
+        assertFalse("呼び出しの関数名をキーにしないこと: " + keys, keys.contains("ctx.getString"));
+        assertFalse("同上: " + keys, keys.contains("buildKey"));
+        assertFalse("リソース参照もキーにしないこと: " + keys,
+                keys.contains("R.string.pref_theme_key"));
+    }
+
+    /**
+     * 回帰: 連結式の初期値を「リテラル」として出さないこと。
+     *
+     * <p>先頭と末尾が {@code "} かどうかだけで判定していたため、
+     * {@code "Hello " + name + "!"} も literal 扱いになり、外側の引用符だけ剥がれた
+     * {@code Hello " + name + "!} が初期値として表に出ていた。式なら括弧で包まれるので
+     * 読み手が式と分かるが、この形は括弧も付かず<b>本物のリテラルと区別がつかない</b>。</p>
+     */
+    @Test
+    public void aConcatenatedDefaultIsShownAsAnExpressionNotALiteral() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "String s = prefs.getString(\"greet\", \"Hello \" + name + \"!\");\n"
+                + "String p = prefs.getString(\"plain\", \"Tokyo\");\n";
+
+        java.util.Map<String, String> defaults = new java.util.HashMap<>();
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, "T.java")) {
+            defaults.put(e.key, e.defaultValue);
+        }
+
+        assertEquals("連結式は式として括弧で包むこと",
+                "(\"Hello \" + name + \"!\")", defaults.get("greet"));
+        assertEquals("非退行: 本物のリテラルは中身だけ", "Tokyo", defaults.get("plain"));
+    }
+
     private static int count(String s, char c) {
         int n = 0;
         for (int i = 0; i < s.length(); i++) {

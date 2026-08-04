@@ -89,7 +89,10 @@ public final class SharedPreferencesScanner {
      */
     private static final Pattern GET_VALUE = Pattern.compile(
             RECEIVER + "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
-                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))");
+                    // 定数名キーの直後が ( なら、それはキーではなく<b>呼び出しの関数名</b>。
+                    // 末尾の \) を外したとき、キー引数が呼び出しの場合に呼ばれる側の名前
+                    // (`ctx.getString` / `buildKey`) をキーとして報告するようになっていた。
+                    + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*)(?!\\s*\\())");
 
     /**
      * キー直後から get 呼び出しの閉じ括弧までを走査し、
@@ -131,6 +134,30 @@ public final class SharedPreferencesScanner {
                 depth--;
             } else if (c == ',' && depth == 0 && valueStart < 0) {
                 valueStart = i + 1;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * {@code s} が<b>ちょうど 1 個の文字列リテラル</b>ならその中身を、違えば {@code null}。
+     *
+     * <p>「先頭と末尾が {@code "}」で判定していたため、連結式
+     * {@code "Hello " + name + "!"} もリテラル扱いになり、外側の引用符だけ剥がれた
+     * {@code Hello " + name + "!} が「初期値」として表に出ていた。式なら括弧で包まれる
+     * ので読み手が式と分かるが、この形は括弧も付かないので<b>本物のリテラルと区別が
+     * つかない</b>。</p>
+     */
+    private static String singleStringLiteral(String s) {
+        if (s.length() < 2 || s.charAt(0) != '"') {
+            return null;
+        }
+        for (int i = 1; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i++;
+            } else if (c == '"') {
+                return i == s.length() - 1 ? s.substring(1, i) : null;
             }
         }
         return null;
@@ -260,10 +287,12 @@ public final class SharedPreferencesScanner {
                 }
                 String key = strKey != null ? strKey : constKey;
                 String defVal = hasDefault ? line.substring(span[0], span[1]).trim() : "";
-                // 文字列リテラルのみのデフォルト値を抽出。
-                // 単一の `"` (長さ 1) では substring(1, 0) が例外になるため長さでガードする。
-                if (defVal.length() >= 2 && defVal.startsWith("\"") && defVal.endsWith("\"")) {
-                    defVal = defVal.substring(1, defVal.length() - 1);
+                // 初期値が「文字列リテラル 1 個ちょうど」ならその中身、そうでなければ
+                // 式として括弧で包む。式を括弧で包むのは、読み手が「リテラルの初期値」と
+                // 「式の初期値」を見分けられるようにするため。
+                String literal = singleStringLiteral(defVal);
+                if (literal != null) {
+                    defVal = literal;
                 } else if (!defVal.isEmpty()) {
                     defVal = "(" + defVal + ")";
                 }

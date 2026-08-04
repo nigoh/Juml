@@ -27,6 +27,13 @@ final class SketchMultiDiagram {
     /**
      * 2 本目以降の開始行を {@code unsupported} へ積む (= 編集ロック)。
      *
+     * <p>判定は各 codec とまったく同じ {@code trim().startsWith(token)}。ここだけ厳しく
+     * 「トークンの直後は行末か空白」と条件を足していたが、codec 側は残りをそのまま図名に
+     * するので、両者がずれた瞬間に取りこぼす。実際 PlantUML の複数図記法
+     * {@code @startuml(id=NAME)} は直後が {@code (} なのでこの番人だけが素通しし、codec は
+     * 開始行として受け入れていた — 番人を入れる前とまったく同じ統合が起きていた。
+     * <b>codec が開始行として扱う行を、1 行の狂いもなく同じに数える</b>のが唯一の正しさ。</p>
+     *
      * @param lines       解析対象の全行 (未 trim で可)
      * @param startToken  この codec が開始行として受け付けるトークン ({@code "@startuml"} 等)
      * @param unsupported 未対応行の収集先
@@ -39,11 +46,6 @@ final class SketchMultiDiagram {
         for (String raw : lines) {
             String line = raw == null ? "" : raw.trim();
             if (!line.startsWith(startToken)) {
-                continue;
-            }
-            // トークンの直後は行末か空白のみ。@startuml と @startumlfoo を混同しないため。
-            String rest = line.substring(startToken.length());
-            if (!rest.isEmpty() && !Character.isWhitespace(rest.charAt(0))) {
                 continue;
             }
             if (seen) {

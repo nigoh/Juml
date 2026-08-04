@@ -141,19 +141,52 @@ public class MultiDiagramLockTest {
     }
 
     /**
-     * 非退行: 開始トークンの<b>前方一致だけ</b>でロックしないこと。
+     * 回帰: PlantUML の複数図記法 {@code @startuml(id=NAME)} も 2 本目として数えること。
      *
-     * <p>{@code @startuml} で始まるより長い語 (将来のディレクティブや誤記) を 2 本目と
-     * 数えると、正しい 1 図のファイルを誤ってロックし、その設計器が使えなくなる。</p>
+     * <p>番人だけが「トークンの直後は行末か空白」と余計に厳しく、codec 側は残りを図名として
+     * 素通しで受け入れていた。ずれた結果、{@code (} が直後に来るこの記法では番人が何も
+     * 報告せず、番人を入れる前とまったく同じ統合が起きていた。判定は codec と 1 行の狂いも
+     * なく同じでなければならない。</p>
      */
     @Test
-    public void aLongerTokenIsNotCountedAsASecondDiagram() {
-        java.util.List<String> unsupported = new java.util.ArrayList<>();
-        SketchMultiDiagram.reportExtraDiagrams(
-                new String[]{"@startuml A", "@startumlish B", "class C", "@enduml"},
-                "@startuml", unsupported);
+    public void theIdFormOfASecondDiagramIsCounted() {
+        String text = "@startuml(id=FIRST)\nclass Alpha\n@enduml\n"
+                + "@startuml(id=SECOND)\nclass Beta\n@enduml\n";
 
-        assertTrue("別語は 2 本目に数えないこと: " + unsupported, unsupported.isEmpty());
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(text);
+
+        assertLocked("class(id=)", r.isFullySupported(), r.unsupportedLines);
+    }
+
+    /** 回帰: 素の記法と id 記法が混在していても 2 本目を数えること。 */
+    @Test
+    public void aMixOfPlainAndIdFormsIsCounted() {
+        String text = "@startuml\nclass Alpha\n@enduml\n@startuml(id=B)\nclass Beta\n@enduml\n";
+
+        SketchPumlCodec.ParseResult r = SketchPumlCodec.parse(text);
+
+        assertLocked("class(mixed)", r.isFullySupported(), r.unsupportedLines);
+    }
+
+    /**
+     * 番人の数え方が codec の数え方と一致していること。
+     *
+     * <p>両者がずれた瞬間に、取りこぼす (統合が起きる) か誤ってロックする (設計器が
+     * 使えなくなる) かのどちらかになる。ここでは codec が開始行として受け入れる形を
+     * 並べ、番人が同じだけ数えることを固定する。</p>
+     */
+    @Test
+    public void theGuardCountsExactlyWhatTheCodecCountsAsAStartLine() {
+        for (String second : List.of("@startuml", "@startuml Named", "@startuml(id=X)",
+                "  @startuml  ", "@startumlish")) {
+            java.util.List<String> unsupported = new java.util.ArrayList<>();
+            SketchMultiDiagram.reportExtraDiagrams(
+                    new String[]{"@startuml A", "class C", "@enduml", second}, "@startuml",
+                    unsupported);
+            // codec 側は trim().startsWith("@startuml") で開始行と判定する。同じ条件。
+            assertTrue("codec が開始行と見なす形は番人も数えること: [" + second + "] -> " + unsupported,
+                    !unsupported.isEmpty());
+        }
     }
 
     /** 図名なしの 2 本目 (トークンだけの行) もきちんと数えること。 */
