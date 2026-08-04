@@ -37,18 +37,15 @@ public final class SharedPreferencesScanner {
      * 1 つでもあると、それらが<b>その無関係なストア名の下に</b>並んでいた。</p>
      */
     private static final String RECEIVER =
-            "([A-Za-z_][A-Za-z0-9_.]*(?:\\s*\\([^()]*\\))?)";
+            "([A-Za-z_][A-Za-z0-9_.]*(?:\\s*\\([^()]*\\))?)?";
 
-    /** {@code SharedPreferences p = ...} / {@code Editor e = ...} の変数名 (グループ 1)。 */
-    private static final Pattern PREFS_VAR = Pattern.compile(
-            "(?:SharedPreferences|SharedPreferences\\s*\\.\\s*Editor|Editor)\\s+"
-                    + "([A-Za-z_][A-Za-z0-9_]*)\\s*=");
-
-    /** {@code x = <なにか>.edit()} / {@code x = ...getSharedPreferences(...)} の左辺 (グループ 1)。 */
-    private static final Pattern PREFS_ASSIGN = Pattern.compile(
-            "([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*[^;]*?"
-                    + "(?:\\.\\s*edit\\s*\\(\\s*\\)|getSharedPreferences\\s*\\(|"
-                    + "getDefaultSharedPreferences\\s*\\()");
+    /**
+     * {@code Bundle b} / {@code JSONObject o} のように<b>明らかに設定ではない</b>型で
+     * 宣言された変数名 (グループ 2)。グループ 1 は型名。
+     */
+    private static final Pattern NON_PREFS_VAR = Pattern.compile(
+            "\\b(Bundle|JSONObject|JSONArray|ContentValues|Intent|Cursor|Properties|"
+                    + "Map|HashMap|ArrayMap)\\s*(?:<[^>]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\b");
 
     /** {@code getSharedPreferences("name", ...)} のストア名抽出。グループ 1: ストア名。 */
     private static final Pattern GET_SP = Pattern.compile(
@@ -69,7 +66,7 @@ public final class SharedPreferencesScanner {
     private static final Pattern GET_VALUE = Pattern.compile(
             RECEIVER + "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
                     + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))"
-                    + "(?:\\s*,\\s*((?:[^()]|\\([^()]*\\))+?))?\\s*\\)");
+                    + "(?:\\s*,\\s*((?:(?:[^()]|\\([^()]*\\))+?|[^)]+?)))?\\s*\\)");
 
     /** put* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。 */
     private static final Pattern PUT_VALUE = Pattern.compile(
@@ -111,46 +108,36 @@ public final class SharedPreferencesScanner {
         return result;
     }
 
-    /** このファイルで SharedPreferences / Editor を受けている変数名を集める。 */
-    private static java.util.Set<String> collectPreferencesVars(String src) {
+    /** このファイルで「設定ではない」型として宣言されている変数名を集める。 */
+    private static java.util.Set<String> collectNonPreferencesVars(String src) {
         java.util.Set<String> vars = new java.util.LinkedHashSet<>();
-        Matcher declared = PREFS_VAR.matcher(src);
-        while (declared.find()) {
-            vars.add(declared.group(1));
-        }
-        Matcher assigned = PREFS_ASSIGN.matcher(src);
-        while (assigned.find()) {
-            vars.add(assigned.group(1));
+        Matcher m = NON_PREFS_VAR.matcher(src);
+        while (m.find()) {
+            vars.add(m.group(2));
         }
         return vars;
     }
 
     /**
-     * その {@code put*} / {@code get*} が SharedPreferences 由来の受け手に対する呼び出しか。
+     * その {@code put*} / {@code get*} を設定アクセスとして数えるか。
      *
-     * <p>受け手を見ないと {@code outState.putString(...)} (Bundle) や
-     * {@code json.getString(...)} (JSONObject) まで設定キーとして数え、しかも同じファイルに
-     * {@code getSharedPreferences} が 1 つでもあれば<b>その無関係なストアの中身</b>として
-     * 表に並べてしまう。厳密なデータフロー解析はこのクラスの方針外なので、
-     * (1) 宣言・代入から拾った変数名、(2) 式に {@code edit()} や
-     * {@code getSharedPreferences} を含む連鎖、(3) 名前が prefs/editor を示す慣習、
-     * の 3 段で判定する。</p>
+     * <p><b>除外リスト</b>で判定する。以前は逆に「prefs らしい受け手」だけを通す許可リストに
+     * していたが、それは知らない書き方をすべて<b>取りこぼす</b>: 行をまたぐ連鎖
+     * ({@code prefs.edit()} の次行に {@code .putString(...)})、入れ子引数
+     * ({@code getDefaultSharedPreferences(getApplicationContext()).getString(...)})、
+     * {@code this.prefs} のような修飾つき受け手が軒並み 0 件になった。設定キーの一覧を
+     * 出すのが目的なので、<b>拾い過ぎより取りこぼしの方が害が大きい</b>。
+     * 明らかに設定ではない型 (Bundle / JSONObject など) の変数だけを弾き、
+     * 判定できない受け手は通す。</p>
      */
-    private static boolean isPreferencesReceiver(String receiver, java.util.Set<String> vars) {
+    private static boolean isPreferencesReceiver(String receiver,
+                                                 java.util.Set<String> nonPrefsVars) {
         if (receiver == null || receiver.isEmpty()) {
-            return false;
+            return true; // 連鎖の継続行など。受け手が読めないだけで除外はしない。
         }
         String r = receiver.trim();
-        if (r.contains("edit()") || r.contains("edit ()")
-                || r.contains("getSharedPreferences") || r.contains("getDefaultSharedPreferences")) {
-            return true;
-        }
         String head = r.contains(".") ? r.substring(0, r.indexOf('.')) : r;
-        if (vars.contains(head) || vars.contains(r)) {
-            return true;
-        }
-        String lower = head.toLowerCase(java.util.Locale.ROOT);
-        return lower.contains("pref") || lower.equals("editor") || lower.equals("ed");
+        return !nonPrefsVars.contains(head) && !nonPrefsVars.contains(r);
     }
 
     /**
@@ -171,7 +158,7 @@ public final class SharedPreferencesScanner {
             storeNames.add("(default)");
         }
         String resolvedStore = storeNames.isEmpty() ? "" : storeNames.get(0);
-        java.util.Set<String> prefsVars = collectPreferencesVars(src);
+        java.util.Set<String> nonPrefsVars = collectNonPreferencesVars(src);
 
         String[] lines = src.split("\n", -1);
         List<SharedPreferencesEntry> entries = new ArrayList<>();
@@ -183,7 +170,7 @@ public final class SharedPreferencesScanner {
             // 読み取り (get*)
             Matcher gm = GET_VALUE.matcher(line);
             while (gm.find()) {
-                if (!isPreferencesReceiver(gm.group(1), prefsVars)) {
+                if (!isPreferencesReceiver(gm.group(1), nonPrefsVars)) {
                     continue;
                 }
                 String type = gm.group(2);
@@ -211,7 +198,7 @@ public final class SharedPreferencesScanner {
             // 書き込み (put*)
             Matcher pm = PUT_VALUE.matcher(line);
             while (pm.find()) {
-                if (!isPreferencesReceiver(pm.group(1), prefsVars)) {
+                if (!isPreferencesReceiver(pm.group(1), nonPrefsVars)) {
                     continue;
                 }
                 String type = pm.group(2);

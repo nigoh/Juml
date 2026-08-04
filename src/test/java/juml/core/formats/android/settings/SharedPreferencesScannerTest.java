@@ -164,11 +164,13 @@ public class SharedPreferencesScannerTest {
      */
     @Test
     public void bundleAndJsonAccessesAreNotReportedAsPreferences() {
-        String src = "void onSaveInstanceState(Bundle outState) {\n"
+        String src = "void onSaveInstanceState() {\n"
+                + "  Bundle outState = new Bundle();\n"
                 + "  outState.putString(\"saved_scroll\", \"x\");\n"
                 + "  outState.putInt(\"saved_page\", 3);\n"
                 + "}\n"
-                + "void parse(JSONObject o) {\n"
+                + "void parse() {\n"
+                + "  JSONObject o = body();\n"
                 + "  String n = o.getString(\"name\");\n"
                 + "  int v = o.getInt(\"version\");\n"
                 + "}\n"
@@ -189,6 +191,36 @@ public class SharedPreferencesScannerTest {
         assertFalse("JSON のキーを含めないこと: " + keys, keys.contains("name"));
         assertFalse("JSON のキーを含めないこと: " + keys, keys.contains("version"));
         assertEquals("拾うのは 1 件だけ: " + keys, 1, entries.size());
+    }
+
+    /**
+     * 回帰: 受け手が読み取れない/知らない形でも取りこぼさないこと。
+     *
+     * <p>一時期「prefs らしい受け手」だけを通す許可リストにしていたため、行をまたぐ連鎖・
+     * 入れ子引数・{@code this.prefs} が軒並み 0 件になった。設定キーの一覧が目的なので、
+     * 拾い過ぎより取りこぼしの方が害が大きい。</p>
+     */
+    @Test
+    public void keysAreNotLostWhenTheReceiverIsHardToRead() {
+        String src = "SharedPreferences prefs = ctx.getSharedPreferences(\"app\", 0);\n"
+                + "prefs.edit()\n"
+                + "        .putString(\"wrapped_write\", t)\n"
+                + "        .apply();\n"
+                + "String a = PreferenceManager"
+                + ".getDefaultSharedPreferences(getApplicationContext())"
+                + ".getString(\"nested_arg\", \"dark\");\n"
+                + "String b = this.prefs.getString(\"qualified\", \"light\");\n"
+                + "int n = prefs.getInt(\"deep_default\", Math.max(1, cfg.min(2)));\n";
+
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (SharedPreferencesEntry e : scanner.analyzeSource(src, "T.java")) {
+            keys.add(e.key);
+        }
+
+        assertTrue("行をまたぐ連鎖: " + keys, keys.contains("wrapped_write"));
+        assertTrue("入れ子引数の受け手: " + keys, keys.contains("nested_arg"));
+        assertTrue("this. 修飾の受け手: " + keys, keys.contains("qualified"));
+        assertTrue("2 段入れ子の初期値: " + keys, keys.contains("deep_default"));
     }
 
     /** 非退行: 宣言済み変数・連鎖・慣習的な名前のいずれでも本物は拾えること。 */
