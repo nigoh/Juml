@@ -155,10 +155,6 @@ public final class SeqSketchCodec {
     }
 
     /**
-     * 「宣言行を持つ参加者だけを先頭に出す」書き方で、PlantUML が推論するライフライン順が
-     * モデルの並びと一致するか。一致しないなら全参加者を明示宣言して並びを固定する必要がある。
-     */
-    /**
      * メッセージ行だけで「これはシーケンス図だ」と判別できるか。
      *
      * <p>応答矢印 {@code -->} はクラス図の関連と綴りが同じなので判別材料にならない。
@@ -180,6 +176,10 @@ public final class SeqSketchCodec {
         return false;
     }
 
+    /**
+     * 「宣言行を持つ参加者だけを先頭に出す」書き方で、PlantUML が推論するライフライン順が
+     * モデルの並びと一致するか。一致しないなら全参加者を明示宣言して並びを固定する必要がある。
+     */
     private static boolean declarationOrderMatchesModel(SeqSketchModel model) {
         List<String> inferred = new ArrayList<>();
         for (SeqParticipant p : model.getParticipants()) {
