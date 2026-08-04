@@ -245,6 +245,88 @@ public class KotlinLambdaAndDelegateTest {
         assertTrue("非退行: 普通の型: " + names, names.contains("plain"));
     }
 
+    /**
+     * 回帰: 型は「{@code :} の次から宣言の終わりまで」であること。
+     *
+     * <p>型を正規表現の文字クラスで数え上げていたため、足りない文字が出るたびに同じ壊れ方を
+     * した。{@code (} を足したら次は {@code *} が落ち、その次はコメントが落ち…と、
+     * ラウンドごとに 1 文字ずつ増やす形になっていた。ここは<b>数え上げが尽きたかどうか</b>を
+     * 見るテストなので、性質の違う型をまとめて並べる。</p>
+     */
+    @Test
+    public void theTypeRunsToTheEndOfTheDeclarationWhateverItContains() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class C {\n"
+                + "    val star: Class<*>? = null\n"
+                + "    val anyList: List<*> = listOf<Any>()\n"
+                + "    val starMap: Map<String, *> = mapOf()\n"
+                + "    val commented: Int // 個数\n"
+                + "    val spaced: String /* なぜか */ = \"\"\n"
+                + "    val wrapped: (\n"
+                + "        item: Item\n"
+                + "    ) -> Unit = {}\n"
+                + "    val plain: String = \"\"\n"
+                + "}\n");
+
+        List<String> names = fieldNames(c);
+        for (String n : List.of("star", "anyList", "starMap", "commented", "spaced",
+                "wrapped", "plain")) {
+            assertTrue("プロパティが落ちていること: " + n + " -> " + names, names.contains(n));
+        }
+        assertEquals("スター射影を含む型がそのまま残ること", "Class<*>?", typeOf(c, "star"));
+        assertEquals("行コメントを型に含めないこと", "Int", typeOf(c, "commented"));
+        assertEquals("ブロックコメントを型に含めないこと", "String", typeOf(c, "spaced"));
+        assertTrue("折り返した関数型を 1 文字に潰さないこと: " + typeOf(c, "wrapped"),
+                typeOf(c, "wrapped").contains("->"));
+    }
+
+    /**
+     * 回帰: 入れ子クラスのコンストラクタ引数を、外側のクラスのフィールドにしないこと。
+     *
+     * <p>型の文字クラスに {@code )} を足した副作用。入れ子クラスのヘッダは外側の本体に
+     * あって、その {@code &#123;} より前なのでマスクが効かない。{@code class Item(val id: Long)}
+     * の {@code )} を型の一部として飲み込み、外側のクラスに型 {@code Long)} の
+     * フィールドが生えていた。</p>
+     */
+    @Test
+    public void aNestedClassConstructorParameterIsNotAFieldOfTheOuterClass() {
+        List<JavaClassInfo> all = KotlinLightScanner.scan("package com.x\n"
+                + "class Outer {\n"
+                + "    class Item(val id: Long)\n"
+                + "    val title: String = \"t\"\n"
+                + "}\n", null);
+
+        JavaClassInfo outer = all.stream().filter(x -> "Outer".equals(x.getSimpleName()))
+                .findFirst().orElseThrow();
+        List<String> names = fieldNames(outer);
+        assertFalse("入れ子クラスの ctor 引数は外側のフィールドではない: " + names,
+                names.contains("id"));
+        assertTrue("外側の本物のフィールドは残ること: " + names, names.contains("title"));
+    }
+
+    /**
+     * 回帰: 直前のコメントに「companion object」と書いてあるだけでマスクを外さないこと。
+     *
+     * <p>走査本体はコメント・文字列を読み飛ばしているのに、companion 判定だけが生テキストを
+     * 見ていた。KDoc に語が出てくるだけで次のブロックのマスクが外れ、その中のローカルが
+     * クラスのメンバーとして図に出る。</p>
+     */
+    @Test
+    public void theWordCompanionObjectInACommentDoesNotUnmaskTheNextBlock() {
+        JavaClassInfo c = scanOne("package com.x\n"
+                + "class A {\n"
+                + "    fun first() {}\n"
+                + "    /** Prefer the companion object factory over this. */\n"
+                + "    fun second() {\n"
+                + "        val ghost: Int = 1\n"
+                + "    }\n"
+                + "}\n");
+
+        assertFalse("コメントの語でマスクを外さないこと: " + fieldNames(c),
+                fieldNames(c).contains("ghost"));
+        assertTrue(methodNames(c).containsAll(List.of("first", "second")));
+    }
+
     /** 非退行: 普通のフィールドとメソッドの抽出は変わらないこと。 */
     @Test
     public void plainMembersAreUnchanged() {

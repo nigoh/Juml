@@ -64,24 +64,27 @@ public final class KotlinLightScanner {
                     + "(?:private\\s+|protected\\s+|public\\s+|internal\\s+)?"
                     + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*"
                     + "([A-Za-z_$][\\w.<>?\\[\\]\\s,]*)");
-    /** クラス本体内の {@code val/var name: Type}。 */
+    /**
+     * クラス本体内の {@code val/var name:} まで。<b>型は正規表現で切らない</b>。
+     *
+     * <p>型を正規表現で取ろうとするかぎり、「型に使ってよい文字」と「型の直後に来てよい
+     * トークン」の 2 つを<b>数え上げる</b>ことになる。数え上げは必ず取りこぼし、そのたびに
+     * 同じ壊れ方をする: {@code (} を足せば次は {@code *} ({@code Class<*>} が丸ごと消える)、
+     * {@code *} を足せば次はコメント ({@code val a: Int // 個数} が消える)、その次は
+     * 1 行本体の {@code }}…。しかも足した文字が別の意味を持つこともある —
+     * {@code )} を型文字にした結果、入れ子クラスのコンストラクタ引数
+     * {@code class Item(val id: Long)} が<b>外側のクラス</b>に型 {@code Long)} で生えた。</p>
+     *
+     * <p>正しい言明は 1 つ:<b>型は {@code :} の次から宣言の終わりまで</b>。終わりの判定は
+     * 入れ子 ({@code &lt;&gt; () []}) と文字列・コメントを見ながら走査する
+     * {@link KotlinBlockMask#propertyTypeEnd} が行う。</p>
+     */
     private static final Pattern PROPERTY = Pattern.compile(
             "((?:@(?:[A-Za-z]+:)?[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
                     + "((?:private\\s+|protected\\s+|public\\s+|internal\\s+"
                     + "|lateinit\\s+|const\\s+|override\\s+)*)"
-                    + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*"
-                    // 関数型も型として受ける。以前は「括弧 1 組 + -> + 英字始まり」しか
-                    // 通さず、`(() -> Unit)?` (nullable コールバック) / `suspend () -> Unit` /
-                    // `Foo.() -> Unit` (DSL) / `((Int) -> Int) -> Unit` はどれも型として
-                    // 認識できず、プロパティごと抽出から落ちていた。括弧と矢印を型の文字と
-                    // して許し、終端の判定 (下の先読み) に切る位置を任せる。
-                    + "([A-Za-z_$(][\\w.<>?\\[\\]\\s,()\\-]*?)"
-                    // 型の直後は = / 改行 / { / ; のほか、同じ行に書いたアクセサ
-                    // (`val x: Int get() = 5`) も許す。get/set を許さないと ( で
-                    // マッチ全体が壊れ、プロパティごと抽出から落ちていた。
-                    // by も終端に含める。含めないと `by` も `lazy` もただの語なので
-                    // 型へ飲み込まれ、図の欄が `MutableMap<String, Int> by lazy` になっていた。
-                    + "(?=\\s*(?:[=\\n{;]|\\bget\\b|\\bset\\b|\\bby\\b))");
+                    + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
+
     /** {@code fun name(params): ReturnType}。 */
     private static final Pattern FUN_DECL = Pattern.compile(
             "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
@@ -292,8 +295,6 @@ public final class KotlinLightScanner {
         }
     }
 
-
-
     /** enum 定数: 先頭の (任意アノテーション付き) 識別子と、続く {@code (...)} 引数。 */
     private static final Pattern ENUM_CONST = Pattern.compile(
             "^\\s*(?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*"
@@ -426,16 +427,25 @@ public final class KotlinLightScanner {
 
     /** クラス本体のプロパティを解析してフィールドとして追加。 */
     private static void extractProperties(String body, JavaClassInfo info, boolean[] codeMask) {
+        boolean[] inParen = KotlinBlockMask.insideParenMask(body);
         Matcher m = PROPERTY.matcher(body);
         while (m.find()) {
             // 関数本体等のコードブロック内のローカル val/var は除外する。
             if (m.start() < codeMask.length && codeMask[m.start()]) {
                 continue;
             }
+            // 丸括弧の内側 = 入れ子クラスの primary constructor 引数。外側のクラスの
+            // プロパティではない (そのクラス自身の JavaClassInfo 側で別途拾われる)。
+            if (m.start() < inParen.length && inParen[m.start()]) {
+                continue;
+            }
             String anns = m.group(1);
             String mods = m.group(2);
             String name = m.group(4);
-            String type = m.group(5).trim();
+            String type = body.substring(m.end(), KotlinBlockMask.propertyTypeEnd(body, m.end())).trim();
+            if (type.isEmpty()) {
+                continue; // `:` の直後がいきなり終端 = プロパティ宣言ではない
+            }
             JavaFieldInfo f = new JavaFieldInfo();
             f.setName(name);
             f.setType(type);

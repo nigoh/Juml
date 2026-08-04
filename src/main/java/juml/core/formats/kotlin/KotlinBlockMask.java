@@ -4,19 +4,23 @@
 package juml.core.formats.kotlin;
 
 /**
- * クラス本体の {@code &#123;} を「コードブロック」と「メンバー宣言」に切り分ける判定。
+ * Kotlin のクラス本体を<b>構造として走査する</b>判定群 ({@link KotlinLightScanner} から分離)。
  *
- * <p>{@link KotlinLightScanner} から分離してある。あちらは 900 行を超える走査本体で、
- * ここは「この波括弧の中はクラスのメンバーか、それとも実装の中身か」という 1 つの問いに
- * だけ答える。誤るとどちらの向きにも壊れる: コードブロックを見落とせばローカル変数が
- * 存在しないメンバーとして図に出るし、逆にメンバーの波括弧をコードブロックと見なせば
+ * <p>いずれも「正規表現で数え上げると必ず取りこぼす」ことが実測で分かった判定を、括弧の
+ * 深さと文字列・コメントを見ながら走る走査に置き換えたもの。どちらの向きに誤っても壊れる:
+ * 実装の中身をメンバーと読めば存在しないメンバーが図に出るし、メンバーを実装と読めば
  * 実在するメンバーが消える。</p>
+ *
+ * <ul>
+ *   <li>{@link #codeBlockMask} — この波括弧の中はメンバー宣言か実装か</li>
+ *   <li>{@link #propertyTypeEnd} — プロパティの型はどこで終わるか</li>
+ *   <li>{@link #insideParenMask} — この位置は丸括弧の内側 (= ctor 引数) か</li>
+ * </ul>
  */
 final class KotlinBlockMask {
 
     private KotlinBlockMask() {
     }
-
 
     /**
      * クラス本体文字列のうち、メンバー宣言として読んではいけない {@code &#123;…&#125;} の
@@ -74,7 +78,112 @@ final class KotlinBlockMask {
             }
             hs--;
         }
-        return body.substring(hs + 1, bracePos)
+        // ヘッダからコメント・文字列を除いてから判定する。除かないと、直前のメンバーに
+        // 付いた KDoc に「companion object」の語が出てくるだけで次のブロックが
+        // <b>マスクを外され</b>、その中のローカルがクラスのメンバーとして図に出る。
+        // 走査本体は skipNonCode を通しているのに、この判定だけが生テキストを見ていた。
+        return codeOnly(body, hs + 1, bracePos)
                 .matches("(?s).*\\bcompanion\\s+object\\b.*");
+    }
+
+    /** {@code [from, to)} からコメント・文字列リテラルを取り除いた文字列。 */
+    private static String codeOnly(String body, int from, int to) {
+        StringBuilder sb = new StringBuilder(to - from);
+        for (int i = from; i < to; i++) {
+            int e = KotlinLightScanner.skipNonCode(body, i);
+            if (e > i) {
+                sb.append(' ');   // 語の連結を防ぐため空白 1 つに畳む
+                i = e - 1;
+                continue;
+            }
+            sb.append(body.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * {@code from} (型の開始位置) から型の終端 exclusive を返す。
+     *
+     * <p>型が終わるのは、<b>入れ子の外側で</b>次のいずれかに達したとき:
+     * {@code =} (初期化子) / {@code ;} / {@code }} (本体の終わり) / 改行 /
+     * 語としての {@code get} {@code set} {@code by} / コメントの開始。
+     * 入れ子 {@code &lt;&gt; () []} の内側にいる間はどれも終端にしない (関数型
+     * {@code (Int, String) -> Unit} の中の改行やカンマで切らないため)。</p>
+     */
+    static int propertyTypeEnd(String s, int from) {
+        int depth = 0;
+        for (int i = from; i < s.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                return depth == 0 ? i : e - 1; // コメント/文字列は型の外
+            }
+            char c = s.charAt(i);
+            // 関数型の矢印。`>` を閉じ括弧として扱う前に判定しないと `-> Unit` が切れる。
+            if (c == '-' && i + 1 < s.length() && s.charAt(i + 1) == '>') {
+                i++;
+                continue;
+            }
+            if (c == '<' || c == '(' || c == '[') {
+                depth++;
+            } else if (c == '>' || c == ')' || c == ']') {
+                if (depth == 0) {
+                    return i; // 入れ子の外の閉じ括弧 = 宣言の外 (ctor 引数の末尾など)
+                }
+                depth--;
+            } else if (depth == 0) {
+                if (c == '=' || c == ';' || c == '}' || c == '{' || c == '\n') {
+                    return i;
+                }
+                if (isKeywordAt(s, i, "get") || isKeywordAt(s, i, "set")
+                        || isKeywordAt(s, i, "by")) {
+                    return i;
+                }
+            }
+        }
+        return s.length();
+    }
+
+    /** {@code s} の位置 {@code i} が語として {@code word} で始まるか (前後が識別子でない)。 */
+    private static boolean isKeywordAt(String s, int i, String word) {
+        if (!s.startsWith(word, i)) {
+            return false;
+        }
+        if (i > 0 && KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
+            return false;
+        }
+        int after = i + word.length();
+        return after >= s.length() || !KotlinLightScanner.isIdentPart(s.charAt(after));
+    }
+
+    /**
+     * 位置ごとに「丸括弧の内側か」を示すマスク。
+     *
+     * <p>入れ子クラスのヘッダ {@code class Item(val id: Long)} は<b>外側のクラス本体</b>に
+     * あり、しかも自分の {@code &#123;} より前なのでコードブロックのマスクが効かない。
+     * そのため primary constructor の {@code val} が外側のクラスのフィールドとして
+     * 生えていた。丸括弧の内側にある宣言はクラス本体のプロパティではない。</p>
+     */
+    static boolean[] insideParenMask(String body) {
+        boolean[] mask = new boolean[body.length()];
+        int depth = 0;
+        for (int i = 0; i < body.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(body, i);
+            if (e > i) {
+                for (int k = i; k < e && k < mask.length; k++) {
+                    mask[k] = depth > 0;
+                }
+                i = e - 1;
+                continue;
+            }
+            char c = body.charAt(i);
+            if (c == '(') {
+                depth++;
+            }
+            mask[i] = depth > 0;
+            if (c == ')' && depth > 0) {
+                depth--;
+            }
+        }
+        return mask;
     }
 }
