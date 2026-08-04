@@ -102,7 +102,7 @@ public final class PlantUmlDeepLinkDiagram {
      * <p>直積なので、完全な {@code <data>} を 2 つ書けば URI は 4 本になる。これは
      * Android の実際の挙動どおりで、公式ドキュメントも注意喚起している点。</p>
      */
-    private static List<AndroidDataSpec> effectiveUriSpecs(AndroidIntentFilter f) {
+    static List<AndroidDataSpec> effectiveUriSpecs(AndroidIntentFilter f) {
         List<String> schemes = new ArrayList<>();
         List<String[]> authorities = new ArrayList<>();
         List<AndroidDataSpec> paths = new ArrayList<>();

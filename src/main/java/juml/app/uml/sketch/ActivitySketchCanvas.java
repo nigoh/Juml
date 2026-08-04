@@ -300,9 +300,15 @@ final class ActivitySketchCanvas extends JPanel {
             if (n.getKind() == ActivityNode.Kind.IF) {
                 int spreadL = branchSpread(n.getThenBranch());
                 int spreadR = branchSpread(n.getElseBranch());
-                w = Math.max(w, 2 * Math.max(spreadL, spreadR)
-                        + Math.max(blockWidth(n.getThenBranch()),
-                                n.getElseBranch() != null ? blockWidth(n.getElseBranch()) : 0));
+                // ダイヤ自身の幅も勘定に入れる。落とすと、条件が長い IF で
+                // blockWidth が実寸より小さくなり、relayout の cx が足りず
+                // ダイヤが負の X へ置かれて左端が画面外に出る (preferred size も
+                // 足りないのでスクロールしても出てこず、クリックできない)。
+                w = Math.max(w, Math.max(nodeWidth(n),
+                        2 * Math.max(spreadL, spreadR)
+                                + Math.max(blockWidth(n.getThenBranch()),
+                                        n.getElseBranch() != null
+                                                ? blockWidth(n.getElseBranch()) : 0)));
             } else {
                 w = Math.max(w, nodeWidth(n));
             }

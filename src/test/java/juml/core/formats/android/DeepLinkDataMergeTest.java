@@ -159,4 +159,37 @@ public class DeepLinkDataMergeTest {
         assertTrue("URI が出ること: " + found, found.get(0).startsWith("content://media"));
         assertTrue("MIME 制約もラベルに残ること: " + found, found.get(0).contains("image/*"));
     }
+
+    /**
+     * 回帰: Markdown サマリーも図と同じ {@code <data>} 解釈を使うこと。
+     *
+     * <p>直積化は図 ({@code PlantUmlDeepLinkDiagram}) にだけ入れていたため、同じ manifest で
+     * {@code -D} は正しい 1 本を出すのに {@code -m} / {@code --summary} / {@code -A} の
+     * Markdown は<b>存在しない URI を 3 本</b>並べ、mimeType も落としていた。
+     * 同じ入力で出力が食い違うのが一番たちが悪い。</p>
+     */
+    @Test
+    public void markdownSummaryUsesTheSameDataInterpretation() {
+        AndroidProjectAnalysis a = analysisWith(
+                data("https", null, null),
+                data(null, "example.com", null),
+                data(null, null, "/item"));
+
+        String md = TextSummaryReport.toMarkdown(a);
+
+        assertTrue("本当の入口が出ること:\n" + md, md.contains("https://example.com/item*"));
+        assertFalse("scheme だけの偽 URI を出さないこと:\n" + md, md.contains("`https://*`"));
+        assertFalse("host だけの偽 URI を出さないこと:\n" + md, md.contains("`*://example.com`"));
+    }
+
+    /** 回帰: サマリーでも mimeType 制約が落ちないこと。 */
+    @Test
+    public void markdownSummaryKeepsTheMimeConstraint() {
+        AndroidProjectAnalysis a = analysisWith(withMime(data("content", "media", null), "image/*"));
+
+        String md = TextSummaryReport.toMarkdown(a);
+
+        assertTrue("URI が出ること:\n" + md, md.contains("content://media"));
+        assertTrue("MIME 制約も出ること:\n" + md, md.contains("image/*"));
+    }
 }
