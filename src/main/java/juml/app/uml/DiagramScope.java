@@ -186,7 +186,13 @@ public final class DiagramScope {
                 && maxClasses <= 0
                 && relationKinds.containsAll(EnumSet.allOf(RelationKind.class))
                 && visibilityFilter == VisibilityFilter.ALL
-                && parseMode == null;
+                // FULL は「絞っていない」既定なので null と同じ扱いにする。ここを
+                // null 限定にしていたため、Scope ダイアログの結果は<b>常に</b>空でなくなって
+                // いた (buildScope は FULL/HEADERS_ONLY のどちらかを必ず設定する)。その結果、
+                // 大規模プロジェクトのガードで「何も選ばずに OK」がキャンセル扱いにならず、
+                // ガードが防ごうとした全体描画がそのまま走り、しかも空でないスコープなので
+                // タブキーにハッシュが付いて既存の全体図タブと重複していた。
+                && (parseMode == null || parseMode == UmlGenerator.ParseMode.FULL);
     }
 
     /**

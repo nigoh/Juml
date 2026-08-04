@@ -21,6 +21,7 @@ import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -217,5 +218,38 @@ public class DiagramScopeDialogResultTest {
         assertTrue("別タブの強調クラスを引き継がないこと", scope.getFocusClass().isEmpty());
         assertTrue("別タブの個別非表示を引き継がないこと",
                 scope.getExcludedQualifiedNames().isEmpty());
+    }
+
+    /**
+     * 回帰: 何も選ばずに OK を押した結果は「空スコープ」= キャンセル相当であること。
+     *
+     * <p>{@code isEmpty()} が {@code parseMode == null} を要求する一方、{@code buildScope} は
+     * FULL / HEADERS_ONLY のどちらかを<b>必ず</b>設定するため、このダイアログの結果は
+     * 常に空でなくなっていた。そのため大規模プロジェクトのガードで「スコープを選ぶ」を選び、
+     * 何も選ばずに OK を押しても null にならず、<b>ガードが防ごうとした全体描画がそのまま
+     * 走る</b>うえ、空でないスコープなのでタブキーにハッシュが付いて既存の全体図タブと
+     * 重複していた。ラウンド 12 でこれを「別事象」として見送ったのは誤りだった。</p>
+     */
+    @Test
+    public void okWithNothingSelectedYieldsAnEmptyScope() throws Exception {
+        create(Collections.emptyList());
+
+        DiagramScope scope = buildScope();
+
+        assertTrue("既定の FULL は絞り込みではないので空スコープであること: "
+                + scope.signature(), scope.isEmpty());
+    }
+
+    /** 非退行: HEADERS_ONLY を選んだら「絞っている」= 空ではないこと。 */
+    @Test
+    public void headersOnlyIsNotAnEmptyScope() throws Exception {
+        create(Collections.emptyList());
+        javax.swing.JRadioButton headers = field("parseModeHeaders");
+        GuiActionRunner.execute(() -> {
+            headers.setSelected(true);
+            return null;
+        });
+
+        assertFalse("HEADERS_ONLY は絞り込みなので空ではないこと", buildScope().isEmpty());
     }
 }
