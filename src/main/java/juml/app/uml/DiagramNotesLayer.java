@@ -617,13 +617,28 @@ final class DiagramNotesLayer {
     void addNoteAt(Point p, double zoom) {
         double w = 280 / zoom;
         double h = 160 / zoom;
-        DiagramNote n = new DiagramNote(Math.max(0, p.x / zoom), Math.max(0, p.y / zoom), w, h, "");
+        DiagramNote n = new DiagramNote(clampToContent(p.x / zoom, w, true),
+                clampToContent(p.y / zoom, h, false), w, h, "");
         commit(null, () -> {
             notes.add(n);
             selectedIds.clear();
             selectedIds.add(n.getId());
         });
         owner.requestFocusInWindow(); // Enter/Delete/矢印キーが届くように
+    }
+
+    /**
+     * 付箋の原点を<b>書き出される図の範囲内</b>へ寄せる。下限 0 だけを見ていたため、図が
+     * ウィンドウより小さいと画面には見えるのに図の外へ置かれ (JViewport がビューを引き
+     * 伸ばす)、PNG も SVG も図の内容矩形で寸法が決まるので<b>書き出しから黙って消えて</b>
+     * いた。図の大きさを知るのは所有パネルだけなので、呼び出し側に渡させず (足し忘れた
+     * 経路がまた外へ置く) ここで問い合わせる。
+     */
+    private double clampToContent(double v, double size, boolean horizontal) {
+        double limit = owner instanceof SvgPreviewPanel p
+                ? (horizontal ? p.contentWidth() : p.contentHeight()) : 0;
+        return limit <= 0 ? Math.max(0, v)
+                : Math.max(0, Math.min(v, Math.max(0, limit - size)));
     }
 
     /** 指定要素 (FQN) に追従する ELEMENT 付箋を要素右上に追加して選択する ({@code rect} は要素矩形, null 可)。 */
