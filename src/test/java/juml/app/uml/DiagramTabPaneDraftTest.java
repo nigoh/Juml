@@ -292,4 +292,56 @@ public class DiagramTabPaneDraftTest {
         assertEquals("保持した下書きが残ること: " + after.size(), 1, after.size());
         assertEquals(crashed, after.get(0).text);
     }
+
+    /**
+     * 回帰: Save As の保存先に他所の下書きがあっても巻き添えで消さないこと。
+     *
+     * <p>所有権の判定を入れたあとも、消す対象が「移行前のキー」と「移行<b>後</b>のキー」の
+     * 2 つだった。移行後のキーはこのタブが一度も書いていないキーなので、消せるのは必ず
+     * 他所の下書きだけ。保持を選んだクラッシュ下書きのあるパスへ、無関係な新規タブを
+     * Save As するだけで、それが黙って消えていた。</p>
+     */
+    @Test
+    public void saveAsDoesNotDeleteTheDraftBelongingToTheTargetPath() {
+        File target = new File(tmp.getRoot(), "target.puml");
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + target.getAbsolutePath(), crashed, target, "target.puml");
+
+        // 無関係な新規タブ (untitled) を作って編集し、たまたま同じパスへ Save As する。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertEquals("自分の下書きと保持下書きで 2 件", 2, store.loadAll().size());
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(target)));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きだけが残ること: " + after.size(), 1, after.size());
+        assertEquals("残るのは保持下書きの内容であること", crashed, after.get(0).text);
+    }
+
+    /**
+     * 回帰: 保存で下書きを消したら所有権も手放すこと。
+     *
+     * <p>{@code draftWritten} を立てたままにしていたため、保存済み (= 自分の下書きは
+     * もう無い) のタブをもう一度別名で Save As すると、いま名乗っているだけのキーの
+     * 下書き — つまり他所の保持下書き — を消していた。</p>
+     */
+    @Test
+    public void aSecondSaveAsDoesNotDeleteTheDraftLeftAtTheFormerPath() {
+        File first = new File(tmp.getRoot(), "first.puml");
+        File second = new File(tmp.getRoot(), "second.puml");
+
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(first)));
+        assertTrue("1 回目の保存で自分の下書きは消えること", store.loadAll().isEmpty());
+
+        // 保存済みタブがいま名乗っているキーに、他所の保持下書きがあるとする。
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + first.getAbsolutePath(), crashed, first, "first.puml");
+
+        // 編集せずにもう一度 Save As するだけ。自分の下書きは無いので何も消えないはず。
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(second)));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("他所の下書きが残ること: " + after.size(), 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
 }

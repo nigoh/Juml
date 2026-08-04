@@ -827,9 +827,15 @@ public final class DiagramTabPane {
         // ファイル紐付きタブのキーは "PUML:<絶対パス>" で前セッションの下書きと同じになるため、
         // 無条件に消すと、保持を選んだクラッシュ下書きが「開いて Ctrl+S しただけ」で失われる
         // (閉じた場合は残るのに保存すると消える、という食い違いにもなっていた)。
+        //
+        // 消すのは<b>移行前</b>のキーだけ。移行後のキーはこのタブが一度も書いていない
+        // (書いたのは移行前のキーの下)。Save As で移行後キーも消していたため、保持した
+        // クラッシュ下書きのあるパスへ別タブを Save As するだけでそれが消えていた。
+        // 消したら所有権も手放す: 残したままだと、次の Save As が「もう自分のものでない
+        // 移行前キー」の下書き (= 他所の保持下書き) を巻き添えで消す。
         if (tab.draftWritten) {
             drafts.delete(draftKeyBeforeMigrate);
-            drafts.delete(tab.key);
+            tab.draftWritten = false;
         }
         // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
