@@ -103,4 +103,30 @@ public class SeqSketchLifelineOrderTest {
             assertEquals("出力が変わらないこと", src, SeqSketchCodec.toPuml(r.model));
         }
     }
+
+    @Test
+    public void allReplyArrowsStillRoundTripToTheSequenceDesigner() {
+        // 回帰 (critical): 応答矢印 "-->" はクラス図の関連と綴りが同じ。全メッセージを
+        // 応答矢印にした図は、参加者の宣言行が無いとクラス図と区別が付かないテキストになる。
+        // 開き直すとクラス設計器が<b>編集可能な状態で</b>開き、最初の操作でシーケンス図が
+        // クラス図として書き潰される (利用者の図が黙って失われる)。
+        String source = "@startuml Handshake\nAlice -> Bob : hello\n@enduml\n";
+        SeqSketchCodec.ParseResult parsed = SeqSketchCodec.parse(source);
+        assertEquals("前提: 元の図はシーケンス図と判定される",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(source));
+
+        for (SeqItem item : parsed.model.getItems()) {
+            if (item.getKind() == SeqItem.Kind.MESSAGE) {
+                item.setArrow(SeqItem.Arrow.REPLY);
+            }
+        }
+        String emitted = SeqSketchCodec.toPuml(parsed.model);
+
+        assertTrue("判別できない形になるなら参加者を明示宣言すること: " + emitted,
+                emitted.contains("participant Alice"));
+        assertEquals("書き出したテキストが自分の設計器へ戻ること: " + emitted,
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(emitted));
+        assertTrue("シーケンスコーデックが丸ごと読めること",
+                SeqSketchCodec.parse(emitted).isFullySupported());
+    }
 }

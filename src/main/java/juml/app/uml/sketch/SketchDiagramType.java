@@ -276,18 +276,21 @@ public enum SketchDiagramType {
             // 素の "A --> B" だけのクラス図がシーケンス図に化ける。
             return scanned;
         }
-        // 走査の答えでも要素が 1 つは取れているなら、それは「未対応行があってロック」であって
-        // 図種違いではない。利用者はロックを解除できるので、そのまま見せる。
-        if (!recognisedNothing(scanned, source)) {
-            return parserCheckedFallback(source, scanned);
-        }
-        // 走査の答えが何も認識できなかったときだけ、実際に丸ごと扱えるコーデックを探す。
-        // ここが効くのは「ER の列名が node」のように、綴りを共有する識別子で走査が別図種へ
-        // 飛んだとき。何もしないと空の編集ロック済み設計器が開いて図に触れなくなる。
+        // 走査の答えを丸ごとは読めないなら、丸ごと読めるコーデックを先に探す。
+        // 走査の答えが部分的に読めるだけで打ち切ると、<b>本当にその図種のコーデックが
+        // 完全に読める場合でも取り逃がす</b>: たとえば配置図の出力
+        // (component ブロックの中に artifact を入れ子にした形) は、トップレベルに
+        // node/artifact が現れないためコンポーネント図と走査され、コンポーネント設計器が
+        // 一部だけ認識して編集ロックで開いていた — 配置図コーデックなら全部読めるのに。
         for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
             if (fullySupportedBy(candidate, source)) {
                 return candidate;
             }
+        }
+        // 走査の答えでも要素が 1 つは取れているなら、それは「未対応行があってロック」であって
+        // 図種違いではない。利用者はロックを解除できるので、そのまま見せる。
+        if (!recognisedNothing(scanned, source)) {
+            return parserCheckedFallback(source, scanned);
         }
         // どのコーデックも扱えないテキスト (手書きの未対応構文) は走査の答えのまま
         // 表示ロックで見せる。ただしその一手前に PlantUML 自身の解釈で裏を取る:
@@ -346,6 +349,16 @@ public enum SketchDiagramType {
         }
         for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
             if (allowed.contains(candidate) && fullySupportedBy(candidate, source)) {
+                return candidate;
+            }
+        }
+        // 丸ごと読めるものが無ければ、せめて<b>要素を認識できる</b>設計器を選ぶ。
+        // 代表値をそのまま返すと、要素を 1 つも読めない設計器が空のキャンバスで開き、
+        // 図に一切触れなくなる (使用例図 "actor User / User --> (Login)" に対する
+        // コンポーネント設計器がこれ)。未対応行があってロック、は許せるが、
+        // 何も見えないのは許せない。
+        for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
+            if (allowed.contains(candidate) && !recognisedNothing(candidate, source)) {
                 return candidate;
             }
         }

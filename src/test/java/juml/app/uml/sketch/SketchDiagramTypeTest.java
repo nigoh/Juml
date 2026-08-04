@@ -502,6 +502,32 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void parenthesisedUseCaseDiagramsOpenInTheUseCaseDesigner() {
+        // 回帰: PlantUML の解釈による裏取りが、どの候補も丸ごと読めないときに
+        // 代表値 (記述図 → コンポーネント) をそのまま返していた。コンポーネント
+        // コーデックは actor も (Usecase) も読めないので、使用例図が<b>空で編集
+        // ロックされたコンポーネント設計器</b>で開き、図に一切触れなくなっていた。
+        // 括弧形式は PlantUML の使用例図ドキュメントが一貫して使う書き方。
+        String puml = "@startuml\nactor User\nUser --> (Login)\n@enduml\n";
+        assertEquals(SketchDiagramType.USECASE, SketchDiagramType.detect(puml));
+
+        String twoActors = "@startuml\nleft to right direction\nactor A\nactor B\n"
+                + "A --> (UC1)\nB --> (UC2)\n@enduml\n";
+        assertEquals(SketchDiagramType.USECASE, SketchDiagramType.detect(twoActors));
+    }
+
+    @Test
+    public void deploymentNestedInsideAComponentStaysDeployment() {
+        // 回帰: 走査の答えが部分的に読めるだけで打ち切っていたため、配置図コーデックなら
+        // 全部読める図でもコンポーネント設計器が一部だけ認識して編集ロックで開いていた。
+        // (入れ子の artifact はトップレベルに現れないので走査はコンポーネント図と読む)
+        String puml = "@startuml Infra\ncomponent \"App Tier\" as app {\n"
+                + "  artifact \"svc.jar\" as jar\n}\ndatabase \"PG\" as db\n"
+                + "jar --> db : jdbc\n'@pos app 10 10\n'@pos jar 0 0\n'@pos db 260 10\n@enduml\n";
+        assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(puml));
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"
