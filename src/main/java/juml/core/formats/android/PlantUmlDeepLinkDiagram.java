@@ -81,6 +81,100 @@ public final class PlantUmlDeepLinkDiagram {
         return out.toString();
     }
 
+    /**
+     * 1 つの {@code <intent-filter>} が実際に受け付ける URI の一覧を組み立てる。
+     *
+     * <p>Android は同じ intent-filter 内の {@code <data>} 要素を<b>属性ごとに束ねて
+     * 直積を取る</b>。要素単位では見ない。したがって公式ドキュメントや App Links Assistant が
+     * 出力する分割記法</p>
+     *
+     * <pre>
+     * &lt;data android:scheme="https"/&gt;
+     * &lt;data android:host="example.com"/&gt;
+     * &lt;data android:pathPrefix="/item"/&gt;
+     * </pre>
+     *
+     * <p>は「https の example.com の /item 以下」1 本を意味する。以前はここを
+     * 1 要素 = 1 URI と数えていたため、実在しない「scheme だけ」「host だけ」「path だけ」の
+     * 3 本を報告し、しかも後ろ 2 本を (scheme が不明なので) App Links ではなく独自スキームの
+     * Deep Link に分類していた。本当の入口はどこにも出てこなかった。</p>
+     *
+     * <p>直積なので、完全な {@code <data>} を 2 つ書けば URI は 4 本になる。これは
+     * Android の実際の挙動どおりで、公式ドキュメントも注意喚起している点。</p>
+     */
+    private static List<AndroidDataSpec> effectiveUriSpecs(AndroidIntentFilter f) {
+        List<String> schemes = new ArrayList<>();
+        List<String[]> authorities = new ArrayList<>();
+        List<AndroidDataSpec> paths = new ArrayList<>();
+        for (AndroidDataSpec d : f.getDataSpecs()) {
+            addIfNew(schemes, d.getScheme());
+            if (notBlank(d.getHost())) {
+                String[] hp = {d.getHost(), d.getPort()};
+                if (authorities.stream().noneMatch(a -> java.util.Arrays.equals(a, hp))) {
+                    authorities.add(hp);
+                }
+            }
+            if (hasPath(d)) {
+                paths.add(d);
+            }
+        }
+        // どのプールも空なら「指定なし」を 1 件として扱い、直積が 1 本残るようにする。
+        if (schemes.isEmpty()) {
+            schemes.add(null);
+        }
+        if (authorities.isEmpty()) {
+            authorities.add(new String[]{null, null});
+        }
+        if (paths.isEmpty()) {
+            paths.add(null);
+        }
+        List<AndroidDataSpec> out = new ArrayList<>();
+        for (String scheme : schemes) {
+            for (String[] authority : authorities) {
+                for (AndroidDataSpec path : paths) {
+                    AndroidDataSpec merged = merge(scheme, authority, path);
+                    if (merged.hasUriComponent()) {
+                        out.add(merged);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /** scheme / authority / path 系を 1 つの spec へ束ねる。 */
+    private static AndroidDataSpec merge(String scheme, String[] authority,
+                                         AndroidDataSpec path) {
+        AndroidDataSpec merged = new AndroidDataSpec();
+        merged.setScheme(scheme);
+        merged.setHost(authority[0]);
+        merged.setPort(authority[1]);
+        if (path != null) {
+            merged.setPath(path.getPath());
+            merged.setPathPrefix(path.getPathPrefix());
+            merged.setPathPattern(path.getPathPattern());
+            merged.setPathSuffix(path.getPathSuffix());
+            merged.setPathAdvancedPattern(path.getPathAdvancedPattern());
+        }
+        return merged;
+    }
+
+    private static boolean hasPath(AndroidDataSpec d) {
+        return notBlank(d.getPath()) || notBlank(d.getPathPrefix())
+                || notBlank(d.getPathPattern()) || notBlank(d.getPathSuffix())
+                || notBlank(d.getPathAdvancedPattern());
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isEmpty();
+    }
+
+    private static void addIfNew(List<String> pool, String value) {
+        if (notBlank(value) && !pool.contains(value)) {
+            pool.add(value);
+        }
+    }
+
     private static List<Link> collectLinks(AndroidProjectAnalysis analysis, Options o) {
         List<Link> links = new ArrayList<>();
         for (AndroidManifestInfo m : analysis.allManifests()) {
@@ -90,11 +184,9 @@ public final class PlantUmlDeepLinkDiagram {
                         continue;
                     }
                     boolean appended = false;
-                    for (AndroidDataSpec spec : f.getDataSpecs()) {
-                        if (spec.hasUriComponent()) {
-                            links.add(new Link(c, f, spec, false));
-                            appended = true;
-                        }
+                    for (AndroidDataSpec spec : effectiveUriSpecs(f)) {
+                        links.add(new Link(c, f, spec, false));
+                        appended = true;
                     }
                     if (!appended && o.showMimeOnly) {
                         // scheme/host が無く mimeType だけのケースも拾う。
