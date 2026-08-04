@@ -3,19 +3,28 @@
 
 package juml.app.uml;
 
+import juml.util.Messages;
+
 import javax.swing.AbstractAction;
 import javax.swing.ActionMap;
+import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.InputMap;
+import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JWindow;
 import javax.swing.KeyStroke;
+import javax.swing.ListCellRenderer;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.JTextComponent;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
 import java.awt.Font;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
@@ -27,14 +36,18 @@ import java.util.function.BiConsumer;
 /**
  * PlantUML エディタの入力追従補完ポップアップ (as-you-type completion)。
  *
- * <p>タイプ中の語 ({@link PumlCompletion#wordPrefix}) が {@value #MIN_PREFIX} 文字以上に
- * なると候補リストを自動表示し、入力の継続で絞り込む。{@code Up/Down} で選択、
- * {@code Enter}/{@code Tab} で確定、{@code Esc} で閉じる。{@code Ctrl+Space} での
- * 明示起動 (1 文字から) にも対応する。</p>
+ * <p>タイプ中の語が {@value #MIN_PREFIX} 文字以上になると候補リストを自動表示し、
+ * 入力の継続で絞り込む。{@code Up/Down} で選択、{@code Enter}/{@code Tab} で確定、
+ * {@code Esc} で閉じる。{@code Ctrl+Space} での明示起動 (0 文字から) にも対応する。</p>
+ *
+ * <p>候補は語だけでなく、矢印記法 ({@code -} や {@code .} を打った時点で起動) と、
+ * ブロックを丸ごと展開するスニペットも含む。1 行に「見出し + 補足」を並べて出すのは、
+ * {@code alt} のように「語としての alt」と「alt/else/end のブロック」が同名で並ぶため、
+ * 補足なしでは選べないから。</p>
  *
  * <p>ポップアップはフォーカスを奪わない {@link JWindow} で、ヘッドレス環境でも
  * インストール自体は安全なよう遅延生成する。確定時の挿入は呼び出し側から渡される
- * コールバック (キャレット位置・接頭辞・候補) 経由で行う。</p>
+ * コールバック (接頭辞・候補) 経由で行う。</p>
  */
 final class PumlCompletionPopup {
 
@@ -46,13 +59,15 @@ final class PumlCompletionPopup {
 
     private final JTextComponent pane;
     /** 確定時の挿入先: (接頭辞, 候補) を受け取り本文へ反映する。 */
-    private final BiConsumer<String, String> onAccept;
+    private final BiConsumer<String, PumlCompletionItem> onAccept;
 
     private JWindow window;
-    private final DefaultListModel<String> model = new DefaultListModel<>();
-    private JList<String> list;
+    private final DefaultListModel<PumlCompletionItem> model = new DefaultListModel<>();
+    private JList<PumlCompletionItem> list;
     /** プログラム起因のドキュメント変更 (確定挿入など) 中は自動表示を抑止する。 */
     private boolean suppressAutoShow;
+    /** テストからの同期更新中だけ、フォーカス要件を満たしたものとみなす。 */
+    private boolean assumeFocused;
     /**
      * 現在の候補リストを生成した語の開始オフセット。キャレットが別の語へ移った
      * (= 語頭が変わった) ことの検出に使う。接頭辞文字列の比較にしないのは、同じ語内の
@@ -60,7 +75,7 @@ final class PumlCompletionPopup {
      */
     private int shownWordStart = -1;
 
-    PumlCompletionPopup(JTextComponent pane, BiConsumer<String, String> onAccept) {
+    PumlCompletionPopup(JTextComponent pane, BiConsumer<String, PumlCompletionItem> onAccept) {
         this.pane = pane;
         this.onAccept = onAccept;
         pane.getDocument().addDocumentListener(new DocumentListener() {
@@ -81,8 +96,7 @@ final class PumlCompletionPopup {
             if (!isVisible()) {
                 return;
             }
-            String prefix = PumlCompletion.wordPrefix(text(), e.getDot());
-            if (e.getDot() - prefix.length() != shownWordStart) {
+            if (e.getDot() - typedPrefix(text(), e.getDot()).length() != shownWordStart) {
                 hide();
             }
         });
@@ -106,6 +120,15 @@ final class PumlCompletionPopup {
         installKeys();
     }
 
+    /**
+     * キャレット直前の「打ちかけ」。語が無ければ矢印記法の打ちかけを見る
+     * ({@code A -} まで打った時点で矢印候補を出せるようにする)。
+     */
+    private static String typedPrefix(String text, int caret) {
+        String word = PumlCompletion.wordPrefix(text, caret);
+        return word.isEmpty() ? PumlCompletion.arrowPrefix(text, caret) : word;
+    }
+
     /** ポップアップウィンドウを破棄する (エディタタブのクローズ時に呼ぶ)。 */
     void dispose() {
         if (window != null) {
@@ -122,7 +145,7 @@ final class PumlCompletionPopup {
         SwingUtilities.invokeLater(() -> updateCandidates(false));
     }
 
-    /** Ctrl+Space の明示起動 (1 文字から表示する)。 */
+    /** Ctrl+Space の明示起動 (接頭辞ゼロでも表示する)。 */
     void showNow() {
         updateCandidates(true);
     }
@@ -132,28 +155,26 @@ final class PumlCompletionPopup {
      * {@code explicit} でなければ {@value #MIN_PREFIX} 文字未満では表示しない。
      */
     private void updateCandidates(boolean explicit) {
-        if (!pane.isEditable() || (!explicit && !pane.hasFocus())) {
+        if (!pane.isEditable() || (!explicit && !pane.hasFocus() && !assumeFocused)) {
             hide();
             return;
         }
         String text = text();
         int caret = pane.getCaretPosition();
-        String prefix = PumlCompletion.wordPrefix(text, caret);
+        String prefix = typedPrefix(text, caret);
         // 明示起動 (Ctrl+Space) は接頭辞ゼロでも「その文脈の全候補」を出す (VS Code 相当)。
         // 入力追従の暗黙起動だけ最低文字数 (MIN_PREFIX) を要求してノイズを抑える。
-        int min = explicit ? 0 : MIN_PREFIX;
-        if (prefix.length() < min) {
+        if (!explicit && prefix.length() < MIN_PREFIX) {
             hide();
             return;
         }
-        List<String> candidates = PumlCompletion.candidates(prefix, text);
-        candidates = candidates.stream().filter(c -> !c.equals(prefix)).toList();
+        List<PumlCompletionItem> candidates = PumlCompletion.items(text, caret, explicit);
         if (candidates.isEmpty()) {
             hide();
             return;
         }
         model.clear();
-        for (String c : candidates) {
+        for (PumlCompletionItem c : candidates) {
             model.addElement(c);
         }
         shownWordStart = caret - prefix.length();
@@ -196,8 +217,8 @@ final class PumlCompletionPopup {
             return;
         }
         list = new JList<>(model);
-        list.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         list.setFocusable(false);
+        list.setCellRenderer(new ItemRenderer());
         // クリックでも確定できるようにする (キーボードが主動線だがマウスも拒まない)。
         list.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) {
@@ -227,12 +248,15 @@ final class PumlCompletionPopup {
         if (!isVisible() || list.getSelectedValue() == null) {
             return;
         }
-        String candidate = list.getSelectedValue();
+        PumlCompletionItem item = list.getSelectedValue();
         hide();
-        String prefix = PumlCompletion.wordPrefix(text(), pane.getCaretPosition());
+        // 接頭辞は確定の瞬間に取り直す (表示時点のものは打鍵で陳腐化している)。
+        String prefix = item.kind() == PumlCompletionItem.Kind.ARROW
+                ? PumlCompletion.arrowPrefix(text(), pane.getCaretPosition())
+                : PumlCompletion.wordPrefix(text(), pane.getCaretPosition());
         suppressAutoShow = true;
         try {
-            onAccept.accept(prefix, candidate);
+            onAccept.accept(prefix, item);
         } finally {
             suppressAutoShow = false;
         }
@@ -243,6 +267,65 @@ final class PumlCompletionPopup {
             return pane.getDocument().getText(0, pane.getDocument().getLength());
         } catch (BadLocationException ex) {
             return "";
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 描画
+    // -------------------------------------------------------------------------
+
+    /** 「見出し + 補足」の 2 段組で 1 候補を描く。 */
+    private static final class ItemRenderer extends JPanel
+            implements ListCellRenderer<PumlCompletionItem> {
+
+        private final JLabel label = new JLabel();
+        private final JLabel detail = new JLabel();
+
+        ItemRenderer() {
+            super(new BorderLayout(12, 0));
+            setBorder(BorderFactory.createEmptyBorder(1, 6, 1, 6));
+            label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+            detail.setFont(detail.getFont().deriveFont(Font.PLAIN, 11f));
+            add(label, BorderLayout.WEST);
+            add(detail, BorderLayout.EAST);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends PumlCompletionItem> list,
+                                                      PumlCompletionItem value, int index,
+                                                      boolean selected, boolean focused) {
+            Color bg = selected ? list.getSelectionBackground() : list.getBackground();
+            Color fg = selected ? list.getSelectionForeground() : list.getForeground();
+            setBackground(bg);
+            setOpaque(true);
+            // 展開ものは太字にして「これは丸ごと入る候補」と一目で分かるようにする。
+            label.setFont(label.getFont().deriveFont(
+                    value.isTemplate() ? Font.BOLD : Font.PLAIN));
+            label.setText(value.label());
+            label.setForeground(fg);
+            detail.setText(kindTag(value) + value.detail());
+            // 補足は主役ではないので、選択時も本文より一段落とした色にする。
+            detail.setForeground(selected ? fg : dim(fg, list.getBackground()));
+            return this;
+        }
+
+        /** 候補種別の短い見出し (スニペットと語を混ぜて出すため識別子が要る)。 */
+        private static String kindTag(PumlCompletionItem item) {
+            switch (item.kind()) {
+                case SNIPPET:    return Messages.get("puml.completion.kind.snippet") + "  ";
+                case ARROW:      return Messages.get("puml.completion.kind.arrow") + "  ";
+                case IDENTIFIER: return Messages.get("puml.completion.kind.identifier") + "  ";
+                case VALUE:      return Messages.get("puml.completion.kind.value") + "  ";
+                case KEYWORD:
+                default:         return "";
+            }
+        }
+
+        /** 前景色を背景側へ寄せた控えめな色。 */
+        private static Color dim(Color fg, Color bg) {
+            return new Color((fg.getRed() + bg.getRed()) / 2,
+                    (fg.getGreen() + bg.getGreen()) / 2,
+                    (fg.getBlue() + bg.getBlue()) / 2);
         }
     }
 
@@ -329,10 +412,10 @@ final class PumlCompletionPopup {
         if (list == null || model.isEmpty()) {
             return;
         }
-        String sel = list.getSelectedValue();
+        PumlCompletionItem sel = list.getSelectedValue();
         String announce = java.text.MessageFormat.format(
-                juml.util.Messages.get("puml.completion.a11y"),
-                sel != null ? sel : "", list.getSelectedIndex() + 1, model.size());
+                Messages.get("puml.completion.a11y"),
+                sel != null ? sel.label() : "", list.getSelectedIndex() + 1, model.size());
         pane.getAccessibleContext().setAccessibleDescription(announce);
     }
 
@@ -346,8 +429,31 @@ final class PumlCompletionPopup {
         return isVisible() ? model.size() : 0;
     }
 
-    /** テスト用: 自動表示の更新を同期実行する。 */
+    /** テスト用: 現在表示中の候補見出し (非表示なら空)。 */
+    List<String> visibleLabelsForTest() {
+        List<String> out = new java.util.ArrayList<>();
+        if (isVisible()) {
+            for (int i = 0; i < model.size(); i++) {
+                out.add(model.get(i).label());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * テスト用: 自動表示の更新を同期実行する。
+     *
+     * <p>入力追従の表示はペインがフォーカスを持つことを前提にするが、ウィンドウ
+     * マネージャの無い環境 (Xvfb) では実フォーカスを得られない。フォーカスは
+     * 「いつ呼ばれるか」の前提条件であって候補生成の一部ではないので、ここでだけ
+     * 満たされたものとみなし、絞り込みと表示の中身を検証できるようにする。</p>
+     */
     void updateForTest(boolean explicit) {
-        updateCandidates(explicit);
+        assumeFocused = true;
+        try {
+            updateCandidates(explicit);
+        } finally {
+            assumeFocused = false;
+        }
     }
 }
