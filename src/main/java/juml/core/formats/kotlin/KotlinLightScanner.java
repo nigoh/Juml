@@ -70,10 +70,15 @@ public final class KotlinLightScanner {
                     + "((?:private\\s+|protected\\s+|public\\s+|internal\\s+"
                     + "|lateinit\\s+|const\\s+|override\\s+)*)"
                     + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*"
+                    // 関数型 (`() -> Unit`) も型として受ける。先頭が ( だと従来は型として
+                    // 認識できず、プロパティごと抽出から落ちていた。
+                    + "((?:\\([^)]*\\)\\s*->\\s*)?[A-Za-z_$][\\w.<>?\\[\\]\\s,]*?)"
                     // 型の直後は = / 改行 / { / ; のほか、同じ行に書いたアクセサ
                     // (`val x: Int get() = 5`) も許す。get/set を許さないと ( で
                     // マッチ全体が壊れ、プロパティごと抽出から落ちていた。
-                    + "([A-Za-z_$][\\w.<>?\\[\\]\\s,]*?)(?=\\s*(?:[=\\n{;]|\\bget\\b|\\bset\\b))");
+                    // by も終端に含める。含めないと `by` も `lazy` もただの語なので
+                    // 型へ飲み込まれ、図の欄が `MutableMap<String, Int> by lazy` になっていた。
+                    + "(?=\\s*(?:[=\\n{;]|\\bget\\b|\\bset\\b|\\bby\\b))");
     /** {@code fun name(params): ReturnType}。 */
     private static final Pattern FUN_DECL = Pattern.compile(
             "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
@@ -136,21 +141,23 @@ public final class KotlinLightScanner {
             // ブレース/括弧を誤って取り込まないようにする。
             int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode);
             int primaryCtorParen = KotlinHeaderScan.primaryCtorParenAfter(source, headerEnd);
-            int bodyBraceOpen = findNextChar(source, headerEnd, '{');
             if (nextHeader >= 0 && primaryCtorParen >= nextHeader) {
                 primaryCtorParen = -1;
             }
+            // 本体の { はプライマリコンストラクタの ) より後ろから探す。クラス名の直後から
+            // 探していたため `class Foo(val onClick: () -> Unit = {}) { … }` の既定値の {
+            // を本体の開きと取り違え、本体が空のラムダになってメンバーが丸ごと消えていた。
+            int primaryCtorClose = primaryCtorParen >= 0
+                    ? matchParen(source, primaryCtorParen) : -1;
+            int bodySearchFrom = primaryCtorClose > primaryCtorParen
+                    ? primaryCtorClose + 1 : headerEnd;
+            int bodyBraceOpen = findNextChar(source, bodySearchFrom, '{');
             if (nextHeader >= 0 && bodyBraceOpen >= nextHeader) {
                 bodyBraceOpen = -1;
             }
-            if (primaryCtorParen >= 0
-                    && (bodyBraceOpen < 0 || primaryCtorParen < bodyBraceOpen)) {
-                int primaryCtorClose = matchParen(source, primaryCtorParen);
-                if (primaryCtorClose > primaryCtorParen) {
-                    String paramsText = source.substring(primaryCtorParen + 1,
-                            primaryCtorClose);
-                    extractPrimaryCtorFields(paramsText, info);
-                }
+            if (primaryCtorClose > primaryCtorParen) {
+                extractPrimaryCtorFields(
+                        source.substring(primaryCtorParen + 1, primaryCtorClose), info);
             }
             // 本体を持つクラスは「開いている本体」として積み、以降のヘッダが本体内なら
             // このクラスを enclosing とする (閉じ位置を超えたら上の while で捨てられる)。
@@ -178,7 +185,7 @@ public final class KotlinLightScanner {
                     // ローカル val/var/fun をクラスメンバとして誤抽出しないようにする。
                     // 型本体 (nested class / object / companion object) は従来どおり降りて
                     // メンバをホイストするため、マスク対象にしない。
-                    boolean[] codeMask = codeBlockMask(body);
+                    boolean[] codeMask = KotlinBlockMask.codeBlockMask(body);
                     extractProperties(body, info, codeMask);
                     extractFunctions(body, info, codeMask);
                 }
@@ -722,86 +729,9 @@ public final class KotlinLightScanner {
         return matchBalance(src, open, '(', ')');
     }
 
-    private static int matchBrace(String src, int open) {
+    static int matchBrace(String src, int open) {
         if (open < 0 || open >= src.length() || src.charAt(open) != '{') return open;
         return matchBalance(src, open, '{', '}');
-    }
-
-    /**
-     * クラス本体文字列のうち「コードブロック」(関数本体・getter/setter・二次コンストラクタ本体・
-     * init ブロック) の中身を true にしたマスクを返す。
-     *
-     * <p>ローカルの {@code val}/{@code var}/{@code fun} をクラスのフィールド/メソッドとして
-     * 誤抽出しないために使う。判定は {@code {} の直前の非空白文字が {@code )} (関数/アクセサ/
-     * コンストラクタのシグネチャ末尾)、または直前の語が {@code init} の場合をコードブロックとみなす。
-     * 型本体 ({@code class}/{@code object}/{@code companion object}/{@code enum}/{@code interface})
-     * の {@code {} はマスクせず走査を継続するため、ネストした型やコンパニオンのメンバは従来どおり
-     * 抽出 (ホイスト) される。ラムダ ({@code = { ... }}) はコードブロックだが稀なため対象外。</p>
-     */
-    private static boolean[] codeBlockMask(String body) {
-        int n = body.length();
-        boolean[] mask = new boolean[n];
-        for (int i = 0; i < n; i++) {
-            int e = skipNonCode(body, i);
-            if (e > i) { i = e - 1; continue; }
-            char c = body.charAt(i);
-            if (c != '{') { continue; }
-            int p = i - 1;
-            while (p >= 0 && Character.isWhitespace(body.charAt(p))) p--;
-            boolean codeBlock = false;
-            if (p >= 0) {
-                char pc = body.charAt(p);
-                if (pc == ')') {
-                    codeBlock = true;
-                } else if (isIdentPart(pc)) {
-                    int ws = p;
-                    while (ws >= 0 && isIdentPart(body.charAt(ws))) ws--;
-                    if ("init".equals(body.substring(ws + 1, p + 1))) {
-                        codeBlock = true;
-                    }
-                }
-            }
-            // 名前付きネスト型 (class / interface / object / enum) の本体はマスクする。
-            // これらは独立した JavaClassInfo エントリとして別途出力されるため、囲む型へ
-            // ホイストするとメンバが重複・誤付与される。ただし companion object だけは
-            // 従来どおり外側へホイストする (Outer.CONST のように静的的に参照されるため)。
-            if (!codeBlock && isNestedTypeHeader(body, i)) {
-                codeBlock = true;
-            }
-            if (codeBlock) {
-                int close = matchBrace(body, i);
-                if (close > i) {
-                    for (int k = i; k <= close && k < n; k++) {
-                        mask[k] = true;
-                    }
-                    i = close; // ブロック全体 (入れ子のコードブロック含む) を一括スキップ
-                }
-            }
-        }
-        return mask;
-    }
-
-    /**
-     * {@code body} の位置 {@code bracePos} の {@code &#123;} が、名前付きネスト型
-     * (class / interface / object / enum) の本体開始かどうかを判定する。直前の文
-     * 境界 ({@code ;} / {@code &#125;} / {@code &#123;}) までのヘッダに型宣言キーワードが
-     * 含まれ、かつ {@code companion object} でなければ true。companion object は
-     * 外側へホイストしたいので false を返す (従来どおり降りて抽出する)。
-     */
-    private static boolean isNestedTypeHeader(String body, int bracePos) {
-        int hs = bracePos - 1;
-        while (hs >= 0) {
-            char ch = body.charAt(hs);
-            if (ch == ';' || ch == '}' || ch == '{') {
-                break;
-            }
-            hs--;
-        }
-        String header = body.substring(hs + 1, bracePos);
-        if (header.matches("(?s).*\\bcompanion\\s+object\\b.*")) {
-            return false;
-        }
-        return header.matches("(?s).*\\b(class|interface|object|enum)\\b.*");
     }
 
     /**
