@@ -151,4 +151,43 @@ public class DiagramTabPaneDraftTest {
         assertTrue("破棄を選んだので終了は続行できるはず", canExit);
         assertTrue("破棄した編集の下書きは残らないはず", store.loadAll().isEmpty());
     }
+
+    /**
+     * 回帰: 前セッションの下書きを復元するとき、復元で開いたタブが<b>まだ復元していない
+     * 別の下書きのキーを奪わない</b>こと。
+     *
+     * <p>{@code untitledCounter} はセッションごとに 0 から数え直すため、
+     * {@code untitled-2} を先に復元すると新しいタブが {@code untitled-1} を名乗り、
+     * 続けて {@code untitled-1} を復元したときの {@code delete} がいま復元したタブの
+     * 生きている下書きを消していた ({@code loadAll} の順序はファイルシステム依存なので、
+     * この順で復元されるかどうかは運任せだった)。</p>
+     */
+    @Test
+    public void restoringDraftsOutOfOrderKeepsBothDrafts() {
+        // 前セッションが残した 2 件を模す。
+        store.save("PUML:untitled-1", "@startuml\nclass One\n@enduml\n", null, "Untitled-1");
+        store.save("PUML:untitled-2", "@startuml\nclass Two\n@enduml\n", null, "Untitled-2");
+
+        List<DraftStore.Draft> pending = store.loadAll();
+        assertEquals(2, pending.size());
+        // 番号の大きい方から先に復元する (最悪ケースを固定する)。
+        DraftStore.Draft two = pending.stream()
+                .filter(d -> "PUML:untitled-2".equals(d.tabKey)).findFirst().orElseThrow();
+        DraftStore.Draft one = pending.stream()
+                .filter(d -> "PUML:untitled-1".equals(d.tabKey)).findFirst().orElseThrow();
+
+        GuiActionRunner.execute(() -> pane.restoreDraft(two));
+        GuiActionRunner.execute(() -> pane.restoreDraft(one));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("復元した 2 タブぶんの下書きが残ること: " + after.size(), 2, after.size());
+        java.util.Set<String> texts = new java.util.HashSet<>();
+        for (DraftStore.Draft d : after) {
+            texts.add(d.text);
+        }
+        assertTrue("One の内容が残ること: " + texts,
+                texts.contains("@startuml\nclass One\n@enduml\n"));
+        assertTrue("Two の内容が残ること: " + texts,
+                texts.contains("@startuml\nclass Two\n@enduml\n"));
+    }
 }

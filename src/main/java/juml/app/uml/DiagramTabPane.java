@@ -597,6 +597,9 @@ public final class DiagramTabPane {
     // 自由編集 PlantUML エディタタブ
     // -------------------------------------------------------------------------
 
+    /** 未保存 (Untitled) エディタタブのキー接頭辞。連番を後ろに付ける。 */
+    private static final String UNTITLED_KEY_PREFIX = "PUML:untitled-";
+
     /** 未保存 (Untitled) エディタタブの連番。 */
     private int untitledCounter;
 
@@ -659,7 +662,7 @@ public final class DiagramTabPane {
             label = file.getName();
         } else {
             untitledCounter++;
-            key = "PUML:untitled-" + untitledCounter;
+            key = UNTITLED_KEY_PREFIX + untitledCounter;
             label = Messages.get("puml.editor.untitled") + "-" + untitledCounter + ".puml";
         }
         DiagramTab existing = openTabs.get(key);
@@ -1269,9 +1272,21 @@ public final class DiagramTabPane {
         }
     }
 
-    /** 開いているすべてのダイアグラムタブを再描画する (スタイル変更時など)。 */
+    /**
+     * 開いているすべてのダイアグラムタブを再描画する (スタイル変更時など)。
+     *
+     * <p>描画を解放済みのタブは<b>解放したまま</b>にする。{@link DiagramTab#startRender()} は
+     * {@code renderReleased} を false へ戻すため、以前はテーマを 1 回切り替えるだけで
+     * メモリ予算のために解放したタブが<b>全部いっぺんに実体化し直されて</b>いた
+     * (予算を守るための解放が、予算と無関係な操作で帳消しになる)。解放済みタブは
+     * 再フォーカス時に {@code startRender()} が走り、そこで新しい設定を反映するので
+     * 見た目が古いまま残ることもない。</p>
+     */
     public void rerenderAllTabs() {
         for (DiagramTab t : new ArrayList<>(openTabs.values())) {
+            if (t.needsRender()) {
+                continue;
+            }
             t.startRender();
         }
     }
@@ -1687,10 +1702,38 @@ public final class DiagramTabPane {
     /**
      * 下書きをエディタタブとして復元する (未保存状態のまま)。復元後は新しいタブの
      * 自動保存が引き継ぐため、元の下書きは先に消してから開く (同一キーの上書き順序対策)。
+     *
+     * <p>開く前に、残っている下書きが使っている Untitled 連番より必ず後ろへカウンタを
+     * 進める。{@code untitledCounter} はセッションごとに 0 から数え直すので、前回終了時の
+     * 番号と<b>衝突しうる</b>。{@code loadAll()} の順序はファイルシステム依存で復元順も
+     * 一定しないため、たとえば {@code untitled-2} を先に復元すると新しいタブが
+     * {@code untitled-1} を名乗り、続けて {@code untitled-1} を復元したときの
+     * {@code delete} が<b>いま復元したタブの生きている下書きを消す</b>。次の自動保存まで
+     * の間に落ちれば、復元したはずの編集がもう一度失われる。</p>
      */
     public void restoreDraft(DraftStore.Draft draft) {
+        reserveUntitledNumbersOfPendingDrafts();
         drafts.delete(draft.tabKey);
         openPumlEditor(draft.text, draft.file, true);
+    }
+
+    /** 残っている下書きの Untitled 番号を追い越すまでカウンタを進める。 */
+    private void reserveUntitledNumbersOfPendingDrafts() {
+        for (DraftStore.Draft d : drafts.loadAll()) {
+            untitledCounter = Math.max(untitledCounter, untitledNumberOf(d.tabKey));
+        }
+    }
+
+    /** {@code PUML:untitled-N} の N を返す (Untitled キーでなければ 0)。 */
+    private static int untitledNumberOf(String tabKey) {
+        if (tabKey == null || !tabKey.startsWith(UNTITLED_KEY_PREFIX)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(tabKey.substring(UNTITLED_KEY_PREFIX.length()));
+        } catch (NumberFormatException notNumbered) {
+            return 0;
+        }
     }
 
     /**
