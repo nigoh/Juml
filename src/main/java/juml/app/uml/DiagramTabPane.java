@@ -602,6 +602,8 @@ public final class DiagramTabPane {
 
     /** 未保存 (Untitled) エディタタブの連番。 */
     private int untitledCounter;
+    /** 残存下書きの番号を追い越す予約を済ませたか ({@link #reserveUntitledNumbersOnce})。 */
+    private boolean untitledNumbersReserved;
 
     /**
      * 自由編集 PlantUML エディタタブを開く。プロジェクト未ロードでも動作する
@@ -661,6 +663,7 @@ public final class DiagramTabPane {
             key = "PUML:" + file.getAbsolutePath();
             label = file.getName();
         } else {
+            reserveUntitledNumbersOnce();
             untitledCounter++;
             key = UNTITLED_KEY_PREFIX + untitledCounter;
             label = Messages.get("puml.editor.untitled") + "-" + untitledCounter + ".puml";
@@ -1712,13 +1715,26 @@ public final class DiagramTabPane {
      * の間に落ちれば、復元したはずの編集がもう一度失われる。</p>
      */
     public void restoreDraft(DraftStore.Draft draft) {
-        reserveUntitledNumbersOfPendingDrafts();
+        reserveUntitledNumbersOnce();
         drafts.delete(draft.tabKey);
         openPumlEditor(draft.text, draft.file, true);
     }
 
-    /** 残っている下書きの Untitled 番号を追い越すまでカウンタを進める。 */
-    private void reserveUntitledNumbersOfPendingDrafts() {
+    /**
+     * 残っている下書きの Untitled 番号を追い越すまでカウンタを進める (セッションで 1 回だけ)。
+     *
+     * <p>採番のたびに走らせないのは、下書きはセッション中に<b>増えない</b>ため。最初の 1 回で
+     * 全下書きの最大値を超えておけば、以後に配る番号はすべてそれより大きい。逆にここを
+     * 復元経路だけに置くと穴が残る: 復元プロンプトで Esc を押すと (これは「破棄しない」と
+     * 明示された非破壊の選択肢なのに) カウンタが 0 のままになり、次に新規 Untitled タブを
+     * 作った瞬間に {@code untitled-1} を名乗って、<b>保持したはずのクラッシュ下書きを
+     * 自動保存が上書きする</b>。タブを閉じる経路ではさらに直接 delete される。</p>
+     */
+    private void reserveUntitledNumbersOnce() {
+        if (untitledNumbersReserved) {
+            return;
+        }
+        untitledNumbersReserved = true;
         for (DraftStore.Draft d : drafts.loadAll()) {
             untitledCounter = Math.max(untitledCounter, untitledNumberOf(d.tabKey));
         }

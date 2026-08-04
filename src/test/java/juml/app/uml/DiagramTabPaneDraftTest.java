@@ -190,4 +190,36 @@ public class DiagramTabPaneDraftTest {
         assertTrue("Two の内容が残ること: " + texts,
                 texts.contains("@startuml\nclass Two\n@enduml\n"));
     }
+
+    /**
+     * 回帰: 復元プロンプトで Esc を押して下書きを<b>保持した</b>あと新規タブを作っても、
+     * 保持した下書きが上書きされないこと。
+     *
+     * <p>{@code UmlMainFrame.promptDraftRecovery} は CLOSED_OPTION (Esc / ダイアログを閉じる)
+     * を「破棄しない・次回また尋ねる」と明示している。しかし予約を復元経路にだけ置いていた
+     * ため、Esc の場合はカウンタが 0 のままで、次の新規 Untitled タブが {@code untitled-1} を
+     * 名乗り、その自動保存がクラッシュ時の下書きを上書きしていた。利用者は一度も
+     * 「破棄」を選んでいないのに作業が失われる。
+     */
+    @Test
+    public void newUntitledTabDoesNotOverwriteARetainedDraft() {
+        // 前セッションのクラッシュ下書き (復元プロンプトでは Esc = 保持を選んだ想定)。
+        store.save("PUML:untitled-1", "@startuml\nclass PreviousSession\n@enduml\n",
+                null, "Untitled-1.puml");
+
+        // 復元せずに新規 Untitled タブを作り、下書きへ退避させる。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(
+                "@startuml\nclass BrandNew\n@enduml\n", null, true));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        java.util.Set<String> texts = new java.util.HashSet<>();
+        for (DraftStore.Draft d : after) {
+            texts.add(d.text);
+        }
+        assertTrue("保持したクラッシュ下書きが残ること: " + texts,
+                texts.contains("@startuml\nclass PreviousSession\n@enduml\n"));
+        assertTrue("新規タブの下書きも並存すること: " + texts,
+                texts.contains("@startuml\nclass BrandNew\n@enduml\n"));
+        assertEquals("2 件が別キーで共存すること", 2, after.size());
+    }
 }
