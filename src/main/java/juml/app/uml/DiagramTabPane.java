@@ -1407,8 +1407,16 @@ public final class DiagramTabPane {
         }
         closedTabs.clear();
         navHistory.clear();
+        // 読み込みが中断された場合もここへ来る。そのときキャッシュは既に空で
+        // getProjectRoot() は null になっており、null を渡すと付箋ストアが
+        // 「保存先なし」になる。そのストアの save() は<b>成功を返す</b>ので、
+        // 生き残ったエディタタブの付箋編集が以後すべて黙って捨てられ、失敗通知も出ない。
+        // 移行先が無いなら再バインドせず、直前の保存先を保つ。
+        java.io.File switchedRoot = cache.getProjectRoot();
         for (DiagramTab t : openTabs.values()) {
-            notesBinder.bind(t.previewPanel, cache.getProjectRoot(), t.key);
+            if (switchedRoot != null) {
+                notesBinder.bind(t.previewPanel, switchedRoot, t.key);
+            }
             navHistory.push(t.key);
         }
     }
