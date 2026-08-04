@@ -54,6 +54,9 @@ public final class SeqSketchCodec {
     public static ParseResult parse(String text) {
         SeqSketchModel model = new SeqSketchModel();
         List<String> unsupported = new ArrayList<>();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             String line = raw.trim();
             if (line.startsWith("@startuml")) {

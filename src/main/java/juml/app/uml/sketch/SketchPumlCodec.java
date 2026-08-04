@@ -63,6 +63,9 @@ public final class SketchPumlCodec {
         List<String> unsupported = new ArrayList<>();
         Map<String, int[]> positions = new HashMap<>();
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         int i = 0;
         while (i < lines.length) {
             String line = lines[i].trim();

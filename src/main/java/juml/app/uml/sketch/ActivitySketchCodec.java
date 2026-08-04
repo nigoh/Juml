@@ -52,19 +52,10 @@ public final class ActivitySketchCodec {
         ActivitySketchModel model = new ActivitySketchModel();
         List<String> unsupported = new ArrayList<>();
         String[] lines = (text == null ? "" : text).split("\n", -1);
-        // 2 本目以降の @startuml は未対応にして編集をロックする。parseBlock はどの
-        // @startuml も「図名の上書き」として飲み込むため、複数の図が入ったファイルが
-        // <b>1 図へ黙って統合</b>され (区切りも先頭の図名も消える)、GUI で 1 回編集した
-        // だけで元テキストが失われる。ロックしておけば書き戻しは起きない。
-        boolean seenStart = false;
-        for (String raw : lines) {
-            if (raw.trim().startsWith("@startuml")) {
-                if (seenStart) {
-                    unsupported.add(raw.trim());
-                }
-                seenStart = true;
-            }
-        }
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        // 判定はこの図種だけの話ではないので共有の番人へ寄せる。ここに直書きしていた
+        // あいだ、他の 9 codec は同じ破壊を起こしたままだった。
+        SketchMultiDiagram.reportExtraDiagrams(lines, "@startuml", unsupported);
         parseBlock(lines, 0, model.getNodes(), unsupported, model, false);
         return new ParseResult(model, unsupported);
     }

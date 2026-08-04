@@ -121,6 +121,9 @@ public final class DeploySketchCodec {
     /** PlantUML テキストを配置図モデルへ解析する。 */
     public static ParseResult parse(String text) {
         ParseCtx ctx = new ParseCtx();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", ctx.unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             parseLine(ctx, raw.trim());
         }

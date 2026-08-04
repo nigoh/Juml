@@ -76,6 +76,9 @@ public final class MindmapSketchCodec {
         MindmapSketchModel model = new MindmapSketchModel();
         List<String> unsupported = new ArrayList<>();
         Deque<Frame> stack = new ArrayDeque<>();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startmindmap", unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             parseLine(raw.trim(), model, unsupported, stack);
         }
