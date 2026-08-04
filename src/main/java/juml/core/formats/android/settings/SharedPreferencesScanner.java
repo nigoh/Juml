@@ -29,6 +29,27 @@ import java.util.regex.Pattern;
  */
 public final class SharedPreferencesScanner {
 
+    /**
+     * {@code put*} / {@code get*} の直前にある受け手の式 (グループ 1)。
+     *
+     * <p>受け手を見ないと {@code Bundle.putString} や {@code JSONObject.getString} まで
+     * 設定キーとして拾ってしまう。実際、同じファイルに {@code getSharedPreferences} が
+     * 1 つでもあると、それらが<b>その無関係なストア名の下に</b>並んでいた。</p>
+     */
+    private static final String RECEIVER =
+            "([A-Za-z_][A-Za-z0-9_.]*(?:\\s*\\([^()]*\\))?)";
+
+    /** {@code SharedPreferences p = ...} / {@code Editor e = ...} の変数名 (グループ 1)。 */
+    private static final Pattern PREFS_VAR = Pattern.compile(
+            "(?:SharedPreferences|SharedPreferences\\s*\\.\\s*Editor|Editor)\\s+"
+                    + "([A-Za-z_][A-Za-z0-9_]*)\\s*=");
+
+    /** {@code x = <なにか>.edit()} / {@code x = ...getSharedPreferences(...)} の左辺 (グループ 1)。 */
+    private static final Pattern PREFS_ASSIGN = Pattern.compile(
+            "([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*[^;]*?"
+                    + "(?:\\.\\s*edit\\s*\\(\\s*\\)|getSharedPreferences\\s*\\(|"
+                    + "getDefaultSharedPreferences\\s*\\()");
+
     /** {@code getSharedPreferences("name", ...)} のストア名抽出。グループ 1: ストア名。 */
     private static final Pattern GET_SP = Pattern.compile(
             "getSharedPreferences\\s*\\(\\s*\"([^\"]+)\"");
@@ -46,13 +67,13 @@ public final class SharedPreferencesScanner {
      *  get 呼び出しの終端と取り違え、初期値が {@code (ThemeUtil.defaultTheme()} という
      *  括弧の閉じない、原文のどこにも無い文字列として表に出ていた。</p> */
     private static final Pattern GET_VALUE = Pattern.compile(
-            "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
+            RECEIVER + "\\.get(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
                     + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))"
                     + "(?:\\s*,\\s*((?:[^()]|\\([^()]*\\))+?))?\\s*\\)");
 
     /** put* 呼び出し。グループ 1: 型。グループ 2: 文字列キー。グループ 3: 定数名キー。 */
     private static final Pattern PUT_VALUE = Pattern.compile(
-            "\\.put(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
+            RECEIVER + "\\.put(String|Boolean|Int|Long|Float|StringSet)\\s*\\(\\s*"
                     + "(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_.]*))");
 
     /**
@@ -90,6 +111,48 @@ public final class SharedPreferencesScanner {
         return result;
     }
 
+    /** このファイルで SharedPreferences / Editor を受けている変数名を集める。 */
+    private static java.util.Set<String> collectPreferencesVars(String src) {
+        java.util.Set<String> vars = new java.util.LinkedHashSet<>();
+        Matcher declared = PREFS_VAR.matcher(src);
+        while (declared.find()) {
+            vars.add(declared.group(1));
+        }
+        Matcher assigned = PREFS_ASSIGN.matcher(src);
+        while (assigned.find()) {
+            vars.add(assigned.group(1));
+        }
+        return vars;
+    }
+
+    /**
+     * その {@code put*} / {@code get*} が SharedPreferences 由来の受け手に対する呼び出しか。
+     *
+     * <p>受け手を見ないと {@code outState.putString(...)} (Bundle) や
+     * {@code json.getString(...)} (JSONObject) まで設定キーとして数え、しかも同じファイルに
+     * {@code getSharedPreferences} が 1 つでもあれば<b>その無関係なストアの中身</b>として
+     * 表に並べてしまう。厳密なデータフロー解析はこのクラスの方針外なので、
+     * (1) 宣言・代入から拾った変数名、(2) 式に {@code edit()} や
+     * {@code getSharedPreferences} を含む連鎖、(3) 名前が prefs/editor を示す慣習、
+     * の 3 段で判定する。</p>
+     */
+    private static boolean isPreferencesReceiver(String receiver, java.util.Set<String> vars) {
+        if (receiver == null || receiver.isEmpty()) {
+            return false;
+        }
+        String r = receiver.trim();
+        if (r.contains("edit()") || r.contains("edit ()")
+                || r.contains("getSharedPreferences") || r.contains("getDefaultSharedPreferences")) {
+            return true;
+        }
+        String head = r.contains(".") ? r.substring(0, r.indexOf('.')) : r;
+        if (vars.contains(head) || vars.contains(r)) {
+            return true;
+        }
+        String lower = head.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("pref") || lower.equals("editor") || lower.equals("ed");
+    }
+
     /**
      * 単一ソースファイルをスキャンして SharedPreferences エントリを返す。
      */
@@ -108,6 +171,7 @@ public final class SharedPreferencesScanner {
             storeNames.add("(default)");
         }
         String resolvedStore = storeNames.isEmpty() ? "" : storeNames.get(0);
+        java.util.Set<String> prefsVars = collectPreferencesVars(src);
 
         String[] lines = src.split("\n", -1);
         List<SharedPreferencesEntry> entries = new ArrayList<>();
@@ -119,17 +183,20 @@ public final class SharedPreferencesScanner {
             // 読み取り (get*)
             Matcher gm = GET_VALUE.matcher(line);
             while (gm.find()) {
-                String type = gm.group(1);
-                String strKey = gm.group(2);
-                String constKey = gm.group(3);
+                if (!isPreferencesReceiver(gm.group(1), prefsVars)) {
+                    continue;
+                }
+                String type = gm.group(2);
+                String strKey = gm.group(3);
+                String constKey = gm.group(4);
                 // 定数名キーは Context.getString(int resId) のリソース取得と紛らわしい。
                 // SharedPreferences.getString は必ずデフォルト値 (第2引数) を伴うので、
                 // リテラルでない定数キーはデフォルト値が無い / リソース参照なら除外する。
-                if (strKey == null && (gm.group(4) == null || isResourceRef(constKey))) {
+                if (strKey == null && (gm.group(5) == null || isResourceRef(constKey))) {
                     continue;
                 }
                 String key = strKey != null ? strKey : constKey;
-                String defVal = gm.group(4) != null ? gm.group(4).trim() : "";
+                String defVal = gm.group(5) != null ? gm.group(5).trim() : "";
                 // 文字列リテラルのみのデフォルト値を抽出。
                 // 単一の `"` (長さ 1) では substring(1, 0) が例外になるため長さでガードする。
                 if (defVal.length() >= 2 && defVal.startsWith("\"") && defVal.endsWith("\"")) {
@@ -144,9 +211,12 @@ public final class SharedPreferencesScanner {
             // 書き込み (put*)
             Matcher pm = PUT_VALUE.matcher(line);
             while (pm.find()) {
-                String type = pm.group(1);
-                String strKey = pm.group(2);
-                String constKey = pm.group(3);
+                if (!isPreferencesReceiver(pm.group(1), prefsVars)) {
+                    continue;
+                }
+                String type = pm.group(2);
+                String strKey = pm.group(3);
+                String constKey = pm.group(4);
                 // 定数名キーがリソース参照ならプリファレンス書き込みではないので除外
                 if (strKey == null && isResourceRef(constKey)) {
                     continue;

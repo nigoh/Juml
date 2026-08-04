@@ -153,4 +153,60 @@ public class SharedPreferencesScannerTest {
         assertEquals("(ThemeUtil.defaultTheme())", entries.get(0).defaultValue);
         assertEquals("(isDark(ctx))", entries.get(1).defaultValue);
     }
+
+    /**
+     * 回帰: Bundle / JSONObject の put*・get* を設定キーとして数えないこと。
+     *
+     * <p>パターンが受け手を見ずに {@code .putString(} 等へマッチしていたため、
+     * {@code outState.putString("saved_scroll", …)} や {@code json.getString("name")} が
+     * 設定キーとして並び、しかも同じファイルに {@code getSharedPreferences} が 1 つでもあると
+     * <b>その無関係なストアの中身</b>として表に出ていた。</p>
+     */
+    @Test
+    public void bundleAndJsonAccessesAreNotReportedAsPreferences() {
+        String src = "void onSaveInstanceState(Bundle outState) {\n"
+                + "  outState.putString(\"saved_scroll\", \"x\");\n"
+                + "  outState.putInt(\"saved_page\", 3);\n"
+                + "}\n"
+                + "void parse(JSONObject o) {\n"
+                + "  String n = o.getString(\"name\");\n"
+                + "  int v = o.getInt(\"version\");\n"
+                + "}\n"
+                + "void real(Context ctx) {\n"
+                + "  SharedPreferences prefs = ctx.getSharedPreferences(\"my_prefs\", 0);\n"
+                + "  prefs.edit().putBoolean(\"opted_in\", true).apply();\n"
+                + "}\n";
+
+        List<SharedPreferencesEntry> entries = scanner.analyzeSource(src, "MainActivity.java");
+
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (SharedPreferencesEntry e : entries) {
+            keys.add(e.key);
+        }
+        assertTrue("本物の prefs アクセスは残ること: " + keys, keys.contains("opted_in"));
+        assertFalse("Bundle のキーを含めないこと: " + keys, keys.contains("saved_scroll"));
+        assertFalse("Bundle のキーを含めないこと: " + keys, keys.contains("saved_page"));
+        assertFalse("JSON のキーを含めないこと: " + keys, keys.contains("name"));
+        assertFalse("JSON のキーを含めないこと: " + keys, keys.contains("version"));
+        assertEquals("拾うのは 1 件だけ: " + keys, 1, entries.size());
+    }
+
+    /** 非退行: 宣言済み変数・連鎖・慣習的な名前のいずれでも本物は拾えること。 */
+    @Test
+    public void realPreferenceReceiversAreStillDetected() {
+        String src = "SharedPreferences store = ctx.getSharedPreferences(\"s\", 0);\n"
+                + "store.getString(\"declared_var\", \"\");\n"
+                + "ctx.getSharedPreferences(\"s\", 0).getString(\"inline_chain\", \"\");\n"
+                + "prefs.getString(\"conventional_name\", \"\");\n";
+
+        List<SharedPreferencesEntry> entries = scanner.analyzeSource(src, "Test.java");
+
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (SharedPreferencesEntry e : entries) {
+            keys.add(e.key);
+        }
+        assertTrue(keys.contains("declared_var"));
+        assertTrue(keys.contains("inline_chain"));
+        assertTrue(keys.contains("conventional_name"));
+    }
 }
