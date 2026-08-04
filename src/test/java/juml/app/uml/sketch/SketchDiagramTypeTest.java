@@ -528,6 +528,36 @@ public class SketchDiagramTypeTest {
     }
 
     @Test
+    public void aCodecThatMerelyReadsTheTextDoesNotGetToClaimIt() {
+        // 回帰 (critical): 「最初に丸ごと読めた設計器を採る」段階に裏取りが無かったため、
+        // ユースケースコーデック (actor 宣言と --> 関連を読める) が無関係な図を横取りし、
+        // <b>編集可能な状態で</b>開いていた。最初の操作で元の図が書き潰される。
+        // PlantUML 自身の解釈で候補を絞る。
+        String rightGeneralization = "@startuml\nDog --|> Animal\nAnimal --> Food : eats\n@enduml\n";
+        assertEquals("--|> のクラス図をユースケース図にしないこと",
+                SketchDiagramType.CLASS, SketchDiagramType.detect(rightGeneralization));
+
+        String quotedParticipant = "@startuml\nBrowser --> Api : request\n"
+                + "Api --> \"Order DB\" : query\n@enduml\n";
+        assertEquals("引用名のシーケンス図を配置図にしないこと",
+                SketchDiagramType.SEQUENCE, SketchDiagramType.detect(quotedParticipant));
+    }
+
+    @Test
+    public void actorNamedAfterAKeywordStaysASequenceDiagram() {
+        // 回帰: 応答矢印だけの図で参加者を明示宣言するようにしたが、ACTOR 種別は
+        // "actor X" を出す。これはユースケースコーデックも丸ごと読めるため、
+        // 参加者名が走査キーワード (cloud/node/artifact/usecase/component) と同綴りだと
+        // 走査がシーケンス図から逸れ、ユースケース設計器が編集可能で開いていた。
+        for (String name : new String[] {"cloud", "node", "artifact", "usecase", "component"}) {
+            String puml = "@startuml\nactor " + name + "\nactor User\n"
+                    + name + " --> User : ack\nUser --> " + name + " : done\n@enduml\n";
+            assertEquals(name + " という名前の actor でシーケンス図を見失わないこと",
+                    SketchDiagramType.SEQUENCE, SketchDiagramType.detect(puml));
+        }
+    }
+
+    @Test
     public void unparsableTextStillPicksADesignerToShowLocked() {
         // どのコーデックも扱えないテキストは、従来どおり行走査の答えで表示ロックする。
         String puml = "@startuml\nnode Server\nnote over Server\n未対応の記法\nend note\n"

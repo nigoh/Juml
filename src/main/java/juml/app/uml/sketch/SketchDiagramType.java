@@ -45,17 +45,28 @@ public enum SketchDiagramType {
     MINDMAP;
 
     /**
+     * 宣言キーワードに続く引数部。<b>矢印で始まらないこと</b>を要求する。
+     *
+     * <p>要求しないと、宣言キーワードと同綴りの識別子を左端に置いた<b>関連行</b>が
+     * 宣言に見える: {@code usecase --> User} / {@code node --> Server} /
+     * {@code component --> Api} はどれも「usecase/node/component という名前の要素からの
+     * 関連」であって宣言ではない。誤認すると図種を取り違え、無関係な設計器が開く
+     * ({@code Note --> Alice} で同じ事故を起こしたのと同じ形)。</p>
+     */
+    private static final String DECL_ARG = "\\s+(?![-<.])\\S.*$";
+
+    /**
      * ユースケース図に固有の行。{@code usecase} キーワードは他図種と衝突しないため、
      * これが 1 行でもあればユースケース図と確定できる ({@code actor} はシーケンス図と
      * 共有するため単独では判定材料にしない)。
      */
-    private static final Pattern USECASE_LINE = Pattern.compile("^usecase\\b.*$");
+    private static final Pattern USECASE_LINE = Pattern.compile("^usecase" + DECL_ARG);
     /**
      * コンポーネント図に固有の行。{@code component} キーワード、または単独の短縮形
      * {@code [Id]} (Id は識別子)。{@code [*]} は識別子でないので状態図と衝突しない。
      */
     private static final Pattern COMPONENT_LINE = Pattern.compile(
-            "^(component\\b.*|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
+            "^(component" + DECL_ARG + "|\\[[A-Za-z_$][\\w$]*\\]\\s*)$");
     /**
      * オブジェクト図に固有の行。{@code object 名前} 宣言は他図種と衝突しないため、これが
      * 1 行でもあればオブジェクト図と確定できる。
@@ -68,7 +79,7 @@ public enum SketchDiagramType {
      * シーケンス図の参加者宣言と共有するため、単独では判定材料にしない。
      */
     private static final Pattern DEPLOYMENT_LINE = Pattern.compile(
-            "^(node|artifact|cloud)\\b.*$");
+            "^(node|artifact|cloud)" + DECL_ARG);
 
     /** アクティビティ図に固有の行 ({@code start} / {@code :action;} / {@code if} など)。 */
     private static final Pattern ACTIVITY_LINE = Pattern.compile(
@@ -115,9 +126,9 @@ public enum SketchDiagramType {
     }
 
     /** 配置図が出す {@code database} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
-    private static final Pattern DATABASE_LINE = Pattern.compile("^database\\b.*$");
+    private static final Pattern DATABASE_LINE = Pattern.compile("^database" + DECL_ARG);
     /** ユースケース図が出す {@code actor} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
-    private static final Pattern ACTOR_LINE = Pattern.compile("^actor\\b.*$");
+    private static final Pattern ACTOR_LINE = Pattern.compile("^actor" + DECL_ARG);
     /** クラス図に固有の宣言行。 */
     private static final Pattern CLASS_LINE = Pattern.compile(
             "^(abstract\\s+)?(class|interface|enum)\\b.*$");
@@ -282,8 +293,15 @@ public enum SketchDiagramType {
         // (component ブロックの中に artifact を入れ子にした形) は、トップレベルに
         // node/artifact が現れないためコンポーネント図と走査され、コンポーネント設計器が
         // 一部だけ認識して編集ロックで開いていた — 配置図コーデックなら全部読めるのに。
+        // 候補は PlantUML 自身の解釈が許す図種に絞る。絞らずに「最初に丸ごと読めたもの」を
+        // 採ると、<b>読めるだけの無関係な設計器</b>が横取りする: ユースケースコーデックは
+        // actor 宣言と --> 関連を読めてしまうので、クラス図 (Dog --|> Animal) も
+        // シーケンス図 (actor cloud / cloud --> User) もユースケース設計器へ流れ、しかも
+        // 編集可能で開くので最初の操作で元の図が書き潰される。
+        java.util.Set<SketchDiagramType> allowed = parsedKindTypes(source);
         for (SketchDiagramType candidate : SUPPORT_PROBE_ORDER) {
-            if (fullySupportedBy(candidate, source)) {
+            if ((allowed == null || allowed.contains(candidate))
+                    && fullySupportedBy(candidate, source)) {
                 return candidate;
             }
         }
@@ -339,6 +357,11 @@ public enum SketchDiagramType {
      * 既定でシーケンス図と読むため、クラス図がシーケンス図に化ける。裏取りが意味を持つのは
      * 「コーデックの答えが当てにならない」と分かっている場面に限られる。</p>
      */
+    /** PlantUML 自身の解釈が許す設計器 (解釈できなければ null = 制約なし)。 */
+    private static java.util.Set<SketchDiagramType> parsedKindTypes(String source) {
+        return PARSED_KIND_TYPES.get(juml.core.formats.uml.PumlDiagramScan.parsedKind(source));
+    }
+
     private static SketchDiagramType parserCheckedFallback(String source,
                                                            SketchDiagramType guess) {
         String kind = juml.core.formats.uml.PumlDiagramScan.parsedKind(source);
