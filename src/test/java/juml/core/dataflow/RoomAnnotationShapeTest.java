@@ -90,6 +90,40 @@ public class RoomAnnotationShapeTest {
                 + "public abstract class Db3 {}\n"));
     }
 
+    /** {@code @Entity} の複合主キー宣言から、主キーと判定された列名を返す。 */
+    private static List<String> pkColumnsOf(String entityAnn) {
+        RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse("package com.x;\n"
+                + "@Entity(" + entityAnn + ")\n"
+                + "public class UserTag {\n"
+                + "  public long userId;\n"
+                + "  public long tagId;\n"
+                + "  public String note;\n"
+                + "}\n"));
+        assertEquals(1, r.getEntities().size());
+        return r.getEntities().get(0).getColumns().stream()
+                .filter(RoomEntity.Column::isPrimaryKey)
+                .map(RoomEntity.Column::getName)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * 回帰: {@code primaryKeys} も {@code entities} と同じく囲みの有無を問わないこと。
+     *
+     * <p>囲み非依存の読み方は {@code entities} のためだけに書かれ、同じファイルの隣の
+     * member はそのまま残っていた。同じ意味の宣言が書き方で違う答えになる。</p>
+     */
+    @Test
+    public void primaryKeysDoesNotDependOnBraces() {
+        assertEquals("囲み無しの単一要素", List.of("userId"),
+                pkColumnsOf("tableName = \"users\", primaryKeys = \"userId\""));
+        assertEquals("非退行: 囲みあり単一要素", List.of("userId"),
+                pkColumnsOf("tableName = \"users\", primaryKeys = {\"userId\"}"));
+        assertEquals("非退行: 囲みあり複合", List.of("userId", "tagId"),
+                pkColumnsOf("tableName = \"x\", primaryKeys = {\"userId\", \"tagId\"}"));
+        assertEquals("Kotlin の arrayOf 形", List.of("userId", "tagId"),
+                pkColumnsOf("tableName = \"x\", primaryKeys = arrayOf(\"userId\", \"tagId\")"));
+    }
+
     private static String sqlOf(String daoSource, String op) {
         RoomAnalyzer.Result r = new RoomAnalyzer().analyze(parse(daoSource));
         assertEquals(1, r.getDaos().size());
