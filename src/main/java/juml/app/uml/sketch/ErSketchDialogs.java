@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 final class ErSketchDialogs {
 
     /** PlantUML の別名 (alias) として安全な識別子。 */
-    private static final Pattern ALIAS = Pattern.compile("[A-Za-z_$][\\w$]*");
+    private static final Pattern ALIAS = SketchIdentifier.BARE_PATTERN;
 
     private ErSketchDialogs() {
     }
@@ -77,11 +77,44 @@ final class ErSketchDialogs {
                     Messages.get("sketch.er.dlg.title"), JOptionPane.WARNING_MESSAGE);
             return false;
         }
+        String badColumn = firstUnwritableColumn(columns);
+        if (badColumn != null) {
+            JOptionPane.showMessageDialog(parent,
+                    Messages.get("sketch.er.dlg.columnError") + badColumn,
+                    Messages.get("sketch.er.dlg.title"), JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
         model.renameEntity(target, newAlias);
         String name = nameField.getText().trim();
         target.setDisplayName(name.isEmpty() || name.equals(newAlias) ? null : name);
         applyColumns(target, columns);
         return true;
+    }
+
+    /**
+     * 書き出して読み直したときに失われる列名があれば最初の 1 件を返す (無ければ null)。
+     *
+     * <p>ER の列行は引用符を持てないため、識別子として読み戻せない名前は保存できない。
+     * とくに区切り線と同じ {@code --} / {@code ==} / {@code ..} / {@code __} は書き出した
+     * 瞬間に PK ブロックの仕切りとして読み直され、<b>警告も編集ロックも無いまま列が消える</b>
+     * (空白を含む名前や {@code }} は列ブロックを壊す)。入口で断る方が失うより良い。</p>
+     *
+     * <p>{@code __} は<b>識別子としては妥当</b>なので識別子チェックだけでは素通りする。
+     * 区切り線かどうかはコーデック側の判定 ({@link ErSketchCodec#isDividerLine}) をそのまま
+     * 使い、両者が食い違わないようにする。型が空のときだけ書き出し行が区切りと同形になるが、
+     * 型は後から消せるので名前の時点で断る。</p>
+     */
+    static String firstUnwritableColumn(DefaultTableModel columns) {
+        for (int row = 0; row < columns.getRowCount(); row++) {
+            String name = str(columns.getValueAt(row, 1)).trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            if (!ALIAS.matcher(name).matches() || ErSketchCodec.isDividerLine(name)) {
+                return name;
+            }
+        }
+        return null;
     }
 
     /**

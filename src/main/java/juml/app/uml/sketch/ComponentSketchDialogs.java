@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 final class ComponentSketchDialogs {
 
     /** PlantUML の id として安全な識別子。 */
-    private static final Pattern ID = Pattern.compile("[A-Za-z_$][\\w$]*");
+    private static final Pattern ID = SketchIdentifier.BARE_PATTERN;
 
     private ComponentSketchDialogs() {
     }
