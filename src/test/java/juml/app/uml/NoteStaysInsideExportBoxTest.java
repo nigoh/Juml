@@ -6,6 +6,7 @@ package juml.app.uml;
 import org.junit.Test;
 
 import java.awt.Point;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
@@ -116,5 +117,40 @@ public class NoteStaysInsideExportBoxTest {
         DiagramNote n = layer.getNotes().get(0);
         assertTrue("下限だけが効くこと: " + n.getX() + "," + n.getY(),
                 n.getX() == 400 && n.getY() == 300);
+    }
+
+    /**
+     * 大きさを変える経路も書き出し範囲に収まること。
+     *
+     * <p>付箋が占める矩形は原点と<b>大きさ</b>の両方で決まるのに、クランプは原点にしか
+     * 入っていなかった。リサイズは図の外まで広げ放題で、プレビューでは全部見えるのに
+     * ({@code JViewport} がビューを引き伸ばす) 書き出しは図の内容矩形で寸法が決まるため
+     * 本文ごと切り落とされる — {@code placeFree} が潰したはずの症状が、この 1 経路だけに
+     * 残っていた。</p>
+     */
+    @Test
+    public void resizingAlsoKeepsTheNoteInsideTheBox() {
+        SvgPreviewPanel panel = panelWithSmallDiagram();
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(10, 20), 1.0);
+        DiagramNote n = layer.getNotes().get(0);
+
+        // 右下のリサイズハンドルを掴んで、図のはるか外へドラッグする。
+        int hx = (int) Math.round(n.getX() + n.getWidth()) - 2;
+        int hy = (int) Math.round(n.getY() + n.getHeight()) - 2;
+        assertTrue("リサイズ操作が始まること",
+                layer.pressed(new MouseEvent(panel, MouseEvent.MOUSE_PRESSED, 1L, 0,
+                        hx, hy, 1, false, MouseEvent.BUTTON1), 1.0));
+        layer.dragged(new MouseEvent(panel, MouseEvent.MOUSE_DRAGGED, 1L, 0,
+                1100, 760, 0, false, MouseEvent.BUTTON1), 1.0);
+        layer.released();
+
+        DiagramNote after = layer.getNotes().get(0);
+        assertTrue("右端が書き出し範囲を超えないこと: right="
+                        + (after.getX() + after.getWidth()) + " limit=" + panel.contentWidth(),
+                after.getX() + after.getWidth() <= panel.contentWidth() + 0.5);
+        assertTrue("下端が書き出し範囲を超えないこと: bottom="
+                        + (after.getY() + after.getHeight()) + " limit=" + panel.contentHeight(),
+                after.getY() + after.getHeight() <= panel.contentHeight() + 0.5);
     }
 }

@@ -91,4 +91,66 @@ public class LegendSymbolsSurviveRenderingTest {
         assertTrue("凡例の #LightYellow が記号ごと描かれること。実際の描画テキスト:\n" + text,
                 text.contains("#LightYellow"));
     }
+
+    /** Manifest 図の凡例も同じ規則を通ること (3 本目の兄弟経路)。 */
+    @Test
+    public void theManifestLegendKeepsItsColourSymbol() throws Exception {
+        String text = renderedText(
+                juml.core.formats.android.PlantUmlManifestDiagram.generate(exportedActivity()));
+        assertTrue("凡例の #LightYellow が記号ごと描かれること。実際の描画テキスト:\n" + text,
+                text.contains("#LightYellow"));
+    }
+
+    /** Android コンポーネント図の凡例も同じ規則を通ること (4 本目)。 */
+    @Test
+    public void theComponentLegendKeepsItsColourSymbol() throws Exception {
+        String text = renderedText(
+                juml.core.formats.android.PlantUmlComponentDiagram.generate(exportedActivity()));
+        assertTrue("凡例の #LightYellow が記号ごと描かれること。実際の描画テキスト:\n" + text,
+                text.contains("#LightYellow"));
+    }
+
+    /**
+     * コールグラフ (WBS) の凡例も同じ規則を通ること (5 本目)。
+     *
+     * <p>ここは色トークンが変数なので、先頭の空白を置いても記号は creole に食われる
+     * (PlantUML は行頭の空白を落としてから creole を見る)。</p>
+     */
+    @Test
+    public void theCallGraphLegendKeepsBothColourSymbols() throws Exception {
+        JavaClassInfo c = new JavaClassInfo();
+        c.setPackageName("p");
+        c.setSimpleName("A");
+        JavaMethodInfo m = new JavaMethodInfo();
+        m.setName("run");
+        m.setReturnType("void");
+        c.getMethods().add(m);
+        String text = renderedText(
+                PlantUmlCallGraphDiagram.generate(List.of(c), "A", "run", null));
+        assertTrue("起点色が記号ごと描かれること。実際の描画テキスト:\n" + text,
+                text.contains("#LightSkyBlue"));
+        assertTrue("プロジェクト内クラス色が記号ごと描かれること。実際の描画テキスト:\n" + text,
+                text.contains("#LightYellow"));
+    }
+
+    /** exported=true の Activity を 1 つ持つ最小の解析結果。 */
+    private static AndroidProjectAnalysis exportedActivity() {
+        AndroidProjectAnalysis analysis = new AndroidProjectAnalysis();
+        AndroidManifestInfo manifest = new AndroidManifestInfo();
+        manifest.setPackageName("com.x");
+        AndroidComponentInfo entry = new AndroidComponentInfo(
+                AndroidComponentInfo.Kind.ACTIVITY, "com.x.Entry");
+        entry.setExported(true);
+        AndroidIntentFilter filter = new AndroidIntentFilter();
+        filter.getActions().add("android.intent.action.VIEW");
+        filter.getCategories().add("android.intent.category.BROWSABLE");
+        AndroidDataSpec data = new AndroidDataSpec();
+        data.setScheme("https");
+        data.setHost("example.com");
+        filter.getDataSpecs().add(data);
+        entry.getIntentFilters().add(filter);
+        manifest.getActivities().add(entry);
+        analysis.getManifestsByModule().put("app", List.of(manifest));
+        return analysis;
+    }
 }

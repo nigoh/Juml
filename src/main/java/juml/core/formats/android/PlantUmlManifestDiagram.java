@@ -3,6 +3,7 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlLegendText;
 import juml.core.formats.uml.PlantUmlCommentFormatter;
 
 import java.util.LinkedHashMap;
@@ -339,7 +340,10 @@ public final class PlantUmlManifestDiagram {
         out.append("BroadcastReceiver: 通知 (ブロードキャスト) を受け取る部品\n");
         out.append("ContentProvider  : 他アプリとデータを共有する窓口\n");
         out.append("<<launcher>>     : アプリ起動時に最初に開く画面\n");
-        out.append("#LightYellow     : exported=true (他アプリから呼び出せる=外部公開)\n");
+        // 行頭の # は creole の番号付きリストに食われる。説明対象の記号そのものが
+        // 図から消えるので、凡例の「そのまま読ませたい行」は必ずここを通す。
+        out.append(PlantUmlLegendText.literalLine(
+                "#LightYellow     : exported=true (他アプリから呼び出せる=外部公開)")).append('\n');
         out.append("<<src:flavor>>   : main 以外のビルド種別だけにある定義 (debug 等)\n");
         if (o.showPermissions) {
             out.append("<<permission>>   : アプリが必要とする許可 (uses-permission)\n");

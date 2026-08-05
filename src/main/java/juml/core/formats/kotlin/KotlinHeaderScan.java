@@ -31,7 +31,17 @@ final class KotlinHeaderScan {
         return s.charAt(i) == '>' && i > 0 && s.charAt(i - 1) == '-';
     }
 
-    /** {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。 */
+    /**
+     * {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。
+     *
+     * <p>{@code where} 節に入ったらそこで打ち切る。{@code class Sorter<T> where T : Comparable<T>}
+     * の {@code :} は<b>型パラメータの制約</b>であってスーパータイプではない。区別せずに読むと
+     * 図に「Sorter implements Comparable」という<b>存在しない実装線</b>が引かれ、
+     * {@code where K : Any} なら {@code Any} を、複数制約なら {@code T : Cloneable} という
+     * 架空のインタフェース名を継承リストに並べていた。同じヘッダ領域を読む兄弟の
+     * {@link #primaryCtorParenAfter} は以前から where を正しく無視しており、片方だけが
+     * 知らない状態だった。</p>
+     */
     static int topLevelColon(String s) {
         int depth = 0;
         for (int i = 0; i < s.length(); i++) {
@@ -46,9 +56,23 @@ final class KotlinHeaderScan {
                 return i;
             } else if ((c == '{' || c == '}') && depth == 0) {
                 return -1;
+            } else if (depth == 0 && isWordAt(s, i, "where")) {
+                return -1;
             }
         }
         return -1;
+    }
+
+    /** {@code s} の位置 {@code i} が語として {@code word} で始まるか (前後が識別子でない)。 */
+    private static boolean isWordAt(String s, int i, String word) {
+        if (!s.startsWith(word, i)) {
+            return false;
+        }
+        if (i > 0 && KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
+            return false;
+        }
+        int after = i + word.length();
+        return after >= s.length() || !KotlinLightScanner.isIdentPart(s.charAt(after));
     }
 
     /** ネストの外側にあるカンマで分割する (要素内の {@code <>}/{@code ()} は保つ)。 */
@@ -217,7 +241,7 @@ final class KotlinHeaderScan {
     }
 
     /** 型パラメータ {@code <...>} を読み飛ばした次位置。閉じられていなければ -1。 */
-    private static int skipAngles(String src, int at) {
+    static int skipAngles(String src, int at) {
         int depth = 0;
         for (int i = at; i < src.length(); i++) {
             char c = src.charAt(i);

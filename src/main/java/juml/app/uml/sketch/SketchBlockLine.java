@@ -48,10 +48,15 @@ final class SketchBlockLine {
     /**
      * ブロック内のコメント行か。
      *
-     * <p>判定は各 codec の外側ループとまったく同じ {@code startsWith("'")}。ここだけ
-     * 別の条件にすると、同じ行がブロックの内と外で違う扱いになる。</p>
+     * <p>PlantUML のコメントは 2 種類ある — 行コメント {@code '…} と<b>ブロックコメント
+     * {@code /' … '/}</b>。{@code '} だけを見ていたため、ブロックコメントは素通りして
+     * オブジェクト図の属性として取り込まれ、書き出しで {@code Foo : /' hidden '/} になった。
+     * PlantUML はブロックコメントを除去してから解析するので {@code Foo :} だけが残り、
+     * <b>構文エラーで図が描けなくなる</b> (同梱 1.2026.6 で実測)。同じ行をブロックの外に
+     * 置けば各 codec の外側ループがロックする — 内と外で扱いが割れていた。</p>
      */
     static boolean isComment(String trimmedLine) {
-        return trimmedLine != null && trimmedLine.startsWith("'");
+        return trimmedLine != null
+                && (trimmedLine.startsWith("'") || trimmedLine.startsWith("/'"));
     }
 }

@@ -197,6 +197,7 @@ public final class ErSketchCodec {
         int i = start;
         int dividers = 0;
         int dividerAfter = -1;
+        String dividerToken = null;
         while (i < lines.length) {
             String line = lines[i].trim();
             // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま @enduml/@startuml に
@@ -213,9 +214,10 @@ public final class ErSketchCodec {
             }
             if (isDividerLine(line)) {
                 // 区切り線はモデルに持たない — 書き出しは PK 列と一般列の境目に
-                // 自動で 1 本引く。読んだ位置がその境目と一致するときだけ捨ててよい。
+                // 自動で "--" を 1 本引く。読んだものがそのまま出てくるときだけ捨ててよい。
                 dividers++;
                 dividerAfter = e.getColumns().size();
+                dividerToken = line;
                 continue;
             }
             Matcher col = COLUMN.matcher(line);
@@ -226,32 +228,50 @@ public final class ErSketchCodec {
                 unsupported.add(line);
             }
         }
-        if (dividers > 0 && !dividerIsReproduced(e, dividers, dividerAfter)) {
-            // 書き戻しで同じ位置に引けない区切り線は<b>黙って消える</b>。読んだものが
-            // 出てこないなら編集をロックして原文を守る (他の codec が非対応行に対して
-            // している判断と同じ)。
-            unsupported.add("--");
+        String lost = lostOnWriteBack(e, dividers, dividerAfter, dividerToken);
+        if (lost != null) {
+            // 読んだものが書き戻しで出てこないなら編集をロックして原文を守る
+            // (他の codec が非対応行に対してしている判断と同じ)。積むのは<b>原文の行</b> —
+            // 固定文字列 "--" を積むと、利用者のファイルに無い行がバナーに出る。
+            unsupported.add(lost);
         }
         return i;
     }
 
     /**
-     * 読んだ区切り線を {@link #toPuml} がそのまま再現するか。
+     * 列ブロックを {@link #toPuml} がそのまま再現できないなら、その原因の行を返す。
      *
-     * <p>再現するのは「区切りが 1 本だけ」「その手前がすべて PK 列」「その後ろに
-     * PK 列が無い」「前後とも空でない」場合に限る。それ以外は列の並べ替えか区切りの
-     * 消失が起きる。</p>
+     * <p>書き出しは<b>PK 列 → {@code --} → 一般列</b>の順に固定されている。したがって
+     * 再現できるのは「PK 列がすべて一般列より前にある」ことが前提で、そのうえで
+     * 区切り線については「1 本だけ」「PK と一般列の境目にある」「トークンが {@code --}」の
+     * 3 つが要る。</p>
+     *
+     * <p>ラウンド 20 は区切り線の<b>位置</b>だけを見ていた。同じ損失なのに、
+     * トークンの違い ({@code ==} は二重線、{@code ..} は破線と、実測で別の線が描かれる) と
+     * <b>区切り線を書いていない図の列並べ替え</b>が素通しのままだった — どちらも
+     * 「読んだものが出てこない」という 1 つの規則の兄弟である。</p>
      */
-    private static boolean dividerIsReproduced(ErSketchModel.Entity e, int dividers, int at) {
-        if (dividers != 1 || at <= 0 || at >= e.getColumns().size()) {
-            return false;
-        }
-        for (int k = 0; k < e.getColumns().size(); k++) {
-            if (e.getColumns().get(k).isPrimaryKey() != (k < at)) {
-                return false;
+    private static String lostOnWriteBack(ErSketchModel.Entity e, int dividers,
+                                          int at, String token) {
+        List<ErSketchModel.Column> cols = e.getColumns();
+        int firstNonPk = -1;
+        for (int k = 0; k < cols.size(); k++) {
+            if (!cols.get(k).isPrimaryKey()) {
+                if (firstNonPk < 0) {
+                    firstNonPk = k;
+                }
+            } else if (firstNonPk >= 0) {
+                // PK が一般列の後ろにある = 書き出しで前へ動く (区切り線の有無に関わらず)。
+                return cols.get(k).getName();
             }
         }
-        return true;
+        if (dividers == 0) {
+            return null;
+        }
+        if (dividers > 1 || at != firstNonPk || firstNonPk <= 0) {
+            return token;
+        }
+        return "--".equals(token) ? null : token;
     }
 
     private static void addRelation(ErSketchModel model, Matcher rel) {

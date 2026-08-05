@@ -506,8 +506,7 @@ final class DiagramNotesLayer {
                 }
             }
         } else if (!active.isLocked()) {
-            active.setWidth(p.x / zoom - effX(active));
-            active.setHeight(p.y / zoom - effY(active));
+            sizeFree(active, p.x / zoom - effX(active), p.y / zoom - effY(active));
             dragChanged = true;
         }
         owner.repaint();
@@ -607,7 +606,7 @@ final class DiagramNotesLayer {
         }
         commit(null, () -> {
             for (DiagramNote n : sel) {
-                n.setHeight(renderer.contentHeight(n));
+                sizeFree(n, n.getWidth(), renderer.contentHeight(n));
             }
         });
     }
@@ -636,6 +635,32 @@ final class DiagramNotesLayer {
      * いた。図の大きさを知るのは所有パネルだけなので、呼び出し側に渡させず (足し忘れた
      * 経路がまた外へ置く) ここで問い合わせる。
      */
+    /**
+     * FREE 付箋の<b>大きさ</b>を書き出し範囲内へ収めて設定する。
+     *
+     * <p>付箋が占める矩形は原点と同じだけ大きさでも決まるのに、クランプは原点にしか
+     * 入っていなかった。リサイズは図の外まで広げ放題で、プレビューでは全部見えるのに
+     * ({@code JViewport} がビューを引き伸ばす) PNG も SVG も図の内容矩形で寸法が
+     * 決まるため、<b>書き出しでは本文ごと切り落とされる</b> — {@code placeFree} が
+     * 潰したはずの症状が、この 1 経路だけに残っていた。</p>
+     */
+    private void sizeFree(DiagramNote n, double w, double h) {
+        if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
+            n.setWidth(w);
+            n.setHeight(h);
+            return;
+        }
+        n.setWidth(limitToContent(w, effX(n), true));
+        n.setHeight(limitToContent(h, effY(n), false));
+    }
+
+    /** 原点 {@code origin} から書き出し範囲の端までに収まる大きさ。 */
+    private double limitToContent(double size, double origin, boolean horizontal) {
+        double limit = owner instanceof SvgPreviewPanel p
+                ? (horizontal ? p.contentWidth() : p.contentHeight()) : 0;
+        return limit <= 0 ? size : Math.min(size, Math.max(0, limit - origin));
+    }
+
     /** FREE 付箋の原点を書き出し範囲内へ寄せて設定する (置き換え・移動・複製の共通経路)。 */
     private void placeFree(DiagramNote n, double x, double y) {
         n.setX(clampToContent(x, n.getWidth(), true));

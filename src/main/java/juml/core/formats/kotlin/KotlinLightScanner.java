@@ -53,13 +53,7 @@ public final class KotlinLightScanner {
      * {@link KotlinBlockMask#declPrefixes} から引く — 6 経路で 1 つの規則を使う。</p>
      */
     private static final Pattern CLASS_HEADER = Pattern.compile(
-            "(?<![A-Za-z0-9_$.])(class|interface|object)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
-    /** プライマリコンストラクタ引数の {@code val/var name:} まで (型は走査で切る)。 */
-    private static final Pattern CTOR_PARAM_HEAD = Pattern.compile(
-            "(?:val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
-    /** 関数引数の {@code name:} まで (型は走査で切る)。 */
-    private static final Pattern PARAM_HEAD = Pattern.compile(
-            "([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
+            "(?<![A-Za-z0-9_$.:])(class|interface|object)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
     /**
      * クラス本体内の {@code val/var name:} まで。<b>型は正規表現で切らない</b>。
      *
@@ -76,20 +70,19 @@ public final class KotlinLightScanner {
      * {@link KotlinBlockMask#propertyTypeEnd} が行う。</p>
      */
     private static final Pattern PROPERTY = Pattern.compile(
-            "(?<![A-Za-z0-9_$.])(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
+            "(?<![A-Za-z0-9_$.:])(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
 
-    /** {@code fun name(params): ReturnType}。 */
+    /**
+     * {@code fun} キーワードだけ。<b>型パラメータも引数も戻り値もここで切らない</b>。
+     *
+     * <p>型パラメータは {@code (?:<[^>]+>\s+)?} と書いていた — 「{@code >} を含まない 1 段」
+     * という数え上げなので、制約付き {@code fun <T : Comparable<T>> maxOf(…)} で照合が
+     * 失敗し、そのメソッドが<b>丸ごとクラス図から消えて</b>いた。同じ入れ子はクラスヘッダ側の
+     * {@code KotlinHeaderScan.skipAngles} が深さを数えて正しく読んでいる。引数リストと
+     * 戻り値の型はすでに走査へ寄せてあったので、残っていた型パラメータもそこへ揃える。</p>
+     */
     private static final Pattern FUN_DECL = Pattern.compile(
-            "(?<![A-Za-z0-9_$.])"
-                    // 名前と引数リストの開き括弧まで。引数リストと戻り値の型は
-                    // <b>正規表現で切らない</b> — どちらもプロパティの型とまったく同じ
-                    // 理由で、数え上げるかぎり必ず取りこぼす。実際、引数は 1 段の入れ子
-                    // しか許しておらず入れ子既定引数でメソッドごと落ち、戻り値の型は
-                    // 文字クラス方式のままだったので `Class<*>` や `(Int) -> Unit` を
-                    // 返すメソッドが<b>丸ごと消えて</b>いた (同じ型をプロパティに書けば
-                    // 通る、という経路依存の食い違い)。引数は括弧の対応で、戻り値の型は
-                    // プロパティと同じ {@link KotlinBlockMask#propertyTypeEnd} で読む。
-                    + "fun\\s+(?:<[^>]+>\\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
+            "(?<![A-Za-z0-9_$.:])fun(?![A-Za-z0-9_$])");
 
     /** Kotlin ソースから {@link JavaClassInfo} のリストを抽出する。 */
     public static List<JavaClassInfo> scan(String source, ErrorListener listener) {
@@ -321,10 +314,19 @@ public final class KotlinLightScanner {
         }
     }
 
-    /** enum 定数: 先頭の (任意アノテーション付き) 識別子と、続く {@code (...)} 引数。 */
+    /**
+     * enum 定数: 識別子と、続く {@code (...)} 引数。<b>前置はここに書かない</b>。
+     *
+     * <p>書いていた頃はここだけが 0 段の数え上げ {@code \([^)]*\)} を持っていて、
+     * annotation の引数に入れ子括弧や文字列中の {@code )} があると照合が失敗し、
+     * しかも {@code @[A-Za-z_][\w.]*} がバックトラックするので<b>失敗せずに
+     * annotation 名の最後の 1 文字が定数名として採用された</b> —
+     * {@code @Deprecated("use ACTIVE", ReplaceWith("ACTIVE")) RUNNING} が
+     * {@code d} という名前の定数になって図に出ていた。前置は他の宣言と同じく
+     * {@link KotlinBlockMask#scanDeclPrefix} が読む。</p>
+     */
     private static final Pattern ENUM_CONST = Pattern.compile(
-            "^\\s*(?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*"
-                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*(\\(.*\\))?", Pattern.DOTALL);
+            "^([A-Za-z_$][A-Za-z0-9_$]*)\\s*(\\(.*\\))?", Pattern.DOTALL);
 
     /**
      * {@code enum class} 本体から定数を取り込む。定数は本体先頭、最初のトップレベル {@code ;}
@@ -339,7 +341,9 @@ public final class KotlinLightScanner {
             if (e.isEmpty()) {
                 continue;
             }
-            Matcher m = ENUM_CONST.matcher(e);
+            // 前置 (annotation・修飾子) は他の宣言とまったく同じ走査で読み飛ばす。
+            String afterPrefix = e.substring(KotlinBlockMask.scanDeclPrefix(e, 0).declStart);
+            Matcher m = ENUM_CONST.matcher(afterPrefix);
             if (!m.find()) {
                 continue;
             }
@@ -403,18 +407,22 @@ public final class KotlinLightScanner {
     private static void extractPrimaryCtorFields(String paramsText, JavaClassInfo info) {
         if (paramsText == null) return;
         for (String raw : KotlinHeaderScan.splitTopLevelCommas(paramsText)) {
-            KotlinBlockMask.DeclPrefix pre = KotlinBlockMask.scanDeclPrefix(raw, 0);
-            Matcher m = CTOR_PARAM_HEAD.matcher(raw).region(pre.declStart, raw.length());
-            if (!m.lookingAt()) {
+            int[] span = KotlinBlockMask.nameBeforeTopLevelColon(raw);
+            if (span == null) {
                 continue;
             }
-            int typeEnd = KotlinBlockMask.propertyTypeEnd(raw, m.end());
-            String type = raw.substring(m.end(), typeEnd).trim();
+            // val/var が付いた引数だけがプロパティ。名前は関数引数と同じ規則で取る。
+            KotlinBlockMask.DeclPrefix pre = KotlinBlockMask.scanDeclPrefix(raw, 0);
+            if (!KotlinBlockMask.declaresProperty(raw, pre.declStart, span[0])) {
+                continue;
+            }
+            int typeEnd = KotlinBlockMask.propertyTypeEnd(raw, span[2]);
+            String type = raw.substring(span[2], typeEnd).trim();
             if (type.isEmpty()) {
                 continue;
             }
             JavaFieldInfo f = new JavaFieldInfo();
-            f.setName(m.group(1));
+            f.setName(raw.substring(span[0], span[1]));
             f.setType(type);
             f.setVisibility(visibilityOf(pre.modifiers));
             f.getAnnotations().addAll(pre.annotations);
@@ -486,13 +494,34 @@ public final class KotlinLightScanner {
                 continue;
             }
             KotlinBlockMask.DeclPrefix pre = prefixAt(pres, m.start());
-            String name = m.group(1);
-            // 引数リストは括弧の対応で切る (m.end() - 1 が開き括弧)。
-            int close = matchParen(body, m.end() - 1);
-            if (close <= m.end() - 1) {
+            // 型パラメータ <…> は入れ子を数えて読み飛ばす (深さを数えないと
+            // `fun <T : Comparable<T>> maxOf(…)` でメソッドごと消える)。
+            int at = nextNonSpaceChar(body, m.end());
+            if (at >= 0 && body.charAt(at) == '<') {
+                int angleEnd = KotlinHeaderScan.skipAngles(body, at);
+                if (angleEnd < 0) {
+                    continue;
+                }
+                at = nextNonSpaceChar(body, angleEnd);
+            }
+            if (at < 0 || !isIdentStart(body.charAt(at))) {
+                continue; // 拡張関数のレシーバ型など、名前が直接来ない形は取らない
+            }
+            int nameEnd = at;
+            while (nameEnd < body.length() && isIdentPart(body.charAt(nameEnd))) {
+                nameEnd++;
+            }
+            String name = body.substring(at, nameEnd);
+            int open = nextNonSpaceChar(body, nameEnd);
+            if (open < 0 || body.charAt(open) != '(') {
+                continue;
+            }
+            // 引数リストは括弧の対応で切る。
+            int close = matchParen(body, open);
+            if (close <= open) {
                 continue; // 閉じていない = 宣言として読めない
             }
-            String paramsText = body.substring(m.end(), close);
+            String paramsText = body.substring(open + 1, close);
             // 戻り値の型はプロパティとまったく同じ走査で読む。
             int afterSig = close + 1;
             String returnType = null;
@@ -630,26 +659,17 @@ public final class KotlinLightScanner {
         if (text == null || text.trim().isEmpty()) return;
         // ジェネリクスを尊重した split
         for (String raw : KotlinHeaderScan.splitTopLevelCommas(text)) {
-            String p = stripLeadingNonCode(raw);
-            if (p.trim().isEmpty()) continue;
-            int at = KotlinBlockMask.scanDeclPrefix(p, 0).declStart;
-            Matcher m = PARAM_HEAD.matcher(p).region(at, p.length());
-            if (!m.lookingAt()) {
-                // 引数名が修飾子と同じ綴り (`data: String` 等) なら前置として食われている。
-                // 前置の手前から読み直す — 名前の綴りで引数が消えてはいけない。
-                m = PARAM_HEAD.matcher(p);
-                if (!m.lookingAt()) continue;
-            }
-            int typeFrom = m.end();
-            String type = p.substring(
-                    typeFrom, KotlinBlockMask.propertyTypeEnd(p, typeFrom)).trim();
+            int[] span = KotlinBlockMask.nameBeforeTopLevelColon(raw);
+            if (span == null) continue;
+            int typeFrom = span[2];
+            String type = raw.substring(
+                    typeFrom, KotlinBlockMask.propertyTypeEnd(raw, typeFrom)).trim();
             if (type.isEmpty()) continue;
-            mth.getParameterNames().add(m.group(1));
+            mth.getParameterNames().add(raw.substring(span[0], span[1]));
             mth.getParameterTypes().add(type);
         }
     }
 
-    /** 先頭の空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
     private static String stripLeadingNonCode(String s) {
         int i = 0;
         while (i < s.length()) {
@@ -771,7 +791,7 @@ public final class KotlinLightScanner {
         return sb.toString();
     }
 
-    private static boolean isIdentStart(char c) {
+    static boolean isIdentStart(char c) {
         return Character.isLetter(c) || c == '_' || c == '$';
     }
 

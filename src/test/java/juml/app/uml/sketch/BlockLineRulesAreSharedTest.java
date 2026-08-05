@@ -5,6 +5,8 @@ package juml.app.uml.sketch;
 
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -95,5 +97,69 @@ public class BlockLineRulesAreSharedTest {
                 "@startuml\nentity A {\n  id : int\n  --\n  name : text\n}\n@enduml\n");
         assertFalse("PK が無く再現できない区切りはロックすること",
                 elsewhere.isFullySupported());
+    }
+
+    /**
+     * ブロックコメント {@code /' … '/} も行コメントと同じ扱いであること。
+     *
+     * <p>{@code '} だけを見ていたため素通りしてオブジェクト図の属性になり、書き出しで
+     * {@code Foo : /' hidden '/} になった。PlantUML はブロックコメントを除去してから
+     * 解析するので {@code Foo :} だけが残り、<b>構文エラーで図が描けなくなる</b> —
+     * 設計器で 1 回操作しただけで描けない図に変わっていた。</p>
+     */
+    @Test
+    public void aBlockCommentInsideABlockLocksTheDesignerToo() {
+        ObjectSketchCodec.ParseResult obj = ObjectSketchCodec.parse(
+                "@startuml\nobject Foo {\n  a = 1\n  /' hidden '/\n  b = 2\n}\n@enduml\n");
+        assertFalse("ブロックコメントを含む本体は編集ロック", obj.isFullySupported());
+        assertTrue("属性として取り込まれていないこと: "
+                        + obj.model.getObjects().get(0).getAttributes(),
+                obj.model.getObjects().get(0).getAttributes().stream()
+                        .noneMatch(s -> s.startsWith("/'")));
+    }
+
+    /**
+     * 区切り線の<b>トークン</b>も往復すること。書き出しは常に {@code --} を引くので、
+     * {@code ==} / {@code __} / {@code ..} で書かれた図は編集で化ける。
+     *
+     * <p>同梱 PlantUML 1.2026.6 で 4 種は別の線として描かれる (実測: {@code ==} は
+     * 二重線、{@code ..} は破線)。ラウンド 20 は区切りの<b>位置</b>しか見ておらず、
+     * トークンの違いが素通しだった。</p>
+     */
+    @Test
+    public void anErDividerTokenIsNotSilentlyReplaced() {
+        for (String token : new String[]{"==", "__", ".."}) {
+            ErSketchCodec.ParseResult r = ErSketchCodec.parse(
+                    "@startuml\nhide circle\nentity E {\n  * id : int\n  " + token
+                            + "\n  name : text\n}\n@enduml\n");
+            assertFalse(token + " は書き戻しで -- に化けるのでロックすること",
+                    r.isFullySupported());
+            assertEquals("報告するのは原文の行であること (利用者のファイルに無い行を出さない)",
+                    List.of(token), r.unsupportedLines);
+        }
+    }
+
+    /**
+     * 区切り線が無くても、列の並べ替えが起きるならロックすること。
+     *
+     * <p>書き出しは PK 列 → 一般列の順に固定されている。原文で PK が後ろにあると
+     * 設計器で 1 回動かしただけで列順が変わり、元は無かった {@code --} まで挿入される。
+     * ラウンド 20 の検出は区切り線があるときにしか働いていなかった。</p>
+     */
+    @Test
+    public void reorderingColumnsLocksEvenWithoutADivider() {
+        ErSketchCodec.ParseResult reordered = ErSketchCodec.parse(
+                "@startuml\nhide circle\nentity M {\n  name : text\n  * id : int\n}\n@enduml\n");
+        assertFalse("PK が後ろにある = 書き出しで前へ動く", reordered.isFullySupported());
+
+        ErSketchCodec.ParseResult interleaved = ErSketchCodec.parse(
+                "@startuml\nhide circle\nentity O {\n  * order_id : int\n  qty : int\n"
+                        + "  * product_id : int\n}\n@enduml\n");
+        assertFalse("複合キーが割れる形もロック", interleaved.isFullySupported());
+
+        ErSketchCodec.ParseResult ordered = ErSketchCodec.parse(
+                "@startuml\nhide circle\nentity P {\n  * id : int\n  name : text\n}\n@enduml\n");
+        assertTrue("並びが書き出しと同じなら編集できること: " + ordered.unsupportedLines,
+                ordered.isFullySupported());
     }
 }
