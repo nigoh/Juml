@@ -598,7 +598,13 @@ final class DiagramNotesLayer {
         }
     }
 
-    /** 選択中の付箋の高さを本文量に合わせて調整する (幅は維持)。 */
+    /**
+     * 選択中の付箋の高さを本文量に合わせる。
+     *
+     * <p>幅は変えない。図の下端寄りで本文が入らないときは<b>付箋を上へ寄せて</b>
+     * 高さを確保する — 切り詰めて「合わせられませんでした」と黙るより、
+     * このコマンドの目的 (本文が収まる高さにする) を果たす。</p>
+     */
     void fitHeightSelected() {
         List<DiagramNote> sel = selectedNotes();
         if (sel.isEmpty()) {
@@ -619,7 +625,7 @@ final class DiagramNotesLayer {
         double w = 280 / zoom;
         double h = 160 / zoom;
         DiagramNote n = new DiagramNote(0, 0, w, h, "");
-        placeFree(n, p.x / zoom, p.y / zoom);
+        fitFree(n, p.x / zoom, p.y / zoom, w, h);
         commit(null, () -> {
             notes.add(n);
             selectedIds.clear();
@@ -629,49 +635,51 @@ final class DiagramNotesLayer {
     }
 
     /**
-     * 付箋の原点を<b>書き出される図の範囲内</b>へ寄せる。下限 0 だけを見ていたため、図が
-     * ウィンドウより小さいと画面には見えるのに図の外へ置かれ (JViewport がビューを引き
-     * 伸ばす)、PNG も SVG も図の内容矩形で寸法が決まるので<b>書き出しから黙って消えて</b>
-     * いた。図の大きさを知るのは所有パネルだけなので、呼び出し側に渡させず (足し忘れた
-     * 経路がまた外へ置く) ここで問い合わせる。
-     */
-    /**
-     * FREE 付箋の<b>大きさ</b>を書き出し範囲内へ収めて設定する。
+     * FREE 付箋の<b>矩形全体</b>を書き出される図の範囲内へ収める。位置も大きさもここを通る。
      *
-     * <p>付箋が占める矩形は原点と同じだけ大きさでも決まるのに、クランプは原点にしか
-     * 入っていなかった。リサイズは図の外まで広げ放題で、プレビューでは全部見えるのに
-     * ({@code JViewport} がビューを引き伸ばす) PNG も SVG も図の内容矩形で寸法が
-     * 決まるため、<b>書き出しでは本文ごと切り落とされる</b> — {@code placeFree} が
-     * 潰したはずの症状が、この 1 経路だけに残っていた。</p>
+     * <p>言明は 1 つ:<b>付箋が占める矩形は図の内容矩形の中にある</b>。図がウィンドウより
+     * 小さいと、画面には見えるのに ({@code JViewport} がビューを引き伸ばす) PNG も SVG も
+     * 図の内容矩形で寸法が決まるため、外へ出た分は<b>書き出しから黙って消える</b>。</p>
+     *
+     * <p>以前はこれを「原点を寄せる」と「大きさを切り詰める」の 2 つの規則に分けて持って
+     * いた。分けた結果、大きさの規則がリサイズにしか入らず生成・複製・貼り付けが素通しに
+     * なり、逆に高さ合わせでは大きさを切り詰めるだけで<b>本文が入らない高さ</b>を返すように
+     * なった。1 つの言明にすれば、切り詰めるか動かすかは<b>結果として</b>決まる —
+     * まず箱に入る大きさへ、次に矩形が収まる位置へ。</p>
      */
-    private void sizeFree(DiagramNote n, double w, double h) {
+    private void fitFree(DiagramNote n, double x, double y, double w, double h) {
         if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
+            // 要素相対なので図の内容矩形とは無関係 (負の位置も正当)。
+            n.setX(x);
+            n.setY(y);
             n.setWidth(w);
             n.setHeight(h);
             return;
         }
-        n.setWidth(limitToContent(w, effX(n), true));
-        n.setHeight(limitToContent(h, effY(n), false));
+        double cw = contentLimit(true);
+        double ch = contentLimit(false);
+        double fw = cw <= 0 ? w : Math.min(w, cw);
+        double fh = ch <= 0 ? h : Math.min(h, ch);
+        n.setWidth(fw);
+        n.setHeight(fh);
+        n.setX(cw <= 0 ? Math.max(0, x) : Math.max(0, Math.min(x, cw - fw)));
+        n.setY(ch <= 0 ? Math.max(0, y) : Math.max(0, Math.min(y, ch - fh)));
     }
 
-    /** 原点 {@code origin} から書き出し範囲の端までに収まる大きさ。 */
-    private double limitToContent(double size, double origin, boolean horizontal) {
-        double limit = owner instanceof SvgPreviewPanel p
-                ? (horizontal ? p.contentWidth() : p.contentHeight()) : 0;
-        return limit <= 0 ? size : Math.min(size, Math.max(0, limit - origin));
-    }
-
-    /** FREE 付箋の原点を書き出し範囲内へ寄せて設定する (置き換え・移動・複製の共通経路)。 */
+    /** FREE 付箋を移動する (大きさは変えない)。 */
     private void placeFree(DiagramNote n, double x, double y) {
-        n.setX(clampToContent(x, n.getWidth(), true));
-        n.setY(clampToContent(y, n.getHeight(), false));
+        fitFree(n, x, y, n.getWidth(), n.getHeight());
     }
 
-    private double clampToContent(double v, double size, boolean horizontal) {
-        double limit = owner instanceof SvgPreviewPanel p
+    /** FREE 付箋の大きさを変える (位置は保つ — 収まらなければ矩形ごと寄る)。 */
+    private void sizeFree(DiagramNote n, double w, double h) {
+        fitFree(n, n.getX(), n.getY(), w, h);
+    }
+
+    /** 図の内容矩形の幅/高さ。所有者が答えられなければ 0 (= 制限なし)。 */
+    private double contentLimit(boolean horizontal) {
+        return owner instanceof SvgPreviewPanel p
                 ? (horizontal ? p.contentWidth() : p.contentHeight()) : 0;
-        return limit <= 0 ? Math.max(0, v)
-                : Math.max(0, Math.min(v, Math.max(0, limit - size)));
     }
 
     /** 指定要素 (FQN) に追従する ELEMENT 付箋を要素右上に追加して選択する ({@code rect} は要素矩形, null 可)。 */
@@ -800,7 +808,8 @@ final class DiagramNotesLayer {
             selectedIds.clear();
             for (DiagramNote s : sel) {
                 DiagramNote d = s.duplicate();
-                placeFree(d, s.getX() + PASTE_OFFSET, s.getY() + PASTE_OFFSET);
+                fitFree(d, s.getX() + PASTE_OFFSET, s.getY() + PASTE_OFFSET,
+                        d.getWidth(), d.getHeight());
                 notes.add(d);
                 selectedIds.add(d.getId());
             }
@@ -829,7 +838,8 @@ final class DiagramNotesLayer {
             selectedIds.clear();
             for (DiagramNote c : clipboard) {
                 DiagramNote d = c.duplicate();
-                placeFree(d, c.getX() + PASTE_OFFSET, c.getY() + PASTE_OFFSET);
+                fitFree(d, c.getX() + PASTE_OFFSET, c.getY() + PASTE_OFFSET,
+                        d.getWidth(), d.getHeight());
                 notes.add(d);
                 selectedIds.add(d.getId());
             }

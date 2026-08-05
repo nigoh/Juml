@@ -45,6 +45,15 @@ final class KotlinHeaderScan {
     static int topLevelColon(String s) {
         int depth = 0;
         for (int i = 0; i < s.length(); i++) {
+            // コメント・文字列は宣言ではない。ヘッダ検出・プロパティ・関数・引数の
+            // 4 経路は以前からこの規則を持っていて、ヘッダ区間の走査だけが生テキストの
+            // ままだった (実測: 継承リストのコメントを型名として読み、改行入りの
+            // 引用符付きラベルを書き出して図が 1 枚も描けなくなる)。
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                i = e - 1;
+                continue;
+            }
             char c = s.charAt(i);
             if (c == '<' || c == '(' || c == '[') {
                 depth++;
@@ -64,7 +73,7 @@ final class KotlinHeaderScan {
     }
 
     /** {@code s} の位置 {@code i} が語として {@code word} で始まるか (前後が識別子でない)。 */
-    private static boolean isWordAt(String s, int i, String word) {
+    static boolean isWordAt(String s, int i, String word) {
         if (!s.startsWith(word, i)) {
             return false;
         }
@@ -81,6 +90,15 @@ final class KotlinHeaderScan {
         int depth = 0;
         StringBuilder cur = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
+            // コメントの中のカンマ・括弧で分割しない。読み飛ばしつつ<b>本文には残す</b> —
+            // 呼び出し側 (引数・スーパータイプ・enum 定数) はそれぞれ自前でコメントを
+            // 落とすので、ここで消すと位置がずれる。
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                cur.append(s, i, e);
+                i = e - 1;
+                continue;
+            }
             char c = s.charAt(i);
             if (c == '<' || c == '(' || c == '[' || c == '{') {
                 depth++;

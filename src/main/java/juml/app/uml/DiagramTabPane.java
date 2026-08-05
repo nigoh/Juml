@@ -1463,6 +1463,13 @@ public final class DiagramTabPane {
         java.io.File switchedRoot = cache.getProjectRoot();
         for (DiagramTab t : openTabs.values()) {
             if (switchedRoot != null) {
+                // 再バインドの前にレイヤを空にする。図種切替の 2 経路は以前から
+                // そうしているが、ここだけ残していた。bind の非同期ロードは
+                // 「レイヤに付箋が無い」ことを条件に反映するので、旧プロジェクトの
+                // 付箋が残っていると<b>切替先に保存済みの付箋が読み込まれず</b>、
+                // その後 1 つ動かした瞬間に旧プロジェクトの付箋で上書き保存される。
+                t.previewPanel.notes().setData(
+                        java.util.Collections.emptyList(), java.util.Collections.emptyList());
                 notesBinder.bind(t.previewPanel, switchedRoot, t.key);
             }
             navHistory.push(t.key);

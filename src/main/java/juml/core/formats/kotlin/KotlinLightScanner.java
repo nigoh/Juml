@@ -281,14 +281,24 @@ public final class KotlinLightScanner {
         }
         String list = region.substring(colon + 1);
         for (int i = 0; i < list.length(); i++) {
+            int nc = skipNonCode(list, i);
+            if (nc > i) {
+                i = nc - 1;
+                continue;
+            }
             char c = list.charAt(i);
-            if (c == '{' || c == '}') {
+            // `where` の型制約はスーパータイプではない。継承コロンが<b>無い</b>形は
+            // topLevelColon が打ち切るが、スーパータイプが有ると先に継承コロンが
+            // 返るのでここまで来る — 同じ規則を両方の経路に入れる。入れないと
+            // 最後の項が where 節を丸ごと飲み込み、`Marker where T : Comparable` と
+            // いう存在しない箱への実装線が引かれ、本物への線は 1 本も引かれない。
+            if (c == '{' || c == '}' || KotlinHeaderScan.isWordAt(list, i, "where")) {
                 list = list.substring(0, i);
                 break;
             }
         }
         for (String raw : KotlinHeaderScan.splitTopLevelCommas(list)) {
-            String e = raw.trim();
+            String e = KotlinBlockMask.codeOnly(raw).trim();
             if (e.isEmpty()) {
                 continue;
             }
@@ -334,15 +344,24 @@ public final class KotlinLightScanner {
      * {@link JavaClassInfo#getEnumConstantArgs()} に括弧付きで対応保持する。
      */
     private static void extractEnumConstants(String body, JavaClassInfo info) {
-        int semi = topLevelSemicolon(body);
+        // コメント中のカンマ・セミコロン・括弧で定数を切らない。メンバー抽出は
+        // codeMask に nonCodeMask を畳み込んで守られているのに、enum 定数だけが
+        // 生の body を読んでいた (実測: コメントに書いた語が定数として描かれ、
+        // 実在する定数が消える / コメント中の `;` で定数がゼロになる)。
+        body = KotlinBlockMask.codeOnly(body);
+        int semi = KotlinBlockMask.topLevelSemicolon(body);
         String constPart = semi >= 0 ? body.substring(0, semi) : body;
         for (String raw : KotlinHeaderScan.splitTopLevelCommas(constPart)) {
             String e = raw.trim();
             if (e.isEmpty()) {
                 continue;
             }
-            // 前置 (annotation・修飾子) は他の宣言とまったく同じ走査で読み飛ばす。
-            String afterPrefix = e.substring(KotlinBlockMask.scanDeclPrefix(e, 0).declStart);
+            // 読み飛ばすのは<b>annotation だけ</b>。他の 5 経路は宣言キーワード
+            // (val/var/fun/class/…) で必ず止まるので修飾子まで食ってよいが、
+            // enum 定数には宣言キーワードが無く<b>名前が先頭のトークン</b>なので、
+            // 修飾子まで食うと `enum class Mode { open, locked }` の open のように
+            // 綴りが修飾子と同じ定数が丸ごと消える。
+            String afterPrefix = e.substring(KotlinBlockMask.annotationRunEnd(e, 0));
             Matcher m = ENUM_CONST.matcher(afterPrefix);
             if (!m.find()) {
                 continue;
@@ -350,24 +369,6 @@ public final class KotlinLightScanner {
             info.getEnumConstants().add(m.group(1));
             info.getEnumConstantArgs().add(m.group(2) == null ? "" : m.group(2));
         }
-    }
-
-    /** {@code ()} / {@code []} / {@code &#123;&#125;} のネスト外にある最初の {@code ;} の位置。無ければ -1。 */
-    private static int topLevelSemicolon(String s) {
-        int depth = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '(' || c == '[' || c == '{') {
-                depth++;
-            } else if (c == ')' || c == ']' || c == '}') {
-                if (depth > 0) {
-                    depth--;
-                }
-            } else if (c == ';' && depth == 0) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private static JavaClassInfo.Kind mapKind(String kindKw, String modifiers) {

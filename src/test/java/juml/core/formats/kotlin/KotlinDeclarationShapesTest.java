@@ -168,4 +168,101 @@ public class KotlinDeclarationShapesTest {
         assertTrue("use-site target を名前として記録しないこと: " + mode.getAnnotations(),
                 mode.getAnnotations().stream().anyMatch(s -> s.startsWith("@NotificationMode")));
     }
+
+    /**
+     * {@code where} はスーパータイプが<b>有るとき</b>も継承リストに混ざらないこと。
+     *
+     * <p>ラウンド 21 は「継承コロンが無く where だけ」の形しか救っていなかった。
+     * スーパータイプがあると継承コロンが先に見つかるので where 判定に到達せず、
+     * 最後の項が where 節を飲み込んで {@code Marker where T : Comparable} という
+     * <b>存在しない箱</b>への実装線が引かれ、本物の Marker への線は 1 本も引かれない。</p>
+     */
+    @Test
+    public void aWhereClauseAfterSupertypesIsNotAnInterface() {
+        JavaClassInfo sorter = KotlinLightScanner.scan("package p\n"
+                + "class Sorter<T>(val name: String) : BaseSorter<T>(), Marker "
+                + "where T : Comparable<T> {\n"
+                + "  fun sort(items: List<T>): List<T> = items\n}\n"
+                + "class BaseSorter<T>\ninterface Marker\n", null).get(0);
+        assertEquals("BaseSorter<T>", sorter.getSuperClass());
+        assertEquals(List.of("Marker"), sorter.getInterfaces());
+    }
+
+    /** 関数にも {@code where} は書ける。戻り値の型に混ぜないこと。 */
+    @Test
+    public void aWhereClauseOnAFunctionIsNotPartOfTheReturnType() {
+        JavaClassInfo a = scanOne("package p\nclass A {\n"
+                + "  fun <T> sort(x: List<T>): List<T> where T : Comparable<T> {\n"
+                + "    return x\n  }\n}\n");
+        assertEquals("List<T>", method(a, "sort").getReturnType());
+    }
+
+    /**
+     * 名前が修飾子と同じ綴りの enum 定数が消えないこと。
+     *
+     * <p>ラウンド 21 で enum 定数を共有の前置スキャナへ通したときの回帰。他の 5 経路は
+     * 宣言キーワード ({@code val} / {@code fun} …) で必ず止まるので修飾子まで食ってよいが、
+     * enum 定数には宣言キーワードが無く<b>名前が先頭のトークン</b>なので、修飾子まで
+     * 食うと名前ごと消える。読み飛ばすのは annotation だけでよい。</p>
+     */
+    @Test
+    public void anEnumConstantNamedLikeAModifierIsNotDeleted() {
+        assertEquals(List.of("open", "locked", "sealed"),
+                scanOne("package p\nenum class Mode { open, locked, sealed }\n")
+                        .getEnumConstants());
+        assertEquals(List.of("public", "private", "protected", "internal"),
+                scanOne("package p\nenum class Vis { public, private, protected, internal }\n")
+                        .getEnumConstants());
+        JavaClassInfo withArgs = scanOne(
+                "package p\nenum class M(val n: Int) { open(1), closed(2) }\n");
+        assertEquals(List.of("open", "closed"), withArgs.getEnumConstants());
+        assertEquals(List.of("(1)", "(2)"), withArgs.getEnumConstantArgs());
+        // 非退行: annotation は従来どおり読み飛ばすこと。
+        assertEquals(List.of("data", "ok"),
+                scanOne("package p\nenum class E {\n  @Deprecated(\"x\") data,\n  ok\n}\n")
+                        .getEnumConstants());
+    }
+
+    /**
+     * スーパータイプの列にコメントが混ざっても型名として読まないこと。
+     *
+     * <p>「コメントは宣言ではない」規則はヘッダ検出・プロパティ・関数・引数の 4 経路に
+     * 入っていて、スーパータイプの走査だけが生テキストのままだった。読み違えると
+     * 改行入りの引用符付きラベルを書き出し、<b>図が 1 枚も描けなくなる</b>。</p>
+     */
+    @Test
+    public void commentsInTheSupertypeListAreNotTypes() {
+        JavaClassInfo foo = KotlinLightScanner.scan("package p\n"
+                + "interface Real\nopen class Base\n"
+                + "class Foo : Base(),\n    // Marker, Other も実装したい\n    Real {\n"
+                + "  fun go() {}\n}\n", null).stream()
+                .filter(c -> "Foo".equals(c.getSimpleName())).findFirst().orElseThrow();
+        assertEquals("Base", foo.getSuperClass());
+        assertEquals(List.of("Real"), foo.getInterfaces());
+
+        JavaClassInfo blockComment = KotlinLightScanner.scan("package p\n"
+                + "open class Base\nclass Foo /* : Secret, Hidden */ : Base()\n", null)
+                .stream().filter(c -> "Foo".equals(c.getSimpleName())).findFirst().orElseThrow();
+        assertEquals("Base", blockComment.getSuperClass());
+        assertTrue("コメント中の型名を実装にしないこと: " + blockComment.getInterfaces(),
+                blockComment.getInterfaces().isEmpty());
+    }
+
+    /**
+     * enum 定数をコメントの中から拾わないこと。
+     *
+     * <p>メンバー抽出は非コードマスクで守られているのに、enum 定数だけが生の本体を
+     * 読んでいた。コメント中のカンマで定数が入れ替わり、コメント中の {@code ;} で
+     * 定数がゼロになる — <b>ソースに無い定数が描かれ、実在する定数が消える</b>。</p>
+     */
+    @Test
+    public void enumConstantsAreNotReadFromComments() {
+        assertEquals(List.of("ACTIVE", "CLOSED"),
+                scanOne("package p\nenum class Status {\n"
+                        + "    // ACTIVE, SUSPENDED は使わない\n    ACTIVE,\n    CLOSED\n}\n")
+                        .getEnumConstants());
+        assertEquals(List.of("A", "B"),
+                scanOne("package p\nenum class E {\n  /** 使い方: E.A; 既定は A */\n"
+                        + "  A, B\n}\n").getEnumConstants());
+    }
 }

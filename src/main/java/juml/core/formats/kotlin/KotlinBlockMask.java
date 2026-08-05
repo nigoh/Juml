@@ -126,6 +126,37 @@ final class KotlinBlockMask {
     }
 
     /**
+     * {@code from} から続く<b>annotation だけ</b>の並びの終端。修飾子は食わない。
+     *
+     * <p>宣言キーワードを持たない宣言 (enum 定数) 用。修飾子まで食う
+     * {@link #scanDeclPrefix} をそこに使うと、名前が修飾子と同じ綴りのときに
+     * 名前ごと消える。</p>
+     */
+    static int annotationRunEnd(String s, int from) {
+        int i = from;
+        while (i < s.length()) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                i++;
+                continue;
+            }
+            int nonCode = KotlinLightScanner.skipNonCode(s, i);
+            if (nonCode > i) {
+                i = nonCode;
+                continue;
+            }
+            if (s.charAt(i) != '@') {
+                break;
+            }
+            int end = annotationEnd(s, i);
+            if (end <= i) {
+                break;
+            }
+            i = end;
+        }
+        return i;
+    }
+
+    /**
      * ソース全体を 1 度走査して「宣言キーワードの位置 → その前置」の対応を作る。
      *
      * <p>正規表現側は宣言キーワードから先だけを見るようにし、前置はすべてここから引く。
@@ -282,6 +313,38 @@ final class KotlinBlockMask {
     }
 
     /** 先頭の空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
+    /** コメント・文字列リテラルを空白 1 つに畳んだ文字列 (宣言だけを残す)。 */
+    static String codeOnly(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                sb.append(' ');
+                i = e - 1;
+                continue;
+            }
+            sb.append(s.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /** {@code ()} / {@code []} / {@code &#123;&#125;} のネスト外にある最初の {@code ;} の位置。無ければ -1。 */
+    static int topLevelSemicolon(String s) {
+        int depth = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (c == ';' && depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
     /** {@code from} 以降の空白を読み飛ばした先にある語 (無ければ空文字列)。 */
     private static String nextWord(String s, int from) {
         int at = skipSpaces(s, from);
@@ -431,7 +494,10 @@ final class KotlinBlockMask {
                     return i;
                 }
                 if (isKeywordAt(s, i, "get") || isKeywordAt(s, i, "set")
-                        || isKeywordAt(s, i, "by")) {
+                        || isKeywordAt(s, i, "by") || isKeywordAt(s, i, "where")) {
+                    // where は関数にも書ける (`fun <T> sort(a: List<T>): List<T>
+                    // where T : Comparable<T>`)。型制約は戻り値の型ではないのに、
+                    // クラスヘッダ側だけが where を知っていた。
                     return i;
                 }
             }
