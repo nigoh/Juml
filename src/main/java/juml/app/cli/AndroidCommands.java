@@ -361,6 +361,24 @@ public final class AndroidCommands {
      * ライフサイクル外のメソッドからシーケンス図を作る場合は {@code methods.txt} を
      * 参考に {@code -q Class.method -o seq.svg} で個別生成する。</p>
      */
+    /**
+     * クラス図に渡すクラス一覧へ CLI のスコープフィルタを適用する
+     * ({@code --exclude-package} / {@code --exclude-name-regex} / {@code --annotation} /
+     * {@code --exclude-annotation})。
+     *
+     * <p>絞り込んだ一覧は<b>クラス図にだけ</b>使い、元の {@code infos} は絞らないこと。
+     * 後段のシーケンス図 ({@code listCandidates} /
+     * {@code generateLifecycleSequenceDiagrams}) は {@code infos} を「呼び出し解決の母集合」
+     * として使うため、母集合を削ると呼び出し先が解決できなくなって呼び出し列が黙って途切れ、
+     * 残った相手も「解析済みプロジェクトクラス」の色を失って別物として描かれる
+     * (実測では methods.txt が 4 件から 1 件へ縮んだ)。素の {@code -c} も
+     * {@code classDiagram} のときだけ適用しており、その設計に合わせている。</p>
+     */
+    private static java.util.List<juml.core.formats.uml.JavaClassInfo> classDiagramOnly(
+            java.util.List<juml.core.formats.uml.JavaClassInfo> infos, UmlOverrides overrides) {
+        return overrides == null ? infos : UmlCommands.applyCliClassFilters(infos, overrides);
+    }
+
     public static void handleAll(CliContext ctx) throws IOException {
         File fileIn = ctx.fileIn;
         File fileOut = ctx.fileOut;
@@ -451,6 +469,8 @@ public final class AndroidCommands {
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
                 UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener,
                         mergeManifest);
+        java.util.List<juml.core.formats.uml.JavaClassInfo> classDiagramInfos =
+                classDiagramOnly(infos, overrides);
         juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
                 new juml.core.formats.uml.PlantUmlClassDiagram.Options();
         if (Boolean.FALSE.equals(legendOverride)) {
@@ -460,10 +480,11 @@ public final class AndroidCommands {
             overrides.applyTo(clsOpts);
         }
         File clsFile = new File(fileOut, "class-diagram.svg");
-        String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(infos, clsOpts);
+        String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(
+                classDiagramInfos, clsOpts);
         try {
             CliOutput.renderSvgAtomically(clsPuml, clsFile);
-            progress.wrote(clsFile, "(" + infos.size() + " class(es))");
+            progress.wrote(clsFile, "(" + classDiagramInfos.size() + " class(es))");
             listener.onError(null, -1, "wrote " + clsFile.getPath());
         } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {
             File clsPumlFallback = CliOutput.siblingPumlFor(clsFile);

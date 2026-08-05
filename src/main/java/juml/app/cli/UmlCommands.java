@@ -292,9 +292,20 @@ public final class UmlCommands {
         long startMs = System.currentTimeMillis();
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
         progress.step("Generating per-folder class diagrams (.puml + .svg)");
+        // 走査は自前で行う。PerFolderClassDiagrams の走査版オーバーロードは scanOpts を
+        // null 固定で呼ばれていたため --include-tests が効かず、CLI スコープフィルタを
+        // 挟む余地も無かった (どちらも指定しても黙って無視されていた)。
+        juml.core.formats.uml.UmlGenerator.ProjectParseResult parsed =
+                juml.core.formats.uml.UmlGenerator.extractFromProjectDetailed(
+                        fileIn, ctx.scanOptions(), listener, null, null,
+                        mergeManifest, juml.core.formats.uml.UmlGenerator.ParseMode.FULL);
+        java.util.List<juml.core.formats.uml.JavaClassInfo> infos = parsed.getClasses();
+        if (overrides != null) {
+            infos = applyCliClassFilters(infos, overrides);
+        }
         juml.core.formats.uml.PerFolderClassDiagrams.Result result =
                 juml.core.formats.uml.PerFolderClassDiagrams.generate(
-                        fileIn, fileOut, null, clsOpts, mergeManifest, null, listener);
+                        fileIn, fileOut, infos, parsed.getIndex(), clsOpts, null, listener);
         progress.wrote(fileOut,
                 "(" + result.getFolderCount() + " folder(s), "
                         + result.getClassCount() + " class(es))");
@@ -459,8 +470,12 @@ public final class UmlCommands {
      * クラス図モードの CLI スコープフィルタをこの順で適用する:
      * package 除外 → 名前 regex 除外 → annotation include/exclude。
      * 不正な {@code --exclude-name-regex} は案内を出して {@code System.exit(1)}。
+     *
+     * <p>クラス一覧からクラス図を作るコマンドは<b>すべて</b>ここを通すこと。以前は
+     * 素の {@code -c} だけが呼んでいたため、{@code -A} と {@code -c --per-folder} では
+     * {@code --exclude-package} 等の指定が<b>黙って何もしなかった</b>。</p>
      */
-    private static java.util.List<juml.core.formats.uml.JavaClassInfo> applyCliClassFilters(
+    static java.util.List<juml.core.formats.uml.JavaClassInfo> applyCliClassFilters(
             java.util.List<juml.core.formats.uml.JavaClassInfo> infos, UmlOverrides overrides) {
         java.util.List<juml.core.formats.uml.JavaClassInfo> result = infos;
         if (overrides.excludedPackages != null && !overrides.excludedPackages.isEmpty()) {
