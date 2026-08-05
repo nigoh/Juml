@@ -171,7 +171,13 @@ public final class DiagramScope {
         return focusClass;
     }
 
-    /** 何のフィルタも持たない (= 全件通過) ならば true。 */
+    /**
+     * 何のフィルタも持たない (= 全件通過) ならば true。
+     *
+     * <p>呼び出し側は true のスコープを {@code null} へ潰すので、<b>出力を変える設定は
+     * 必ずここに数えること</b> ({@link #signature()} と対になる)。数え漏らすと、その設定
+     * だけを持つスコープが「空」と判定されて黙って捨てられる。</p>
+     */
     public boolean isEmpty() {
         return includedPackages.isEmpty()
                 && includedModules.isEmpty()
@@ -183,10 +189,17 @@ public final class DiagramScope {
                 && includedAnnotations.isEmpty()
                 && excludedAnnotations.isEmpty()
                 && seedQualifiedNames.isEmpty()
+                && focusClass.isEmpty()
                 && maxClasses <= 0
                 && relationKinds.containsAll(EnumSet.allOf(RelationKind.class))
                 && visibilityFilter == VisibilityFilter.ALL
-                && parseMode == null;
+                // FULL は「絞っていない」既定なので null と同じ扱いにする。ここを
+                // null 限定にしていたため、Scope ダイアログの結果は<b>常に</b>空でなくなって
+                // いた (buildScope は FULL/HEADERS_ONLY のどちらかを必ず設定する)。その結果、
+                // 大規模プロジェクトのガードで「何も選ばずに OK」がキャンセル扱いにならず、
+                // ガードが防ごうとした全体描画がそのまま走り、しかも空でないスコープなので
+                // タブキーにハッシュが付いて既存の全体図タブと重複していた。
+                && (parseMode == null || parseMode == UmlGenerator.ParseMode.FULL);
     }
 
     /**
