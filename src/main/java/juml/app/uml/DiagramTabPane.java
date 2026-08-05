@@ -597,8 +597,13 @@ public final class DiagramTabPane {
     // 自由編集 PlantUML エディタタブ
     // -------------------------------------------------------------------------
 
+    /** 未保存 (Untitled) エディタタブのキー接頭辞。連番を後ろに付ける。 */
+    private static final String UNTITLED_KEY_PREFIX = "PUML:untitled-";
+
     /** 未保存 (Untitled) エディタタブの連番。 */
     private int untitledCounter;
+    /** 残存下書きの番号を追い越す予約を済ませたか ({@link #reserveUntitledNumbersOnce})。 */
+    private boolean untitledNumbersReserved;
 
     /**
      * 自由編集 PlantUML エディタタブを開く。プロジェクト未ロードでも動作する
@@ -658,8 +663,9 @@ public final class DiagramTabPane {
             key = "PUML:" + file.getAbsolutePath();
             label = file.getName();
         } else {
+            reserveUntitledNumbersOnce();
             untitledCounter++;
-            key = "PUML:untitled-" + untitledCounter;
+            key = UNTITLED_KEY_PREFIX + untitledCounter;
             label = Messages.get("puml.editor.untitled") + "-" + untitledCounter + ".puml";
         }
         DiagramTab existing = openTabs.get(key);
@@ -817,8 +823,20 @@ public final class DiagramTabPane {
         // これをしないと、保存後に同じ .puml を File > Open した際にキー不一致で
         // タブが重複生成される (dedup の一貫性が崩れる)。
         migrateEditorTabKey(tab, "PUML:" + target.getAbsolutePath());
-        drafts.delete(draftKeyBeforeMigrate);
-        drafts.delete(tab.key);
+        // 消すのは<b>このタブが書いた</b>下書きだけ。閉じる経路と同じ所有権の判定に揃える。
+        // ファイル紐付きタブのキーは "PUML:<絶対パス>" で前セッションの下書きと同じになるため、
+        // 無条件に消すと、保持を選んだクラッシュ下書きが「開いて Ctrl+S しただけ」で失われる
+        // (閉じた場合は残るのに保存すると消える、という食い違いにもなっていた)。
+        //
+        // 消すのは<b>移行前</b>のキーだけ。移行後のキーはこのタブが一度も書いていない
+        // (書いたのは移行前のキーの下)。Save As で移行後キーも消していたため、保持した
+        // クラッシュ下書きのあるパスへ別タブを Save As するだけでそれが消えていた。
+        // 消したら所有権も手放す: 残したままだと、次の Save As が「もう自分のものでない
+        // 移行前キー」の下書き (= 他所の保持下書き) を巻き添えで消す。
+        if (tab.draftWritten) {
+            drafts.delete(draftKeyBeforeMigrate);
+            tab.draftWritten = false;
+        }
         // Save As で名前が付いたらタブラベルもファイル名に合わせる。
         tab.label = target.getName();
         int idx = tabs.indexOfComponent(tab);
@@ -1269,9 +1287,21 @@ public final class DiagramTabPane {
         }
     }
 
-    /** 開いているすべてのダイアグラムタブを再描画する (スタイル変更時など)。 */
+    /**
+     * 開いているすべてのダイアグラムタブを再描画する (スタイル変更時など)。
+     *
+     * <p>描画を解放済みのタブは<b>解放したまま</b>にする。{@link DiagramTab#startRender()} は
+     * {@code renderReleased} を false へ戻すため、以前はテーマを 1 回切り替えるだけで
+     * メモリ予算のために解放したタブが<b>全部いっぺんに実体化し直されて</b>いた
+     * (予算を守るための解放が、予算と無関係な操作で帳消しになる)。解放済みタブは
+     * 再フォーカス時に {@code startRender()} が走り、そこで新しい設定を反映するので
+     * 見た目が古いまま残ることもない。</p>
+     */
     public void rerenderAllTabs() {
         for (DiagramTab t : new ArrayList<>(openTabs.values())) {
+            if (t.needsRender()) {
+                continue;
+            }
             t.startRender();
         }
     }
@@ -1551,8 +1581,16 @@ public final class DiagramTabPane {
         if (tab.isEditor()) {
             // 意図してタブを閉じた (保存 or 破棄済み) ので下書きは消す。閉じたタブは
             // Ctrl+Shift+T の再オープン履歴が担い、下書き復元の対象にしない。
+            //
+            // ただし<b>自分が書いた下書きだけ</b>を消す。ファイル紐付きタブのキーは
+            // "PUML:<絶対パス>" で、前セッションのクラッシュ下書きと<b>同じキー</b>になる。
+            // 無条件に消すと、復元プロンプトで Esc (= 保持) を選んだあと同じ .puml を開いて
+            // 何も打たずに閉じただけで、保持したはずの下書きが消える。タブ予算による
+            // クリーンタブの自動クローズなら利用者の操作すら要らない。
             tab.stopDraftTimer();
-            drafts.delete(liveKey);
+            if (tab.draftWritten) {
+                drafts.delete(liveKey);
+            }
             // 補完ポップアップの JWindow は階層外リソースなので明示的に破棄する。
             tab.sourcePanel.disposeEditorResources();
         }
@@ -1617,7 +1655,9 @@ public final class DiagramTabPane {
         // (残すと正常終了なのに次回起動で偽のクラッシュ復元プロンプトが出る)。
         for (DiagramTab t : discarded) {
             t.stopDraftTimer();
-            drafts.delete(t.key);
+            if (t.draftWritten) {
+                drafts.delete(t.key);
+            }
         }
         return true;
     }
@@ -1687,10 +1727,51 @@ public final class DiagramTabPane {
     /**
      * 下書きをエディタタブとして復元する (未保存状態のまま)。復元後は新しいタブの
      * 自動保存が引き継ぐため、元の下書きは先に消してから開く (同一キーの上書き順序対策)。
+     *
+     * <p>開く前に、残っている下書きが使っている Untitled 連番より必ず後ろへカウンタを
+     * 進める。{@code untitledCounter} はセッションごとに 0 から数え直すので、前回終了時の
+     * 番号と<b>衝突しうる</b>。{@code loadAll()} の順序はファイルシステム依存で復元順も
+     * 一定しないため、たとえば {@code untitled-2} を先に復元すると新しいタブが
+     * {@code untitled-1} を名乗り、続けて {@code untitled-1} を復元したときの
+     * {@code delete} が<b>いま復元したタブの生きている下書きを消す</b>。次の自動保存まで
+     * の間に落ちれば、復元したはずの編集がもう一度失われる。</p>
      */
     public void restoreDraft(DraftStore.Draft draft) {
+        reserveUntitledNumbersOnce();
         drafts.delete(draft.tabKey);
         openPumlEditor(draft.text, draft.file, true);
+    }
+
+    /**
+     * 残っている下書きの Untitled 番号を追い越すまでカウンタを進める (セッションで 1 回だけ)。
+     *
+     * <p>採番のたびに走らせないのは、下書きはセッション中に<b>増えない</b>ため。最初の 1 回で
+     * 全下書きの最大値を超えておけば、以後に配る番号はすべてそれより大きい。逆にここを
+     * 復元経路だけに置くと穴が残る: 復元プロンプトで Esc を押すと (これは「破棄しない」と
+     * 明示された非破壊の選択肢なのに) カウンタが 0 のままになり、次に新規 Untitled タブを
+     * 作った瞬間に {@code untitled-1} を名乗って、<b>保持したはずのクラッシュ下書きを
+     * 自動保存が上書きする</b>。タブを閉じる経路ではさらに直接 delete される。</p>
+     */
+    private void reserveUntitledNumbersOnce() {
+        if (untitledNumbersReserved) {
+            return;
+        }
+        untitledNumbersReserved = true;
+        for (DraftStore.Draft d : drafts.loadAll()) {
+            untitledCounter = Math.max(untitledCounter, untitledNumberOf(d.tabKey));
+        }
+    }
+
+    /** {@code PUML:untitled-N} の N を返す (Untitled キーでなければ 0)。 */
+    private static int untitledNumberOf(String tabKey) {
+        if (tabKey == null || !tabKey.startsWith(UNTITLED_KEY_PREFIX)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(tabKey.substring(UNTITLED_KEY_PREFIX.length()));
+        } catch (NumberFormatException notNumbered) {
+            return 0;
+        }
     }
 
     /**
@@ -1836,6 +1917,8 @@ public final class DiagramTabPane {
         private java.io.File editorFile;
         /** 自由編集エディタ: 未保存の変更があるか。 */
         private boolean dirty;
+        /** このタブ自身が下書きを書いたか (書いていない下書きを閉じるときに消さないため)。 */
+        private boolean draftWritten;
         /** 自由編集エディタ: 編集が落ち着いてから再描画するデバウンスタイマ。 */
         private javax.swing.Timer renderDebounce;
         /** 自由編集エディタ: 編集の 3 秒後に下書きへ自動保存するタイマ。 */
@@ -2243,6 +2326,7 @@ public final class DiagramTabPane {
             // 次回起動で偽のクラッシュ復元プロンプトが出る。
             if (isEditor() && dirty) {
                 drafts.save(key, sourcePanel.getText(), editorFile, label);
+                draftWritten = true;
             }
         }
 

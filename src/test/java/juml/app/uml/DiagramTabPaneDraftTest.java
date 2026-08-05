@@ -151,4 +151,197 @@ public class DiagramTabPaneDraftTest {
         assertTrue("破棄を選んだので終了は続行できるはず", canExit);
         assertTrue("破棄した編集の下書きは残らないはず", store.loadAll().isEmpty());
     }
+
+    /**
+     * 回帰: 前セッションの下書きを復元するとき、復元で開いたタブが<b>まだ復元していない
+     * 別の下書きのキーを奪わない</b>こと。
+     *
+     * <p>{@code untitledCounter} はセッションごとに 0 から数え直すため、
+     * {@code untitled-2} を先に復元すると新しいタブが {@code untitled-1} を名乗り、
+     * 続けて {@code untitled-1} を復元したときの {@code delete} がいま復元したタブの
+     * 生きている下書きを消していた ({@code loadAll} の順序はファイルシステム依存なので、
+     * この順で復元されるかどうかは運任せだった)。</p>
+     */
+    @Test
+    public void restoringDraftsOutOfOrderKeepsBothDrafts() {
+        // 前セッションが残した 2 件を模す。
+        store.save("PUML:untitled-1", "@startuml\nclass One\n@enduml\n", null, "Untitled-1");
+        store.save("PUML:untitled-2", "@startuml\nclass Two\n@enduml\n", null, "Untitled-2");
+
+        List<DraftStore.Draft> pending = store.loadAll();
+        assertEquals(2, pending.size());
+        // 番号の大きい方から先に復元する (最悪ケースを固定する)。
+        DraftStore.Draft two = pending.stream()
+                .filter(d -> "PUML:untitled-2".equals(d.tabKey)).findFirst().orElseThrow();
+        DraftStore.Draft one = pending.stream()
+                .filter(d -> "PUML:untitled-1".equals(d.tabKey)).findFirst().orElseThrow();
+
+        GuiActionRunner.execute(() -> pane.restoreDraft(two));
+        GuiActionRunner.execute(() -> pane.restoreDraft(one));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("復元した 2 タブぶんの下書きが残ること: " + after.size(), 2, after.size());
+        java.util.Set<String> texts = new java.util.HashSet<>();
+        for (DraftStore.Draft d : after) {
+            texts.add(d.text);
+        }
+        assertTrue("One の内容が残ること: " + texts,
+                texts.contains("@startuml\nclass One\n@enduml\n"));
+        assertTrue("Two の内容が残ること: " + texts,
+                texts.contains("@startuml\nclass Two\n@enduml\n"));
+    }
+
+    /**
+     * 回帰: 復元プロンプトで Esc を押して下書きを<b>保持した</b>あと新規タブを作っても、
+     * 保持した下書きが上書きされないこと。
+     *
+     * <p>{@code UmlMainFrame.promptDraftRecovery} は CLOSED_OPTION (Esc / ダイアログを閉じる)
+     * を「破棄しない・次回また尋ねる」と明示している。しかし予約を復元経路にだけ置いていた
+     * ため、Esc の場合はカウンタが 0 のままで、次の新規 Untitled タブが {@code untitled-1} を
+     * 名乗り、その自動保存がクラッシュ時の下書きを上書きしていた。利用者は一度も
+     * 「破棄」を選んでいないのに作業が失われる。
+     */
+    @Test
+    public void newUntitledTabDoesNotOverwriteARetainedDraft() {
+        // 前セッションのクラッシュ下書き (復元プロンプトでは Esc = 保持を選んだ想定)。
+        store.save("PUML:untitled-1", "@startuml\nclass PreviousSession\n@enduml\n",
+                null, "Untitled-1.puml");
+
+        // 復元せずに新規 Untitled タブを作り、下書きへ退避させる。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(
+                "@startuml\nclass BrandNew\n@enduml\n", null, true));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        java.util.Set<String> texts = new java.util.HashSet<>();
+        for (DraftStore.Draft d : after) {
+            texts.add(d.text);
+        }
+        assertTrue("保持したクラッシュ下書きが残ること: " + texts,
+                texts.contains("@startuml\nclass PreviousSession\n@enduml\n"));
+        assertTrue("新規タブの下書きも並存すること: " + texts,
+                texts.contains("@startuml\nclass BrandNew\n@enduml\n"));
+        assertEquals("2 件が別キーで共存すること", 2, after.size());
+    }
+
+    /**
+     * 回帰: 前セッションの下書きと同じキーになるファイル紐付きタブを、開いて何も打たずに
+     * 閉じただけで下書きが消えないこと。
+     *
+     * <p>ファイル紐付きタブのキーは {@code PUML:<絶対パス>} なので、同じ .puml のクラッシュ
+     * 下書きと<b>完全に同じキー</b>になる。{@code closeTab} が無条件に delete していたため、
+     * 復元プロンプトで Esc (=「破棄しない」と明示された選択肢) を選んだあと、その .puml を
+     * 開いて閉じるだけで失われていた。タブ予算によるクリーンタブの自動クローズなら、
+     * 利用者の操作すら要らずに同じ削除が起きる。</p>
+     */
+    @Test
+    public void closingACleanFileTabKeepsAnotherSessionsDraft() throws Exception {
+        File f = tmp.newFile("shared.puml");
+        Files.write(f.toPath(), "@startuml\nclass OnDisk\n@enduml\n".getBytes("UTF-8"));
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + f.getAbsolutePath(), crashed, f, "shared.puml");
+        assertEquals(1, store.loadAll().size());
+
+        // 復元せずに同じファイルを開き、何も打たずに閉じる。
+        GuiActionRunner.execute(() -> pane.openPumlEditor("@startuml\nclass OnDisk\n@enduml\n",
+                f, false));
+        GuiActionRunner.execute(() -> pane.closeActiveTab());
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きが残ること", 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
+
+    /**
+     * 非退行: 自分で書いた下書きは、閉じるときにきちんと消えること。
+     * (dirty なタブを closeActiveTab で閉じるとモーダル確認が出るため、
+     * 既存テストと同じく confirmDiscardAllEdits の「破棄」経路で閉じる。)
+     */
+    @Test
+    public void closingATabThatWroteItsOwnDraftStillDeletesIt() {
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertEquals(1, store.loadAll().size());
+
+        boolean canExit = GuiActionRunner.execute(() ->
+                pane.confirmDiscardAllEdits(label -> javax.swing.JOptionPane.NO_OPTION));
+
+        assertTrue(canExit);
+        assertTrue("自分の下書きは消えること", store.loadAll().isEmpty());
+    }
+
+    /**
+     * 回帰: 保存経路も「自分が書いた下書きだけ」を消すこと。
+     *
+     * <p>閉じる経路には所有権の判定を入れたのに保存経路が無条件のままだったため、
+     * 同じ下書きが「タブを閉じれば残る / Ctrl+S を押せば消える」と食い違っていた。
+     * 復元プロンプトで Esc (=保持) を選んだあと、その .puml を開いて保存するだけで、
+     * 利用者が一度も破棄を選んでいない未保存の作業が失われる。</p>
+     */
+    @Test
+    public void savingACleanFileTabKeepsAnotherSessionsDraft() throws Exception {
+        File f = tmp.newFile("saved.puml");
+        Files.write(f.toPath(), "@startuml\nclass OnDisk\n@enduml\n".getBytes("UTF-8"));
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + f.getAbsolutePath(), crashed, f, "saved.puml");
+
+        GuiActionRunner.execute(() -> pane.openPumlEditor("@startuml\nclass OnDisk\n@enduml\n",
+                f, false));
+        boolean saved = GuiActionRunner.execute(() -> pane.closeActiveTabSavingToForTest(f));
+
+        assertTrue("保存自体は成功すること", saved);
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きが残ること: " + after.size(), 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
+
+    /**
+     * 回帰: Save As の保存先に他所の下書きがあっても巻き添えで消さないこと。
+     *
+     * <p>所有権の判定を入れたあとも、消す対象が「移行前のキー」と「移行<b>後</b>のキー」の
+     * 2 つだった。移行後のキーはこのタブが一度も書いていないキーなので、消せるのは必ず
+     * 他所の下書きだけ。保持を選んだクラッシュ下書きのあるパスへ、無関係な新規タブを
+     * Save As するだけで、それが黙って消えていた。</p>
+     */
+    @Test
+    public void saveAsDoesNotDeleteTheDraftBelongingToTheTargetPath() {
+        File target = new File(tmp.getRoot(), "target.puml");
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + target.getAbsolutePath(), crashed, target, "target.puml");
+
+        // 無関係な新規タブ (untitled) を作って編集し、たまたま同じパスへ Save As する。
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertEquals("自分の下書きと保持下書きで 2 件", 2, store.loadAll().size());
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(target)));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("保持した下書きだけが残ること: " + after.size(), 1, after.size());
+        assertEquals("残るのは保持下書きの内容であること", crashed, after.get(0).text);
+    }
+
+    /**
+     * 回帰: 保存で下書きを消したら所有権も手放すこと。
+     *
+     * <p>{@code draftWritten} を立てたままにしていたため、保存済み (= 自分の下書きは
+     * もう無い) のタブをもう一度別名で Save As すると、いま名乗っているだけのキーの
+     * 下書き — つまり他所の保持下書き — を消していた。</p>
+     */
+    @Test
+    public void aSecondSaveAsDoesNotDeleteTheDraftLeftAtTheFormerPath() {
+        File first = new File(tmp.getRoot(), "first.puml");
+        File second = new File(tmp.getRoot(), "second.puml");
+
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null, true));
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(first)));
+        assertTrue("1 回目の保存で自分の下書きは消えること", store.loadAll().isEmpty());
+
+        // 保存済みタブがいま名乗っているキーに、他所の保持下書きがあるとする。
+        String crashed = "@startuml\nclass CrashedEdits\n@enduml\n";
+        store.save("PUML:" + first.getAbsolutePath(), crashed, first, "first.puml");
+
+        // 編集せずにもう一度 Save As するだけ。自分の下書きは無いので何も消えないはず。
+        assertTrue(GuiActionRunner.execute(() -> pane.saveActiveEditorToForTest(second)));
+
+        List<DraftStore.Draft> after = store.loadAll();
+        assertEquals("他所の下書きが残ること: " + after.size(), 1, after.size());
+        assertEquals(crashed, after.get(0).text);
+    }
 }
