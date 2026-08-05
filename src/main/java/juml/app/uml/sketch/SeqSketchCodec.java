@@ -61,7 +61,7 @@ public final class SeqSketchCodec {
             String line = raw.trim();
             if (line.startsWith("@startuml")) {
                 // 図名 (出力名) を保全する (クラス図コーデックと同じ契約)。
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }

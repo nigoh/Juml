@@ -83,7 +83,7 @@ public final class ErSketchCodec {
             String line = lines[i].trim();
             i++;
             if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }

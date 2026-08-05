@@ -39,34 +39,51 @@ final class SketchMultiDiagram {
      * @param unsupported 未対応行の収集先
      */
     /**
-     * 開始行を組み立てる。図名を持つときだけ区切りを入れる。
+     * 開始行から図名を取り出す。10 個の codec がここを通る。
      *
-     * <p><b>既知の限界</b>: codec は開始行を {@code substring(token.length()).trim()} で
-     * 読むため<b>区切りそのものを捨てている</b>。そのため図名が {@code (} で始まる 2 つの
-     * ケースを区別できない — 実測で {@code @startuml(id=X)} は「区切り無し」= ファイル名
-     * 指定なし ({@code d.svg}、id は別途 {@code id=(\w+)} で拾われる)、
-     * {@code @startuml (foo)} は「区切りあり」= ファイル名 {@code (foo)} で
-     * {@code (foo).svg}。ここでは前者 (PlantUML が複数図記法として文書化している方) を
-     * 優先して区切りを入れない。後者は空白を失う。
-     * 正しく直すには 10 個のモデルが図名だけでなく<b>読んだ区切り</b>を保持する必要がある。</p>
+     * <p>開始語の直後の<b>区切りそのものが意味を持つ</b>。実測 (同梱 PlantUML 1.2026.6、
+     * {@code StartUtils.patternFilename} = 開始語の次は空白<b>または</b> {@code &#123;}):</p>
      *
-     * <p>区切りは常に空白 1 つ、ではない。PlantUML の複数図記法
-     * {@code @startuml(id=NAME)} はトークンに {@code (} が<b>接している</b>ことが構文で、
-     * 空白を入れると意味が変わる: 実測で {@code @startuml(id=FIRST)} は {@code d.svg} を
-     * 出すが、{@code @startuml (id=FIRST)} は {@code (id=FIRST)} を<b>出力ファイル名</b>と
-     * 解釈して {@code (id=FIRST).svg} を出す。codec は残りを図名として読むだけなので、
-     * 図名が {@code (} で始まるなら書き戻しでも接したままにしないと、設計器で 1 回
-     * 動かしただけで id が消えて成果物の名前が変わり、{@code !include file!ID} も
-     * 解決しなくなる。10 個の codec が同じ組み立てをしていたのでここへ寄せる。</p>
+     * <pre>
+     *   &#64;startuml(id=X)   -&gt; ファイル名指定なし (d.svg)。id は別の走査が拾う
+     *   &#64;startuml (id=X)  -&gt; ファイル名 "(id=X)"  -&gt; (id=X).svg
+     *   &#64;startuml&#123;foo&#125;    -&gt; ファイル名 "foo"     -&gt; foo.svg
+     *   &#64;startuml &#123;foo&#125;   -&gt; ファイル名 "&#123;foo"    -&gt; &#123;foo.svg
+     * </pre>
+     *
+     * <p>つまり空白 1 文字の有無で成果物のファイル名が変わる。以前はここを
+     * {@code substring(token.length()).trim()} と書いて<b>区切りを捨てて</b>いたため、
+     * 書き戻し側は図名の 1 文字目から区切りを推測するしかなく、どちらに倒しても
+     * 片方が壊れた。区切りを推測しないで済むように、<b>復元に必要なときだけ図名に
+     * 残して</b>返す — 直後が空白で、その次が {@code (} か {@code &#123;} のときだけである。
+     * それ以外は従来どおり trim した図名になる。</p>
+     */
+    static String parseDiagramName(String line, String startToken) {
+        if (line == null || startToken == null || !line.startsWith(startToken)) {
+            return "";
+        }
+        String rest = line.substring(startToken.length());
+        String name = rest.trim();
+        if (name.isEmpty() || rest.isEmpty() || !Character.isWhitespace(rest.charAt(0))) {
+            return name;
+        }
+        char first = name.charAt(0);
+        return first == '(' || first == '{' ? " " + name : name;
+    }
+
+    /**
+     * 開始行を組み立てる。{@link #parseDiagramName} が返した図名をそのまま戻す。
+     *
+     * <p>図名が区切りを内包しているとき (先頭が空白 / {@code (} / {@code &#123;}) は
+     * そのまま連結する。それ以外は空白 1 つを置く。この 2 つを合わせて
+     * 「読んだ開始行がそのまま書き戻る」が成り立つ。</p>
      */
     static String startLine(String startToken, String name) {
         if (name == null || name.isEmpty()) {
             return startToken;
         }
-        // PlantUML 1.2026.6 の StartUtils.patternFilename は開始語の直後の区切りを
-        // 「空白 <b>または {</b>」と定めている。{ は区切りそのものなので、空白を足すと
-        // 別物になる (実測: `@startuml{foo}` -> foo.svg / `@startuml {foo}` -> {foo.svg)。
-        if (name.startsWith("{") || name.startsWith("(")) {
+        char first = name.charAt(0);
+        if (Character.isWhitespace(first) || first == '(' || first == '{') {
             return startToken + name;
         }
         return startToken + ' ' + name;

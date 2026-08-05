@@ -212,6 +212,35 @@ public class MultiDiagramLockTest {
         assertEquals("@startmindmap{foo}", out.substring(0, out.indexOf('\n')));
     }
 
+    /**
+     * 区切りの<b>空白そのもの</b>が往復すること。
+     *
+     * <p>実測 (同梱 PlantUML 1.2026.6) で、開始語の直後の空白 1 文字の有無は
+     * 成果物のファイル名を変える:</p>
+     *
+     * <pre>
+     *   &#64;startuml(id=X)  -&gt; ファイル名なし   / &#64;startuml (id=X) -&gt; (id=X).svg
+     *   &#64;startuml&#123;foo&#125;   -&gt; foo.svg        / &#64;startuml &#123;foo&#125;  -&gt; &#123;foo.svg
+     * </pre>
+     *
+     * <p>図名を trim して読むと、この 1 ビットは書き戻し側から復元できない。
+     * どちらに倒しても片方が壊れる — 「区切りは推測できる」という前提が誤りだった。
+     * 読み側が復元に必要なぶんだけ残すようにしたので、4 形式すべてが往復する。</p>
+     */
+    @Test
+    public void theSeparatorItselfRoundTrips() {
+        for (String start : List.of("@startuml(id=X)", "@startuml (id=X)",
+                "@startuml{foo}", "@startuml {foo}",
+                "@startuml (foo)", "@startuml Named")) {
+            SketchPumlCodec.ParseResult r =
+                    SketchPumlCodec.parse(start + "\nclass A\n@enduml\n");
+            assertTrue("単一図は編集可能のままであること: " + start, r.isFullySupported());
+            String out = SketchPumlCodec.toPuml(r.model);
+            assertEquals("開始行が 1 文字も違わずに戻ること", start,
+                    out.substring(0, out.indexOf('\n')));
+        }
+    }
+
     /** 回帰: mindmap の id 記法も同じこと。 */
     @Test
     public void theMindmapStartLineRoundTripsAsWritten() {

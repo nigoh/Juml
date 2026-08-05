@@ -88,7 +88,7 @@ public final class MindmapSketchCodec {
     private static void parseLine(String line, MindmapSketchModel model,
                                   List<String> unsupported, Deque<Frame> stack) {
         if (line.startsWith("@startmindmap")) {
-            String name = line.substring("@startmindmap".length()).trim();
+            String name = SketchMultiDiagram.parseDiagramName(line, "@startmindmap");
             if (!name.isEmpty()) {
                 model.setDiagramName(name);
             }

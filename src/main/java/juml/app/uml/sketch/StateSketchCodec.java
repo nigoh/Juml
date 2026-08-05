@@ -66,7 +66,7 @@ public final class StateSketchCodec {
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             String line = raw.trim();
             if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }

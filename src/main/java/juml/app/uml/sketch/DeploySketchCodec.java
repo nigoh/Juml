@@ -140,7 +140,7 @@ public final class DeploySketchCodec {
     /** 1 行を解析してコンテキストへ反映する。 */
     private static void parseLine(ParseCtx ctx, String line) {
         if (line.startsWith("@startuml")) {
-            String name = line.substring("@startuml".length()).trim();
+            String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
             if (!name.isEmpty()) {
                 ctx.model.setDiagramName(name);
             }

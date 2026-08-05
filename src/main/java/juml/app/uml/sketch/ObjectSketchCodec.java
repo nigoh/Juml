@@ -79,7 +79,7 @@ public final class ObjectSketchCodec {
             if (line.startsWith("@startuml")) {
                 // @startuml に付いた図名 (出力名) を保全する。捨てると GUI 編集の再生成で
                 // ユーザーが書いた名前が黙って失われる。
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
