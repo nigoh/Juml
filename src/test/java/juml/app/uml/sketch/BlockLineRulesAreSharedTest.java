@@ -162,4 +162,39 @@ public class BlockLineRulesAreSharedTest {
         assertTrue("並びが書き出しと同じなら編集できること: " + ordered.unsupportedLines,
                 ordered.isFullySupported());
     }
+
+    /**
+     * ロックする規則と<b>解除できる規則</b>が一致していること。
+     *
+     * <p>ブロックコメントをロック対象にしたのに、解除側の判定は {@code '} しか見ていなかった。
+     * その結果、ブロックコメントを含む図は読み取り専用のまま<b>解除の手段が提示されない</b> —
+     * 同じ図を行コメントで書けば 1 クリックで解除できるのに、である。ロックする規則を
+     * 増やすときは、出口の規則も同じだけ増やさなければならない。</p>
+     *
+     * <p>複数行に跨るブロックコメントは対象外。解除は行単位で消すので、先頭行だけを
+     * 消すとファイルが壊れる (押しても何も起きないボタンを出さない、という既存の
+     * {@code '@pos} の判断と同じ)。</p>
+     */
+    @Test
+    public void whatLocksTheDesignerIsAlsoWhatTheUnlockRemoves() {
+        SketchPumlCodec.ParseResult block = SketchPumlCodec.parse(
+                "@startuml\nclass A {\n  /' TODO: fix later '/\n  x : int\n}\n@enduml\n");
+        assertFalse("ブロックコメントはロックする", block.isFullySupported());
+        assertTrue("そのロックは解除の対象でもあること: " + block.unsupportedLines,
+                block.unsupportedLines.stream()
+                        .allMatch(SketchDiagramType::isRemovableComment));
+
+        SketchPumlCodec.ParseResult line = SketchPumlCodec.parse(
+                "@startuml\nclass A {\n  ' TODO\n  x : int\n}\n@enduml\n");
+        assertTrue("行コメントは従来どおり解除対象",
+                line.unsupportedLines.stream()
+                        .allMatch(SketchDiagramType::isRemovableComment));
+
+        // 閉じていないブロックコメントは行単位で消せないので解除対象にしない。
+        assertFalse("複数行のブロックコメントは解除対象にしない",
+                SketchDiagramType.isRemovableComment("/' 複数行の"));
+        // レイアウトコメントは従来どおり残す。
+        assertFalse("'@pos は消さない",
+                SketchDiagramType.isRemovableComment("'@pos A 10 20"));
+    }
 }

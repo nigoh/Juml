@@ -119,9 +119,23 @@ public enum SketchDiagramType {
         return line != null && POS_COMMENT.matcher(line.trim()).matches();
     }
 
-    /** 「編集を有効化」で取り除いてよいコメント行か (レイアウトコメントは残す)。 */
+    /**
+     * 「編集を有効化」で取り除いてよいコメント行か (レイアウトコメントは残す)。
+     *
+     * <p>ブロックコメント {@code /' … '/} も対象。ただし<b>その行だけで閉じている</b>
+     * ものに限る — 解除は行単位で消すので、複数行に跨るブロックコメントの先頭行だけを
+     * 消すとファイルが壊れる。</p>
+     *
+     * <p>{@link SketchBlockLine#isComment} がブロックコメントもロック対象にしたのに、
+     * 解除側のこの判定は {@code '} しか見ていなかった。結果、ブロックコメントを含む図は
+     * <b>読み取り専用のまま解除の手段が提示されない</b>状態になっていた —
+     * ロックする規則と解除できる規則がずれると、利用者は出口の無い状態に置かれる。</p>
+     */
     public static boolean isRemovableComment(String line) {
         String t = line == null ? "" : line.strip();
+        if (t.startsWith("/'")) {
+            return t.endsWith("'/") && t.length() >= 4;
+        }
         return t.startsWith("'") && !isLayoutComment(t);
     }
 
