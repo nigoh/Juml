@@ -299,7 +299,11 @@ public final class DiagramTabPane {
     public java.util.List<BulkTabExporter.Snapshot> exportSnapshots() {
         java.util.List<BulkTabExporter.Snapshot> out = new java.util.ArrayList<>();
         for (DiagramTab t : openTabs.values()) {
-            out.add(new BulkTabExporter.Snapshot(t.label, t.key, t.renderedPuml));
+            // 形式は後で選ばれるので両方渡す。.puml はソースなのでバッファ側 (未描画の
+            // 新規タブが renderedPuml=null で丸ごと skip されるのも防ぐ)、SVG/PNG は
+            // 「いま見えている図」なので最後に描けたテキスト。単一タブの書き出しと同じ規則。
+            out.add(new BulkTabExporter.Snapshot(t.label, t.key,
+                    t.pumlForExport(UmlExporter.Format.PUML), t.renderedPuml));
         }
         return out;
     }
@@ -384,6 +388,20 @@ public final class DiagramTabPane {
     public String activeRenderedPuml() {
         DiagramTab t = activeTab();
         return t != null ? t.renderedPuml : null;
+    }
+
+    /**
+     * フォーカス中タブを<b>ソースとして</b>書き出すときの PlantUML テキスト
+     * (エディタタブなら現在のバッファ、生成図なら描画済みテキスト。無ければ null)。
+     *
+     * <p>{@code .puml} を書き出す経路はタブの右クリック・File メニュー・共有 URL と複数あり、
+     * どれも同じ答えを返さなければならない。{@code activeRenderedPuml()} は最後に<b>描けた</b>
+     * テキストなので、エディタタブでは 600ms のデバウンス分と、構文エラー中は無期限に遅れる。
+     * ソースの書き出しにはこちらを使うこと。</p>
+     */
+    public String activeSourcePuml() {
+        DiagramTab t = activeTab();
+        return t != null ? t.pumlForExport(UmlExporter.Format.PUML) : null;
     }
 
     /**
@@ -3065,8 +3083,25 @@ public final class DiagramTabPane {
         }
 
         private void exportTabAs(UmlExporter.Format fmt) {
-            DiagramTabSupport.exportPuml(this, renderedPuml, previewPanel, fmt,
+            DiagramTabSupport.exportPuml(this, pumlForExport(fmt), previewPanel, fmt,
                     DiagramTabPane.this::reportStatus);
+        }
+
+        /**
+         * エクスポートに渡す PlantUML テキストを選ぶ。
+         *
+         * <p>画像 (SVG/PNG) は「いま見えている図」を書き出すのが正しいので、最後に描けた
+         * {@code renderedPuml} を使う。一方 <b>{@code .puml} はソースの書き出し</b>なので、
+         * エディタタブでは<b>現在のバッファ</b>を使う。{@code renderedPuml} は 600ms の
+         * デバウンス待ちのあいだ古いままだし、編集中のテキストが構文エラーなら
+         * 直前の正常な図を保持する仕様上さらに古い。以前はそれを書き出していたため、
+         * 打ち込んだばかりの行が<b>黙って欠けた .puml</b> が保存されていた。</p>
+         */
+        String pumlForExport(UmlExporter.Format fmt) {
+            if (fmt == UmlExporter.Format.PUML && isEditor()) {
+                return sourcePanel.getText();
+            }
+            return renderedPuml;
         }
     }
 
