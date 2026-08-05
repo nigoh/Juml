@@ -29,6 +29,9 @@ import java.util.List;
  */
 final class PumlSnippetTemplate {
 
+    /** 選択テキストを差し込む位置のマーカー本文 ({@code ${SELECTION}})。 */
+    static final String SELECTION = "SELECTION";
+
     /** 展開結果: 挿入するプレーン本文と、Tab で巡回するタブストップ。 */
     static final class Expansion {
         private final String text;
@@ -58,14 +61,23 @@ final class PumlSnippetTemplate {
 
     /** インデントなしで展開する。 */
     static Expansion expand(String template) {
-        return expand(template, "");
+        return expand(template, "", null);
+    }
+
+    /** 選択テキストを差し込まずに展開する。 */
+    static Expansion expand(String template, String indent) {
+        return expand(template, indent, null);
     }
 
     /**
      * {@code template} を展開する。{@code indent} が非空なら 2 行目以降の
      * 各行 (空行を除く) の先頭へ付け、入れ子のブロックが現在行の字下げに揃うようにする。
+     *
+     * <p>{@code selection} が非 null なら {@code ${SELECTION}} をそこへ差し替える
+     * (選択範囲をブロックで囲む用途)。差し込んだテキストは再走査しないので、
+     * 選択の中に {@code ${1:…}} 風の文字列があってもタブストップにはならない。</p>
      */
-    static Expansion expand(String template, String indent) {
+    static Expansion expand(String template, String indent, String selection) {
         String src = applyIndent(template == null ? "" : template, indent);
         StringBuilder out = new StringBuilder();
         List<int[]> ordered = new ArrayList<>();
@@ -84,6 +96,19 @@ final class PumlSnippetTemplate {
             }
             out.append(src, i, open);
             String body = src.substring(open + 2, close);
+            if (SELECTION.equals(body)) {
+                // 選択テキストはマーカーの桁に合わせて字下げし直す。空選択のときは
+                // 幅ゼロのタブストップにして、囲んだブロックの内側へキャレットを置く。
+                String block = reindent(selection, columnOf(out));
+                int start = out.length();
+                out.append(block);
+                if (block.isEmpty()) {
+                    ordered.add(new int[] {start, start});
+                    orders.add(0);
+                }
+                i = close + 1;
+                continue;
+            }
             int order = orderOf(body);
             if (order < 0) {
                 // マーカーではない ${...}。本文としてそのまま通す。
@@ -100,6 +125,57 @@ final class PumlSnippetTemplate {
             i = close + 1;
         }
         return new Expansion(out.toString(), sortByOrder(ordered, orders));
+    }
+
+    /** 出力末尾の桁 (直前の改行からの文字数)。選択の字下げ幅に使う。 */
+    private static int columnOf(CharSequence out) {
+        int nl = -1;
+        for (int i = out.length() - 1; i >= 0; i--) {
+            if (out.charAt(i) == '\n') {
+                nl = i;
+                break;
+            }
+        }
+        return out.length() - nl - 1;
+    }
+
+    /**
+     * 選択テキストを {@code column} 桁へ字下げし直す。元の字下げのうち全行に共通する
+     * 分だけを外してから付け直すので、ブロック内部の相対的な入れ子は保たれる。
+     * 先頭行はマーカーの位置に続けて置かれるため字下げを付けない。
+     */
+    private static String reindent(String selection, int column) {
+        if (selection == null || selection.isEmpty()) {
+            return "";
+        }
+        String[] lines = selection.split("\n", -1);
+        int common = Integer.MAX_VALUE;
+        for (String line : lines) {
+            if (line.isBlank()) {
+                continue;
+            }
+            int n = 0;
+            while (n < line.length() && (line.charAt(n) == ' ' || line.charAt(n) == '\t')) {
+                n++;
+            }
+            common = Math.min(common, n);
+        }
+        if (common == Integer.MAX_VALUE) {
+            common = 0;
+        }
+        String pad = " ".repeat(Math.max(0, column));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            String body = lines[i].length() >= common ? lines[i].substring(common) : lines[i];
+            if (i > 0) {
+                sb.append('\n');
+                if (!body.isBlank()) {
+                    sb.append(pad);
+                }
+            }
+            sb.append(body);
+        }
+        return sb.toString();
     }
 
     /**

@@ -125,14 +125,49 @@ final class PumlEditInsertions {
     }
 
     /**
+     * 選択している行を {@code template} のブロックで囲む。選択が無ければキャレット行を
+     * 対象にする。行単位に丸めるのは、行の途中で切ったブロックは PlantUML として
+     * 成立しないため。
+     */
+    void surroundSelection(String template) {
+        if (!pane.isEditable() || template == null || template.isEmpty()) {
+            return;
+        }
+        String text = textOf();
+        int a = Math.min(pane.getSelectionStart(), pane.getSelectionEnd());
+        int b = Math.max(pane.getSelectionStart(), pane.getSelectionEnd());
+        int start = text.lastIndexOf('\n', Math.max(0, a - 1)) + 1;
+        // 選択の末尾がちょうど行頭なら、その行は選ばれていないとみなす
+        // (行全体をドラッグすると末尾は次の行頭に来るため、1 行余分に囲まない)。
+        int lastChar = b > a ? b - 1 : b;
+        int lineEnd = text.indexOf('\n', Math.min(lastChar, text.length()));
+        if (lineEnd < 0) {
+            lineEnd = text.length();
+        }
+        // 行末の改行も置換範囲に含める。雛形が末尾に改行を持つので、含めないと
+        // 囲んだ直後に空行が 1 本残る。
+        int replaceEnd = lineEnd < text.length() ? lineEnd + 1 : lineEnd;
+        replaceWithTemplate(start, replaceEnd, template, text.substring(start, lineEnd));
+    }
+
+    /**
      * {@code [start, end)} をテンプレートの展開結果で置き換え、タブストップがあれば
      * 最初の穴を選択状態にする。無ければ挿入末尾へキャレットを置く。
      */
     private void replaceWithTemplate(int start, int end, String template) {
+        replaceWithTemplate(start, end, template, null);
+    }
+
+    /**
+     * {@code selection} が非 null なら、テンプレート中の {@code ${SELECTION}} へ
+     * そのテキストを差し込む (選択範囲を囲む場合)。
+     */
+    private void replaceWithTemplate(int start, int end, String template, String selection) {
         cancel();
         Document doc = pane.getDocument();
         String indent = indentOfLineAt(textOf(), start);
-        PumlSnippetTemplate.Expansion ex = PumlSnippetTemplate.expand(template, indent);
+        PumlSnippetTemplate.Expansion ex =
+                PumlSnippetTemplate.expand(template, indent, selection);
         String body = ex.text();
         // remove + insert を 1 個の複合編集にまとめ、Ctrl+Z 1 回で確定前へ戻せるようにする
         // (分かれていると 1 回目の Undo で接頭辞ごと消える)。

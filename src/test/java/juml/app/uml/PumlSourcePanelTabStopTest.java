@@ -175,4 +175,63 @@ public class PumlSourcePanelTabStopTest {
         GuiActionRunner.execute(() -> panel.insertSnippet("class ${1:Name}\n"));
         assertEquals("x", textOf(panel));
     }
+
+    @Test
+    public void surround_wrapsTheSelectedLinesAndIndentsThem() {
+        PumlSourcePanel panel = editable("A -> B : hi\nB --> A : ok\nC -> D : x\n", 0);
+        GuiActionRunner.execute(() -> {
+            panel.selectRangeForTest(0, 24);
+            panel.surroundSelection("alt ${1:cond}\n  ${SELECTION}\nend\n");
+        });
+        assertEquals("alt cond\n  A -> B : hi\n  B --> A : ok\nend\nC -> D : x\n",
+                textOf(panel));
+        assertEquals("cond", selectionOf(panel));
+    }
+
+    @Test
+    public void surround_withoutSelection_wrapsTheCaretLine() {
+        PumlSourcePanel panel = editable("A -> B : hi\nC -> D : x\n", 3);
+        GuiActionRunner.execute(() ->
+                panel.surroundSelection("loop ${1:n}\n  ${SELECTION}\nend\n"));
+        assertEquals("loop n\n  A -> B : hi\nend\nC -> D : x\n", textOf(panel));
+    }
+
+    @Test
+    public void surround_doesNotSwallowTheFollowingLine() {
+        // 行全体をドラッグすると選択末尾は次の行頭に来る。そこで 1 行余分に
+        // 囲んでしまわないこと。
+        PumlSourcePanel panel = editable("A -> B\nC -> D\n", 0);
+        GuiActionRunner.execute(() -> {
+            panel.selectRangeForTest(0, 7);
+            panel.surroundSelection("opt ${1:c}\n  ${SELECTION}\nend\n");
+        });
+        assertEquals("opt c\n  A -> B\nend\nC -> D\n", textOf(panel));
+    }
+
+    @Test
+    public void surround_leavesNoBlankLineBehind() {
+        PumlSourcePanel panel = editable("A -> B\n", 0);
+        GuiActionRunner.execute(() ->
+                panel.surroundSelection("opt ${1:c}\n  ${SELECTION}\nend\n"));
+        assertEquals("opt c\n  A -> B\nend\n", textOf(panel));
+    }
+
+    @Test
+    public void surround_undoesInOneStep() {
+        PumlSourcePanel panel = editable("A -> B\n", 0);
+        GuiActionRunner.execute(() ->
+                panel.surroundSelection("opt ${1:c}\n  ${SELECTION}\nend\n"));
+        assertTrue(textOf(panel).contains("opt"));
+        GuiActionRunner.execute(panel::undoForTest);
+        assertEquals("A -> B\n", textOf(panel));
+    }
+
+    @Test
+    public void surround_onReadOnlyPanel_isIgnored() {
+        PumlSourcePanel panel = GuiActionRunner.execute(PumlSourcePanel::new);
+        GuiActionRunner.execute(() -> panel.setText("A -> B\n"));
+        GuiActionRunner.execute(() ->
+                panel.surroundSelection("opt ${1:c}\n  ${SELECTION}\nend\n"));
+        assertEquals("A -> B\n", textOf(panel));
+    }
 }
