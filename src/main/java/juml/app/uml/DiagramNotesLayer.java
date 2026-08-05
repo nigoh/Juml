@@ -134,6 +134,7 @@ final class DiagramNotesLayer {
         history.clear();
         mode = Mode.NONE;
         active = null;
+        connectFromId = null; // 中身が総入れ替えなので作成中コネクタの始点も無効
         if (onModelChanged != null) {
             onModelChanged.run();
         }
@@ -238,6 +239,8 @@ final class DiagramNotesLayer {
             ids.add(n.getId());
         }
         selectedIds.retainAll(ids);
+        // 始点が履歴で消えたら作成モードも畳む (残すと次のクリックが食われる)。
+        connectFromId = ids.contains(connectFromId) ? connectFromId : null;
         mode = Mode.NONE;
         active = null;
     }
@@ -660,6 +663,8 @@ final class DiagramNotesLayer {
         if (selectedIds.isEmpty()) {
             return false;
         }
+        // 始点を消した恐れがあるので作成モードも畳む (残すと次のクリックで宙ぶらりん)。
+        connectFromId = null;
         commit(null, () -> {
             connectors.removeIf(c -> selectedIds.contains(c.getFromId())
                     || selectedIds.contains(c.getToId()));
@@ -686,9 +691,9 @@ final class DiagramNotesLayer {
         return true;
     }
 
-    /** 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複は無視)。 */
+    /** 2 付箋を結ぶコネクタを 1 本追加する (自己ループ・重複・消えた端点は無視)。 */
     private void createConnector(String fromId, String toId) {
-        if (fromId.equals(toId)) {
+        if (fromId.equals(toId) || byId(fromId) == null || byId(toId) == null) {
             return;
         }
         DiagramConnector added = new DiagramConnector(fromId, toId);
