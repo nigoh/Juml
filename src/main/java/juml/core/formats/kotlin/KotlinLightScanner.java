@@ -44,26 +44,22 @@ public final class KotlinLightScanner {
     private static final Pattern IMPORT_PATTERN = Pattern.compile(
             "(?m)^\\s*import\\s+([\\w.*]+)\\s*;?\\s*$");
     /**
-     * クラスヘッダパターン。グループ 1 = annotations + modifiers (空白区切り),
-     * グループ 2 = 種別キーワード, グループ 3 = クラス名。
+     * クラスヘッダパターン。グループ 1 = 種別キーワード, グループ 2 = クラス名。
      *
-     * <p>アノテーション引数の {@code (...)} は 1 レベルのネストを許容するように
-     * {@code (?:[^()]|\([^()]*\))*} を使う。これにより
-     * {@code @Entity(foreignKeys = [ForeignKey(...)])} のような Room の Kotlin
-     * スタイルもクラスヘッダの annotation prefix として認識できる。</p>
+     * <p><b>annotation と修飾子はここに書かない</b>。書けばこの経路だけが独自の
+     * 「引数の括弧を何段まで許すか」を持つことになり、実際そうなっていた
+     * ({@code @Entity(foreignKeys = [ForeignKey(… arrayOf("id") …)])} が 2 段目で
+     * 切れてクラスの annotation が空になり、ER 図からテーブルごと消えた)。前置は
+     * {@link KotlinBlockMask#declPrefixes} から引く — 6 経路で 1 つの規則を使う。</p>
      */
     private static final Pattern CLASS_HEADER = Pattern.compile(
-            "((?:@[A-Za-z_][\\w.]*(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s*|"
-                    + "public\\s+|protected\\s+|private\\s+|internal\\s+|"
-                    + "open\\s+|abstract\\s+|final\\s+|sealed\\s+|data\\s+|"
-                    + "inner\\s+|companion\\s+|enum\\s+|annotation\\s+)*)"
-                    + "(class|interface|object)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
-    /** プライマリコンストラクタ引数の {@code val/var name: Type}。 */
-    private static final Pattern PRIMARY_CTOR_PARAM = Pattern.compile(
-            "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
-                    + "(?:private\\s+|protected\\s+|public\\s+|internal\\s+)?"
-                    + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*"
-                    + "([A-Za-z_$][\\w.<>?\\[\\]\\s,]*)");
+            "(?<![A-Za-z0-9_$.])(class|interface|object)\\s+([A-Za-z_$][A-Za-z0-9_$]*)");
+    /** プライマリコンストラクタ引数の {@code val/var name:} まで (型は走査で切る)。 */
+    private static final Pattern CTOR_PARAM_HEAD = Pattern.compile(
+            "(?:val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
+    /** 関数引数の {@code name:} まで (型は走査で切る)。 */
+    private static final Pattern PARAM_HEAD = Pattern.compile(
+            "([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
     /**
      * クラス本体内の {@code val/var name:} まで。<b>型は正規表現で切らない</b>。
      *
@@ -80,16 +76,11 @@ public final class KotlinLightScanner {
      * {@link KotlinBlockMask#propertyTypeEnd} が行う。</p>
      */
     private static final Pattern PROPERTY = Pattern.compile(
-            "((?:@(?:[A-Za-z]+:)?[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
-                    + "((?:private\\s+|protected\\s+|public\\s+|internal\\s+"
-                    + "|lateinit\\s+|const\\s+|override\\s+)*)"
-                    + "(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
+            "(?<![A-Za-z0-9_$.])(val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*");
 
     /** {@code fun name(params): ReturnType}。 */
     private static final Pattern FUN_DECL = Pattern.compile(
-            "((?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
-                    + "((?:public\\s+|private\\s+|protected\\s+|internal\\s+"
-                    + "|open\\s+|abstract\\s+|final\\s+|override\\s+|suspend\\s+|inline\\s+)*)"
+            "(?<![A-Za-z0-9_$.])"
                     // 名前と引数リストの開き括弧まで。引数リストと戻り値の型は
                     // <b>正規表現で切らない</b> — どちらもプロパティの型とまったく同じ
                     // 理由で、数え上げるかぎり必ず取りこぼす。実際、引数は 1 段の入れ子
@@ -127,29 +118,31 @@ public final class KotlinLightScanner {
         // (設定しないと Outer.Inner が Outer 抜きの QN になり、同名ネスト型が
         //  同じ QN へ衝突して 1 ノードに統合される)。
         KotlinHeaderScan.Nesting nesting = new KotlinHeaderScan.Nesting();
+        java.util.Map<Integer, KotlinBlockMask.DeclPrefix> prefixes =
+                KotlinBlockMask.declPrefixes(source);
         Matcher cm = CLASS_HEADER.matcher(source);
         while (cm.find()) {
             // 種別キーワード (class/interface/object) がコメント/文字列内なら誤検出。読み飛ばす。
-            if (isMasked(nonCode, cm.start(2))) {
+            if (isMasked(nonCode, cm.start(1))) {
                 continue;
             }
-            String annsAndMods = cm.group(1);
-            String kindKw = cm.group(2);
-            String name = cm.group(3);
+            KotlinBlockMask.DeclPrefix pre = prefixAt(prefixes, cm.start(1));
+            String kindKw = cm.group(1);
+            String name = cm.group(2);
             int headerEnd = cm.end();
 
             JavaClassInfo info = new JavaClassInfo();
             info.setPackageName(pkg);
             info.setSimpleName(name);
-            info.setEnclosingClass(nesting.enclosingAt(cm.start()));
-            info.setKind(mapKind(kindKw, annsAndMods));
+            info.setEnclosingClass(nesting.enclosingAt(pre.start));
+            info.setKind(mapKind(kindKw, pre.modifiers));
             info.getImports().addAll(imports);
-            extractAnnotations(annsAndMods, info.getAnnotations());
+            info.getAnnotations().addAll(pre.annotations);
 
             // プライマリコンストラクタ引数 (class Foo(val x: Int, ...))
             // 次のクラス宣言位置を上限に探索し、本体 {} を持たないクラスが後続クラスの
             // ブレース/括弧を誤って取り込まないようにする。
-            int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode);
+            int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode, prefixes);
             int primaryCtorParen = KotlinHeaderScan.primaryCtorParenAfter(source, headerEnd);
             if (nextHeader >= 0 && primaryCtorParen >= nextHeader) {
                 primaryCtorParen = -1;
@@ -205,8 +198,13 @@ public final class KotlinLightScanner {
                     for (int k = 0; k < codeMask.length && k < nonCodeInBody.length; k++) {
                         codeMask[k] |= nonCodeInBody[k];
                     }
-                    extractProperties(body, info, codeMask);
-                    extractFunctions(body, info, codeMask);
+                    // 前置 (annotation・修飾子) の走査もクラスヘッダとまったく同じ
+                    // 実装を使う。本体は切り出した部分文字列なので位置が変わるため
+                    // ここで作り直す。
+                    java.util.Map<Integer, KotlinBlockMask.DeclPrefix> bodyPres =
+                            KotlinBlockMask.declPrefixes(body);
+                    extractProperties(body, info, codeMask, bodyPres);
+                    extractFunctions(body, info, codeMask, bodyPres);
                 }
             }
 
@@ -216,17 +214,32 @@ public final class KotlinLightScanner {
     }
 
     /** {@code from} 以降で次のクラス/interface/object 宣言の開始位置 (無ければ -1)。
-     * コメント/文字列内の擬似ヘッダ ({@code nonCode} が true) は読み飛ばす。 */
-    private static int nextClassHeaderStart(String source, int from, boolean[] nonCode) {
+     * コメント/文字列内の擬似ヘッダ ({@code nonCode} が true) は読み飛ばす。
+     * 返すのは<b>前置 (annotation・修飾子) を含めた先頭</b> — 上限として使うので、
+     * ここでキーワード位置を返すと次のクラスの annotation の {@code (} を
+     * 手前のクラスのプライマリコンストラクタと取り違える。 */
+    private static int nextClassHeaderStart(
+            String source, int from, boolean[] nonCode,
+            java.util.Map<Integer, KotlinBlockMask.DeclPrefix> prefixes) {
         Matcher m = CLASS_HEADER.matcher(source);
         int at = from;
         while (m.find(at)) {
-            if (!isMasked(nonCode, m.start(2))) {
-                return m.start();
+            if (!isMasked(nonCode, m.start(1))) {
+                return prefixAt(prefixes, m.start(1)).start;
             }
             at = m.end();
         }
         return -1;
+    }
+
+    /**
+     * 宣言キーワード位置 {@code at} の前置を引く。前置が無ければ空の前置を返す。
+     */
+    private static KotlinBlockMask.DeclPrefix prefixAt(
+            java.util.Map<Integer, KotlinBlockMask.DeclPrefix> prefixes, int at) {
+        KotlinBlockMask.DeclPrefix pre = prefixes.get(at);
+        return pre != null ? pre
+                : new KotlinBlockMask.DeclPrefix(at, at, java.util.List.of(), "");
     }
 
     /**
@@ -375,70 +388,38 @@ public final class KotlinLightScanner {
         return JavaClassInfo.Kind.CLASS;
     }
 
-    private static void extractAnnotations(String annsAndMods, List<String> into) {
-        if (annsAndMods == null) return;
-        // 引数の () は 1 レベルのネストを許容 (Kotlin の Entity(foreignKeys = [ForeignKey(...)]) 等)。
-        // 先頭の use-site target (@field: / @get: / @param: 等) は読み飛ばし、実アノテーション名を
-        // 拾う。付けないと @field:SerializedName(...) が "@field" として記録され本来の名前が落ちる。
-        Pattern annPattern = Pattern.compile(
-                "@(?:(?:field|get|set|param|property|receiver|delegate|setparam|file)\\s*:\\s*)?"
-                        + "([A-Za-z_][\\w.]*)(\\((?:[^()]|\\([^()]*\\))*\\))?");
-        Matcher m = annPattern.matcher(annsAndMods);
-        while (m.find()) {
-            String full = "@" + m.group(1) + (m.group(2) == null ? "" : m.group(2));
-            into.add(full);
-        }
-    }
-
     /**
      * プライマリコンストラクタ引数を解析してフィールドとして追加。
      * カンマで分割した後、各パラメータごとに {@code val/var name: Type} を取り出す。
      * 通常のメソッド引数 (val/var なしの単純 {@code name: Type}) はフィールド化しない。
+     *
+     * <p>前置は {@link KotlinBlockMask#scanDeclPrefix}、型は
+     * {@link KotlinBlockMask#propertyTypeEnd} — どちらもクラス本体のプロパティと
+     * <b>同じ実装</b>を通す。以前はこの経路だけが正規表現 1 本 ({@code matches()}) で
+     * 前置も型も既定値もまとめて取っていたため、型や既定値が改行を跨いだだけで
+     * 全体が不一致になり、そのプロパティが<b>警告も無く図から消えて</b>いた
+     * (同じ宣言をクラス本体に書けば通る、という経路依存の食い違い)。</p>
      */
     private static void extractPrimaryCtorFields(String paramsText, JavaClassInfo info) {
         if (paramsText == null) return;
-        Pattern perParam = Pattern.compile(
-                "^\\s*((?:@(?:[A-Za-z]+:)?[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*)"
-                        + "(?:private\\s+|protected\\s+|public\\s+|internal\\s+)?"
-                        + "(?:val|var)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*(.+?)"
-                        + "(?:\\s*=.*)?\\s*$");
         for (String raw : KotlinHeaderScan.splitTopLevelCommas(paramsText)) {
-            // 引数の先頭に付いたコメントを落としてから照合する。前の引数の行末コメントは
-            // カンマの<b>後ろ</b>にあるので次の引数の先頭に付き、`^\s*` では食えないため
-            // その引数だけが黙って消えていた (コメントを 1 行上へ動かすと復活する、という
-            // 書き方依存の欠落)。クラス本体側は走査でコメントを飛ばしているのに、この
-            // 経路だけが生テキストのままだった。
-            String p = stripLeadingComments(raw);
-            Matcher m = perParam.matcher(p);
-            if (m.matches()) {
-                String anns = m.group(1);
-                String name = m.group(2);
-                String type = m.group(3).trim();
-                JavaFieldInfo f = new JavaFieldInfo();
-                f.setName(name);
-                f.setType(type);
-                f.setVisibility(Visibility.PUBLIC);
-                extractAnnotations(anns, f.getAnnotations());
-                info.getFields().add(f);
-            }
-        }
-    }
-
-    /** 先頭に並んだ空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
-    private static String stripLeadingComments(String s) {
-        int i = 0;
-        while (i < s.length()) {
-            if (Character.isWhitespace(s.charAt(i))) {
-                i++;
+            KotlinBlockMask.DeclPrefix pre = KotlinBlockMask.scanDeclPrefix(raw, 0);
+            Matcher m = CTOR_PARAM_HEAD.matcher(raw).region(pre.declStart, raw.length());
+            if (!m.lookingAt()) {
                 continue;
             }
-            int e = skipNonCode(s, i);
-            if (e <= i) {
-                break;
+            int typeEnd = KotlinBlockMask.propertyTypeEnd(raw, m.end());
+            String type = raw.substring(m.end(), typeEnd).trim();
+            if (type.isEmpty()) {
+                continue;
             }
-            i = e;
+            JavaFieldInfo f = new JavaFieldInfo();
+            f.setName(m.group(1));
+            f.setType(type);
+            f.setVisibility(visibilityOf(pre.modifiers));
+            f.getAnnotations().addAll(pre.annotations);
+            info.getFields().add(f);
         }
-        return s.substring(i);
     }
 
     /**
@@ -462,7 +443,8 @@ public final class KotlinLightScanner {
     }
 
     /** クラス本体のプロパティを解析してフィールドとして追加。 */
-    private static void extractProperties(String body, JavaClassInfo info, boolean[] codeMask) {
+    private static void extractProperties(String body, JavaClassInfo info, boolean[] codeMask,
+                                          java.util.Map<Integer, KotlinBlockMask.DeclPrefix> pres) {
         boolean[] inParen = KotlinBlockMask.insideParenMask(body);
         Matcher m = PROPERTY.matcher(body);
         while (m.find()) {
@@ -475,21 +457,19 @@ public final class KotlinLightScanner {
             if (m.start() < inParen.length && inParen[m.start()]) {
                 continue;
             }
-            String anns = m.group(1);
-            String mods = m.group(2);
-            String name = m.group(4);
+            KotlinBlockMask.DeclPrefix pre = prefixAt(pres, m.start());
             String type = body.substring(m.end(), KotlinBlockMask.propertyTypeEnd(body, m.end())).trim();
             if (type.isEmpty()) {
                 continue; // `:` の直後がいきなり終端 = プロパティ宣言ではない
             }
             JavaFieldInfo f = new JavaFieldInfo();
-            f.setName(name);
+            f.setName(m.group(2));
             f.setType(type);
-            f.setVisibility(visibilityOf(mods));
-            extractAnnotations(anns, f.getAnnotations());
+            f.setVisibility(visibilityOf(pre.modifiers));
+            f.getAnnotations().addAll(pre.annotations);
             // const val はコンパイル時定数 (実質 static)。companion object の
             // 列名定数などが Room の列やインスタンスフィールドと混同されないよう static 扱い。
-            if (mods != null && mods.matches("(?s).*\\bconst\\b.*")) {
+            if (pre.modifiers.matches("(?s).*\\bconst\\b.*")) {
                 f.setStatic(true);
             }
             info.getFields().add(f);
@@ -497,16 +477,16 @@ public final class KotlinLightScanner {
     }
 
     /** クラス本体の {@code fun ...} を解析してメソッドとして追加。 */
-    private static void extractFunctions(String body, JavaClassInfo info, boolean[] codeMask) {
+    private static void extractFunctions(String body, JavaClassInfo info, boolean[] codeMask,
+                                         java.util.Map<Integer, KotlinBlockMask.DeclPrefix> pres) {
         Matcher m = FUN_DECL.matcher(body);
         while (m.find()) {
             // 関数本体等のコードブロック内のローカル fun は除外する。
             if (m.start() < codeMask.length && codeMask[m.start()]) {
                 continue;
             }
-            String anns = m.group(1);
-            String mods = m.group(2);
-            String name = m.group(3);
+            KotlinBlockMask.DeclPrefix pre = prefixAt(pres, m.start());
+            String name = m.group(1);
             // 引数リストは括弧の対応で切る (m.end() - 1 が開き括弧)。
             int close = matchParen(body, m.end() - 1);
             if (close <= m.end() - 1) {
@@ -525,8 +505,8 @@ public final class KotlinLightScanner {
             JavaMethodInfo mth = new JavaMethodInfo();
             mth.setName(name);
             mth.setReturnType(returnType == null || returnType.isEmpty() ? "Unit" : returnType);
-            mth.setVisibility(visibilityOf(mods));
-            extractAnnotations(anns, mth.getAnnotations());
+            mth.setVisibility(visibilityOf(pre.modifiers));
+            mth.getAnnotations().addAll(pre.annotations);
             parseParameters(paramsText, mth);
             // メソッド本体内の呼び出しを抽出。ブロック本体か式本体かを判定。
             int next = nextNonSpaceChar(body, afterSig);
@@ -637,26 +617,53 @@ public final class KotlinLightScanner {
         }
     }
 
-    /** {@code name: Type, name2: Type2 = default} を解析してパラメータに追加。 */
+    /**
+     * {@code name: Type, name2: Type2 = default} を解析してパラメータに追加。
+     *
+     * <p>前置と型の読み方はプライマリコンストラクタ引数と<b>同じ実装</b>を通す。
+     * 以前はこの経路だけが正規表現 1 本 ({@code matches()}) で、先頭のコメントも
+     * 入れ子括弧を含む annotation も食えず、引数リストのどこかにコメントを 1 つ書くだけで
+     * <b>どれか 1 つの引数が黙って消えて</b>いた。消えた引数はシグネチャからも消えるので、
+     * クラス図には実在しない引数列が出る (欠損ではなく誤りになる)。</p>
+     */
     private static void parseParameters(String text, JavaMethodInfo mth) {
         if (text == null || text.trim().isEmpty()) return;
         // ジェネリクスを尊重した split
-        List<String> parts = KotlinHeaderScan.splitTopLevelCommas(text);
-        for (String p : parts) {
-            String trimmed = p.trim();
-            if (trimmed.isEmpty()) continue;
-            // "@A name: Type = default" / "name: Type"
-            // アノテーションと修飾子を取り除き、name: Type を取る
-            Pattern simple = Pattern.compile(
-                    "(?:@[A-Za-z_][\\w.]*(?:\\([^)]*\\))?\\s*)*"
-                            + "(?:vararg\\s+|crossinline\\s+|noinline\\s+)?"
-                            + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*:\\s*([^=]+?)\\s*(?:=.*)?$");
-            Matcher s = simple.matcher(trimmed);
-            if (s.matches()) {
-                mth.getParameterNames().add(s.group(1));
-                mth.getParameterTypes().add(s.group(2).trim());
+        for (String raw : KotlinHeaderScan.splitTopLevelCommas(text)) {
+            String p = stripLeadingNonCode(raw);
+            if (p.trim().isEmpty()) continue;
+            int at = KotlinBlockMask.scanDeclPrefix(p, 0).declStart;
+            Matcher m = PARAM_HEAD.matcher(p).region(at, p.length());
+            if (!m.lookingAt()) {
+                // 引数名が修飾子と同じ綴り (`data: String` 等) なら前置として食われている。
+                // 前置の手前から読み直す — 名前の綴りで引数が消えてはいけない。
+                m = PARAM_HEAD.matcher(p);
+                if (!m.lookingAt()) continue;
             }
+            int typeFrom = m.end();
+            String type = p.substring(
+                    typeFrom, KotlinBlockMask.propertyTypeEnd(p, typeFrom)).trim();
+            if (type.isEmpty()) continue;
+            mth.getParameterNames().add(m.group(1));
+            mth.getParameterTypes().add(type);
         }
+    }
+
+    /** 先頭の空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
+    private static String stripLeadingNonCode(String s) {
+        int i = 0;
+        while (i < s.length()) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                i++;
+                continue;
+            }
+            int e = skipNonCode(s, i);
+            if (e <= i) {
+                break;
+            }
+            i = e;
+        }
+        return s.substring(i);
     }
 
     /**

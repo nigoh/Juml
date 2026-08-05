@@ -15,11 +15,200 @@ package juml.core.formats.kotlin;
  *   <li>{@link #codeBlockMask} — この波括弧の中はメンバー宣言か実装か</li>
  *   <li>{@link #propertyTypeEnd} — プロパティの型はどこで終わるか</li>
  *   <li>{@link #insideParenMask} — この位置は丸括弧の内側 (= ctor 引数) か</li>
+ *   <li>{@link #scanDeclPrefix} — 宣言の前に並ぶ annotation と修飾子はどこまでか</li>
  * </ul>
  */
 final class KotlinBlockMask {
 
+    /**
+     * 宣言の前置として読んでよい修飾子。ここに無い語に当たった時点で前置は終わる。
+     *
+     * <p>{@code val} {@code var} {@code fun} {@code class} {@code interface}
+     * {@code object} などの宣言キーワードは<b>入れない</b> — 前置はそこで止まる。</p>
+     */
+    private static final java.util.Set<String> MODIFIERS =
+            new java.util.HashSet<>(java.util.Arrays.asList(
+                    "public", "private", "protected", "internal",
+                    "open", "abstract", "final", "sealed", "data", "inner",
+                    "companion", "enum", "annotation", "override", "lateinit",
+                    "const", "suspend", "inline", "external", "expect", "actual",
+                    "tailrec", "operator", "infix", "noinline", "crossinline",
+                    "vararg", "reified"));
+
+    /** 宣言キーワードの直前に並んでいた annotation と修飾子。 */
+    static final class DeclPrefix {
+        /** 前置の開始位置 (annotation も修飾子も無ければ宣言キーワードと同じ)。 */
+        final int start;
+        /** 前置を読み切った位置 = 宣言キーワードの先頭。 */
+        final int declStart;
+        /** {@code "@Name(...)"} をソースのまま並べたもの。 */
+        final java.util.List<String> annotations;
+        /** 修飾子を空白区切りで連結したもの (可視性・{@code const} 判定用)。 */
+        final String modifiers;
+
+        DeclPrefix(int start, int declStart,
+                   java.util.List<String> annotations, String modifiers) {
+            this.start = start;
+            this.declStart = declStart;
+            this.annotations = annotations;
+            this.modifiers = modifiers;
+        }
+    }
+
     private KotlinBlockMask() {
+    }
+
+    /**
+     * {@code from} から annotation と修飾子の並びを走査し、宣言キーワードの手前まで進める。
+     *
+     * <p><b>annotation の引数は括弧の対応で決まる</b> — これがこのクラスの言明である。
+     * 以前は 6 つの経路 (クラスヘッダ / プロパティ / 関数 / ctor 引数 / 関数引数 /
+     * annotation 分解) がそれぞれ別の正規表現で引数を<b>数え上げて</b>いた:
+     * {@code \([^)]*\)} は「括弧の中に {@code )} が 1 つも無い」、
+     * {@code (?:[^()]|\([^()]*\))*} は「入れ子はちょうど 1 段まで」。どちらも実測で外れた —
+     * {@code @Query("SELECT COUNT(*) FROM user")} は文字列の中の {@code )} で切れて
+     * DAO のメソッドが 1 件も出ず、{@code @Entity(foreignKeys = [ForeignKey(…arrayOf("id")…)])}
+     * は 2 段目で切れてエンティティごと ER 図から消えた。しかも経路ごとに段数が違うので、
+     * <b>同じ annotation を書く場所によって答えが変わる</b>という食い違いになっていた。</p>
+     *
+     * <p>括弧の中に何が入りうるかを数え上げる代わりに、括弧の対応を取る。文字列・コメントは
+     * {@link KotlinLightScanner#matchParen} が読み飛ばすので、SQL の中の {@code )} も
+     * {@code datetime('now')} も引数の終わりと誤読しない。</p>
+     */
+    static DeclPrefix scanDeclPrefix(String s, int from) {
+        java.util.List<String> anns = new java.util.ArrayList<>();
+        StringBuilder mods = new StringBuilder();
+        int i = from;
+        while (i < s.length()) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                i++;
+                continue;
+            }
+            int nonCode = KotlinLightScanner.skipNonCode(s, i);
+            if (nonCode > i) {
+                i = nonCode; // 前置に挟まった KDoc・行コメントは宣言の一部ではない
+                continue;
+            }
+            if (s.charAt(i) == '@') {
+                int end = annotationEnd(s, i);
+                if (end <= i) {
+                    break;
+                }
+                // use-site target (@field: / @get: / @param: …) は annotation 名ではない。
+                // 落とさないと @field:SerializedName(...) が "@field" 扱いになり本名が消える。
+                anns.add("@" + s.substring(annotationNameStart(s, i), end));
+                i = end;
+                continue;
+            }
+            int wordEnd = identifierEnd(s, i);
+            if (wordEnd <= i || !MODIFIERS.contains(s.substring(i, wordEnd))) {
+                break; // 宣言キーワードか、そもそも宣言ではない
+            }
+            mods.append(s, i, wordEnd).append(' ');
+            i = wordEnd;
+        }
+        return new DeclPrefix(from, i, anns, mods.toString().trim());
+    }
+
+    /**
+     * ソース全体を 1 度走査して「宣言キーワードの位置 → その前置」の対応を作る。
+     *
+     * <p>正規表現側は宣言キーワードから先だけを見るようにし、前置はすべてここから引く。
+     * こうしないと、正規表現に前置を書いた瞬間にその経路だけ別の数え上げ規則を持つ。</p>
+     */
+    static java.util.Map<Integer, DeclPrefix> declPrefixes(String s) {
+        java.util.Map<Integer, DeclPrefix> out = new java.util.HashMap<>();
+        for (int i = 0; i < s.length(); i++) {
+            int nonCode = KotlinLightScanner.skipNonCode(s, i);
+            if (nonCode > i) {
+                i = nonCode - 1;
+                continue;
+            }
+            char c = s.charAt(i);
+            boolean startsPrefix = c == '@' || KotlinLightScanner.isIdentPart(c);
+            if (!startsPrefix
+                    || (i > 0 && KotlinLightScanner.isIdentPart(s.charAt(i - 1)))) {
+                continue;
+            }
+            DeclPrefix pre = scanDeclPrefix(s, i);
+            if (pre.declStart <= i) {
+                continue; // 前置ではなかった
+            }
+            out.putIfAbsent(pre.declStart, pre);
+            i = pre.declStart - 1; // 読んだ前置の中は再走査しない
+        }
+        return out;
+    }
+
+    /**
+     * {@code @target:} を読み飛ばした実 annotation 名の開始位置 ({@code @} の次)。
+     *
+     * <p>use-site target を綴りで数え上げない — {@code @a:b} という形は Kotlin では
+     * use-site target 以外の意味を持たないので、<b>形</b>で判定できる。</p>
+     */
+    private static int annotationNameStart(String s, int at) {
+        int i = identifierEnd(s, at + 1);
+        int colon = skipSpaces(s, i);
+        if (i > at + 1 && colon < s.length() && s.charAt(colon) == ':') {
+            int name = skipSpaces(s, colon + 1);
+            if (identifierEnd(s, name) > name) {
+                return name;
+            }
+        }
+        return at + 1;
+    }
+
+    /** {@code from} の annotation 1 個の終端 exclusive。annotation でなければ {@code from}。 */
+    private static int annotationEnd(String s, int from) {
+        if (from >= s.length() || s.charAt(from) != '@') {
+            return from;
+        }
+        int i = identifierEnd(s, from + 1);
+        if (i <= from + 1) {
+            return from;
+        }
+        int nameStart = annotationNameStart(s, from);
+        if (nameStart > from + 1) {
+            i = identifierEnd(s, nameStart);
+        }
+        // 修飾名 (@androidx.room.Query) の残り
+        while (i + 1 < s.length() && s.charAt(i) == '.') {
+            int after = identifierEnd(s, i + 1);
+            if (after <= i + 1) {
+                break;
+            }
+            i = after;
+        }
+        if (i < s.length() && s.charAt(i) == '(') {
+            int close = KotlinLightScanner.matchParen(s, i);
+            if (close <= i) {
+                return from; // 閉じていない = annotation として読めない
+            }
+            i = close + 1;
+        }
+        return i;
+    }
+
+    /** {@code from} 以降の空白を読み飛ばした位置。 */
+    private static int skipSpaces(String s, int from) {
+        int i = from;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    /** {@code from} から続く識別子の終端 exclusive (識別子で始まらなければ {@code from})。 */
+    private static int identifierEnd(String s, int from) {
+        if (from >= s.length() || !KotlinLightScanner.isIdentPart(s.charAt(from))
+                || Character.isDigit(s.charAt(from))) {
+            return from;
+        }
+        int i = from;
+        while (i < s.length() && KotlinLightScanner.isIdentPart(s.charAt(i))) {
+            i++;
+        }
+        return i;
     }
 
     /**
