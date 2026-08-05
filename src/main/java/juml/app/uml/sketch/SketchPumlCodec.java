@@ -154,9 +154,6 @@ public final class SketchPumlCodec {
         return c;
     }
 
-    /** PlantUML のクラス内区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
-    private static final Pattern MEMBER_SEPARATOR = Pattern.compile("^(--|==|__|\\.\\.).*$");
-
     /**
      * {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。
      *
@@ -186,13 +183,21 @@ public final class SketchPumlCodec {
             if (line.isEmpty()) {
                 continue;
             }
+            // コメント行はメンバーではない。取り込むと設計器のメンバー一覧に
+            // コメントが 1 件のメンバーとして並び、削除・並べ替えの対象になる。
+            // 外側のループは同じ行をロック対象にしているのに、この経路だけが
+            // 取り込んでいた (ER の列ブロックは以前からロックしている)。
+            if (SketchBlockLine.isComment(line)) {
+                unsupported.add(line);
+                continue;
+            }
             // 括弧を含む行はメソッド、それ以外 (区切り線 -- を含む) はフィールド扱い。
             if (line.contains("(")) {
                 c.getMethods().add(line);
                 sawMethod = true;
             } else {
                 // 区切り線、またはメソッドの後に来るフィールド (交互配置) は再生成で並びが崩れる。
-                if (MEMBER_SEPARATOR.matcher(line).matches() || sawMethod) {
+                if (SketchBlockLine.isDivider(line) || sawMethod) {
                     reorderRisk = true;
                 }
                 c.getFields().add(line);

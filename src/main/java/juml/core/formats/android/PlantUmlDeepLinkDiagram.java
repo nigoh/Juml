@@ -4,6 +4,7 @@
 package juml.core.formats.android;
 
 import juml.core.formats.uml.PlantUmlCommentFormatter;
+import juml.core.formats.uml.PlantUmlLegendText;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -385,13 +386,20 @@ public final class PlantUmlDeepLinkDiagram {
 
     private static void emitLegend(StringBuilder out) {
         out.append("legend top left\n");
+        // 見出しの == … == とステレオタイプの <<autoVerify>> は creole のマークアップとして
+        // 解釈されるのが正しいので、そのまま出す。
         out.append("== Deep Link 図 (URL から画面を開く設定) ==\n");
-        out.append("Deep Link = 特定の URL をタップするとアプリの画面が開く仕組み\n");
-        out.append("applink   : http/https の URL で開く (App Links 候補)\n");
-        out.append("deeplink  : myapp:// など独自形式の URL で開く\n");
-        out.append("mime      : ファイル種別 (mimeType) だけで開く (URL 無し)\n");
         out.append("<<autoVerify>> : URL の所有者確認を自動で行う設定 (要 Web 側設定)\n");
-        out.append("#LightYellow   : exported=true (他アプリから呼び出せる=外部公開)\n");
+        // 以下は「書いたとおりに読ませる」行。#LightYellow の # を creole に食われると
+        // 「1. LightYellow …」と描かれ、説明対象の記号そのものが凡例から消える。
+        for (String line : new String[]{
+                "Deep Link = 特定の URL をタップするとアプリの画面が開く仕組み",
+                "applink   : http/https の URL で開く (App Links 候補)",
+                "deeplink  : myapp:// など独自形式の URL で開く",
+                "mime      : ファイル種別 (mimeType) だけで開く (URL 無し)",
+                "#LightYellow   : exported=true (他アプリから呼び出せる=外部公開)"}) {
+            out.append(PlantUmlLegendText.literalLine(line)).append('\n');
+        }
         out.append("endlegend\n");
     }
 

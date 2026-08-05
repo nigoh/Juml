@@ -38,7 +38,6 @@ public final class ErSketchCodec {
     private static final Pattern COLUMN = Pattern.compile(
             "^(\\*\\s*)?([A-Za-z_$][\\w$]*)\\s*(?::\\s*(.*\\S))?\\s*$");
     /** PK ブロックと一般列を分ける区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
-    private static final Pattern DIVIDER = Pattern.compile("^(--|==|__|\\.\\.)+\\s*$");
     /** crow's-foot リレーション。左右のカーディナリティトークンは他図種と衝突しない。 */
     private static final Pattern RELATION = Pattern.compile(
             "^([A-Za-z_$][\\w$]*)\\s*(\\|\\||\\|o|\\}o|\\}\\|)--(\\|\\||o\\||o\\{|\\|\\{)"
@@ -184,6 +183,8 @@ public final class ErSketchCodec {
     private static int readColumns(String[] lines, int start, ErSketchModel.Entity e,
                                    List<String> unsupported) {
         int i = start;
+        int dividers = 0;
+        int dividerAfter = -1;
         while (i < lines.length) {
             String line = lines[i].trim();
             // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま @enduml/@startuml に
@@ -195,7 +196,14 @@ public final class ErSketchCodec {
             if (line.equals("}")) {
                 break;
             }
-            if (line.isEmpty() || DIVIDER.matcher(line).matches()) {
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (SketchBlockLine.isDivider(line)) {
+                // 区切り線はモデルに持たない — 書き出しは PK 列と一般列の境目に
+                // 自動で 1 本引く。読んだ位置がその境目と一致するときだけ捨ててよい。
+                dividers++;
+                dividerAfter = e.getColumns().size();
                 continue;
             }
             Matcher col = COLUMN.matcher(line);
@@ -206,7 +214,32 @@ public final class ErSketchCodec {
                 unsupported.add(line);
             }
         }
+        if (dividers > 0 && !dividerIsReproduced(e, dividers, dividerAfter)) {
+            // 書き戻しで同じ位置に引けない区切り線は<b>黙って消える</b>。読んだものが
+            // 出てこないなら編集をロックして原文を守る (他の codec が非対応行に対して
+            // している判断と同じ)。
+            unsupported.add("--");
+        }
         return i;
+    }
+
+    /**
+     * 読んだ区切り線を {@link #toPuml} がそのまま再現するか。
+     *
+     * <p>再現するのは「区切りが 1 本だけ」「その手前がすべて PK 列」「その後ろに
+     * PK 列が無い」「前後とも空でない」場合に限る。それ以外は列の並べ替えか区切りの
+     * 消失が起きる。</p>
+     */
+    private static boolean dividerIsReproduced(ErSketchModel.Entity e, int dividers, int at) {
+        if (dividers != 1 || at <= 0 || at >= e.getColumns().size()) {
+            return false;
+        }
+        for (int k = 0; k < e.getColumns().size(); k++) {
+            if (e.getColumns().get(k).isPrimaryKey() != (k < at)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void addRelation(ErSketchModel model, Matcher rel) {

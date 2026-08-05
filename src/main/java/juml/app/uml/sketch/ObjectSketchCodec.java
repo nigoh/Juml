@@ -113,7 +113,7 @@ public final class ObjectSketchCodec {
                     o.setStereotype(stereo);
                 }
                 if (decl.group(3) != null) {
-                    i = readAttributes(lines, i, o);
+                    i = readAttributes(lines, i, o, unsupported);
                 }
                 continue;
             }
@@ -144,8 +144,14 @@ public final class ObjectSketchCodec {
      * 取り込む (クラス図のような field/method 再分類による並び崩れは起こらない)。閉じ括弧が
      * 無いまま {@code @enduml} / {@code @startuml} / 次の {@code object} に達したら、それらを
      * 吸い込んで破損させないよう消費せずに打ち切る (外側ループが処理する)。</p>
+     *
+     * <p>コメント行だけは属性にしない。{@link #toPuml} が属性を {@code Name : attr} へ
+     * 正規化するため、行頭の {@code '} がコロンの後ろへ移って<b>コメントでなくなる</b> —
+     * 元の図では描画されなかった行が、デザイナーで 1 回操作しただけで属性として現れる。
+     * 外側のループが同じ行をロック対象にしているのに、この経路だけが取り込んでいた。</p>
      */
-    private static int readAttributes(String[] lines, int start, ObjectInstance o) {
+    private static int readAttributes(String[] lines, int start, ObjectInstance o,
+                                      List<String> unsupported) {
         int i = start;
         while (i < lines.length) {
             String line = lines[i].trim();
@@ -158,6 +164,10 @@ public final class ObjectSketchCodec {
                 break;
             }
             if (line.isEmpty()) {
+                continue;
+            }
+            if (SketchBlockLine.isComment(line)) {
+                unsupported.add(line);
                 continue;
             }
             o.getAttributes().add(line);
