@@ -8,7 +8,11 @@ import juml.app.uml.sketch.ErSketchModel.Entity;
 import org.junit.Before;
 import org.junit.Test;
 
+import javax.swing.table.DefaultTableModel;
+
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -71,5 +75,63 @@ public class ErSketchDialogsValidationTest {
     public void isValidNewAlias_rejectsHyphen() {
         assertFalse("ハイフンを含む別名は不正なはず (\\w に含まれない記号)",
                 ErSketchDialogs.isValidNewAlias("e-user", model, user));
+    }
+
+    @Test
+    public void isValidNewAlias_acceptsJapaneseAlias() {
+        // 実機 (PlantUML 1.2026.6) は entity ユーザ をそのまま描画できる。
+        assertTrue("日本語の別名は受理されるはず",
+                ErSketchDialogs.isValidNewAlias("ユーザ", model, user));
+    }
+
+    @Test
+    public void firstUnwritableColumn_acceptsIdentifierNames() {
+        assertNull(ErSketchDialogs.firstUnwritableColumn(
+                columnsOf("id", "氏名", "created_at")));
+    }
+
+    @Test
+    public void firstUnwritableColumn_rejectsUnderscoreDivider() {
+        // 回帰: __ は識別子としては妥当なので識別子チェックだけでは通ってしまうが、
+        // 区切りトークンでもあるため、型を空にすると書き出し行が仕切りと同形になり
+        // 読み直しで列が消える (警告も編集ロックも無い)。
+        assertEquals("__", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "__")));
+        assertEquals("____", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "____")));
+        assertNull("単独の _ は区切りにならないので受理すること",
+                ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "_")));
+        assertNull("___ (奇数個) も区切りにならないので受理すること",
+                ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "___")));
+    }
+
+    @Test
+    public void firstUnwritableColumn_rejectsDividerLookalikes() {
+        // 回帰: 区切り線と同じ名前は書き出した瞬間に PK ブロックの仕切りとして
+        // 読み直され、警告も編集ロックも無いまま列が消えていた。
+        assertEquals("--", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "--")));
+        assertEquals("==", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "==")));
+        assertEquals("..", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "..")));
+    }
+
+    @Test
+    public void firstUnwritableColumn_rejectsNamesThatBreakTheColumnBlock() {
+        assertEquals("}", ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "}")));
+        assertEquals("first name",
+                ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "first name")));
+    }
+
+    @Test
+    public void firstUnwritableColumn_ignoresBlankRows() {
+        // 空行は applyColumns が捨てるだけなので拒否理由にはしない。
+        assertNull(ErSketchDialogs.firstUnwritableColumn(columnsOf("id", "  ")));
+    }
+
+    /** 列テーブル (PK / 名前 / 型) を検証用に組み立てる。 */
+    private static DefaultTableModel columnsOf(String... names) {
+        DefaultTableModel m = new DefaultTableModel(
+                new Object[]{"PK", "Column", "Type"}, 0);
+        for (String n : names) {
+            m.addRow(new Object[]{Boolean.FALSE, n, "int"});
+        }
+        return m;
     }
 }

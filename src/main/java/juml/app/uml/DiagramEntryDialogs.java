@@ -119,7 +119,7 @@ final class DiagramEntryDialogs {
         }
         DiagramRequest activeSpec = c.activeTabSpec();
         DiagramScope seed = activeSpec != null ? activeSpec.getScope() : c.state.currentScope;
-        DiagramScopeDialog dlg = newScopeDialog(seed);
+        DiagramScopeDialog dlg = newScopeDialog(seed, true);
         dlg.setVisible(true);
         DiagramScope picked = dlg.getResult();
         if (picked != null) {
@@ -137,14 +137,22 @@ final class DiagramEntryDialogs {
         if (!c.cache().isLoaded()) {
             return null;
         }
-        DiagramScopeDialog dlg = newScopeDialog(c.state.currentScope);
+        // 引き継ぎ無し: ここは「新しい図」のスコープを選ばせる導線で、seed は最後に
+        // アクティブだった別タブの写しにすぎない。引き継ぐと前の図の起点が紛れ込み、
+        // 新しい図が空になる (かつ seed があるせいで isEmpty() が false になり、
+        // 「何も選ばずに OK」がキャンセル扱いにならなくなる)。
+        DiagramScopeDialog dlg = newScopeDialog(c.state.currentScope, false);
         dlg.setVisible(true);
         DiagramScope picked = dlg.getResult();
         return (picked == null || picked.isEmpty()) ? null : picked;
     }
 
-    /** 現在のプロジェクトのパッケージ/モジュール候補で Scope ダイアログを構築する (seed で初期化)。 */
-    private DiagramScopeDialog newScopeDialog(DiagramScope seed) {
+    /**
+     * 現在のプロジェクトのパッケージ/モジュール候補で Scope ダイアログを構築する (seed で初期化)。
+     *
+     * @param carryOverShaping 同じ図の編集なら true、新しい図のスコープ選択なら false
+     */
+    private DiagramScopeDialog newScopeDialog(DiagramScope seed, boolean carryOverShaping) {
         TreeSet<String> packages = new TreeSet<>();
         TreeSet<String> modules = new TreeSet<>(c.cache().getClassToModule().values());
         for (JavaClassInfo cls : c.cache().getClasses()) {
@@ -154,7 +162,7 @@ final class DiagramEntryDialogs {
             }
         }
         return new DiagramScopeDialog(c.parentFrame,
-                List.copyOf(packages), List.copyOf(modules), seed);
+                List.copyOf(packages), List.copyOf(modules), seed, carryOverShaping);
     }
 
     /**

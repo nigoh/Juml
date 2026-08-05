@@ -22,13 +22,13 @@ import java.util.regex.Pattern;
 public final class SeqSketchCodec {
 
     private static final Pattern DECL = Pattern.compile(
-            "^(participant|actor)\\s+([A-Za-z_$][\\w$.]*)\\s*$");
+            "^(participant|actor)\\s+(" + SketchIdentifier.DOTTED + ")\\s*$");
     // 長い矢印表記を先に並べる (--> が -->> の前置と衝突しないように)。
     private static final Pattern MESSAGE = Pattern.compile(
-            "^([A-Za-z_$][\\w$.]*)\\s*(-->>|-->|->>|->)"
-                    + "\\s*([A-Za-z_$][\\w$.]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
+            "^(" + SketchIdentifier.DOTTED + ")\\s*(-->>|-->|->>|->)"
+                    + "\\s*(" + SketchIdentifier.DOTTED + ")(?:\\s*:\\s*(.*\\S))?\\s*$");
     private static final Pattern ACTIVATION = Pattern.compile(
-            "^(activate|deactivate)\\s+([A-Za-z_$][\\w$.]*)\\s*$");
+            "^(activate|deactivate)\\s+(" + SketchIdentifier.DOTTED + ")\\s*$");
 
     private SeqSketchCodec() {
     }

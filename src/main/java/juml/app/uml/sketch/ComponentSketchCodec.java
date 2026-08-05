@@ -25,18 +25,18 @@ public final class ComponentSketchCodec {
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     private static final Pattern COMP_BRACKET = Pattern.compile(
-            "^\\[([A-Za-z_$][\\w$]*)\\]\\s*$");
+            "^\\[(" + SketchIdentifier.BARE + ")\\]\\s*$");
     private static final Pattern COMP_DECL = Pattern.compile(
-            "^component\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^component\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern COMP_ALIAS = Pattern.compile(
             "^component\\s+" + SketchLabelText.QUOTED_LABEL
-                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
+                    + "\\s+as\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern IFACE_DECL = Pattern.compile(
-            "^interface\\s+([A-Za-z_$][\\w$]*)\\s*$");
+            "^interface\\s+(" + SketchIdentifier.BARE + ")\\s*$");
     private static final Pattern IFACE_ALIAS = Pattern.compile(
             "^interface\\s+" + SketchLabelText.QUOTED_LABEL
-                    + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*$");
-    private static final String ENDPOINT = "(\\[[A-Za-z_$][\\w$]*\\]|[A-Za-z_$][\\w$]*)";
+                    + "\\s+as\\s+(" + SketchIdentifier.BARE + ")\\s*$");
+    private static final String ENDPOINT = "(\\[" + SketchIdentifier.BARE + "\\]|" + SketchIdentifier.BARE + ")";
     private static final Pattern RELATION = Pattern.compile(
             "^" + ENDPOINT + "\\s*(-->|\\.\\.>|--)\\s*" + ENDPOINT
                     + "(?:\\s*:\\s*(.*\\S))?\\s*$");

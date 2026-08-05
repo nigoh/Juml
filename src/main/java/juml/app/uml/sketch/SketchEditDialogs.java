@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 final class SketchEditDialogs {
 
     /** PlantUML のクラス名として安全な識別子 (引用符なしで書ける範囲)。 */
-    private static final Pattern NAME = Pattern.compile("[A-Za-z_$][\\w$.]*");
+    private static final Pattern NAME = SketchIdentifier.DOTTED_PATTERN;
 
     private SketchEditDialogs() {
     }

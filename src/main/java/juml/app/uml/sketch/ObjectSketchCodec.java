@@ -28,13 +28,13 @@ public final class ObjectSketchCodec {
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     /** {@code object 名前 [<<ステレオタイプ>>] [{]}。 */
     private static final Pattern OBJECT_DECL = Pattern.compile(
-            "^object\\s+([A-Za-z_$][\\w$.]*)\\s*(?:<<\\s*(.*?)\\s*>>)?\\s*(\\{)?\\s*$");
+            "^object\\s+(" + SketchIdentifier.DOTTED + ")\\s*(?:<<\\s*(.*?)\\s*>>)?\\s*(\\{)?\\s*$");
     /** コロン形式の属性: {@code 名前 : 属性}。 */
     private static final Pattern ATTR = Pattern.compile(
-            "^([A-Za-z_$][\\w$.]*)\\s*:\\s*(.*\\S)\\s*$");
+            "^(" + SketchIdentifier.DOTTED + ")\\s*:\\s*(.*\\S)\\s*$");
     // 長い矢印表記を先に並べる (-- が --> の前置と衝突しないように)。
     private static final Pattern LINK = Pattern.compile(
-            "^([A-Za-z_$][\\w$.]*)\\s*(-->|\\.\\.>|--)\\s*([A-Za-z_$][\\w$.]*)"
+            "^(" + SketchIdentifier.DOTTED + ")\\s*(-->|\\.\\.>|--)\\s*(" + SketchIdentifier.DOTTED + ")"
                     + "(?:\\s*:\\s*(.*\\S))?\\s*$");
 
     /** 位置未指定オブジェクトを格子状に自動配置する際の間隔。 */

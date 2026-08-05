@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 final class UseCaseSketchDialogs {
 
     /** PlantUML の id として安全な識別子 (引用符なしで書ける範囲)。 */
-    private static final Pattern ID = Pattern.compile("[A-Za-z_$][\\w$]*");
+    private static final Pattern ID = SketchIdentifier.BARE_PATTERN;
 
     private UseCaseSketchDialogs() {
     }

@@ -58,16 +58,86 @@ public final class RoomAnalyzer {
      */
     private static final Pattern ENTITY_PRIMARY_KEYS = Pattern.compile(
             "primaryKeys\\s*=\\s*[\\[{]([^\\]}]*)[\\]}]");
-    /**
-     * Java {@code entities = {Foo.class, Bar.class}} と
-     * Kotlin {@code entities = [Foo::class, Bar::class]} 両形式に対応。
-     */
-    private static final Pattern DATABASE_ENTITIES = Pattern.compile(
-            "entities\\s*=\\s*[\\[{]([^\\]}]*)[\\]}]");
     private static final Pattern DATABASE_VERSION = Pattern.compile(
             "version\\s*=\\s*(\\d+)");
-    private static final Pattern QUERY_SQL = Pattern.compile(
-            "@?Query\\s*\\(\\s*\"([^\"]+)\"");
+
+    /**
+     * アノテーションの {@code member = …} の値を、<b>記法を問わず</b>そのまま返す
+     * (見つからなければ空文字)。
+     *
+     * <p>値の終わりは「入れ子の外側のカンマ、または全体の終わり」。囲みの
+     * {@code &#123;&#125;} / {@code []} は付いていれば剥がす。記法を数え上げないのは、
+     * Java が要素 1 個のときに囲みを省略できるからで、実際
+     * {@code @Database(entities = Word.class, version = 1)} — Room の公式 codelab の
+     * 書き方そのもの — で entity が 1 件も取れず、ER 図のデータベース枠が空になり
+     * エンティティが枠の外に孤立していた。</p>
+     */
+    private static String annotationMemberValue(String ann, String member) {
+        Matcher m = Pattern.compile("\\b" + member + "\\s*=\\s*").matcher(ann);
+        if (!m.find()) {
+            return "";
+        }
+        int depth = 0;
+        int i = m.end();
+        StringBuilder sb = new StringBuilder();
+        for (; i < ann.length(); i++) {
+            char c = ann.charAt(i);
+            if (c == '"') {
+                i = endOfStringLiteral(ann, i); // 文字列リテラルは丸ごと読み飛ばす
+                continue;
+            }
+            if (c == '{' || c == '[' || c == '(') {
+                depth++;
+            } else if (c == '}' || c == ']' || c == ')') {
+                if (depth == 0) {
+                    break;
+                }
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                break;
+            }
+            sb.append(c);
+        }
+        String v = sb.toString().trim();
+        if (v.length() >= 2 && (v.charAt(0) == '{' || v.charAt(0) == '[')) {
+            v = v.substring(1, v.length() - 1);
+        }
+        return v;
+    }
+
+    /** {@code open} の {@code "} から閉じ {@code "} までの位置 (エスケープ考慮)。 */
+    private static int endOfStringLiteral(String s, int open) {
+        for (int i = open + 1; i < s.length(); i++) {
+            if (s.charAt(i) == '\\') {
+                i++;
+            } else if (s.charAt(i) == '"') {
+                return i;
+            }
+        }
+        return s.length() - 1;
+    }
+
+    /**
+     * アノテーション本文に含まれる<b>すべての文字列リテラルを連結</b>して返す。
+     *
+     * <p>SQL は「引数に書かれた文字列リテラルの連結」であって「開き括弧の直後の
+     * 最初のリテラル」ではない。後者で切り出していたため、
+     * {@code @Query(value = "…")} は SQL が空欄になり (SQL 無しのメソッドと区別できない)、
+     * 複数リテラルに分けて書いた SQL は最初のリテラルで<b>黙って切れて</b>いた。
+     * どのテーブルを触るか調べる読み手に、欠損ではなく<b>嘘</b>を返すことになる。</p>
+     */
+    private static String concatStringLiterals(String ann) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ann.length(); i++) {
+            if (ann.charAt(i) != '"') {
+                continue;
+            }
+            int end = endOfStringLiteral(ann, i);
+            sb.append(ann, i + 1, end);
+            i = end;
+        }
+        return sb.toString();
+    }
     /**
      * {@code Foo.class} (Java) または {@code Foo::class} (Kotlin) のクラス参照。
      */
@@ -204,8 +274,7 @@ public final class RoomAnalyzer {
                 switch (nameOnly) {
                     case "Query":
                         kind = RoomDao.OperationKind.QUERY;
-                        Matcher qm = QUERY_SQL.matcher(ma);
-                        if (qm.find()) sql = qm.group(1);
+                        sql = concatStringLiterals(ma);
                         break;
                     case "Insert":
                         kind = RoomDao.OperationKind.INSERT;
@@ -243,13 +312,9 @@ public final class RoomAnalyzer {
             }
         }
         RoomDatabase db = new RoomDatabase(c.getQualifiedName(), version, "");
-        Matcher em = DATABASE_ENTITIES.matcher(dbAnn);
-        if (em.find()) {
-            String inner = em.group(1);
-            Matcher cr = ENTITY_CLASS_REF.matcher(inner);
-            while (cr.find()) {
-                db.getEntityClasses().add(cr.group(1));
-            }
+        Matcher cr = ENTITY_CLASS_REF.matcher(annotationMemberValue(dbAnn, "entities"));
+        while (cr.find()) {
+            db.getEntityClasses().add(cr.group(1));
         }
         return db;
     }

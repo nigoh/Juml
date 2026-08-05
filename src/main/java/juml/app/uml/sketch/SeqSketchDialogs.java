@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 final class SeqSketchDialogs {
 
     /** PlantUML の参加者名として安全な識別子 (引用符なしで書ける範囲)。 */
-    private static final Pattern NAME = Pattern.compile("[A-Za-z_$][\\w$.]*");
+    private static final Pattern NAME = SketchIdentifier.DOTTED_PATTERN;
 
     private SeqSketchDialogs() {
     }

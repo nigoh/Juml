@@ -25,11 +25,11 @@ public final class SketchPumlCodec {
     private static final Pattern POS = Pattern.compile(
             "^'@pos\\s+(\\S+)\\s+(-?\\d+)\\s+(-?\\d+)\\s*$");
     private static final Pattern CLASS_DECL = Pattern.compile(
-            "^(abstract\\s+)?(class|interface|enum)\\s+([A-Za-z_$][\\w$.]*)\\s*(\\{)?\\s*$");
+            "^(abstract\\s+)?(class|interface|enum)\\s+(" + SketchIdentifier.DOTTED + ")\\s*(\\{)?\\s*$");
     // 長い矢印表記を先に並べる (-- が --> の前置と衝突しないように)。
     private static final Pattern RELATION = Pattern.compile(
-            "^([A-Za-z_$][\\w$.]*)\\s*(<\\|--|<\\|\\.\\.|o--|\\*--|-->|\\.\\.>|--)"
-                    + "\\s*([A-Za-z_$][\\w$.]*)(?:\\s*:\\s*(.*\\S))?\\s*$");
+            "^(" + SketchIdentifier.DOTTED + ")\\s*(<\\|--|<\\|\\.\\.|o--|\\*--|-->|\\.\\.>|--)"
+                    + "\\s*(" + SketchIdentifier.DOTTED + ")(?:\\s*:\\s*(.*\\S))?\\s*$");
 
     /** 位置未指定クラスを格子状に自動配置する際の間隔。 */
     private static final int GRID_X = 240;

@@ -43,7 +43,7 @@ public final class DeploySketchCodec {
             "node|artifact|database|cloud|component|rectangle|folder|frame";
 
     /** 別名 (id) として許される厳格な識別子。合成 id・リンク端点にも使う。 */
-    private static final String BARE_ID = "[A-Za-z_$][\\w$]*";
+    private static final String BARE_ID = SketchIdentifier.BARE;
     private static final Pattern BARE_ID_ONLY = Pattern.compile("^" + BARE_ID + "$");
 
     private static final Pattern POS = Pattern.compile(
@@ -59,7 +59,7 @@ public final class DeploySketchCodec {
     /** 素の宣言。id は {@code .}/{@code -} も許す緩い文字集合で受理し、
      * 厳格な識別子でなければ (例: {@code app.war}) ラベルとして扱い id を合成する。 */
     private static final Pattern DECL_LOOSE = Pattern.compile(
-            "^(" + KW + ")\\s+([A-Za-z_$][\\w$.-]*)\\s*$");
+            "^(" + KW + ")\\s+(" + SketchIdentifier.DOTTED_DASH + ")\\s*$");
     /** リンク端点: 素の識別子、または引用符付きラベル参照。 */
     private static final String ENDPOINT = "(?:\"[^\"]*\"|" + BARE_ID + ")";
     private static final Pattern RELATION = Pattern.compile(

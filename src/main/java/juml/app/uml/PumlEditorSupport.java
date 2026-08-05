@@ -107,6 +107,12 @@ final class PumlEditorSupport {
      * <p>改行コードは LF へ正規化する。JTextArea の Document は {@code \r} を除去せず、
      * ユーザーが新規入力する改行は {@code \n} のみなので、CRLF ファイルをそのまま
      * 読み込むと保存時に既存行 CRLF・追加行 LF の混在 EOL ファイルが生成される。</p>
+     *
+     * <p>UTF-8 として壊れているバイト列は<b>読み込みを断る</b>。
+     * {@code new String(bytes, UTF_8)} は不正なバイトを黙って U+FFFD に置き換えるため、
+     * Shift_JIS や EUC-JP で書かれた {@code .puml} が警告なしに文字化けしたまま開き、
+     * <b>次の Ctrl+S でその置換文字が元ファイルへ書き戻されて原本が失われる</b>
+     * (編集バッファにも下書きにも元のバイトは残らない)。開けない方がまだ良い。</p>
      */
     static String read(File file) throws IOException {
         byte[] bytes = Files.readAllBytes(file.toPath());
@@ -115,8 +121,22 @@ final class PumlEditorSupport {
                 && bytes[1] == UTF8_BOM[1] && bytes[2] == UTF8_BOM[2]) {
             offset = 3;
         }
-        return new String(bytes, offset, bytes.length - offset, StandardCharsets.UTF_8)
+        return decodeStrictUtf8(file, bytes, offset)
                 .replace("\r\n", "\n").replace('\r', '\n');
+    }
+
+    /** UTF-8 として厳密に復号する (壊れていれば例外)。 */
+    private static String decodeStrictUtf8(File file, byte[] bytes, int offset)
+            throws IOException {
+        java.nio.charset.CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+        try {
+            return decoder.decode(
+                    java.nio.ByteBuffer.wrap(bytes, offset, bytes.length - offset)).toString();
+        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+            throw new IOException(Messages.get("puml.editor.notUtf8") + file.getPath(), notUtf8);
+        }
     }
 
     /**

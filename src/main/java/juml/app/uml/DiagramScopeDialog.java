@@ -62,12 +62,40 @@ public final class DiagramScopeDialog extends JDialog {
     private final JRadioButton parseModeFull;
     private final JRadioButton parseModeHeaders;
     private DiagramScope result;
+    /**
+     * このダイアログにウィジェットが無い設定を持ち回るための元スコープ (null 可)。
+     *
+     * <p>OK は毎回まっさらなビルダから組み直すため、以前は<b>ダイアログが知らない設定を
+     * 押すだけで消していた</b>: プレビュー右クリックの「このクラスを強調」(focusClass)・
+     * 個別クラスの非表示 (excludedQualifiedNames)・ツリーのダブルクリックで開いた
+     * 1-hop 図の起点 (seedQualifiedNames) が、可視性を変えただけで失われる。とくに起点が
+     * 消えると「このクラスの近傍」がプロジェクト全体の図へ化ける。整形の解除には専用の
+     * 「整形をリセット」メニューがあるのだから、ここで黙って解除してはいけない。</p>
+     */
+    private final DiagramScope carriedOver;
 
+    /**
+     * 既存の図のスコープを<b>編集する</b>ためのダイアログ (画面に無い設定は引き継ぐ)。
+     */
     public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
                               DiagramScope initial) {
+        this(owner, packages, modules, initial, true);
+    }
+
+    /**
+     * @param carryOverShaping {@code initial} の起点・強調・個別非表示を引き継ぐか。
+     *     同じ図のスコープを編集するときだけ {@code true} にすること。<b>新しい図の</b>
+     *     スコープを選ばせる用途 ({@code DiagramEntryDialogs.promptForScope}) では
+     *     {@code initial} が「最後にアクティブだった別のタブ」の写しでしかないため、
+     *     引き継ぐと前の図の起点が新しい図に紛れ込み、BFS がその起点で母集合を絞り切って
+     *     <b>空の図</b>になる (起点を消す UI はどこにも無い)。
+     */
+    public DiagramScopeDialog(Window owner, List<String> packages, List<String> modules,
+                              DiagramScope initial, boolean carryOverShaping) {
         super(owner, Messages.get("dlg.scope.title"), ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
+        this.carriedOver = carryOverShaping ? initial : null;
 
         packageList = new JList<>(packages.toArray(new String[0]));
         packageList.setVisibleRowCount(8);
@@ -379,7 +407,28 @@ public final class DiagramScopeDialog extends JDialog {
         Object presetSel = presetCombo.getSelectedItem();
         b.preset(presetSel instanceof DiagramPreset
                 ? (DiagramPreset) presetSel : DiagramPreset.CUSTOM);
+        carryOverUnshownSettings(b);
         return b.build();
+    }
+
+    /**
+     * このダイアログにウィジェットが無い設定を元スコープから引き継ぐ。
+     *
+     * <p>ここまでの組み立ては<b>ダイアログが持つウィジェットの値だけ</b>を反映している
+     * (集合系のビルダは加算なので、元スコープから積み上げると選択解除が効かなくなる)。
+     * 逆に言えば、画面に出ていない設定はここで明示的に運ばないと消える。運ぶのは
+     * 起点クラス・強調クラス・個別に隠したクラス・外部ライブラリ判定の接頭辞の 4 つ。</p>
+     */
+    private void carryOverUnshownSettings(DiagramScope.Builder b) {
+        if (carriedOver == null) {
+            return;
+        }
+        b.seeds(carriedOver.getSeedQualifiedNames());
+        b.focusClass(carriedOver.getFocusClass());
+        for (String hidden : carriedOver.getExcludedQualifiedNames()) {
+            b.excludeClass(hidden);
+        }
+        b.externalPackagePrefixes(carriedOver.getExternalPackagePrefixes());
     }
 
     private static void selectAll(JList<String> list, Set<String> values) {
