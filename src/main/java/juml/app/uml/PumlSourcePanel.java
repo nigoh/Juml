@@ -47,6 +47,8 @@ public class PumlSourcePanel extends JPanel {
     private final SourceFindBar findBar;
     /** 行ジャンプバー (Ctrl+G)。 */
     private final GotoLineBar gotoBar;
+    /** 記号一覧ジャンプバー (Ctrl+Shift+O)。 */
+    private final PumlOutlineBar outlineBar;
     /** 入力追従の補完ポップアップ (編集モードで生成)。 */
     private PumlCompletionPopup completionPopup;
     /** 雛形挿入とタブストップ巡回 (補完確定・挿入パレットの共通経路)。 */
@@ -97,7 +99,8 @@ public class PumlSourcePanel extends JPanel {
         snippetButton.setToolTipText(Messages.get("puml.snippet.tip"));
         // パレットは押すたびに組み直す (囲みの並びは図種で、出し分けは選択の有無で変わる)。
         palette = new PumlInsertPalette(this::insertSnippet, this::surroundSelection,
-                this::getText, () -> textPane.getSelectedText() != null);
+                this::getText, () -> textPane.getSelectedText() != null,
+                this::declareMissingParticipants);
         snippetButton.addActionListener(
                 e -> palette.build().show(snippetButton, 0, snippetButton.getHeight()));
         // スニペット挿入は編集モードのときだけ有効。
@@ -119,6 +122,7 @@ public class PumlSourcePanel extends JPanel {
             repaint();
         }, true);
         gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate, textPane);
+        outlineBar = new PumlOutlineBar(this::jumpToLine, this::revalidate, textPane);
 
         add(bar, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
@@ -126,6 +130,7 @@ public class PumlSourcePanel extends JPanel {
         south.setLayout(new javax.swing.BoxLayout(south, javax.swing.BoxLayout.Y_AXIS));
         south.add(findBar);
         south.add(gotoBar);
+        south.add(outlineBar);
         add(south, BorderLayout.SOUTH);
         installFindKeys();
 
@@ -225,6 +230,41 @@ public class PumlSourcePanel extends JPanel {
     /** テスト用: 指定オフセット行に付いている指摘 (無ければ null)。 */
     String diagnosticAtForTest(int offset) {
         return decorations.diagnosticAt(offset);
+    }
+
+    /**
+     * メッセージ行で使われているのに宣言されていない参加者を、まとめて宣言する。
+     * 宣言が既にあればその直後へ、無ければ見出し行の後ろへ差し込む。
+     *
+     * @return 追加した宣言の数 (0 なら何もしなかった)
+     */
+    int declareMissingParticipants() {
+        if (!textPane.isEditable()) {
+            return 0;
+        }
+        String text = getText();
+        java.util.List<String> missing = PumlSymbols.undeclaredParticipants(text);
+        if (missing.isEmpty()) {
+            return 0;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String name : missing) {
+            sb.append(PumlSymbols.declarationFor(name)).append('\n');
+        }
+        int at = PumlSymbols.declarationInsertOffset(text);
+        runAsCompound(() -> {
+            try {
+                textPane.getDocument().insertString(at, sb.toString(), null);
+            } catch (BadLocationException ignored) {
+                // 競合編集で位置がずれた場合は何もしない (致命的でない)。
+            }
+        });
+        return missing.size();
+    }
+
+    /** テスト用: 記号一覧バー。 */
+    PumlOutlineBar outlineBarForTest() {
+        return outlineBar;
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
@@ -494,6 +534,8 @@ public class PumlSourcePanel extends JPanel {
                 "juml-replace");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_G, menuMask),
                 "juml-goto");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_O,
+                menuMask | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outline");
         am.put("juml-find", action(findBar::activate));
         am.put("juml-replace", action(() -> {
             if (textPane.isEditable()) {
@@ -503,6 +545,7 @@ public class PumlSourcePanel extends JPanel {
             }
         }));
         am.put("juml-goto", action(this::showGotoBar));
+        am.put("juml-outline", action(() -> outlineBar.activate(getText())));
     }
 
     /** 行ジャンプバーを現在行・総行数つきで開く。 */

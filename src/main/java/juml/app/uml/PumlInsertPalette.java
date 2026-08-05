@@ -8,6 +8,8 @@ import juml.util.Messages;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
+import java.text.MessageFormat;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -29,15 +31,19 @@ final class PumlInsertPalette {
     private final Consumer<String> onSurround;
     /** いま編集している本文 (図種の判定に使う)。 */
     private final Supplier<String> textSupplier;
+    /** 未宣言の参加者をまとめて宣言する (実行件数を返す)。 */
+    private final Supplier<Integer> onDeclareMissing;
     /** 選択があるか (囲む項目を出すかの判定)。 */
     private final Supplier<Boolean> hasSelection;
 
     PumlInsertPalette(Consumer<String> onInsert, Consumer<String> onSurround,
-                      Supplier<String> textSupplier, Supplier<Boolean> hasSelection) {
+                      Supplier<String> textSupplier, Supplier<Boolean> hasSelection,
+                      Supplier<Integer> onDeclareMissing) {
         this.onInsert = onInsert;
         this.onSurround = onSurround;
         this.textSupplier = textSupplier;
         this.hasSelection = hasSelection;
+        this.onDeclareMissing = onDeclareMissing;
     }
 
     /** いまの状態に合わせてポップアップを組み立てる。 */
@@ -51,6 +57,15 @@ final class PumlInsertPalette {
                 surround.add(item);
             }
             menu.add(surround);
+            menu.addSeparator();
+        }
+        // 未宣言の参加者があるときだけ、その場で直せる項目を出す。
+        List<String> missing = PumlSymbols.undeclaredParticipants(textSupplier.get());
+        if (!missing.isEmpty()) {
+            JMenuItem fix = new JMenuItem(MessageFormat.format(
+                    Messages.get("puml.fix.declareMissing"), missing.size()));
+            fix.addActionListener(e -> onDeclareMissing.get());
+            menu.add(fix);
             menu.addSeparator();
         }
         for (PumlSnippets.Group g : PumlSnippets.Group.values()) {
