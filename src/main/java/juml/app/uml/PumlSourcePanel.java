@@ -7,6 +7,7 @@ import juml.util.Messages;
 
 import javax.swing.JButton;
 import javax.swing.JPanel;
+import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTextPane;
 import javax.swing.SwingUtilities;
@@ -55,6 +56,8 @@ public class PumlSourcePanel extends JPanel {
     private PumlEditInsertions insertions;
     /** 「挿入」ボタンのパレット (スニペット挿入 + 選択範囲の囲み)。 */
     private final PumlInsertPalette palette;
+    /** 利用者が自分で足したスニペットの保管庫。 */
+    private final PumlUserSnippets userSnippets = new PumlUserSnippets();
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
     /** 本文を変えない装飾 (ハイライト・現在行・対応括弧・エラー行)。 */
@@ -100,7 +103,8 @@ public class PumlSourcePanel extends JPanel {
         // パレットは押すたびに組み直す (囲みの並びは図種で、出し分けは選択の有無で変わる)。
         palette = new PumlInsertPalette(this::insertSnippet, this::surroundSelection,
                 this::getText, () -> textPane.getSelectedText() != null,
-                this::declareMissingParticipants);
+                this::declareMissingParticipants, userSnippets,
+                this::registerSelectionAsSnippet, this::manageUserSnippets);
         snippetButton.addActionListener(
                 e -> palette.build().show(snippetButton, 0, snippetButton.getHeight()));
         // スニペット挿入は編集モードのときだけ有効。
@@ -265,6 +269,41 @@ public class PumlSourcePanel extends JPanel {
     /** テスト用: 記号一覧バー。 */
     PumlOutlineBar outlineBarForTest() {
         return outlineBar;
+    }
+
+    /**
+     * 選択している本文をユーザー定義スニペットとして登録する。トリガ名だけを尋ね、
+     * 本文はそのまま取り込む (登録のために書き写させない)。
+     *
+     * @return 登録したトリガ名。取り消した/選択が無いなら null
+     */
+    String registerSelectionAsSnippet() {
+        String selected = textPane.getSelectedText();
+        if (selected == null || selected.isEmpty()) {
+            return null;
+        }
+        String asked = JOptionPane.showInputDialog(this,
+                Messages.get("puml.userSnip.askTrigger"),
+                Messages.get("puml.userSnip.title"), JOptionPane.QUESTION_MESSAGE);
+        String trigger = PumlUserSnippets.normalizeTrigger(asked);
+        if (trigger.isEmpty()) {
+            return null;
+        }
+        // 末尾に改行を足しておく。行単位で選んだ雛形は、次の行から書き始められた
+        // ほうが自然に続く。
+        String body = selected.endsWith("\n") ? selected : selected + "\n";
+        userSnippets.add(new PumlUserSnippets.Entry(trigger, trigger, body));
+        return trigger;
+    }
+
+    /** ユーザー定義スニペットの管理ダイアログを開く。 */
+    private void manageUserSnippets() {
+        new PumlUserSnippetDialog(this, userSnippets).setVisible(true);
+    }
+
+    /** テスト用: ユーザー定義スニペットの保管庫。 */
+    PumlUserSnippets userSnippetsForTest() {
+        return userSnippets;
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
