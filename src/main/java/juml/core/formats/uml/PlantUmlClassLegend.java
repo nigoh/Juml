@@ -210,10 +210,14 @@ final class PlantUmlClassLegend {
             appendIconLegend(out, VisibilityIconStyle.PRIVATE_COLOR, "■",
                     "private (非公開)");
         } else {
-            out.append("+ public\n");
-            out.append("- private\n");
-            out.append("# protected\n");
-            out.append("~ package-private\n");
+            // 記号そのものを見せる行なので、creole に食われないよう逃がす。
+            // アイコン側の分岐は <color:…> をマークアップとして使うのが正しいが、
+            // こちらは 1 文字も解釈させてはいけない (実測で `# protected` の # が
+            // 番号付きリストになり「1. protected」と描かれていた)。
+            for (String line : new String[]{
+                    "+ public", "- private", "# protected", "~ package-private"}) {
+                out.append(PlantUmlLegendText.literalLine(line)).append('\n');
+            }
         }
     }
 

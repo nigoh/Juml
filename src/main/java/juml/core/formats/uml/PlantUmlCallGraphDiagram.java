@@ -86,8 +86,12 @@ public final class PlantUmlCallGraphDiagram {
         if (opts.includeLegend) {
             sb.append("\n");
             sb.append("legend top left\n");
-            sb.append("  ").append(opts.entryColor).append(" 起点メソッド (entry)\n");
-            sb.append("  ").append(opts.projectColor).append(" プロジェクト内クラス\n");
+            // 色トークンは既定で # で始まる。先頭の空白は PlantUML が落としてから
+            // creole を見るので、空白を置いても記号は食われる。
+            sb.append(PlantUmlLegendText.literalLine(
+                    "  " + opts.entryColor + " 起点メソッド (entry)")).append('\n');
+            sb.append(PlantUmlLegendText.literalLine(
+                    "  " + opts.projectColor + " プロジェクト内クラス")).append('\n');
             sb.append("  (white) 外部 / 未解決クラス\n");
             sb.append("  [↩] 再帰 / 循環呼び出し\n");
             sb.append("  [C] クラス / [I] インタフェース\n");

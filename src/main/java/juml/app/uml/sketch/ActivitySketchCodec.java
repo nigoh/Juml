@@ -52,6 +52,10 @@ public final class ActivitySketchCodec {
         ActivitySketchModel model = new ActivitySketchModel();
         List<String> unsupported = new ArrayList<>();
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        // 判定はこの図種だけの話ではないので共有の番人へ寄せる。ここに直書きしていた
+        // あいだ、他の 9 codec は同じ破壊を起こしたままだった。
+        SketchMultiDiagram.reportExtraDiagrams(lines, "@startuml", unsupported);
         parseBlock(lines, 0, model.getNodes(), unsupported, model, false);
         return new ParseResult(model, unsupported);
     }
@@ -73,7 +77,7 @@ public final class ActivitySketchCodec {
             }
             i++;
             if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
@@ -141,10 +145,8 @@ public final class ActivitySketchCodec {
 
     /** モデルを PlantUML テキストへ書き出す (ブランチは 2 スペース字下げ)。 */
     public static String toPuml(ActivitySketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         emit(sb, model.getNodes(), 0);
         sb.append("@enduml\n");

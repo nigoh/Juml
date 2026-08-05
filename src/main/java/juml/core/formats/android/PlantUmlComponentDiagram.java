@@ -3,6 +3,7 @@
 
 package juml.core.formats.android;
 
+import juml.core.formats.uml.PlantUmlLegendText;
 import juml.core.formats.uml.PlantUmlCommentFormatter;
 
 import java.util.HashMap;
@@ -196,7 +197,9 @@ public final class PlantUmlComponentDiagram {
         out.append("BroadcastReceiver: システムや他アプリからの通知を受け取る部品\n");
         out.append("ContentProvider  : 他アプリとデータを共有する窓口\n");
         out.append("<<launcher>>     : アプリ起動時に最初に開く画面\n");
-        out.append("#LightYellow     : exported=true (他アプリから呼び出せる=外部公開)\n");
+        // Manifest 図と同じ行。片方だけ直すとまた兄弟が残るので両方通す。
+        out.append(PlantUmlLegendText.literalLine(
+                "#LightYellow     : exported=true (他アプリから呼び出せる=外部公開)")).append('\n');
         if (o.showIntentFilters) {
             out.append("<<action>>       : このアプリが反応する操作の種類 (intent-filter)\n");
         }

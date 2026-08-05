@@ -33,7 +33,14 @@ final class KotlinBlockMask {
                     "companion", "enum", "annotation", "override", "lateinit",
                     "const", "suspend", "inline", "external", "expect", "actual",
                     "tailrec", "operator", "infix", "noinline", "crossinline",
-                    "vararg", "reified"));
+                    "vararg", "reified",
+                    // value class (Kotlin 1.5+)。宣言キーワードへ到達できないと前置が
+                    // 引けず annotation が黙って空になる (実測: @JvmInline value class Money)。
+                    // fun interface の fun は<b>ここに入れない</b> — fun は関数の宣言
+                    // キーワードでもあるので、入れると `@Query fun count()` の前置が
+                    // 関数ではなく名前の位置に記録されて annotation が全滅する。
+                    // 「fun の次が interface のときだけ修飾子」は下で形として判定する。
+                    "value"));
 
     /** 宣言キーワードの直前に並んでいた annotation と修飾子。 */
     static final class DeclPrefix {
@@ -101,13 +108,52 @@ final class KotlinBlockMask {
                 continue;
             }
             int wordEnd = identifierEnd(s, i);
-            if (wordEnd <= i || !MODIFIERS.contains(s.substring(i, wordEnd))) {
+            if (wordEnd <= i) {
+                break;
+            }
+            String word = s.substring(i, wordEnd);
+            // `fun interface` の fun だけは修飾子。関数の fun と綴りが同じなので
+            // 語だけでは決まらない — 次の語が interface かどうかで決める。
+            boolean funInterface = "fun".equals(word)
+                    && "interface".equals(nextWord(s, wordEnd));
+            if (!funInterface && !MODIFIERS.contains(word)) {
                 break; // 宣言キーワードか、そもそも宣言ではない
             }
-            mods.append(s, i, wordEnd).append(' ');
+            mods.append(word).append(' ');
             i = wordEnd;
         }
         return new DeclPrefix(from, i, anns, mods.toString().trim());
+    }
+
+    /**
+     * {@code from} から続く<b>annotation だけ</b>の並びの終端。修飾子は食わない。
+     *
+     * <p>宣言キーワードを持たない宣言 (enum 定数) 用。修飾子まで食う
+     * {@link #scanDeclPrefix} をそこに使うと、名前が修飾子と同じ綴りのときに
+     * 名前ごと消える。</p>
+     */
+    static int annotationRunEnd(String s, int from) {
+        int i = from;
+        while (i < s.length()) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                i++;
+                continue;
+            }
+            int nonCode = KotlinLightScanner.skipNonCode(s, i);
+            if (nonCode > i) {
+                i = nonCode;
+                continue;
+            }
+            if (s.charAt(i) != '@') {
+                break;
+            }
+            int end = annotationEnd(s, i);
+            if (end <= i) {
+                break;
+            }
+            i = end;
+        }
+        return i;
     }
 
     /**
@@ -158,6 +204,17 @@ final class KotlinBlockMask {
         return at + 1;
     }
 
+    /**
+     * {@code from} が annotation の始まりならその終端 exclusive、そうでなければ {@code from}。
+     *
+     * <p>annotation の中には {@code @get:Foo} の use-site target のように、外から見ると
+     * 宣言の {@code :} と区別がつかない文字が入る。annotation を読み飛ばしてから
+     * 宣言を読む経路は、この 1 本を通す。</p>
+     */
+    static int skipAnnotation(String s, int from) {
+        return annotationEnd(s, from);
+    }
+
     /** {@code from} の annotation 1 個の終端 exclusive。annotation でなければ {@code from}。 */
     private static int annotationEnd(String s, int from) {
         if (from >= s.length() || s.charAt(from) != '@') {
@@ -187,6 +244,112 @@ final class KotlinBlockMask {
             i = close + 1;
         }
         return i;
+    }
+
+    /**
+     * {@code [from, nameStart)} に語としての {@code val} / {@code var} があるか。
+     * これがある primary constructor 引数だけがクラスのプロパティになる。
+     */
+    static boolean declaresProperty(String param, int from, int nameStart) {
+        for (int i = Math.max(0, from); i < nameStart; i++) {
+            int e = KotlinLightScanner.skipNonCode(param, i);
+            if (e > i) { i = e - 1; continue; }
+            if (!KotlinLightScanner.isIdentStart(param.charAt(i))
+                    || (i > 0 && KotlinLightScanner.isIdentPart(param.charAt(i - 1)))) {
+                continue;
+            }
+            int end = i;
+            while (end < param.length() && KotlinLightScanner.isIdentPart(param.charAt(end))) end++;
+            String word = param.substring(i, end);
+            if ("val".equals(word) || "var".equals(word)) {
+                return true;
+            }
+            i = end - 1;
+        }
+        return false;
+    }
+
+    /**
+     * 引数 1 つ分から「名前」と「型の開始位置」を切り出す。
+     * 返すのは {@code {nameStart, nameEnd, typeStart}}、引数でなければ null。
+     *
+     * <p><b>引数の名前は、入れ子の外側にある最初の {@code :} の直前の識別子</b> —
+     * これが唯一の言明である。前置 (annotation・修飾子) を読み飛ばしてから名前を探すと、
+     * 名前が修飾子と同じ綴り ({@code data} / {@code value} / {@code operator} …) のときに
+     * 名前ごと前置として食われる。1 度そうなって「前置の手前から読み直す」逃げ道を足したが、
+     * 名前の前に annotation が 1 つでもあると読み直しも失敗し、その引数が<b>黙って消えて</b>
+     * いた ({@code @Body data: Payload} が丸ごと落ち、クラス図には実在しないシグネチャが出た)。
+     * 数え上げた集合に名前が入っているかどうかで結果が変わる作りをやめる。</p>
+     */
+    static int[] nameBeforeTopLevelColon(String param) {
+        int depth = 0;
+        for (int i = 0; i < param.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(param, i);
+            if (e > i) { i = e - 1; continue; }
+            char c = param.charAt(i);
+            if (c == '@') {
+                // annotation の中の `:` (use-site target `@get:Foo`) は宣言の `:` ではない。
+                int annEnd = skipAnnotation(param, i);
+                if (annEnd > i) { i = annEnd - 1; continue; }
+            }
+            if (c == '(' || c == '[' || c == '<' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '>' || c == '}') {
+                if (depth > 0) depth--;
+            } else if (c == ':' && depth == 0) {
+                int end = i;
+                while (end > 0 && Character.isWhitespace(param.charAt(end - 1))) end--;
+                int start = end;
+                while (start > 0 && KotlinLightScanner.isIdentPart(param.charAt(start - 1))) start--;
+                if (start >= end || !KotlinLightScanner.isIdentStart(param.charAt(start))) {
+                    return null;
+                }
+                return new int[]{start, end, i + 1};
+            } else if (c == '=' && depth == 0) {
+                return null; // 型を持たない引数 (名前付き実引数など) は宣言ではない
+            }
+        }
+        return null;
+    }
+
+    /** 先頭の空白とコメントを取り除く (コメントは宣言の一部ではない)。 */
+    /** コメント・文字列リテラルを空白 1 つに畳んだ文字列 (宣言だけを残す)。 */
+    static String codeOnly(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                sb.append(' ');
+                i = e - 1;
+                continue;
+            }
+            sb.append(s.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /** {@code ()} / {@code []} / {@code &#123;&#125;} のネスト外にある最初の {@code ;} の位置。無ければ -1。 */
+    static int topLevelSemicolon(String s) {
+        int depth = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (c == ';' && depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    /** {@code from} 以降の空白を読み飛ばした先にある語 (無ければ空文字列)。 */
+    private static String nextWord(String s, int from) {
+        int at = skipSpaces(s, from);
+        int end = identifierEnd(s, at);
+        return end > at ? s.substring(at, end) : "";
     }
 
     /** {@code from} 以降の空白を読み飛ばした位置。 */
@@ -331,7 +494,10 @@ final class KotlinBlockMask {
                     return i;
                 }
                 if (isKeywordAt(s, i, "get") || isKeywordAt(s, i, "set")
-                        || isKeywordAt(s, i, "by")) {
+                        || isKeywordAt(s, i, "by") || isKeywordAt(s, i, "where")) {
+                    // where は関数にも書ける (`fun <T> sort(a: List<T>): List<T>
+                    // where T : Comparable<T>`)。型制約は戻り値の型ではないのに、
+                    // クラスヘッダ側だけが where を知っていた。
                     return i;
                 }
             }

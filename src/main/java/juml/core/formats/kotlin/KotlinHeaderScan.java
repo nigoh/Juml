@@ -31,10 +31,29 @@ final class KotlinHeaderScan {
         return s.charAt(i) == '>' && i > 0 && s.charAt(i - 1) == '-';
     }
 
-    /** {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。 */
+    /**
+     * {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。
+     *
+     * <p>{@code where} 節に入ったらそこで打ち切る。{@code class Sorter<T> where T : Comparable<T>}
+     * の {@code :} は<b>型パラメータの制約</b>であってスーパータイプではない。区別せずに読むと
+     * 図に「Sorter implements Comparable」という<b>存在しない実装線</b>が引かれ、
+     * {@code where K : Any} なら {@code Any} を、複数制約なら {@code T : Cloneable} という
+     * 架空のインタフェース名を継承リストに並べていた。同じヘッダ領域を読む兄弟の
+     * {@link #primaryCtorParenAfter} は以前から where を正しく無視しており、片方だけが
+     * 知らない状態だった。</p>
+     */
     static int topLevelColon(String s) {
         int depth = 0;
         for (int i = 0; i < s.length(); i++) {
+            // コメント・文字列は宣言ではない。ヘッダ検出・プロパティ・関数・引数の
+            // 4 経路は以前からこの規則を持っていて、ヘッダ区間の走査だけが生テキストの
+            // ままだった (実測: 継承リストのコメントを型名として読み、改行入りの
+            // 引用符付きラベルを書き出して図が 1 枚も描けなくなる)。
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                i = e - 1;
+                continue;
+            }
             char c = s.charAt(i);
             if (c == '<' || c == '(' || c == '[') {
                 depth++;
@@ -46,9 +65,23 @@ final class KotlinHeaderScan {
                 return i;
             } else if ((c == '{' || c == '}') && depth == 0) {
                 return -1;
+            } else if (depth == 0 && isWordAt(s, i, "where")) {
+                return -1;
             }
         }
         return -1;
+    }
+
+    /** {@code s} の位置 {@code i} が語として {@code word} で始まるか (前後が識別子でない)。 */
+    static boolean isWordAt(String s, int i, String word) {
+        if (!s.startsWith(word, i)) {
+            return false;
+        }
+        if (i > 0 && KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
+            return false;
+        }
+        int after = i + word.length();
+        return after >= s.length() || !KotlinLightScanner.isIdentPart(s.charAt(after));
     }
 
     /** ネストの外側にあるカンマで分割する (要素内の {@code <>}/{@code ()} は保つ)。 */
@@ -57,6 +90,15 @@ final class KotlinHeaderScan {
         int depth = 0;
         StringBuilder cur = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
+            // コメントの中のカンマ・括弧で分割しない。読み飛ばしつつ<b>本文には残す</b> —
+            // 呼び出し側 (引数・スーパータイプ・enum 定数) はそれぞれ自前でコメントを
+            // 落とすので、ここで消すと位置がずれる。
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                cur.append(s, i, e);
+                i = e - 1;
+                continue;
+            }
             char c = s.charAt(i);
             if (c == '<' || c == '(' || c == '[' || c == '{') {
                 depth++;
@@ -217,7 +259,7 @@ final class KotlinHeaderScan {
     }
 
     /** 型パラメータ {@code <...>} を読み飛ばした次位置。閉じられていなければ -1。 */
-    private static int skipAngles(String src, int at) {
+    static int skipAngles(String src, int at) {
         int depth = 0;
         for (int i = at; i < src.length(); i++) {
             char c = src.charAt(i);

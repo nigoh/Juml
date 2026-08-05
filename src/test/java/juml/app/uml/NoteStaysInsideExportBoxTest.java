@@ -6,6 +6,7 @@ package juml.app.uml;
 import org.junit.Test;
 
 import java.awt.Point;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
@@ -116,5 +117,112 @@ public class NoteStaysInsideExportBoxTest {
         DiagramNote n = layer.getNotes().get(0);
         assertTrue("下限だけが効くこと: " + n.getX() + "," + n.getY(),
                 n.getX() == 400 && n.getY() == 300);
+    }
+
+    /**
+     * 大きさを変える経路も書き出し範囲に収まること。
+     *
+     * <p>付箋が占める矩形は原点と<b>大きさ</b>の両方で決まるのに、クランプは原点にしか
+     * 入っていなかった。リサイズは図の外まで広げ放題で、プレビューでは全部見えるのに
+     * ({@code JViewport} がビューを引き伸ばす) 書き出しは図の内容矩形で寸法が決まるため
+     * 本文ごと切り落とされる — {@code placeFree} が潰したはずの症状が、この 1 経路だけに
+     * 残っていた。</p>
+     */
+    @Test
+    public void resizingAlsoKeepsTheNoteInsideTheBox() {
+        SvgPreviewPanel panel = panelWithSmallDiagram();
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(10, 20), 1.0);
+        DiagramNote n = layer.getNotes().get(0);
+
+        // 右下のリサイズハンドルを掴んで、図のはるか外へドラッグする。
+        int hx = (int) Math.round(n.getX() + n.getWidth()) - 2;
+        int hy = (int) Math.round(n.getY() + n.getHeight()) - 2;
+        assertTrue("リサイズ操作が始まること",
+                layer.pressed(new MouseEvent(panel, MouseEvent.MOUSE_PRESSED, 1L, 0,
+                        hx, hy, 1, false, MouseEvent.BUTTON1), 1.0));
+        layer.dragged(new MouseEvent(panel, MouseEvent.MOUSE_DRAGGED, 1L, 0,
+                1100, 760, 0, false, MouseEvent.BUTTON1), 1.0);
+        layer.released();
+
+        DiagramNote after = layer.getNotes().get(0);
+        assertTrue("右端が書き出し範囲を超えないこと: right="
+                        + (after.getX() + after.getWidth()) + " limit=" + panel.contentWidth(),
+                after.getX() + after.getWidth() <= panel.contentWidth() + 0.5);
+        assertTrue("下端が書き出し範囲を超えないこと: bottom="
+                        + (after.getY() + after.getHeight()) + " limit=" + panel.contentHeight(),
+                after.getY() + after.getHeight() <= panel.contentHeight() + 0.5);
+    }
+
+    /**
+     * 大きさを決める経路もすべて範囲内であること (生成・複製・貼り付け)。
+     *
+     * <p>ラウンド 21 は大きさのクランプをリサイズにだけ入れた。生成は既定 280x160 を
+     * 無条件に設定するので、図が小さいと追加した瞬間に書き出しからはみ出す。
+     * 貼り付けはクリップボードがタブ間共有なので、大きい図で作った付箋がそのまま
+     * 小さい図へ入る。</p>
+     */
+    @Test
+    public void everySizingPathKeepsTheNoteInsideTheBox() {
+        SvgPreviewPanel tiny = new SvgPreviewPanel();
+        tiny.setImage(new BufferedImage(120, 80, BufferedImage.TYPE_INT_ARGB));
+        tiny.notes().addNoteAt(new Point(10, 10), 1.0);
+        assertFits(tiny, "生成");
+
+        SvgPreviewPanel big = new SvgPreviewPanel();
+        big.setImage(new BufferedImage(2000, 1500, BufferedImage.TYPE_INT_ARGB));
+        big.notes().addNoteAt(new Point(100, 100), 1.0);
+        DiagramNote b = big.notes().getNotes().get(0);
+        b.setWidth(900);
+        b.setHeight(800);
+        big.notes().copySelected();
+
+        SvgPreviewPanel small = new SvgPreviewPanel();
+        small.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+        assertTrue("貼り付けが成功すること", small.notes().pasteClipboard());
+        assertFits(small, "貼り付け");
+
+        small.notes().duplicateSelected();
+        assertFits(small, "複製");
+    }
+
+    /**
+     * 「本文に合わせて高さ調整」が幅を変えず、本文が収まる高さを与えること。
+     *
+     * <p>ラウンド 21 で大きさのクランプを素通しで使った結果、幅まで縮み、図の下端寄りでは
+     * <b>本文が入らない高さ</b>を返すようになっていた。矩形が範囲に収まればよいのだから、
+     * 高さを削るのではなく付箋を上へ寄せればよい。</p>
+     */
+    @Test
+    public void fitHeightKeepsTheWidthAndActuallyFits() {
+        SvgPreviewPanel panel = new SvgPreviewPanel();
+        panel.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(0, 150), 1.0);
+        DiagramNote n = layer.getNotes().get(0);
+        n.setText("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10");
+        double width = n.getWidth();
+        double needed = new NoteRenderer().contentHeight(n);
+
+        layer.fitHeightSelected();
+
+        DiagramNote after = layer.getNotes().get(0);
+        assertTrue("幅は変えないこと: " + width + " -> " + after.getWidth(),
+                after.getWidth() == width);
+        assertTrue("本文が収まる高さになること: 必要 " + needed + " / 実際 " + after.getHeight(),
+                after.getHeight() >= needed);
+        assertFits(panel, "高さ合わせ");
+    }
+
+    /** 付箋の矩形全体が図の内容矩形に収まっていること。 */
+    private static void assertFits(SvgPreviewPanel panel, String label) {
+        for (DiagramNote n : panel.notes().getNotes()) {
+            assertTrue(label + ": 右端が範囲内 right=" + (n.getX() + n.getWidth())
+                            + " limit=" + panel.contentWidth(),
+                    n.getX() >= 0 && n.getX() + n.getWidth() <= panel.contentWidth() + 0.5);
+            assertTrue(label + ": 下端が範囲内 bottom=" + (n.getY() + n.getHeight())
+                            + " limit=" + panel.contentHeight(),
+                    n.getY() >= 0 && n.getY() + n.getHeight() <= panel.contentHeight() + 0.5);
+        }
     }
 }

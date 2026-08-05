@@ -152,10 +152,16 @@ public final class PlantUmlCommentFormatter {
         if (s == null || s.isEmpty()) {
             return s == null ? "" : s;
         }
-        if (maxLen > 0 && s.length() > maxLen) {
-            s = s.substring(0, Math.max(1, maxLen - 1)) + "…";
+        // 空白を 1 つに畳む。メンバー行は 1 行 1 メンバーなので、改行が残ると
+        // その先が<b>別のメンバー行として描かれる</b>。折り返した関数型
+        // `(\n  Int,\n  String\n) -> Unit` を型に持つプロパティで実際に起きていた
+        // (箱の中に「handler: (」「Int,」「String」「) -> Unit」が並ぶ)。
+        // 兄弟の escapeLabel と、すぐ隣の定数値の経路は以前から畳んでいる。
+        String flat = s.replaceAll("\\s+", " ").trim();
+        if (maxLen > 0 && flat.length() > maxLen) {
+            flat = flat.substring(0, Math.max(1, maxLen - 1)) + "…";
         }
-        return escapeText(s);
+        return escapeText(flat);
     }
 
     /**

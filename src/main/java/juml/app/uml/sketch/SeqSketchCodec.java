@@ -54,11 +54,14 @@ public final class SeqSketchCodec {
     public static ParseResult parse(String text) {
         SeqSketchModel model = new SeqSketchModel();
         List<String> unsupported = new ArrayList<>();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             String line = raw.trim();
             if (line.startsWith("@startuml")) {
                 // 図名 (出力名) を保全する (クラス図コーデックと同じ契約)。
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
@@ -121,10 +124,8 @@ public final class SeqSketchCodec {
      * 暗黙参加者の図) の出力は従来のままなので、余計な宣言行は増えない。</p>
      */
     public static String toPuml(SeqSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         boolean pinAll = !declarationOrderMatchesModel(model) || !messagesIdentifySequence(model);
         for (SeqParticipant p : model.getParticipants()) {

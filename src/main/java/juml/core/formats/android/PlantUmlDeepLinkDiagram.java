@@ -4,6 +4,7 @@
 package juml.core.formats.android;
 
 import juml.core.formats.uml.PlantUmlCommentFormatter;
+import juml.core.formats.uml.PlantUmlLegendText;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -81,6 +82,151 @@ public final class PlantUmlDeepLinkDiagram {
         return out.toString();
     }
 
+    /**
+     * 1 つの {@code <intent-filter>} が実際に受け付ける URI の一覧を組み立てる。
+     *
+     * <p>Android は同じ intent-filter 内の {@code <data>} 要素を<b>属性ごとに束ねて
+     * 直積を取る</b>。要素単位では見ない。したがって公式ドキュメントや App Links Assistant が
+     * 出力する分割記法</p>
+     *
+     * <pre>
+     * &lt;data android:scheme="https"/&gt;
+     * &lt;data android:host="example.com"/&gt;
+     * &lt;data android:pathPrefix="/item"/&gt;
+     * </pre>
+     *
+     * <p>は「https の example.com の /item 以下」1 本を意味する。以前はここを
+     * 1 要素 = 1 URI と数えていたため、実在しない「scheme だけ」「host だけ」「path だけ」の
+     * 3 本を報告し、しかも後ろ 2 本を (scheme が不明なので) App Links ではなく独自スキームの
+     * Deep Link に分類していた。本当の入口はどこにも出てこなかった。</p>
+     *
+     * <p>直積なので、完全な {@code <data>} を 2 つ書けば URI は 4 本になる。これは
+     * Android の実際の挙動どおりで、公式ドキュメントも注意喚起している点。</p>
+     */
+    static List<AndroidDataSpec> effectiveUriSpecs(AndroidIntentFilter f) {
+        List<String> schemes = new ArrayList<>();
+        List<String[]> authorities = new ArrayList<>();
+        List<AndroidDataSpec> paths = new ArrayList<>();
+        List<String> mimeTypes = mimeTypePool(f);
+        for (AndroidDataSpec d : f.getDataSpecs()) {
+            addIfNew(schemes, d.getScheme());
+            if (notBlank(d.getHost())) {
+                String[] hp = {d.getHost(), d.getPort()};
+                if (authorities.stream().noneMatch(a -> java.util.Arrays.equals(a, hp))) {
+                    authorities.add(hp);
+                }
+            }
+            for (AndroidDataSpec matcher : pathMatchers(d)) {
+                if (paths.stream().noneMatch(x -> samePath(x, matcher))) {
+                    paths.add(matcher);
+                }
+            }
+        }
+        // どのプールも空なら「指定なし」を 1 件として扱い、直積が 1 本残るようにする。
+        if (schemes.isEmpty()) {
+            schemes.add(null);
+        }
+        if (authorities.isEmpty()) {
+            authorities.add(new String[]{null, null});
+        }
+        if (paths.isEmpty()) {
+            paths.add(null);
+        }
+        if (mimeTypes.isEmpty()) {
+            mimeTypes.add(null);
+        }
+        List<AndroidDataSpec> out = new ArrayList<>();
+        for (String scheme : schemes) {
+            for (String[] authority : authorities) {
+                for (AndroidDataSpec path : paths) {
+                    for (String mime : mimeTypes) {
+                        AndroidDataSpec merged = merge(scheme, authority, path, mime);
+                        if (merged.hasUriComponent()) {
+                            out.add(merged);
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /** scheme / authority / path 系 / mimeType を 1 つの spec へ束ねる。 */
+    private static AndroidDataSpec merge(String scheme, String[] authority,
+                                         AndroidDataSpec path, String mimeType) {
+        AndroidDataSpec merged = new AndroidDataSpec();
+        merged.setScheme(scheme);
+        merged.setHost(authority[0]);
+        merged.setPort(authority[1]);
+        merged.setMimeType(mimeType);
+        if (path != null) {
+            merged.setPath(path.getPath());
+            merged.setPathPrefix(path.getPathPrefix());
+            merged.setPathPattern(path.getPathPattern());
+            merged.setPathSuffix(path.getPathSuffix());
+            merged.setPathAdvancedPattern(path.getPathAdvancedPattern());
+        }
+        return merged;
+    }
+
+    /** path 系 5 属性がすべて等しいか (プールの重複排除用)。 */
+    private static boolean samePath(AndroidDataSpec a, AndroidDataSpec b) {
+        return java.util.Objects.equals(a.getPath(), b.getPath())
+                && java.util.Objects.equals(a.getPathPrefix(), b.getPathPrefix())
+                && java.util.Objects.equals(a.getPathPattern(), b.getPathPattern())
+                && java.util.Objects.equals(a.getPathSuffix(), b.getPathSuffix())
+                && java.util.Objects.equals(
+                        a.getPathAdvancedPattern(), b.getPathAdvancedPattern());
+    }
+
+    /**
+     * 1 つの {@code <data>} が持つ path 系属性を<b>1 属性 = 1 マッチャ</b>へ分解する。
+     *
+     * <p>Android は {@code path} / {@code pathPrefix} / {@code pathPattern} /
+     * {@code pathSuffix} / {@code pathAdvancedPattern} を属性ごとに独立したマッチャとして
+     * 登録する ({@code addDataPath} が属性の数だけ呼ばれる)。要素をそのままプールへ入れると
+     * 表示側の {@link AndroidDataSpec#effectivePath()} が<b>最初の 1 つ</b>しか返さないため、
+     * 1 要素に複数書いた分の入口が図にもサマリーにも出てこなかった。同じ意味を要素 2 つに
+     * 分けて書けば 2 本出る、という記法依存の食い違いにもなっていた。</p>
+     */
+    /** この intent-filter が挙げる mimeType の重複排除済みプール (図と MIME 専用表示で共有)。 */
+    private static List<String> mimeTypePool(AndroidIntentFilter f) {
+        List<String> pool = new ArrayList<>();
+        for (AndroidDataSpec d : f.getDataSpecs()) {
+            addIfNew(pool, d.getMimeType());
+        }
+        return pool;
+    }
+
+    private static List<AndroidDataSpec> pathMatchers(AndroidDataSpec d) {
+        List<AndroidDataSpec> out = new ArrayList<>();
+        addPathMatcher(out, d.getPath(), AndroidDataSpec::setPath);
+        addPathMatcher(out, d.getPathPrefix(), AndroidDataSpec::setPathPrefix);
+        addPathMatcher(out, d.getPathPattern(), AndroidDataSpec::setPathPattern);
+        addPathMatcher(out, d.getPathSuffix(), AndroidDataSpec::setPathSuffix);
+        addPathMatcher(out, d.getPathAdvancedPattern(), AndroidDataSpec::setPathAdvancedPattern);
+        return out;
+    }
+
+    private static void addPathMatcher(List<AndroidDataSpec> out, String value,
+                                       java.util.function.BiConsumer<AndroidDataSpec, String> set) {
+        if (notBlank(value)) {
+            AndroidDataSpec one = new AndroidDataSpec();
+            set.accept(one, value);
+            out.add(one);
+        }
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isEmpty();
+    }
+
+    private static void addIfNew(List<String> pool, String value) {
+        if (notBlank(value) && !pool.contains(value)) {
+            pool.add(value);
+        }
+    }
+
     private static List<Link> collectLinks(AndroidProjectAnalysis analysis, Options o) {
         List<Link> links = new ArrayList<>();
         for (AndroidManifestInfo m : analysis.allManifests()) {
@@ -90,18 +236,19 @@ public final class PlantUmlDeepLinkDiagram {
                         continue;
                     }
                     boolean appended = false;
-                    for (AndroidDataSpec spec : f.getDataSpecs()) {
-                        if (spec.hasUriComponent()) {
-                            links.add(new Link(c, f, spec, false));
-                            appended = true;
-                        }
+                    for (AndroidDataSpec spec : effectiveUriSpecs(f)) {
+                        links.add(new Link(c, f, spec, false));
+                        appended = true;
                     }
                     if (!appended && o.showMimeOnly) {
-                        // scheme/host が無く mimeType だけのケースも拾う。
-                        for (AndroidDataSpec spec : f.getDataSpecs()) {
-                            if (spec.getMimeType() != null) {
-                                links.add(new Link(c, f, spec, true));
-                            }
+                        // scheme/host が無く mimeType だけのケースも拾う。ここも直積側と同じ
+                        // 重複排除済みプールを通す。生の要素列を回していたため、manifest
+                        // マージで同じ <data> が 2 回入ると見分けの付かないノードが 2 つ出て、
+                        // グループ見出しも「2 件」と嘘の数を出していた。
+                        for (String mime : mimeTypePool(f)) {
+                            AndroidDataSpec spec = new AndroidDataSpec();
+                            spec.setMimeType(mime);
+                            links.add(new Link(c, f, spec, true));
                         }
                     }
                 }
@@ -239,13 +386,20 @@ public final class PlantUmlDeepLinkDiagram {
 
     private static void emitLegend(StringBuilder out) {
         out.append("legend top left\n");
+        // 見出しの == … == とステレオタイプの <<autoVerify>> は creole のマークアップとして
+        // 解釈されるのが正しいので、そのまま出す。
         out.append("== Deep Link 図 (URL から画面を開く設定) ==\n");
-        out.append("Deep Link = 特定の URL をタップするとアプリの画面が開く仕組み\n");
-        out.append("applink   : http/https の URL で開く (App Links 候補)\n");
-        out.append("deeplink  : myapp:// など独自形式の URL で開く\n");
-        out.append("mime      : ファイル種別 (mimeType) だけで開く (URL 無し)\n");
         out.append("<<autoVerify>> : URL の所有者確認を自動で行う設定 (要 Web 側設定)\n");
-        out.append("#LightYellow   : exported=true (他アプリから呼び出せる=外部公開)\n");
+        // 以下は「書いたとおりに読ませる」行。#LightYellow の # を creole に食われると
+        // 「1. LightYellow …」と描かれ、説明対象の記号そのものが凡例から消える。
+        for (String line : new String[]{
+                "Deep Link = 特定の URL をタップするとアプリの画面が開く仕組み",
+                "applink   : http/https の URL で開く (App Links 候補)",
+                "deeplink  : myapp:// など独自形式の URL で開く",
+                "mime      : ファイル種別 (mimeType) だけで開く (URL 無し)",
+                "#LightYellow   : exported=true (他アプリから呼び出せる=外部公開)"}) {
+            out.append(PlantUmlLegendText.literalLine(line)).append('\n');
+        }
         out.append("endlegend\n");
     }
 

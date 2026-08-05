@@ -38,18 +38,17 @@ public final class ErSketchCodec {
     private static final Pattern COLUMN = Pattern.compile(
             "^(\\*\\s*)?(" + SketchIdentifier.BARE + ")\\s*(?::\\s*(.*\\S))?\\s*$");
     /** PK ブロックと一般列を分ける区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
-    private static final Pattern DIVIDER = Pattern.compile("^(--|==|__|\\.\\.)+\\s*$");
 
     /**
      * その行が PK ブロックの区切り線として読まれるか。
      *
      * <p>列名の検証 ({@code ErSketchDialogs}) からも使う。区切りトークンには {@code __} が
      * 含まれるため、識別子として妥当な {@code __} や {@code ____} も<b>区切り線として
-     * 読み直されて列が消える</b>。判定をここに 1 本化して、コーデックとダイアログが
-     * 食い違わないようにする。</p>
+     * 読み直されて列が消える</b>。判定の本体は {@link SketchBlockLine#isDivider} —
+     * ER のコーデック・ダイアログとクラス図のコーデックが 1 つの実装を共有する。</p>
      */
     static boolean isDividerLine(String line) {
-        return line != null && DIVIDER.matcher(line).matches();
+        return SketchBlockLine.isDivider(line);
     }
     /** crow's-foot リレーション。左右のカーディナリティトークンは他図種と衝突しない。 */
     private static final Pattern RELATION = Pattern.compile(
@@ -88,12 +87,15 @@ public final class ErSketchCodec {
         List<String> unsupported = new ArrayList<>();
         Map<String, int[]> positions = new HashMap<>();
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         int i = 0;
         while (i < lines.length) {
             String line = lines[i].trim();
             i++;
             if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
@@ -193,6 +195,9 @@ public final class ErSketchCodec {
     private static int readColumns(String[] lines, int start, ErSketchModel.Entity e,
                                    List<String> unsupported) {
         int i = start;
+        int dividers = 0;
+        int dividerAfter = -1;
+        String dividerToken = null;
         while (i < lines.length) {
             String line = lines[i].trim();
             // 図境界ディレクティブはメンバーではない。閉じ括弧が欠けたまま @enduml/@startuml に
@@ -204,7 +209,15 @@ public final class ErSketchCodec {
             if (line.equals("}")) {
                 break;
             }
-            if (line.isEmpty() || isDividerLine(line)) {
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (isDividerLine(line)) {
+                // 区切り線はモデルに持たない — 書き出しは PK 列と一般列の境目に
+                // 自動で "--" を 1 本引く。読んだものがそのまま出てくるときだけ捨ててよい。
+                dividers++;
+                dividerAfter = e.getColumns().size();
+                dividerToken = line;
                 continue;
             }
             Matcher col = COLUMN.matcher(line);
@@ -215,7 +228,50 @@ public final class ErSketchCodec {
                 unsupported.add(line);
             }
         }
+        String lost = lostOnWriteBack(e, dividers, dividerAfter, dividerToken);
+        if (lost != null) {
+            // 読んだものが書き戻しで出てこないなら編集をロックして原文を守る
+            // (他の codec が非対応行に対してしている判断と同じ)。積むのは<b>原文の行</b> —
+            // 固定文字列 "--" を積むと、利用者のファイルに無い行がバナーに出る。
+            unsupported.add(lost);
+        }
         return i;
+    }
+
+    /**
+     * 列ブロックを {@link #toPuml} がそのまま再現できないなら、その原因の行を返す。
+     *
+     * <p>書き出しは<b>PK 列 → {@code --} → 一般列</b>の順に固定されている。したがって
+     * 再現できるのは「PK 列がすべて一般列より前にある」ことが前提で、そのうえで
+     * 区切り線については「1 本だけ」「PK と一般列の境目にある」「トークンが {@code --}」の
+     * 3 つが要る。</p>
+     *
+     * <p>ラウンド 20 は区切り線の<b>位置</b>だけを見ていた。同じ損失なのに、
+     * トークンの違い ({@code ==} は二重線、{@code ..} は破線と、実測で別の線が描かれる) と
+     * <b>区切り線を書いていない図の列並べ替え</b>が素通しのままだった — どちらも
+     * 「読んだものが出てこない」という 1 つの規則の兄弟である。</p>
+     */
+    private static String lostOnWriteBack(ErSketchModel.Entity e, int dividers,
+                                          int at, String token) {
+        List<ErSketchModel.Column> cols = e.getColumns();
+        int firstNonPk = -1;
+        for (int k = 0; k < cols.size(); k++) {
+            if (!cols.get(k).isPrimaryKey()) {
+                if (firstNonPk < 0) {
+                    firstNonPk = k;
+                }
+            } else if (firstNonPk >= 0) {
+                // PK が一般列の後ろにある = 書き出しで前へ動く (区切り線の有無に関わらず)。
+                return cols.get(k).getName();
+            }
+        }
+        if (dividers == 0) {
+            return null;
+        }
+        if (dividers > 1 || at != firstNonPk || firstNonPk <= 0) {
+            return token;
+        }
+        return "--".equals(token) ? null : token;
     }
 
     private static void addRelation(ErSketchModel model, Matcher rel) {
@@ -253,10 +309,8 @@ public final class ErSketchCodec {
 
     /** モデルを PlantUML テキストへ書き出す (座標は {@code '@pos} コメントで保存)。 */
     public static String toPuml(ErSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         // hide circle: エンティティを丸ではなく表として描かせる ER 図の定番指令。
         sb.append("hide circle\n");

@@ -71,10 +71,13 @@ public final class ComponentSketchCodec {
         ComponentSketchModel model = new ComponentSketchModel();
         List<String> unsupported = new ArrayList<>();
         Map<String, int[]> positions = new HashMap<>();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             String line = raw.trim();
             if (line.startsWith("@startuml")) {
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
@@ -202,10 +205,8 @@ public final class ComponentSketchCodec {
 
     /** モデルを PlantUML テキストへ書き出す (座標は {@code '@pos} コメントで保存)。 */
     public static String toPuml(ComponentSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         for (ComponentNode n : model.getNodes()) {
             sb.append(n.getKind().keyword()).append(' ');

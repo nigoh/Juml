@@ -231,12 +231,11 @@ public final class SketchPane extends JPanel {
             return false;
         }
         List<String> lines = active.unsupportedLines();
-        // '@pos は「編集を有効化」で消さない (消すと配置が失われる) ため、それが未対応として
-        // 残る図は 1 クリックで解除できない = comment-only lock ではない。効かないボタンを
-        // 出すと、押しても何も起きない状態になる。
+        // 判定は解除を実行する側とまったく同じ isRemovableComment。ここに条件を書き写すと、
+        // ボタンを出す規則と実際に消せる規則がずれる — 出しても何も起きないか、
+        // 消せるのに出ないかのどちらかになる ('@pos を消さない判断もそちらが持つ)。
         return !lines.isEmpty()
-                && lines.stream().allMatch(l -> l != null && l.trim().startsWith("'")
-                        && !SketchDiagramType.isLayoutComment(l));
+                && lines.stream().allMatch(SketchDiagramType::isRemovableComment);
     }
 
     /** キャンバス操作を 1 手戻す。 */

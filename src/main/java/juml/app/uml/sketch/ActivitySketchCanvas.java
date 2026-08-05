@@ -74,6 +74,8 @@ final class ActivitySketchCanvas extends JPanel {
     private final List<int[]> joins = new ArrayList<>();
     private int extentX;
     private int extentY;
+    /** {@link #blockExtent} の 1 パス限りのメモ (入れ子の指数再計算を避ける)。 */
+    private final Map<List<ActivityNode>, Extent> extentCache = new java.util.IdentityHashMap<>();
 
     ActivitySketchCanvas(Listener listener) {
         this.listener = listener;
@@ -293,27 +295,89 @@ final class ActivitySketchCanvas extends JPanel {
         }
     }
 
-    /** ブランチ (ノード列) の占有幅 (IF の左右の広がりも含む)。 */
-    private int blockWidth(List<ActivityNode> nodes) {
-        int w = 60;
-        for (ActivityNode n : nodes) {
-            if (n.getKind() == ActivityNode.Kind.IF) {
-                int spreadL = branchSpread(n.getThenBranch());
-                int spreadR = branchSpread(n.getElseBranch());
-                w = Math.max(w, 2 * Math.max(spreadL, spreadR)
-                        + Math.max(blockWidth(n.getThenBranch()),
-                                n.getElseBranch() != null ? blockWidth(n.getElseBranch()) : 0));
-            } else {
-                w = Math.max(w, nodeWidth(n));
-            }
+    /**
+     * ブロックの中心軸から左端 / 右端までの張り出し (幅ではない)。
+     *
+     * <p>1 つの数 (対称幅) では表せない。else の無い IF を入れ子にすると<b>左だけ</b>が
+     * 伸びるのに、対称幅は伸びたぶんを左右<b>両方</b>へ積むため段ごとに倍化していた
+     * (10 段で 77,932px、14 段で 1,245,292px。図はほぼ空白で、スクロールつまみは数 px)。
+     * かといって合計幅へ直すだけでは、配置側が対称を仮定したままなので今度は左へ
+     * 突き抜ける。幅と配置は別の情報なので、左右を分けて持つ。</p>
+     */
+    private static final class Extent {
+        final int left;
+        final int right;
+
+        Extent(int left, int right) {
+            this.left = left;
+            this.right = right;
         }
-        return w;
+
+        Extent maxWith(Extent other) {
+            return new Extent(Math.max(left, other.left), Math.max(right, other.right));
+        }
     }
 
-    /** IF 中心からブランチ中心までの横距離。 */
-    private int branchSpread(List<ActivityNode> branch) {
-        int bw = branch == null || branch.isEmpty() ? 40 : blockWidth(branch);
-        return bw / 2 + 36;
+    /** {@code cx} を中心に幅 {@code w} で置かれる矩形の張り出し ({@link #placeNode} と一致させる)。 */
+    private static Extent centered(int w) {
+        return new Extent(w / 2, w - w / 2);
+    }
+
+    /** ノード列の中心軸から左右への張り出し。 */
+    private Extent blockExtent(List<ActivityNode> nodes) {
+        Extent cached = extentCache.get(nodes);
+        if (cached != null) {
+            return cached;
+        }
+        Extent e = new Extent(30, 30);
+        for (ActivityNode n : nodes) {
+            e = e.maxWith(n.getKind() == ActivityNode.Kind.IF ? ifExtent(n)
+                    : centered(nodeWidth(n)));
+        }
+        extentCache.put(nodes, e);
+        return e;
+    }
+
+    /** ブランチの張り出し (空/無しはバイパス線ぶんのプレースホルダ)。 */
+    private Extent branchExtent(List<ActivityNode> branch) {
+        return branch == null || branch.isEmpty() ? new Extent(20, 20) : blockExtent(branch);
+    }
+
+    /** 分岐ラベルがブランチ中心軸から外側へ張り出す量 (無ければ 0)。 */
+    private int labelExtent(String label) {
+        return label == null ? 0 : metrics().stringWidth(label) + 6;
+    }
+
+    /**
+     * IF 中心 → then ブランチ中心の距離。then ブロックの<b>右端</b>が中心軸から離れるように取る
+     * (合流ひし形と合流線が乗る cx 列をサブツリーが侵さないための制約そのもの)。
+     */
+    private int thenOffset(ActivityNode n) {
+        return branchExtent(n.getThenBranch()).right + 36;
+    }
+
+    /** IF 中心 → else ブランチ中心の距離。else ブロックの<b>左端</b>が中心軸から離れるように取る。 */
+    private int elseOffset(ActivityNode n) {
+        return branchExtent(n.getElseBranch()).left + 36;
+    }
+
+    /**
+     * IF ノード 1 個 (ひし形 + 両ブランチ + 分岐ラベル) の張り出し。
+     *
+     * <p>ダイヤ自身の幅を数えないと、条件が長い IF で cx が足りずダイヤが負の X へ置かれる。
+     * 分岐ラベルも同様で、こちらは中心軸から<b>外向き</b>に描かれるためオフセットには
+     * 効かせず張り出しにだけ加える (内向きに効かせると cx 列を侵す)。ラベルを数えていな
+     * かったころは、長いラベルが x=-197 に置かれて左半分が画面外に出たまま、preferred
+     * size も伸びないのでスクロールでも出せなかった。</p>
+     */
+    private Extent ifExtent(ActivityNode n) {
+        int w = nodeWidth(n);
+        int thenOut = Math.max(branchExtent(n.getThenBranch()).left,
+                labelExtent(n.getThenLabel()));
+        int elseOut = Math.max(branchExtent(n.getElseBranch()).right,
+                labelExtent(n.getElseLabel()));
+        return new Extent(Math.max(w / 2, thenOffset(n) + thenOut),
+                Math.max(w - w / 2, elseOffset(n) + elseOut));
     }
 
     /** レイアウト結果 (bounds / edges / labels / joins) を再計算する。 */
@@ -322,9 +386,14 @@ final class ActivitySketchCanvas extends JPanel {
         edges.clear();
         branchLabels.clear();
         joins.clear();
+        extentCache.clear();
         extentX = 360;
         extentY = 240;
-        int cx = Math.max(180, blockWidth(model.getNodes()) / 2 + 48);
+        Extent e = blockExtent(model.getNodes());
+        int cx = Math.max(180, e.left + 48);
+        // 右側も張り出しぶん確保する。矩形からしか伸ばしていなかったため、右へ出る
+        // else ラベルが preferred size に入らず末尾が切れていた。
+        extentX = Math.max(extentX, cx + e.right + 60);
         layoutBlock(model.getNodes(), cx, TOP_Y);
     }
 
@@ -369,13 +438,20 @@ final class ActivitySketchCanvas extends JPanel {
         extentY = Math.max(extentY, r.y + r.height + 60);
     }
 
+    /** 右へ伸びるラベルのぶんだけ描画領域を広げる (念のための二重の保険)。 */
+    private void growForLabel(String label, int x, FontMetrics fm) {
+        if (label != null) {
+            extentX = Math.max(extentX, x + fm.stringWidth(label) + 60);
+        }
+    }
+
     /** IF ノード: ひし形 + 左 (then) / 右 (else) ブランチ + 合流点。 */
     private int placeIf(ActivityNode n, int cx, int y, int w) {
         Rectangle diamond = new Rectangle(cx - w / 2, y, w, IF_H);
         setBounds(n, diamond);
         int midY = y + IF_H / 2;
-        int thenCX = cx - branchSpread(n.getThenBranch());
-        int elseCX = cx + branchSpread(n.getElseBranch());
+        int thenCX = cx - thenOffset(n);
+        int elseCX = cx + elseOffset(n);
         int branchTop = y + IF_H + V_GAP;
         FontMetrics fm = metrics();
 
@@ -386,6 +462,7 @@ final class ActivitySketchCanvas extends JPanel {
             branchLabels.add(new Object[]{n.getThenLabel(),
                     thenCX - fm.stringWidth(n.getThenLabel()) - 6, midY - 4});
         }
+        growForLabel(n.getElseLabel(), elseCX + 6, fm);
         int thenBottom = n.getThenBranch().isEmpty() ? branchTop
                 : layoutBlock(n.getThenBranch(), thenCX, branchTop);
 

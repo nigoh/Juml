@@ -421,10 +421,15 @@ final class StatementAdapter {
         Statement els = is.getElseStmt().orElse(null);
         while (els instanceof IfStmt) {
             IfStmt elif = (IfStmt) els;
-            ExpressionAdapter.emitCalls(elif.getCondition(), out, ctx);
             JavaMethodInfo.Branch ei = new JavaMethodInfo.Branch(
                     "else if", ctx.comments.raw(elif.getCondition()));
             block.getBranches().add(ei);
+            // 条件式の呼び出しは<b>その分岐の本体の先頭</b>へ積む。out (外側) へ積むと、
+            // block は既に out へ入っているので alt ブロックより後ろに並び、
+            // 「どの分岐を通っても最後に必ず呼ばれる」という嘘の図になる
+            // (実際には先行分岐が成立したときは評価されない)。先頭の if の条件は
+            // block を out へ入れる前に積んでいるので元から正しい。
+            ExpressionAdapter.emitCalls(elif.getCondition(), ei.getBody(), ctx);
             emitInto(elif.getThenStmt(), ei.getBody(), ctx, owner);
             els = elif.getElseStmt().orElse(null);
         }

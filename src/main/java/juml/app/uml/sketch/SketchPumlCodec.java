@@ -63,6 +63,9 @@ public final class SketchPumlCodec {
         List<String> unsupported = new ArrayList<>();
         Map<String, int[]> positions = new HashMap<>();
         String[] lines = (text == null ? "" : text).split("\n", -1);
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startuml", unsupported);
         int i = 0;
         while (i < lines.length) {
             String line = lines[i].trim();
@@ -70,7 +73,7 @@ public final class SketchPumlCodec {
             if (line.startsWith("@startuml")) {
                 // @startuml に付いた図名 (出力名) を保全する。捨てると GUI 編集の再生成で
                 // ユーザーが書いた名前が黙って失われる。
-                String name = line.substring("@startuml".length()).trim();
+                String name = SketchMultiDiagram.parseDiagramName(line, "@startuml");
                 if (!name.isEmpty()) {
                     model.setDiagramName(name);
                 }
@@ -151,9 +154,6 @@ public final class SketchPumlCodec {
         return c;
     }
 
-    /** PlantUML のクラス内区切り線 ({@code --} / {@code ==} / {@code __} / {@code ..})。 */
-    private static final Pattern MEMBER_SEPARATOR = Pattern.compile("^(--|==|__|\\.\\.).*$");
-
     /**
      * {@code {} } ブロック内のメンバー行を読み、閉じ括弧の次の行番号を返す。
      *
@@ -183,13 +183,21 @@ public final class SketchPumlCodec {
             if (line.isEmpty()) {
                 continue;
             }
+            // コメント行はメンバーではない。取り込むと設計器のメンバー一覧に
+            // コメントが 1 件のメンバーとして並び、削除・並べ替えの対象になる。
+            // 外側のループは同じ行をロック対象にしているのに、この経路だけが
+            // 取り込んでいた (ER の列ブロックは以前からロックしている)。
+            if (SketchBlockLine.isComment(line)) {
+                unsupported.add(line);
+                continue;
+            }
             // 括弧を含む行はメソッド、それ以外 (区切り線 -- を含む) はフィールド扱い。
             if (line.contains("(")) {
                 c.getMethods().add(line);
                 sawMethod = true;
             } else {
                 // 区切り線、またはメソッドの後に来るフィールド (交互配置) は再生成で並びが崩れる。
-                if (MEMBER_SEPARATOR.matcher(line).matches() || sawMethod) {
+                if (SketchBlockLine.isDivider(line) || sawMethod) {
                     reorderRisk = true;
                 }
                 c.getFields().add(line);
@@ -235,10 +243,8 @@ public final class SketchPumlCodec {
 
     /** モデルを PlantUML テキストへ書き出す (座標は {@code '@pos} コメントで保存)。 */
     public static String toPuml(SketchModel model) {
-        StringBuilder sb = new StringBuilder("@startuml");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         for (SketchClass c : model.getClasses()) {
             sb.append(c.getKind().keyword()).append(' ').append(c.getName());

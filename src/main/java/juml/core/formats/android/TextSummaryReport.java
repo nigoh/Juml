@@ -228,7 +228,11 @@ public final class TextSummaryReport {
                 if (!f.isViewDeepLink()) {
                     continue;
                 }
-                for (AndroidDataSpec d : f.getDataSpecs()) {
+                // <data> 要素ごとに 1 URI と数えてはいけない。Android は同じ
+                // intent-filter 内の <data> を属性ごとに束ねて直積を取るので、公式の分割記法
+                // (scheme / host / pathPrefix を別々に書く形) は 1 本の URI を意味する。
+                // 図側と同じ解釈を使う (別々に持つと、同じ manifest で -D と -m が食い違う)。
+                for (AndroidDataSpec d : PlantUmlDeepLinkDiagram.effectiveUriSpecs(f)) {
                     String uri = d.toDeepLinkUri();
                     if (uri == null) {
                         continue;
@@ -237,8 +241,11 @@ public final class TextSummaryReport {
                         sb.append("\n**Deep Links:**\n\n");
                         header = true;
                     }
-                    sb.append("- `").append(uri).append('`')
-                            .append(" → `").append(c.getName()).append('`');
+                    sb.append("- `").append(uri).append('`');
+                    if (d.getMimeType() != null && !d.getMimeType().isEmpty()) {
+                        sb.append(" (mime: `").append(d.getMimeType()).append("`)");
+                    }
+                    sb.append(" → `").append(c.getName()).append('`');
                     if (Boolean.TRUE.equals(f.getAutoVerify())) {
                         sb.append(" *(autoVerify)*");
                     }

@@ -76,6 +76,9 @@ public final class MindmapSketchCodec {
         MindmapSketchModel model = new MindmapSketchModel();
         List<String> unsupported = new ArrayList<>();
         Deque<Frame> stack = new ArrayDeque<>();
+        // 複数の図が入ったファイルは編集をロックする (SketchMultiDiagram の javadoc 参照)。
+        SketchMultiDiagram.reportExtraDiagrams(
+                (text == null ? "" : text).split("\n", -1), "@startmindmap", unsupported);
         for (String raw : (text == null ? "" : text).split("\n", -1)) {
             parseLine(raw.trim(), model, unsupported, stack);
         }
@@ -85,7 +88,7 @@ public final class MindmapSketchCodec {
     private static void parseLine(String line, MindmapSketchModel model,
                                   List<String> unsupported, Deque<Frame> stack) {
         if (line.startsWith("@startmindmap")) {
-            String name = line.substring("@startmindmap".length()).trim();
+            String name = SketchMultiDiagram.parseDiagramName(line, "@startmindmap");
             if (!name.isEmpty()) {
                 model.setDiagramName(name);
             }
@@ -157,10 +160,8 @@ public final class MindmapSketchCodec {
      * {@code *} 系へ正規化される (記号ファミリ不整合 = 実機の {@code error42L} を避ける必須ロジック)。
      */
     public static String toPuml(MindmapSketchModel model) {
-        StringBuilder sb = new StringBuilder("@startmindmap");
-        if (!model.getDiagramName().isEmpty()) {
-            sb.append(' ').append(model.getDiagramName());
-        }
+        StringBuilder sb = new StringBuilder(
+                SketchMultiDiagram.startLine("@startmindmap", model.getDiagramName()));
         sb.append('\n');
         if (model.getRoot() != null) {
             emit(sb, model, model.getRoot(), 1);
