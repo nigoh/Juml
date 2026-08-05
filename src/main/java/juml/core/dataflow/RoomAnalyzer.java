@@ -56,8 +56,6 @@ public final class RoomAnalyzer {
      * Kotlin {@code primaryKeys = ["a", "b"]}。フィールド単位の {@code @PrimaryKey} を
      * 使わない複合キー宣言を拾うために別途解析する。
      */
-    private static final Pattern ENTITY_PRIMARY_KEYS = Pattern.compile(
-            "primaryKeys\\s*=\\s*[\\[{]([^\\]}]*)[\\]}]");
     private static final Pattern DATABASE_VERSION = Pattern.compile(
             "version\\s*=\\s*(\\d+)");
 
@@ -83,7 +81,13 @@ public final class RoomAnalyzer {
         for (; i < ann.length(); i++) {
             char c = ann.charAt(i);
             if (c == '"') {
-                i = endOfStringLiteral(ann, i); // 文字列リテラルは丸ごと読み飛ばす
+                // 文字列リテラルは<b>そのまま値へ写す</b>。中身は区切り判定に使わないので
+                // 深さもカンマも見ない。読み飛ばしていたため、値が文字列の member
+                // (`primaryKeys = {"a", "b"}`) が空になった — 値がクラス参照の
+                // `entities` だけを見て書いた規則を、隣の member にそのまま当てた結果。
+                int end = endOfStringLiteral(ann, i);
+                sb.append(ann, i, end + 1);
+                i = end;
                 continue;
             }
             if (c == '{' || c == '[' || c == '(') {
@@ -247,13 +251,15 @@ public final class RoomAnalyzer {
      */
     private static java.util.Set<String> parsePrimaryKeyNames(String entityAnn) {
         java.util.Set<String> names = new java.util.LinkedHashSet<>();
-        Matcher pk = ENTITY_PRIMARY_KEYS.matcher(entityAnn);
-        if (pk.find()) {
-            for (String raw : pk.group(1).split(",")) {
-                String n = raw.replace("\"", "").trim();
-                if (!n.isEmpty()) {
-                    names.add(n);
-                }
+        // entities と同じ読み方をする。ここだけ囲みを必須にしていたため、
+        // `primaryKeys = "uid"` (Java の要素 1 個は囲みを省略できる) と
+        // `primaryKeys = {"uid"}` が同じ意味なのに違う答えになっていた。
+        // 囲みの有無で結果が変わる規則を entities から追い出したのに、同じファイルの
+        // 隣のメンバーには残っていた。
+        for (String raw : annotationMemberValue(entityAnn, "primaryKeys").split(",")) {
+            String n = raw.replace("\"", "").replace("arrayOf(", "").replace(")", "").trim();
+            if (!n.isEmpty()) {
+                names.add(n);
             }
         }
         return names;

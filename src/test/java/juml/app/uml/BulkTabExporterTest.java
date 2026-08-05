@@ -33,8 +33,15 @@ public class BulkTabExporterTest {
     // 実機 renderSvg が error42L で throw する既知入力 (枝ファミリ不整合)。部分失敗の再現に使う。
     private static final String BAD_PUML = "@startmindmap\n* Root\n-- C\n+++ D\n@endmindmap";
 
+    /** ソースと描画結果が同じ (生成図タブ相当) のスナップショット。 */
     private static BulkTabExporter.Snapshot tab(String label, String puml) {
-        return new BulkTabExporter.Snapshot(label, "key:" + label, puml);
+        return new BulkTabExporter.Snapshot(label, "key:" + label, puml, puml);
+    }
+
+    /** ソースと描画結果がずれた (編集中のエディタタブ相当) のスナップショット。 */
+    private static BulkTabExporter.Snapshot editing(String label, String buffer,
+                                                    String lastRendered) {
+        return new BulkTabExporter.Snapshot(label, "key:" + label, buffer, lastRendered);
     }
 
     private static BulkTabExporter.Result run(List<BulkTabExporter.Snapshot> tabs, File dir,
@@ -182,5 +189,43 @@ public class BulkTabExporterTest {
         String failure = r.failures.get(0);
         assertTrue("利用者が選んだ名前を指すこと: " + failure, failure.contains("Alpha.svg"));
         assertTrue("一時ファイル名を出さないこと: " + failure, !failure.contains(".juml-"));
+    }
+
+    /**
+     * 回帰: 形式はスナップショットを採った後に選ばれるので、両方のテキストを持たせること。
+     *
+     * <p>一時期スナップショットが {@code .puml} 用のバッファだけを持っており、SVG/PNG も
+     * それを受け取っていた。編集途中で構文エラーのタブがあると、画面には直前の正常な図が
+     * 出ているのに一括画像出力だけ<b>そのタブが失敗</b>し、ワークスペース全体の書き出しが
+     * 部分成功 + 失敗ダイアログになっていた。</p>
+     */
+    @Test
+    public void imageFormatsUseTheRenderedTextAndPumlUsesTheBuffer() throws Exception {
+        BulkTabExporter.Snapshot mid = editing("Mid", BAD_PUML, OK_PUML);
+
+        File svgDir = tmp.newFolder("svg");
+        BulkTabExporter.Result svg = run(List.of(mid), svgDir, UmlExporter.Format.SVG);
+        assertEquals("画像は最後に描けた図を出すので成功すること: " + svg.failures,
+                1, svg.exported);
+
+        File pumlDir = tmp.newFolder("puml");
+        BulkTabExporter.Result puml = run(List.of(mid), pumlDir, UmlExporter.Format.PUML);
+        assertEquals(1, puml.exported);
+        String written = new String(java.nio.file.Files.readAllBytes(
+                pumlDir.listFiles()[0].toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        assertEquals("ソースは編集中のバッファであること", BAD_PUML, written);
+    }
+
+    /** 未描画のエディタタブでも .puml はバッファがあるので書き出せること。 */
+    @Test
+    public void unrenderedEditorTabStillExportsItsSource() throws Exception {
+        BulkTabExporter.Snapshot fresh = editing("Fresh", OK_PUML, null);
+
+        File pumlDir = tmp.newFolder("puml-fresh");
+        assertEquals(1, run(List.of(fresh), pumlDir, UmlExporter.Format.PUML).exported);
+
+        File svgDir = tmp.newFolder("svg-fresh");
+        assertEquals("画像はまだ描けていないので skip されること",
+                1, run(List.of(fresh), svgDir, UmlExporter.Format.SVG).skipped);
     }
 }

@@ -288,13 +288,9 @@ public final class AnalysisCommands {
         }
 
         java.util.List<juml.core.formats.uml.JavaClassInfo> classesA =
-                UmlGenerator.extractFromSource(
-                        AndroidProjectScanner.readFile(new java.io.File(specA.filePath)),
-                        new java.io.File(specA.filePath).getName(), listener);
+                readSideOrExit(specA.filePath, rawA, listener);
         java.util.List<juml.core.formats.uml.JavaClassInfo> classesB =
-                UmlGenerator.extractFromSource(
-                        AndroidProjectScanner.readFile(new java.io.File(specB.filePath)),
-                        new java.io.File(specB.filePath).getName(), listener);
+                readSideOrExit(specB.filePath, rawB, listener);
 
         juml.core.formats.uml.JavaMethodInfo methodA =
                 juml.core.funcdiff.MethodDiffAnalyzer.findMethod(classesA, specA);
@@ -319,5 +315,43 @@ public final class AnalysisCommands {
         CliOutput.writeText(fileOut,
                 juml.core.funcdiff.MarkdownMethodDiffReport.render(result),
                 "func-diff.md");
+    }
+
+    /**
+     * {@code --func-diff} の片側のソースを読んで解析する。読めなければ<b>スタックトレース
+     * ではなく</b>他の指定ミスと同じ 1 行のエラーを出して終了する。
+     *
+     * <p>存在しないパスを渡すと {@code FileNotFoundException} がそのまま
+     * {@code main} まで抜け、利用者には {@code Exception in thread "main"} と内部フレームの
+     * 羅列が出ていた。同じメソッドの「見つからない」は既に 1 行で案内しているのに、
+     * 「ファイルが無い」だけ扱いが違うのは一貫しない。</p>
+     */
+    private static java.util.List<juml.core.formats.uml.JavaClassInfo> readSideOrExit(
+            String path, String rawSpec, ErrorListener listener) {
+        java.util.List<juml.core.formats.uml.JavaClassInfo> classes =
+                readSide(path, rawSpec, listener);
+        if (classes == null) {
+            System.exit(1);
+            return java.util.Collections.emptyList();
+        }
+        return classes;
+    }
+
+    /**
+     * ソースを読んで解析する。読めなければ案内を stderr へ出して null を返す
+     * ({@code System.exit} は呼び出し側が行うため、テストから安全に叩ける)。
+     */
+    static java.util.List<juml.core.formats.uml.JavaClassInfo> readSide(
+            String path, String rawSpec, ErrorListener listener) {
+        java.io.File f = new java.io.File(path);
+        String source;
+        try {
+            source = AndroidProjectScanner.readFile(f);
+        } catch (IOException e) {
+            System.err.println("--func-diff: cannot read " + path + " (from \"" + rawSpec
+                    + "\"): " + e.getMessage());
+            return null;
+        }
+        return UmlGenerator.extractFromSource(source, f.getName(), listener);
     }
 }

@@ -51,19 +51,34 @@ final class BulkTabExporter {
     private BulkTabExporter() {
     }
 
-    /** 一括エクスポート 1 タブ分の不変スナップショット (Swing に触れない)。 */
+    /**
+     * 一括エクスポート 1 タブ分の不変スナップショット (Swing に触れない)。
+     *
+     * <p>形式は<b>スナップショットを採った後に</b>選ばれる ({@link #choose}) ため、両方の
+     * テキストを持つ。{@code .puml} はソースの書き出しなのでエディタタブでは編集中の
+     * バッファ、SVG/PNG は「いま見えている図」なので最後に描けたテキストを使う。1 つに
+     * まとめると、どちらかの形式が必ず間違ったテキストを受け取る。</p>
+     */
     static final class Snapshot {
         /** タブヘッダのラベル (ファイル名の元)。 */
         final String label;
         /** タブ識別キー (ラベル衝突時のフォールバックに使う)。 */
         final String key;
-        /** 描画済み PlantUML テキスト (null/空 = 未描画でスキップ対象)。 */
-        final String puml;
+        /** ソースとしての PlantUML (エディタタブは編集中のバッファ)。 */
+        final String sourcePuml;
+        /** 最後に描画できた PlantUML (画像出力用。null/空 = 未描画)。 */
+        final String renderedPuml;
 
-        Snapshot(String label, String key, String puml) {
+        Snapshot(String label, String key, String sourcePuml, String renderedPuml) {
             this.label = label;
             this.key = key;
-            this.puml = puml;
+            this.sourcePuml = sourcePuml;
+            this.renderedPuml = renderedPuml;
+        }
+
+        /** その形式で書き出すべきテキスト。 */
+        String forFormat(UmlExporter.Format fmt) {
+            return fmt == UmlExporter.Format.PUML ? sourcePuml : renderedPuml;
         }
     }
 
@@ -218,13 +233,14 @@ final class BulkTabExporter {
         for (int i = 0; i < total; i++) {
             Snapshot t = tabs.get(i);
             prog.onProgress(i, total, t.label);
-            if (t.puml == null || t.puml.isBlank()) {
+            String puml = t.forFormat(fmt);
+            if (puml == null || puml.isBlank()) {
                 skipped++;
                 continue;
             }
             File out = new File(outDir, names.get(i));
             try {
-                writeOne(fmt, out, t.puml);
+                writeOne(fmt, out, puml);
                 exported++;
             } catch (Exception ex) {
                 failures.add(t.label + ": " + ex.getMessage());

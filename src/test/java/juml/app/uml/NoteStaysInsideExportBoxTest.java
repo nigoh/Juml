@@ -73,6 +73,35 @@ public class NoteStaysInsideExportBoxTest {
     }
 
     /**
+     * 回帰: 追加以外の経路 (ドラッグ・矢印キー・複製・ペースト) も範囲内に留めること。
+     *
+     * <p>クランプを追加経路にだけ入れていた。付箋は追加したあと<b>動かす</b>ものなので、
+     * 移動が野放しなら「書き出しから黙って消える」症状はそのまま残る。同じファイルの
+     * 隣の経路に同じ規則を適用し忘れた、という一点で、追加経路の修正時に気付くべきだった。</p>
+     */
+    @Test
+    public void everyPlacementPathKeepsTheNoteInsideTheBox() {
+        SvgPreviewPanel panel = panelWithSmallDiagram();
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(10, 20), 1.0);
+
+        // 矢印キーで大きく外へ動かす (Shift 付きの粗い移動を何度も)。
+        for (int i = 0; i < 60; i++) {
+            layer.moveSelected(20, 20);
+        }
+        assertInside(panel, "矢印キー");
+
+        // 複製・ペーストのオフセットも範囲内に留まること。
+        layer.duplicateSelected();
+        for (DiagramNote n : layer.getNotes()) {
+            assertTrue("複製後も範囲内: x=" + n.getX(),
+                    n.getX() >= 0 && n.getX() <= panel.contentWidth());
+            assertTrue("複製後も範囲内: y=" + n.getY(),
+                    n.getY() >= 0 && n.getY() <= panel.contentHeight());
+        }
+    }
+
+    /**
      * 非退行: 図の大きさが分からないとき (内容なし) は従来どおり下限だけを見ること。
      *
      * <p>{@link DiagramNotesLayer} は単体でも使われるので、所有者が図の寸法を答えられない

@@ -185,6 +185,108 @@ public class DiagramNotesLayerTest {
     }
 
     /**
+     * 回帰: コネクタ作成モードの途中で始点の付箋を消しても、宙ぶらりんのコネクタが
+     * できないこと。以前は {@code deleteSelected} が {@code connectFromId} を残したため、
+     * 次にクリックした付箋との間に<b>存在しない付箋を始点とするコネクタ</b>ができ、
+     * そのまま保存されていた (読み込み時の prune で最終的には消えるが、そのセッション中は
+     * 残り続ける)。8 つのスケッチキャンバスでは同種の穴を既に塞いであり、付箋レイヤだけが
+     * 取り残されていた。
+     */
+    /**
+     * 回帰: Undo で始点の付箋が消えた場合もコネクタ作成モードを畳むこと。
+     *
+     * <p>{@code setNotes} だけを直したときに取り残された経路。{@code restore(NotesSnapshot)}
+     * (undo/redo) も付箋を総入れ替えするのに {@code connectFromId} に触っていなかったため、
+     * 「付箋を足す → そこからコネクタを引き始める → 気が変わって Ctrl+Z」で盤面が十字カーソル
+     * のまま残り、次のクリックが食われていた。</p>
+     */
+    @Test
+    public void undoRemovingTheSourceNoteCancelsConnectorCreation() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);   // A
+        layer.addNoteAt(new Point(400, 10), 1.0);  // B (これを undo で消す)
+        String idB = layer.getNotes().get(1).getId();
+        layer.startConnectorFrom(idB);
+
+        assertTrue("前提: undo で B が消えること", layer.undo());
+        assertEquals(1, layer.getNotes().size());
+
+        assertNotEquals("始点が消えたら十字カーソルも解除されること",
+                java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.CROSSHAIR_CURSOR),
+                layer.cursorFor(new Point(20, 20), 1.0));
+        layer.pressed(press(owner, 20, 20, 0), 1.0);
+        assertEquals("宙ぶらりんのコネクタもできないこと", 0, layer.getConnectors().size());
+    }
+
+    /** 始点が undo 後も残っているなら、作成モードは続行してよい。 */
+    @Test
+    public void undoThatKeepsTheSourceNoteKeepsConnectorMode() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);   // A
+        layer.addNoteAt(new Point(400, 10), 1.0);  // B
+        String idA = layer.getNotes().get(0).getId();
+        layer.startConnectorFrom(idA);
+
+        layer.undo(); // B の追加を取り消す (A は残る)
+
+        assertEquals(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.CROSSHAIR_CURSOR),
+                layer.cursorFor(new Point(20, 20), 1.0));
+    }
+
+    /**
+     * 回帰: 付箋一覧の総入れ替え (図種の切替・再読込) でもコネクタ作成モードを畳むこと。
+     *
+     * <p>{@code createConnector} の端点チェックは「宙ぶらりんのコネクタができる」ことは
+     * 防ぐが、モード自体は残っていた。すると盤面全体が十字カーソルのままになり、
+     * 次の左クリックが {@code connectFromId != null} の分岐に食われて、付箋の選択も
+     * ドラッグもできない (利用者は 2 回クリックする必要がある)。</p>
+     */
+    @Test
+    public void reloadingNotesCancelsConnectorCreation() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);
+        String idA = layer.getNotes().get(0).getId();
+        layer.startConnectorFrom(idA);
+
+        // 図種切替相当: 中身を別の付箋一覧へ総入れ替えする。
+        DiagramNote other = new DiagramNote();
+        other.setX(400);
+        other.setY(10);
+        layer.setNotes(java.util.List.of(other));
+
+        // モードが畳まれていること自体を見る。カーソルが十字のままなら作成モードが生きており、
+        // 次のクリックは pressed() の connectFromId 分岐に食われる。
+        assertNotEquals("盤面が十字カーソルのまま残らないこと",
+                java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.CROSSHAIR_CURSOR),
+                layer.cursorFor(new Point(420, 30), 1.0));
+        layer.pressed(press(owner, 420, 30, 0), 1.0);
+        assertEquals("宙ぶらりんのコネクタもできないこと", 0, layer.getConnectors().size());
+    }
+
+    @Test
+    public void deletingTheSourceNoteCancelsConnectorCreation() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.addNoteAt(new Point(10, 10), 1.0);   // A
+        layer.addNoteAt(new Point(400, 10), 1.0);  // B
+        String idA = layer.getNotes().get(0).getId();
+
+        // A を始点にコネクタモードへ入り、確定する前に A を消す。
+        layer.startConnectorFrom(idA);
+        layer.selectOnly(idA);
+        assertTrue(layer.deleteSelected());
+        assertEquals(1, layer.getNotes().size());
+
+        // 次に B をクリックしてもコネクタはできない (始点がもう存在しない)。
+        layer.pressed(press(owner, 420, 30, 0), 1.0);
+        assertEquals("消えた付箋を始点とするコネクタを作らないこと",
+                0, layer.getConnectors().size());
+    }
+
+    /**
      * ELEMENT アンカー付箋のエクスポート座標は、対象要素の位置を解決した絶対座標に
      * なる。以前は SVG 出力が相対オフセットを絶対座標として書き、要素から離れた
      * 原点付近へ描画されていた。
