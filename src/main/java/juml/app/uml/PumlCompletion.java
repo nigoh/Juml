@@ -44,6 +44,8 @@ final class PumlCompletion {
     private static final int OFF_FLAVOR = -250;
     /** 行頭でのスニペットへの加点 (最も打鍵を減らせるので上位に出す)。 */
     private static final int SNIPPET_BONUS = 120;
+    /** 自分で登録したスニペットへの上乗せ (狙って呼ばれるものなので同梱より上)。 */
+    private static final int USER_SNIPPET_BONUS = 200;
     /** 引数値としてだけ意味を持つ語 (テーマ名など) への減点。 */
     private static final int VALUE_PENALTY = -400;
     /** キャレットに最も近い識別子への加点。 */
@@ -52,6 +54,29 @@ final class PumlCompletion {
     private static final int PROXIMITY_STEP = 12;
 
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+    /**
+     * ユーザー定義スニペットの供給元。
+     *
+     * <p>このクラスは他が純関数なので、ここだけは静的な状態を持つ。とはいえ供給元は
+     * セッション中ほぼ不変で ({@link PumlUserSnippets} が読み込みを一度だけ行う)、
+     * 代わりに全呼び出し口へ保管庫を引き回すと配線が候補生成そのものより厚くなる。
+     * テストからは {@link #setUserSnippetsForTest} で差し替える。</p>
+     */
+    private static java.util.function.Supplier<List<PumlUserSnippets.Entry>>
+            userSnippetSource = new PumlUserSnippets()::load;
+
+    /** 登録済みのユーザー定義スニペット。 */
+    private static List<PumlUserSnippets.Entry> userSnippets() {
+        List<PumlUserSnippets.Entry> list = userSnippetSource.get();
+        return list == null ? List.of() : list;
+    }
+
+    /** テスト用: ユーザー定義スニペットの供給元を差し替える。 */
+    static void setUserSnippetsForTest(
+            java.util.function.Supplier<List<PumlUserSnippets.Entry>> source) {
+        userSnippetSource = source == null ? new PumlUserSnippets()::load : source;
+    }
 
     /** 「名前 + 空白」で終わる行 (= 次に関係記法が来る位置)。 */
     private static final Pattern BEFORE_ARROW =
@@ -234,6 +259,17 @@ final class PumlCompletion {
         Group flavor = ctx.flavor();
         // 1. スニペット。行頭でだけ出す (行の途中にブロックを挿し込むのは事故のもと)。
         if (ctx.atLineStart()) {
+            // 自分で登録したものを先に。わざわざ登録した型は、汎用の雛形より
+            // 狙って呼ばれるはずのもの。
+            for (PumlUserSnippets.Entry e : userSnippets()) {
+                int score = matchScore(e.trigger(), prefix);
+                if (score < 0) {
+                    continue;
+                }
+                out.add(PumlCompletionItem
+                        .snippet(e.trigger(), e.body(), e.label())
+                        .withScore(score + SNIPPET_BONUS + USER_SNIPPET_BONUS));
+            }
             for (PumlSnippets.Snippet snip : PumlSnippets.all()) {
                 int score = matchScore(snip.trigger(), prefix);
                 if (score < 0) {

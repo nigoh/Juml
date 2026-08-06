@@ -3,14 +3,11 @@
 
 package juml.app.uml;
 
-import juml.app.uml.SourceHighlighter.Span;
 import juml.util.Messages;
 
 import javax.swing.JButton;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
 import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
+import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTextPane;
 import javax.swing.SwingUtilities;
@@ -18,14 +15,11 @@ import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.BadLocationException;
-import javax.swing.text.DefaultHighlighter;
 import javax.swing.text.Element;
-import javax.swing.text.Highlighter;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Toolkit;
@@ -45,9 +39,6 @@ import java.awt.geom.Rectangle2D;
  */
 public class PumlSourcePanel extends JPanel {
 
-    /** これを超える文字数のテキストはハイライトを省略してプレーン表示する (EDT 保護)。 */
-    private static final int HIGHLIGHT_CHAR_LIMIT = 400_000;
-
     private final JTextPane textPane;
     private final LineNumberGutter gutter;
     private final JButton copyButton;
@@ -57,19 +48,37 @@ public class PumlSourcePanel extends JPanel {
     private final SourceFindBar findBar;
     /** 行ジャンプバー (Ctrl+G)。 */
     private final GotoLineBar gotoBar;
+    /** 記号一覧ジャンプバー (Ctrl+Shift+O)。 */
+    private final PumlOutlineBar outlineBar;
     /** 入力追従の補完ポップアップ (編集モードで生成)。 */
     private PumlCompletionPopup completionPopup;
     /** 雛形挿入とタブストップ巡回 (補完確定・挿入パレットの共通経路)。 */
     private PumlEditInsertions insertions;
+    /** 「挿入」ボタンのパレット (スニペット挿入 + 選択範囲の囲み)。 */
+    private final PumlInsertPalette palette;
+    /** 利用者が自分で足したスニペットの保管庫。 */
+    private final PumlUserSnippets userSnippets = new PumlUserSnippets();
     /** シンタックスハイライトの再計算をまとめる遅延タイマ (連続入力のたびに走らせない)。 */
     private final Timer highlightTimer;
-
-    /** 現在行ハイライトのタグ (キャレット移動で貼り替える)。 */
-    private Object currentLineTag;
+    /** 本文を変えない装飾 (ハイライト・現在行・対応括弧・エラー行)。 */
+    private final PumlSourceDecorations decorations;
 
     public PumlSourcePanel() {
         super(new BorderLayout());
-        textPane = new JTextPane();
+        textPane = new JTextPane() {
+            @Override public String getToolTipText(java.awt.event.MouseEvent e) {
+                // 波線の理由をその場で読めるようにする。指摘が無ければ既定の
+                // ツールチップ (読み取り専用ヒント) に譲る。
+                if (decorations != null) {
+                    String hint = decorations.diagnosticAt(viewToModel2D(e.getPoint()));
+                    if (hint != null) {
+                        return hint;
+                    }
+                }
+                return super.getToolTipText(e);
+            }
+        };
+        javax.swing.ToolTipManager.sharedInstance().registerComponent(textPane);
         undoSupport = new PumlUndoSupport(textPane);
         textPane.setEditable(false);
         // 既定は読み取り専用 (生成図のプレビュー)。クリックしても入力が効かない理由と
@@ -91,9 +100,13 @@ public class PumlSourcePanel extends JPanel {
         // 図種別スニペットのパレット。ボタン押下でグループ別のポップアップを開く。
         snippetButton = new JButton(Messages.get("puml.snippet.label"));
         snippetButton.setToolTipText(Messages.get("puml.snippet.tip"));
-        final JPopupMenu palette = buildSnippetPalette();
+        // パレットは押すたびに組み直す (囲みの並びは図種で、出し分けは選択の有無で変わる)。
+        palette = new PumlInsertPalette(this::insertSnippet, this::surroundSelection,
+                this::getText, () -> textPane.getSelectedText() != null,
+                this::declareMissingParticipants, userSnippets,
+                this::registerSelectionAsSnippet, this::manageUserSnippets);
         snippetButton.addActionListener(
-                e -> palette.show(snippetButton, 0, snippetButton.getHeight()));
+                e -> palette.build().show(snippetButton, 0, snippetButton.getHeight()));
         // スニペット挿入は編集モードのときだけ有効。
         snippetButton.setVisible(false);
         bar.add(snippetButton);
@@ -105,6 +118,7 @@ public class PumlSourcePanel extends JPanel {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         gutter = new LineNumberGutter(textPane, () -> true);
         scroll.setRowHeaderView(gutter);
+        decorations = new PumlSourceDecorations(textPane, gutter);
 
         // ソース内検索/置換バー (既定は非表示)。テキストが真実源なので置換も可能にする。
         findBar = new SourceFindBar(textPane, () -> {
@@ -112,6 +126,7 @@ public class PumlSourcePanel extends JPanel {
             repaint();
         }, true);
         gotoBar = new GotoLineBar(this::jumpToLine, this::revalidate, textPane);
+        outlineBar = new PumlOutlineBar(this::jumpToLine, this::revalidate, textPane);
 
         add(bar, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
@@ -119,10 +134,14 @@ public class PumlSourcePanel extends JPanel {
         south.setLayout(new javax.swing.BoxLayout(south, javax.swing.BoxLayout.Y_AXIS));
         south.add(findBar);
         south.add(gotoBar);
+        south.add(outlineBar);
         add(south, BorderLayout.SOUTH);
         installFindKeys();
 
-        highlightTimer = new Timer(120, e -> applyHighlight());
+        highlightTimer = new Timer(120, e -> {
+            decorations.applySyntax();
+            refreshDiagnostics();
+        });
         highlightTimer.setRepeats(false);
         // 本文編集 (挿入/削除) のたびに、ハイライト再計算とガター更新をスケジュールする。
         textPane.getDocument().addDocumentListener(new DocumentListener() {
@@ -137,8 +156,8 @@ public class PumlSourcePanel extends JPanel {
             }
         });
         textPane.addCaretListener(e -> {
-            updateCurrentLineHighlight();
-            updateBracketMatch();
+            decorations.updateCurrentLine();
+            decorations.updateBracketMatch();
         });
     }
 
@@ -170,19 +189,121 @@ public class PumlSourcePanel extends JPanel {
         return insertions;
     }
 
-    /** 図種別グループのサブメニューを持つスニペット挿入パレットを構築する。 */
-    private JPopupMenu buildSnippetPalette() {
-        JPopupMenu menu = new JPopupMenu();
-        for (PumlSnippets.Group g : PumlSnippets.Group.values()) {
-            JMenu sub = new JMenu(g.displayName());
-            for (PumlSnippets.Snippet snip : PumlSnippets.forGroup(g)) {
-                JMenuItem item = new JMenuItem(snip.displayName());
-                item.addActionListener(e -> insertSnippet(snip.body()));
-                sub.add(item);
-            }
-            menu.add(sub);
+    /**
+     * 選択している行を雛形のブロックで囲む (編集不可なら無視)。選択が無ければ
+     * キャレット行が対象になる。
+     */
+    void surroundSelection(String template) {
+        if (!textPane.isEditable()) {
+            return;
         }
-        return menu;
+        insertions().surroundSelection(template);
+    }
+
+    /** 囲みブロックの一覧をキャレット位置に出す (Ctrl+Alt+T)。 */
+    private void showSurroundMenu() {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        try {
+            Rectangle2D r = textPane.modelToView2D(textPane.getCaretPosition());
+            palette.buildSurroundOnly().show(textPane, (int) r.getX(),
+                    (int) (r.getY() + r.getHeight()));
+        } catch (BadLocationException ignored) {
+            // キャレット位置を解決できないときはメニューを出さないだけでよい。
+        }
+    }
+
+    /**
+     * 構文チェックを走らせて波線を貼り直す。編集モードのときだけ行う
+     * (生成された図のソースを眺めているだけの人に指摘を出しても手がない)。
+     */
+    private void refreshDiagnostics() {
+        if (!textPane.isEditable()) {
+            return;
+        }
+        decorations.applyDiagnostics(PumlDiagnostics.analyze(getText()));
+    }
+
+    /** テスト用: 構文チェックを同期実行し、指摘件数を返す。 */
+    int diagnosticCountForTest() {
+        refreshDiagnostics();
+        return decorations.diagnosticCount();
+    }
+
+    /** テスト用: 指定オフセット行に付いている指摘 (無ければ null)。 */
+    String diagnosticAtForTest(int offset) {
+        return decorations.diagnosticAt(offset);
+    }
+
+    /**
+     * メッセージ行で使われているのに宣言されていない参加者を、まとめて宣言する。
+     * 宣言が既にあればその直後へ、無ければ見出し行の後ろへ差し込む。
+     *
+     * @return 追加した宣言の数 (0 なら何もしなかった)
+     */
+    int declareMissingParticipants() {
+        if (!textPane.isEditable()) {
+            return 0;
+        }
+        String text = getText();
+        java.util.List<String> missing = PumlSymbols.undeclaredParticipants(text);
+        if (missing.isEmpty()) {
+            return 0;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String name : missing) {
+            sb.append(PumlSymbols.declarationFor(name)).append('\n');
+        }
+        int at = PumlSymbols.declarationInsertOffset(text);
+        runAsCompound(() -> {
+            try {
+                textPane.getDocument().insertString(at, sb.toString(), null);
+            } catch (BadLocationException ignored) {
+                // 競合編集で位置がずれた場合は何もしない (致命的でない)。
+            }
+        });
+        return missing.size();
+    }
+
+    /** テスト用: 記号一覧バー。 */
+    PumlOutlineBar outlineBarForTest() {
+        return outlineBar;
+    }
+
+    /**
+     * 選択している本文をユーザー定義スニペットとして登録する。トリガ名だけを尋ね、
+     * 本文はそのまま取り込む (登録のために書き写させない)。
+     *
+     * @return 登録したトリガ名。取り消した/選択が無いなら null
+     */
+    String registerSelectionAsSnippet() {
+        String selected = textPane.getSelectedText();
+        if (selected == null || selected.isEmpty()) {
+            return null;
+        }
+        String asked = JOptionPane.showInputDialog(this,
+                Messages.get("puml.userSnip.askTrigger"),
+                Messages.get("puml.userSnip.title"), JOptionPane.QUESTION_MESSAGE);
+        String trigger = PumlUserSnippets.normalizeTrigger(asked);
+        if (trigger.isEmpty()) {
+            return null;
+        }
+        // 末尾に改行を足しておく。行単位で選んだ雛形は、次の行から書き始められた
+        // ほうが自然に続く。
+        String body = selected.endsWith("\n") ? selected : selected + "\n";
+        userSnippets.add(new PumlUserSnippets.Entry(trigger, trigger, body));
+        return trigger;
+    }
+
+    /** ユーザー定義スニペットの管理ダイアログを開く。 */
+    private void manageUserSnippets() {
+        new PumlUserSnippetDialog(this, userSnippets).setVisible(true);
+    }
+
+    /** テスト用: ユーザー定義スニペットの保管庫。 */
+    PumlUserSnippets userSnippetsForTest() {
+        return userSnippets;
     }
 
     /** 表示中の PlantUML 全文をクリップボードへコピーする。 */
@@ -198,11 +319,7 @@ public class PumlSourcePanel extends JPanel {
     public void setText(String puml) {
         String text = puml == null ? "" : puml;
         // 全ハイライト (現在行・エラー行) を一旦消す。オフセットが旧内容基準で無効になるため。
-        textPane.getHighlighter().removeAllHighlights();
-        currentLineTag = null;
-        errorHighlightTag = null;
-        highlightedErrorLine = 0;
-        bracketTags.clear();
+        decorations.reset();
         // 検索バーの一致 (hits[] オフセット・件数表示) も旧内容基準で無効になる。reset しないと
         // removeAllHighlights でハイライトだけ消え、次候補ジャンプが旧オフセットを新文書へ適用して
         // キャレット誤配置や BadLocationException を招く (JavaSourcePanel と同じ差し替え時の契約)。
@@ -220,8 +337,9 @@ public class PumlSourcePanel extends JPanel {
         // スニペット挿入だけが Ctrl+Z の対象になる。
         undoSupport.discardAll(); // 全文差し替えで旧編集は破棄。進行中のタイプ塊も無効化する。
         // 描画は通知外なので遅延実行で安全にハイライトする (ドキュメント変更通知中の再入回避)。
-        SwingUtilities.invokeLater(this::applyHighlight);
-        SwingUtilities.invokeLater(this::updateCurrentLineHighlight);
+        SwingUtilities.invokeLater(decorations::applySyntax);
+        SwingUtilities.invokeLater(decorations::updateCurrentLine);
+        SwingUtilities.invokeLater(this::refreshDiagnostics);
         gutter.refresh();
     }
 
@@ -247,200 +365,41 @@ public class PumlSourcePanel extends JPanel {
         }
     }
 
+    // 装飾 (ハイライト・現在行・対応括弧・エラー行) — PumlSourceDecorations へ委譲
     // -------------------------------------------------------------------------
-    // シンタックスハイライト
-    // -------------------------------------------------------------------------
-
-    /** 現在の本文を PlantUML トークンで再着色する (基準色→トークン色の順に適用)。 */
-    private void applyHighlight() {
-        StyledDocument doc = textPane.getStyledDocument();
-        int len = doc.getLength();
-        if (len == 0) {
-            return;
-        }
-        String text = getText();
-        SimpleAttributeSet base = new SimpleAttributeSet();
-        StyleConstants.setForeground(base, EditorColors.text());
-        doc.setCharacterAttributes(0, len, base, true);
-        if (len > HIGHLIGHT_CHAR_LIMIT) {
-            return; // 巨大テキストはプレーン表示 (EDT 保護)
-        }
-        for (Span s : PlantUmlHighlighter.highlight(text)) {
-            SimpleAttributeSet a = new SimpleAttributeSet();
-            StyleConstants.setForeground(a, s.color);
-            doc.setCharacterAttributes(s.start, s.length, a, false);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // 現在行ハイライト
-    // -------------------------------------------------------------------------
-
-    /** キャレット行を薄く塗る現在行ハイライトを貼り替える (エラー行とは重ねない)。 */
-    private void updateCurrentLineHighlight() {
-        Highlighter h = textPane.getHighlighter();
-        if (h == null) {
-            return;
-        }
-        try {
-            if (currentLineTag != null) {
-                h.removeHighlight(currentLineTag);
-                currentLineTag = null;
-            }
-            Element root = textPane.getDocument().getDefaultRootElement();
-            int line0 = root.getElementIndex(textPane.getCaretPosition());
-            // 赤いエラー帯を隠さないよう、エラー行と重なるときは現在行を塗らない。
-            if (line0 + 1 == highlightedErrorLine) {
-                gutter.repaint();
-                return;
-            }
-            Element el = root.getElement(line0);
-            currentLineTag = h.addHighlight(el.getStartOffset(), el.getEndOffset(),
-                    CURRENT_LINE_PAINTER);
-            gutter.repaint();
-        } catch (BadLocationException ignored) {
-            // 行範囲取得失敗時はハイライトを諦める。
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // 対応括弧の強調
-    // -------------------------------------------------------------------------
-
-    private final java.util.List<Object> bracketTags = new java.util.ArrayList<>();
-
-    /** キャレット隣の括弧とその対応括弧を枠で囲む (無ければ消すだけ)。ドキュメントは変更しない。 */
-    private void updateBracketMatch() {
-        Highlighter h = textPane.getHighlighter();
-        if (h == null) {
-            return;
-        }
-        for (Object t : bracketTags) {
-            h.removeHighlight(t);
-        }
-        bracketTags.clear();
-        int[] pair = BracketMatcher.matchingBrackets(getText(), textPane.getCaretPosition());
-        if (pair == null) {
-            return;
-        }
-        try {
-            bracketTags.add(h.addHighlight(pair[0], pair[0] + 1, BRACKET_PAINTER));
-            bracketTags.add(h.addHighlight(pair[1], pair[1] + 1, BRACKET_PAINTER));
-        } catch (BadLocationException ignored) {
-            // 範囲外は無視。
-        }
-    }
-
-    /** 対応括弧を枠線で囲むペインター (PumlEditorPainters へ分離)。 */
-    private static final Highlighter.HighlightPainter BRACKET_PAINTER =
-            PumlEditorPainters.BRACKET;
-
-    /** 行全体を塗る現在行ハイライトペインター (PumlEditorPainters へ分離)。 */
-    private static final Highlighter.HighlightPainter CURRENT_LINE_PAINTER =
-            PumlEditorPainters.CURRENT_LINE;
-
-    // -------------------------------------------------------------------------
-    // エラー行ハイライト
-    // -------------------------------------------------------------------------
-
-    private Object errorHighlightTag;
-    /** 現在強調しているエラー行 (1 始まり)。無しは 0。テーマ切替時の再着色に使う。 */
-    private int highlightedErrorLine;
 
     /**
      * Look&amp;Feel のライブ切替に追従して、焼き込まれた色のハイライトを現テーマで貼り直す。
-     * ハイライトのペインター色は追加時に固定されるため、{@code updateComponentTreeUI} では
-     * 更新されず旧テーマ色が残る。エラー行の強調・シンタックスハイライトを現テーマで再適用する。
      * super から呼ばれるためフィールド未初期化ガードを置く。
      */
     @Override
     public void updateUI() {
         super.updateUI();
-        if (textPane == null) {
+        if (textPane == null || decorations == null) {
             return;
         }
-        final int line = highlightedErrorLine;
         // ツリーの LaF 更新が済んでから貼り直す。
-        SwingUtilities.invokeLater(() -> {
-            applyHighlight();
-            updateCurrentLineHighlight();
-            updateBracketMatch();
-            if (line > 0) {
-                highlightErrorLine(line);
-            }
-        });
+        SwingUtilities.invokeLater(decorations::reapplyForTheme);
     }
 
-    /** エラー行の強調色。テーマ (ライト/ダーク) に応じて描画時に解決する。 */
-    private static Color errorHighlightColor() {
-        return EditorColors.isDark()
-                ? new Color(0x5A, 0x1D, 0x1D)
-                : new Color(0xFF, 0xCD, 0xD2);
-    }
-
-    /**
-     * 描画失敗行 (1 始まり、エディタ行) を赤く強調する。
-     * {@code line} が 0 以下・範囲外なら既存の強調を消すだけ。
-     *
-     * <p>キャレットは移動しない: ライブプレビューの描画失敗は入力ポーズのたびに
-     * 非同期で届くため、キャレットを奪うと以降の入力が誤った行へ挿入される。
-     * 入力中でない (フォーカスが無い) 場合のみ、エラー行が見えるようスクロールする。</p>
-     */
+    /** 描画失敗行 (1 始まり、エディタ行) を赤く強調する。 */
     public void highlightErrorLine(int line) {
-        clearErrorHighlight();
-        if (line <= 0) {
-            return;
-        }
-        try {
-            Element root = textPane.getDocument().getDefaultRootElement();
-            int li = line - 1;
-            if (li >= root.getElementCount()) {
-                return;
-            }
-            Element el = root.getElement(li);
-            int start = el.getStartOffset();
-            int end = el.getEndOffset();
-            errorHighlightTag = textPane.getHighlighter().addHighlight(start, end,
-                    new DefaultHighlighter.DefaultHighlightPainter(errorHighlightColor()));
-            highlightedErrorLine = line;
-            // エラー行に現在行ハイライトが重なっていたら退かす (赤帯を隠さない)。
-            updateCurrentLineHighlight();
-            if (!textPane.hasFocus()) {
-                Rectangle2D r = textPane.modelToView2D(start);
-                if (r != null) {
-                    textPane.scrollRectToVisible(r.getBounds());
-                }
-            }
-        } catch (BadLocationException ignored) {
-            // 行範囲がずれた場合は強調しない (致命的でない)。
-        }
+        decorations.highlightErrorLine(line);
     }
 
     /** 描画失敗行の強調を消す。 */
     public void clearErrorHighlight() {
-        highlightedErrorLine = 0;
-        if (errorHighlightTag != null) {
-            textPane.getHighlighter().removeHighlight(errorHighlightTag);
-            errorHighlightTag = null;
-        }
+        decorations.clearError();
     }
 
     /** テスト用: シンタックスハイライトを同期適用する (タイマ待ちを避ける)。 */
     void applyHighlightForTest() {
-        applyHighlight();
+        decorations.applySyntax();
     }
 
     /** テスト用: 基準色と異なる着色 (キーワード等) の文字が 1 つでもあるか。 */
     boolean hasColoredRunForTest() {
-        StyledDocument doc = textPane.getStyledDocument();
-        Color base = EditorColors.text();
-        for (int i = 0; i < doc.getLength(); i++) {
-            Color fg = StyleConstants.getForeground(doc.getCharacterElement(i).getAttributes());
-            if (fg != null && !fg.equals(base)) {
-                return true;
-            }
-        }
-        return false;
+        return decorations.hasColoredRunForTest();
     }
 
     /** テスト用: 行番号ガターが認識している行数 (本文の行数と一致するはず)。 */
@@ -476,7 +435,7 @@ public class PumlSourcePanel extends JPanel {
 
     /** テスト用: 現在の対応括弧ハイライト数 (対応があれば 2、無ければ 0)。 */
     int bracketMatchCountForTest() {
-        return bracketTags.size();
+        return decorations.bracketMatchCountForTest();
     }
 
     /** テスト用: 現在キャレット位置での補完候補件数。 */
@@ -560,13 +519,7 @@ public class PumlSourcePanel extends JPanel {
      * (現在行はキャレット追従の装飾で、エラー行強調とは別責務のため)。
      */
     int highlightCountForTest() {
-        int n = 0;
-        for (Highlighter.Highlight h : textPane.getHighlighter().getHighlights()) {
-            if (h.getPainter() != CURRENT_LINE_PAINTER && h.getPainter() != BRACKET_PAINTER) {
-                n++;
-            }
-        }
-        return n;
+        return decorations.errorHighlightCountForTest();
     }
 
     // -------------------------------------------------------------------------
@@ -597,6 +550,9 @@ public class PumlSourcePanel extends JPanel {
         }
         // スニペット挿入 UI は編集モードのときだけ見せる。
         snippetButton.setVisible(editable);
+        if (editable) {
+            SwingUtilities.invokeLater(this::refreshDiagnostics);
+        }
     }
 
     /**
@@ -617,6 +573,8 @@ public class PumlSourcePanel extends JPanel {
                 "juml-replace");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_G, menuMask),
                 "juml-goto");
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_O,
+                menuMask | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outline");
         am.put("juml-find", action(findBar::activate));
         am.put("juml-replace", action(() -> {
             if (textPane.isEditable()) {
@@ -626,6 +584,7 @@ public class PumlSourcePanel extends JPanel {
             }
         }));
         am.put("juml-goto", action(this::showGotoBar));
+        am.put("juml-outline", action(() -> outlineBar.activate(getText())));
     }
 
     /** 行ジャンプバーを現在行・総行数つきで開く。 */
@@ -666,9 +625,14 @@ public class PumlSourcePanel extends JPanel {
                 "juml-indent");
         im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_TAB,
                 java.awt.event.InputEvent.SHIFT_DOWN_MASK), "juml-outdent");
+        // 選択行を囲む (IntelliJ の Surround With と同じ Ctrl+Alt+T。Ctrl+Shift+T は
+        // 「閉じたタブを開き直す」に取られている)。
+        im.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_T,
+                menuMask | java.awt.event.InputEvent.ALT_DOWN_MASK), "juml-surround");
         am.put("juml-comment", action(this::toggleComment));
         am.put("juml-indent", action(() -> indentOrTab(false)));
         am.put("juml-outdent", action(() -> indentSelection(true)));
+        am.put("juml-surround", action(this::showSurroundMenu));
         // VS Code 相当の編集キー (Enter 自動インデント・自動閉じペア・行移動/複製/削除)。
         PumlEditorKeys.install(textPane, this::runAsCompound);
         // 雛形の穴を Tab で巡る配線。素の Tab インデントより優先し、補完ポップアップには

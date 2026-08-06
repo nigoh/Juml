@@ -108,16 +108,6 @@ final class PumlCompletionContext {
     /** 本文中の識別子 (クラス名・参加者名など補完に値する語)。 */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
-    /** 宣言済みの名前を拾う書式 (クラス・参加者・状態など)。 */
-    private static final Pattern DECLARATION = Pattern.compile(
-            "^\\s*(?:abstract\\s+)?(?:class|interface|enum|annotation|entity|object|actor"
-                    + "|participant|boundary|control|collections|queue|database|usecase"
-                    + "|component|node|artifact|storage|cloud|folder|frame|rectangle|card"
-                    + "|state|agent|person|robust|concise)\\s+"
-                    + "(?:\"([^\"]+)\"|([A-Za-z_][\\w]*))"
-                    + "(?:\\s+as\\s+([A-Za-z_][\\w]*))?",
-            Pattern.MULTILINE);
-
     /**
      * 走査するキャレット前後の文字数。
      *
@@ -247,22 +237,7 @@ final class PumlCompletionContext {
      * 矢印の後などで「相手の名前」を出すのに使う。
      */
     List<String> declaredNames() {
-        Set<String> out = new LinkedHashSet<>();
-        Matcher m = DECLARATION.matcher(scan);
-        while (m.find()) {
-            // as 別名があればそれが本文中で参照される名前。無ければ宣言名そのもの。
-            String alias = m.group(3);
-            String quoted = m.group(1);
-            String bare = m.group(2);
-            if (alias != null) {
-                out.add(alias);
-            } else if (bare != null) {
-                out.add(bare);
-            } else if (quoted != null && !quoted.isBlank()) {
-                out.add(quoted);
-            }
-        }
-        return new ArrayList<>(out);
+        return PumlSymbols.declaredNames(scan);
     }
 
     /**
