@@ -1468,8 +1468,17 @@ public final class DiagramTabPane {
                 // 「レイヤに付箋が無い」ことを条件に反映するので、旧プロジェクトの
                 // 付箋が残っていると<b>切替先に保存済みの付箋が読み込まれず</b>、
                 // その後 1 つ動かした瞬間に旧プロジェクトの付箋で上書き保存される。
-                t.previewPanel.notes().setData(
-                        java.util.Collections.emptyList(), java.util.Collections.emptyList());
+                //
+                // ただし空にしてよいのは<b>旧ルートのストアへ保存済み</b>のときだけ。
+                // プロジェクト未ロードで開いたエディタタブの付箋は保存先が無く、
+                // ディスクのどこにも無いので、消すと唯一の実体が失われる —
+                // setData は履歴も消すので Ctrl+Z でも戻らない。
+                // 「新規 PlantUML → 付箋でメモ → プロジェクトを開く」は正規の導線である。
+                if (notesBinder.isPersisted(t.previewPanel)) {
+                    t.previewPanel.notes().setData(
+                            java.util.Collections.emptyList(),
+                            java.util.Collections.emptyList());
+                }
                 notesBinder.bind(t.previewPanel, switchedRoot, t.key);
             }
             navHistory.push(t.key);

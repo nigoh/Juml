@@ -2,6 +2,7 @@
 // Copyright (c) 2015-2026 naou and contributors
 
 package juml.core.formats.android;
+import juml.core.formats.uml.PlantUmlCommentFormatter;
 
 /**
  * {@link AndroidLayoutInfo} の View 階層を 1 枚の PlantUML 図に描画する。
@@ -232,11 +233,15 @@ public final class PlantUmlLayoutDiagram {
     }
 
     /** PlantUML 文字列リテラル内で問題になりやすい文字を最小限置換。 */
+    /**
+     * 引用符付きラベルへ埋め込む文字列のエスケープ。android:text に XML の &#10; で本物の改行が入る (兄弟の LayoutScreen 図は畳んでいる)。
+     *
+     * <p>{@code "} を {@code '} に置くだけだったので、改行が入ると<b>ラベルが途中で
+     * 閉じて図が 1 枚も出ず</b>、タグが入ると文言が変形していた。判定は
+     * {@link PlantUmlCommentFormatter#escapeQuotedLabel} に 1 本化してある。</p>
+     */
     private static String escape(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("\"", "'");
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 
     private static void emitLegend(StringBuilder out, Options o) {

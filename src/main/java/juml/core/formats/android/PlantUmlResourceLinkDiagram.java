@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import juml.core.formats.uml.PlantUmlCommentFormatter;
 
 /**
  * {@link ResourceLinkAnalysis} を「コード ↔ リソース」の紐づけ図に描画する。
@@ -231,11 +232,15 @@ public final class PlantUmlResourceLinkDiagram {
         return s.substring(0, max) + "…";
     }
 
+    /**
+     * 引用符付きラベルへ埋め込む文字列のエスケープ。strings.xml の実文言に <b> 等が入る (CDATA / &lt;b&gt; は Android の標準的な書き方)。
+     *
+     * <p>{@code "} を {@code '} に置くだけだったので、改行が入ると<b>ラベルが途中で
+     * 閉じて図が 1 枚も出ず</b>、タグが入ると文言が変形していた。判定は
+     * {@link PlantUmlCommentFormatter#escapeQuotedLabel} に 1 本化してある。</p>
+     */
     private static String escape(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("\"", "'");
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 
     private PlantUmlResourceLinkDiagram() {

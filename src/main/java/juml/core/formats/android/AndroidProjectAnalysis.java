@@ -251,6 +251,19 @@ public class AndroidProjectAnalysis {
                 return def;
             }
         }
+        // コード側は aapt の規則でドットがアンダースコアになっている。素の名前で
+        // 引けなければ正規形で引き直す (XML 側の定義はドットのまま登録されている)。
+        String canonical = canonicalStyleName(ref);
+        if (canonical != null) {
+            for (AndroidStyleResources sr : allStyleResources()) {
+                for (Map.Entry<String, AndroidStyleResources.StyleDef> e
+                        : sr.getStyles().entrySet()) {
+                    if (canonical.equals(e.getKey().replace('.', '_'))) {
+                        return e.getValue();
+                    }
+                }
+            }
+        }
         return null;
     }
 
@@ -275,6 +288,20 @@ public class AndroidProjectAnalysis {
             name = name.substring("R.style.".length());
         }
         return name.isEmpty() ? null : name;
+    }
+
+    /**
+     * スタイル名の照合用の正規形。{@code .} と {@code _} を同一視する。
+     *
+     * <p>aapt は {@code R.style.*} を生成するときスタイル名のドットを
+     * アンダースコアへ変える。したがってコード側は必ず {@code Theme_MyApp_Dialog}、
+     * XML 側は {@code Theme.MyApp.Dialog} になり、素の文字列比較では<b>同じスタイルが
+     * 2 つの別ノードとして描かれ、継承チェーンがそこで切れる</b>。
+     * {@code Theme.AppCompat.*} を継承する通常の Android アプリで必ず起きる。</p>
+     */
+    public static String canonicalStyleName(String ref) {
+        String name = styleName(ref);
+        return name == null ? null : name.replace('.', '_');
     }
 
     /** 全モジュールのマニフェストを 1 つのリストに連結。 */

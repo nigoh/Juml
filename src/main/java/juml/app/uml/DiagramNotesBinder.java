@@ -98,10 +98,32 @@ final class DiagramNotesBinder {
     private final Map<SvgPreviewPanel, Object> bindToken =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
+    /**
+     * プレビューごとの、最後に束ねた保存先ルート。{@code null} は「保存先なし」。
+     *
+     * <p>タブを開いた時点でも {@link #bind} は呼ばれる (プロジェクト未ロードなら
+     * ルートは {@code null})。したがって「束ねたことがあるか」では判別にならない。
+     * 問うべきは<b>ディスクに実体があるか</b>である。</p>
+     */
+    private final Map<SvgPreviewPanel, File> boundRoot =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /**
+     * このプレビューの付箋が<b>既にディスクへ保存されているか</b>。
+     *
+     * <p>プロジェクト切替でレイヤを空にしてよいのは、旧ルートのストアへ保存済みの
+     * ときだけである。保存先が無いまま作られた付箋を消すと、それが唯一の実体なので
+     * <b>どこにも残らない</b> — {@code setData} は履歴も消すので Ctrl+Z でも戻らない。</p>
+     */
+    boolean isPersisted(SvgPreviewPanel preview) {
+        return boundRoot.get(preview) != null;
+    }
+
     void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
         final DiagramNotesStore s = storeFor(projectRoot);
         final Object token = new Object();
         bindToken.put(preview, token);
+        boundRoot.put(preview, projectRoot);
         // 変更時はバックグラウンドで保存 (移動・リサイズ・削除・色変更時の EDT フリーズ防止)。
         // スナップショットは EDT 上で深いコピーを取る。ライブオブジェクトを IO スレッドで
         // 直列化すると、ドラッグ中の座標変更やタグ変更と競合して不正な値が保存されうる。

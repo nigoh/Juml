@@ -377,11 +377,15 @@ public final class PlantUmlDeepLinkDiagram {
         return dot >= 0 ? fqn.substring(dot + 1) : fqn;
     }
 
+    /**
+     * 引用符付きラベルへ埋め込む文字列のエスケープ。manifest 由来の値に改行やタグが入りうる。
+     *
+     * <p>{@code "} を {@code '} に置くだけだったので、改行が入ると<b>ラベルが途中で
+     * 閉じて図が 1 枚も出ず</b>、タグが入ると文言が変形していた。判定は
+     * {@link PlantUmlCommentFormatter#escapeQuotedLabel} に 1 本化してある。</p>
+     */
     private static String escape(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("\"", "'");
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 
     private static void emitLegend(StringBuilder out) {

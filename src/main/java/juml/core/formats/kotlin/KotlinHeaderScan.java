@@ -3,6 +3,8 @@
 
 package juml.core.formats.kotlin;
 
+import juml.core.formats.uml.JavaClassInfo;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -162,6 +164,96 @@ final class KotlinHeaderScan {
         }
     }
 
+    /**
+     * クラスヘッダがどこで終わるかを 1 回の走査で決める。
+     *
+     * @return {@code {bodyBraceOpen, superRegionEnd}} — 本体の開き波括弧 (無ければ -1) と、
+     *         スーパータイプ列を読んでよい終端 exclusive
+     *
+     * <p>ヘッダの終わりは 3 つの経路がそれぞれ別に決めていて、どれも違っていた:</p>
+     *
+     * <ul>
+     *   <li>本体の {@code &#123;} は深さを数えない前方検索だった。スーパータイプの
+     *       コンストラクタ引数に波括弧が入る形 — {@code ListAdapter(object : Cb() { … })} や
+     *       {@code Base(onReady = { … })} — でその {@code &#123;} を本体と取り違え、
+     *       <b>実在するメンバーが 1 つも出ず</b>、匿名 object のメンバーが囲むクラスへ
+     *       ホイストされ、後ろに並ぶインタフェースが全部落ちていた。</li>
+     *   <li>上限は「次のクラスヘッダ」だけを見ていた。間に {@code fun} が挟まると
+     *       その本体を<b>本体を持たないクラスが自分のものとして飲み込む</b>。</li>
+     *   <li>スーパータイプ列の終端は、後続クラスが無ければ<b>ファイル末尾</b>だった。
+     *       次のトップレベル宣言の型注釈のコロンを継承コロンとして読み、
+     *       {@code "Long = 30L"} のような<b>存在しない箱</b>への継承線を引いていた。</li>
+     * </ul>
+     *
+     * <p>言明は 1 つ:<b>ヘッダは次の宣言が始まるところで終わる</b>。宣言キーワードは
+     * Kotlin の閉じた集合なので数え上げてよい。入れ子の内側 ({@code ( ) [ ] &lt; &gt;}) と
+     * コメント・文字列は、ここでも他の走査と同じように読み飛ばす。
+     * 兄弟の {@link #primaryCtorParenAfter} は以前からこの規則を持っていた。</p>
+     */
+    static int[] headerEnd(String src, int from) {
+        int depth = 0;
+        int superEnd = -1;
+        for (int i = from; i < src.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(src, i);
+            if (e > i) {
+                i = e - 1;
+                continue;
+            }
+            char c = src.charAt(i);
+            if (c == '(' || c == '[' || c == '<') {
+                depth++;
+                continue;
+            }
+            if (c == ')' || c == ']' || c == '>') {
+                if (!isArrowGreaterThan(src, i) && depth > 0) {
+                    depth--;
+                }
+                continue;
+            }
+            if (depth > 0) {
+                continue;
+            }
+            if (c == '{') {
+                return new int[]{i, superEnd >= 0 ? superEnd : i};
+            }
+            if (c == '}') {
+                return new int[]{-1, superEnd >= 0 ? superEnd : i};
+            }
+            if (isWordAt(src, i, "where")) {
+                // 型制約はスーパータイプではないが、本体はこの後ろに来る。
+                if (superEnd < 0) {
+                    superEnd = i;
+                }
+                continue;
+            }
+            if (!KotlinLightScanner.isIdentPart(c)
+                    || (i > 0 && KotlinLightScanner.isIdentPart(src.charAt(i - 1)))) {
+                continue;
+            }
+            int wordEnd = i;
+            while (wordEnd < src.length() && KotlinLightScanner.isIdentPart(src.charAt(wordEnd))) {
+                wordEnd++;
+            }
+            if (DECL_KEYWORDS.contains(src.substring(i, wordEnd))) {
+                return new int[]{-1, superEnd >= 0 ? superEnd : i};
+            }
+            i = wordEnd - 1;
+        }
+        return new int[]{-1, superEnd >= 0 ? superEnd : src.length()};
+    }
+
+    /**
+     * ヘッダを終わらせる宣言キーワード。
+     *
+     * <p>可視性修飾子と {@code constructor} は<b>入れない</b> —
+     * {@code class A private constructor(…)} のようにヘッダの<b>中</b>にも現れるので、
+     * 入れると継承リストの手前で切ってしまう。{@code val} / {@code var} は
+     * コンストラクタ引数にも現れるが、そちらは括弧の内側 (深さ &gt; 0) なので届かない。</p>
+     */
+    private static final java.util.Set<String> DECL_KEYWORDS =
+            new java.util.HashSet<>(java.util.Arrays.asList(
+                    "fun", "val", "var", "class", "interface", "object", "typealias", "init"));
+
     /** ジェネリック引数の外側にある最初の {@code (} の位置。無ければ -1。 */
     static int topLevelParen(String s) {
         int depth = 0;
@@ -283,5 +375,82 @@ final class KotlinHeaderScan {
     /** スーパータイプ項から ` by <委譲式>` を取り除く。 */
     static String stripDelegation(String s) {
         return DELEGATION.matcher(s).replaceFirst("").trim();
+    }
+
+    /**
+     * {@code [start, end)} 区間からスーパータイプリスト ({@code : A(), B, C}) を取り込む。
+     * コンストラクタ呼び出し ({@code A()}) を伴う型をスーパークラス、それ以外をインタフェース
+     * とみなす (Kotlin ではスーパークラスのみ {@code ()} を伴う)。{@code <...>} / {@code (...)}
+     * のネスト内の {@code :} は無視するため、プライマリコンストラクタの {@code val x: Int} は誤検出しない。
+     */
+    static void extractSupertypes(String source, int start, int end,
+                                          JavaClassInfo info) {
+        if (start < 0 || end <= start || end > source.length()) {
+            return;
+        }
+        String region = source.substring(start, end);
+        int colon = topLevelColon(region);
+        if (colon < 0) {
+            return;
+        }
+        String list = region.substring(colon + 1);
+        int depth = 0;
+        for (int i = 0; i < list.length(); i++) {
+            int nc = KotlinLightScanner.skipNonCode(list, i);
+            if (nc > i) {
+                i = nc - 1;
+                continue;
+            }
+            char c = list.charAt(i);
+            // 入れ子の内側の { } や where は打ち切りではない。深さを数えないと
+            // `Base(object : Cb() { … }), Marker` の Marker が落ちる。
+            if (c == '(' || c == '[' || c == '<') {
+                depth++;
+                continue;
+            }
+            if (c == ')' || c == ']' || c == '>') {
+                if (!isArrowGreaterThan(list, i) && depth > 0) {
+                    depth--;
+                }
+                continue;
+            }
+            if (depth > 0) {
+                continue;
+            }
+            // `where` の型制約はスーパータイプではない。継承コロンが<b>無い</b>形は
+            // topLevelColon が打ち切るが、スーパータイプが有ると先に継承コロンが
+            // 返るのでここまで来る — 同じ規則を両方の経路に入れる。入れないと
+            // 最後の項が where 節を丸ごと飲み込み、`Marker where T : Comparable` と
+            // いう存在しない箱への実装線が引かれ、本物への線は 1 本も引かれない。
+            if (c == '{' || c == '}' || isWordAt(list, i, "where")) {
+                list = list.substring(0, i);
+                break;
+            }
+        }
+        for (String raw : splitTopLevelCommas(list)) {
+            String e = KotlinBlockMask.codeOnly(raw).trim();
+            if (e.isEmpty()) {
+                continue;
+            }
+            // by 委譲 (`Repo by RepoImpl()`) は「インタフェース + 委譲先の式」なので、
+            // 括弧判定より先に ` by <expr>` を落とす。後回しにすると委譲先が呼び出し形
+            // (`by RepoImpl()` / `by MainScope()` — 最も一般的) のとき ( が先に見つかり、
+            // "Repo by RepoImpl" という架空の名前がスーパークラスとして図に出てしまう。
+            boolean delegated = hasDelegation(e);
+            if (delegated) {
+                e = stripDelegation(e);
+            }
+            // 型引数の中の ( ) (関数型 `(Int) -> Unit` 等) は「コンストラクタ呼び出し」では
+            // ないので、深さ 0 の ( だけを見る。
+            int paren = delegated ? -1 : topLevelParen(e);
+            if (paren >= 0) {
+                String sup = e.substring(0, paren).trim();
+                if (!sup.isEmpty() && info.getSuperClass() == null) {
+                    info.setSuperClass(sup);
+                }
+            } else if (!e.isEmpty()) {
+                info.getInterfaces().add(e);
+            }
+        }
     }
 }

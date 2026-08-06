@@ -164,9 +164,12 @@ final class DiagramNotesLayer {
         List<DiagramNote> out = new ArrayList<>(notes.size());
         for (DiagramNote n : notes) {
             DiagramNote c = n.copyDeep();
-            c.setX(effX(n));
-            c.setY(effY(n));
             c.setAnchor(DiagramNote.Anchor.FREE);
+            // 解決して FREE になった時点で不変条件の対象になる。ELEMENT のまま
+            // 素通ししていたため、要素の右隣に置く既定配置 (要素幅 + 16) が
+            // <b>ほぼ必ず</b>図の右外に出て、書き出しから本文ごと切り落とされていた。
+            // 図の内容矩形は要素に密着しているので「右隣」は必ず外なのである。
+            fitFree(c, effX(n), effY(n), n.getWidth(), n.getHeight());
             out.add(c);
         }
         return out;
@@ -506,7 +509,7 @@ final class DiagramNotesLayer {
                 }
             }
         } else if (!active.isLocked()) {
-            sizeFree(active, p.x / zoom - effX(active), p.y / zoom - effY(active));
+            resizeFree(active, p.x / zoom - effX(active), p.y / zoom - effY(active));
             dragChanged = true;
         }
         owner.repaint();
@@ -674,6 +677,60 @@ final class DiagramNotesLayer {
     /** FREE 付箋の大きさを変える (位置は保つ — 収まらなければ矩形ごと寄る)。 */
     private void sizeFree(DiagramNote n, double w, double h) {
         fitFree(n, n.getX(), n.getY(), w, h);
+    }
+
+    /**
+     * ドラッグによるリサイズ。{@link #sizeFree} と違い<b>原点を動かさない</b>。
+     *
+     * <p>この 2 つは契約が違う。「本文に合わせて高さ調整」は<b>本文が収まる高さ</b>が
+     * 目的なので、収まらなければ付箋を上へ寄せてよい ({@link #sizeFree})。
+     * ドラッグのリサイズは<b>掴んだ角だけを動かす</b>のが目的なので、寄せてはいけない。
+     * 同じ経路にまとめたところ、幅が箱幅まで育った瞬間に原点が押し出されて左辺が
+     * 図の左端まで走り、マウスを戻しても復元しなくなった。リサイズで許される上限は
+     * 「箱の幅」ではなく<b>原点から端までの残り</b>である。</p>
+     */
+    private void resizeFree(DiagramNote n, double w, double h) {
+        if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
+            n.setWidth(w);
+            n.setHeight(h);
+            return;
+        }
+        n.setWidth(roomFrom(n.getX(), w, true));
+        n.setHeight(roomFrom(n.getY(), h, false));
+    }
+
+    /** 原点 {@code origin} から書き出し範囲の端までに収まる大きさ。 */
+    private double roomFrom(double origin, double size, boolean horizontal) {
+        double limit = contentLimit(horizontal);
+        return limit <= 0 ? size : Math.max(0, Math.min(size, limit - Math.max(0, origin)));
+    }
+
+    /**
+     * 図が描き直されて内容矩形が変わったときに、全付箋の不変条件を張り直す。
+     *
+     * <p>不変条件は付箋を動かす側の経路にしか適用されていなかった。箱の側が変わる経路
+     * (F5・テーマ変更・深度やフィルタの変更・エディタでのソース編集) は付箋に触れないので、
+     * 図が縮むと付箋は内容矩形の外に取り残され、<b>画面には見えているのに書き出しに
+     * 出ない</b>。しかもその状態で矢印キーを 1 回押すと、放置されていたクランプが遅れて
+     * 効いて付箋が突然ワープしていた。</p>
+     */
+    void refitToContent() {
+        boolean changed = false;
+        for (DiagramNote n : notes) {
+            if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
+                continue;
+            }
+            double x = n.getX();
+            double y = n.getY();
+            double w = n.getWidth();
+            double h = n.getHeight();
+            fitFree(n, x, y, w, h);
+            changed |= x != n.getX() || y != n.getY()
+                    || w != n.getWidth() || h != n.getHeight();
+        }
+        if (changed) {
+            owner.repaint();
+        }
     }
 
     /** 図の内容矩形の幅/高さ。所有者が答えられなければ 0 (= 制限なし)。 */

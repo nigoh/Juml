@@ -5,6 +5,7 @@ package juml.core.formats.android;
 
 import java.util.HashMap;
 import java.util.Map;
+import juml.core.formats.uml.PlantUmlCommentFormatter;
 
 /**
  * {@link AndroidNavigationGraphInfo} の画面遷移を PlantUML State 図として描画する。
@@ -257,11 +258,15 @@ public final class PlantUmlNavigationGraphDiagram {
         return "(unnamed)";
     }
 
+    /**
+     * 引用符付きラベルへ埋め込む文字列のエスケープ。android:label / defaultValue に XML の &#10; で本物の改行が入る。
+     *
+     * <p>{@code "} を {@code '} に置くだけだったので、改行が入ると<b>ラベルが途中で
+     * 閉じて図が 1 枚も出ず</b>、タグが入ると文言が変形していた。判定は
+     * {@link PlantUmlCommentFormatter#escapeQuotedLabel} に 1 本化してある。</p>
+     */
     private static String escape(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("\"", "'");
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 
     private static void emitLegend(StringBuilder out) {

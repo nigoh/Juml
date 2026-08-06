@@ -265,4 +265,101 @@ public class KotlinDeclarationShapesTest {
                 scanOne("package p\nenum class E {\n  /** 使い方: E.A; 既定は A */\n"
                         + "  A, B\n}\n").getEnumConstants());
     }
+
+    /**
+     * 本体を持たないクラスが、<b>次の宣言の本体</b>を自分のものにしないこと。
+     *
+     * <p>本体の開き括弧は「ヘッダの後ろで最初に現れる深さ 0 の {@code &#123;}」として
+     * 探されていたが、そこで打ち切る条件が無かった。だから {@code interface Listener}
+     * のように本体を持たない宣言があると、次に来る関数の本体を丸ごと飲み込み、
+     * <b>その関数がクラス図から消えて、無関係なメンバーが Listener の中に生える</b>。
+     * 本体の無いインターフェース宣言は Kotlin では普通の書き方である。</p>
+     */
+    @Test
+    public void aBodylessClassDoesNotSwallowTheNextDeclaration() {
+        List<JavaClassInfo> out = KotlinLightScanner.scan("package p\n"
+                + "interface Listener\n"
+                + "class Holder {\n"
+                + "  fun register(l: Listener) {}\n"
+                + "  val count: Int = 0\n"
+                + "}\n", null);
+
+        JavaClassInfo listener = out.stream().filter(c -> "Listener".equals(c.getSimpleName()))
+                .findFirst().orElseThrow();
+        assertTrue("本体の無い宣言にメンバーを生やさないこと: "
+                        + listener.getMethods().stream().map(JavaMethodInfo::getName)
+                                .collect(Collectors.toList()),
+                listener.getMethods().isEmpty() && listener.getFields().isEmpty());
+
+        JavaClassInfo holder = out.stream().filter(c -> "Holder".equals(c.getSimpleName()))
+                .findFirst().orElseThrow();
+        assertEquals("register", method(holder, "register").getName());
+        assertEquals(List.of("count"), holder.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+    }
+
+    /**
+     * 本体を持たないクラスが、<b>後続宣言の型注釈</b>をスーパータイプにしないこと。
+     *
+     * <p>継承リストの走査には終端が無く、本体の {@code &#123;} が来るまで読み続けていた。
+     * 本体が無ければ次のトップレベル宣言まで走り、{@code val settings: Settings} の
+     * 型注釈を継承として読む。図には<b>ソースに存在しない継承の矢印</b>が描かれる。</p>
+     */
+    @Test
+    public void aBodylessClassDoesNotInventSupertypesFromWhatFollows() {
+        List<JavaClassInfo> out = KotlinLightScanner.scan("package p\n"
+                + "class Empty\n"
+                + "val settings: Settings = Settings()\n", null);
+
+        JavaClassInfo empty = out.stream().filter(c -> "Empty".equals(c.getSimpleName()))
+                .findFirst().orElseThrow();
+        assertTrue("継承を作り出さないこと: super=" + empty.getSuperClass()
+                        + " ifs=" + empty.getInterfaces(),
+                empty.getSuperClass() == null && empty.getInterfaces().isEmpty());
+    }
+
+    /**
+     * 継承リストの打ち切り走査が<b>括弧の深さ</b>を数えること。
+     *
+     * <p>コメントと {@code where} は見るようになったのに、深さだけ数えていなかった。
+     * 引数に無名オブジェクト式を渡す {@code Base(object : Cb() { … })} は、その
+     * {@code &#123;} を本体の始まりと誤認する。{@code ListAdapter} + {@code DiffUtil.ItemCallback}
+     * は RecyclerView の定型句なので、<b>普通の Android アプリで継承と本体が同時に壊れる</b>。</p>
+     */
+    @Test
+    public void theSupertypeCutIsBracketDepthAware() {
+        JavaClassInfo c = KotlinLightScanner.scan("package p\n"
+                + "class TaskAdapter : ListAdapter<Task, VH>(object : DiffUtil.ItemCallback<Task>() {\n"
+                + "    override fun areItemsTheSame(a: Task, b: Task) = a.id == b.id\n"
+                + "}), Filterable {\n"
+                + "  private val count: Int = 0\n"
+                + "  fun refresh() {}\n"
+                + "}\n", null).stream()
+                .filter(x -> "TaskAdapter".equals(x.getSimpleName())).findFirst().orElseThrow();
+
+        assertEquals("ListAdapter<Task, VH>", c.getSuperClass());
+        assertEquals(List.of("Filterable"), c.getInterfaces());
+        assertEquals("refresh", method(c, "refresh").getName());
+        assertEquals(List.of("count"), c.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+    }
+
+    /**
+     * enum 定数の<b>引数の文字列</b>を空白へ潰さないこと。
+     *
+     * <p>コメント除去を「非コードは空白 1 つに畳む」で書いたところ、文字列リテラルまで
+     * 畳んでしまった。{@code RED("#ff0000", "赤")} が {@code RED( , )} になり、
+     * 引数を表示する設定で<b>図から文言が消える</b>。文字列は宣言の一部なので残す。</p>
+     */
+    @Test
+    public void enumConstantArgumentsKeepTheirStrings() {
+        JavaClassInfo c = scanOne("package p\n"
+                + "enum class Color(val hex: String, val jp: String) {\n"
+                + "  RED(\"#ff0000\", \"赤\"),  // 警告色\n"
+                + "  BLUE(\"#0000ff\", \"青\")\n"
+                + "}\n");
+        assertEquals(List.of("RED", "BLUE"), c.getEnumConstants());
+        assertEquals(List.of("hex", "jp"), c.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+    }
 }
