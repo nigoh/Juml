@@ -137,8 +137,39 @@ public class ErSketchCodecTest {
 
     @Test
     public void toPuml_emptyModel_producesMinimalDocument() {
-        assertEquals("@startuml\nhide circle\n@enduml\n",
-                ErSketchCodec.toPuml(new ErSketchModel()));
+        // hide circle は「読んだときだけ再付与する」。無条件に付けていたため、指令の無い
+        // 図を設計器で 1 回触るだけで 1 行増え、描画が変わっていた。
+        assertEquals("@startuml\n@enduml\n", ErSketchCodec.toPuml(new ErSketchModel()));
+
+        ErSketchModel had = new ErSketchModel();
+        had.setHideCircle(true);
+        assertEquals("@startuml\nhide circle\n@enduml\n", ErSketchCodec.toPuml(had));
+    }
+
+    /**
+     * 書き戻しで<b>元テキストに無い指令を足さない</b>こと。
+     *
+     * <p>「読んだものが書き戻しで出てこない」の裏返しで、こちらは「書いていないものが
+     * 出てくる」。同梱の ER テンプレートに {@code hide circle} は入っていないので、
+     * テンプレートから作った図を Design タブで 1 回ドラッグするだけで、エンティティの
+     * 丸バッジが消えて図の見た目が黙って変わっていた。同じ ER コーデックは、区切り線が
+     * {@code ==} から {@code --} へ正規化される<b>もっと小さな差分</b>に対しては編集を
+     * ロックして原文を守る規則を持っている。指令の注入だけがその規則の外にあった。</p>
+     */
+    @Test
+    public void toPuml_doesNotInjectDirectivesAbsentFromTheSource() {
+        String template = juml.app.uml.PumlTemplate.ER.body();
+        assertFalse("前提: ER テンプレートに hide circle は無い", template.contains("hide circle"));
+
+        ErSketchCodec.ParseResult r = ErSketchCodec.parse(template);
+        assertTrue("前提: テンプレートは設計器で編集できる", r.isFullySupported());
+        assertFalse("往復で hide circle を足さないこと",
+                ErSketchCodec.toPuml(r.model).contains("hide circle"));
+
+        // 非退行: 元からあれば保つ。
+        String withHide = "@startuml\nhide circle\nentity A {\n  * id : int\n}\n@enduml\n";
+        assertTrue("元からある hide circle は保つこと",
+                ErSketchCodec.toPuml(ErSketchCodec.parse(withHide).model).contains("hide circle"));
     }
 
     @Test

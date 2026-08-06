@@ -1463,22 +1463,17 @@ public final class DiagramTabPane {
         java.io.File switchedRoot = cache.getProjectRoot();
         for (DiagramTab t : openTabs.values()) {
             if (switchedRoot != null) {
-                // 再バインドの前にレイヤを空にする。図種切替の 2 経路は以前から
-                // そうしているが、ここだけ残していた。bind の非同期ロードは
-                // 「レイヤに付箋が無い」ことを条件に反映するので、旧プロジェクトの
-                // 付箋が残っていると<b>切替先に保存済みの付箋が読み込まれず</b>、
-                // その後 1 つ動かした瞬間に旧プロジェクトの付箋で上書き保存される。
+                // レイヤは<b>空にしない</b>。ここへ来るのはプロジェクト非依存の
+                // エディタタブだけ (図タブは上で閉じている) で、その付箋はバッファに
+                // 属するものだから、切替で消える理由が無い。
                 //
-                // ただし空にしてよいのは<b>旧ルートのストアへ保存済み</b>のときだけ。
-                // プロジェクト未ロードで開いたエディタタブの付箋は保存先が無く、
-                // ディスクのどこにも無いので、消すと唯一の実体が失われる —
-                // setData は履歴も消すので Ctrl+Z でも戻らない。
-                // 「新規 PlantUML → 付箋でメモ → プロジェクトを開く」は正規の導線である。
-                if (notesBinder.isPersisted(t.previewPanel)) {
-                    t.previewPanel.notes().setData(
-                            java.util.Collections.emptyList(),
-                            java.util.Collections.emptyList());
-                }
+                // 以前は「旧プロジェクトの付箋が残っていると切替先の保存済み付箋が
+                // 読み込まれない」を理由に空にしていた。しかしそれは<b>画面に見えている
+                // 唯一の実体を消す</b>ことと引き換えで、setData は履歴も消すので
+                // Ctrl+Z でも戻らない。「保存済みなら消してよい」という条件を付けても、
+                // 保存が済むのは切替の後なので消える時期が 1 回遅れるだけだった。
+                // 保存先だけ新プロジェクトへ移す。非同期ロードは「レイヤが空のときだけ
+                // 反映する」規則を既に持っているので、画面の付箋が上書きされることはない。
                 notesBinder.bind(t.previewPanel, switchedRoot, t.key);
             }
             navHistory.push(t.key);

@@ -174,9 +174,22 @@ public class SvgPreviewPanel extends JPanel {
         return notesLayer.notesForExportResolved();
     }
 
-    /** 図 (SVG) + 付箋を 1 枚に描画して返す (PNG エクスポート用)。SVG 未表示なら null。EDT 専用。 */
+    /**
+     * 図 (SVG) + 付箋を 1 枚に描画して返す (PNG エクスポート用)。SVG 未表示なら null。EDT 専用。
+     *
+     * <p>キャンバスは図と<b>全付箋</b>が収まる大きさにする。図の寸法だけで切っていたため、
+     * 内容矩形の外に置かれた付箋 (要素アンカーの既定配置は要素の右隣 = ほぼ必ず外) が
+     * PNG と画像コピーでは切り落とされていた。SVG 経路だけが別の規則を持っていたので、
+     * 同じ右クリックメニューの Save SVG と Save PNG で結果が違っていた。</p>
+     */
     public java.awt.image.BufferedImage renderDiagramWithNotes(double desiredScale) {
-        return NoteExport.rasterize(svgNode, svgWidth, svgHeight, desiredScale, notesLayer);
+        double[] box = notesLayer.exportBounds(svgWidth, svgHeight);
+        return NoteExport.rasterize(svgNode, box[0], box[1], desiredScale, notesLayer);
+    }
+
+    /** 書き出しキャンバスの大きさ {@code [w, h]} (図 + 全付箋が収まる)。 */
+    public double[] exportCanvas() {
+        return notesLayer.exportBounds(svgWidth, svgHeight);
     }
 
     /** SVG テキスト要素リストを設定する (ラバーバンド選択のヒットテスト用)。null/空でクリア。 */
@@ -252,9 +265,6 @@ public class SvgPreviewPanel extends JPanel {
         renderCache.invalidate();
         minimap.invalidate();
         updatePreferredSize();
-        // 内容矩形が変わったので付箋の不変条件を張り直す。張り直さないと、図が縮んだとき
-        // 付箋が矩形の外に取り残され、画面には見えているのに書き出しから消える。
-        notesLayer.refitToContent();
         revalidate();
         repaint();
     }
@@ -353,7 +363,6 @@ public class SvgPreviewPanel extends JPanel {
         renderCache.invalidate();
         minimap.invalidate();
         updatePreferredSize();
-        notesLayer.refitToContent();   // 内容矩形が変わったので不変条件を張り直す
         revalidate();
         repaint();
     }

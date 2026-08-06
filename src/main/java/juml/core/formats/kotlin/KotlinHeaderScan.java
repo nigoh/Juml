@@ -191,7 +191,15 @@ final class KotlinHeaderScan {
      * 兄弟の {@link #primaryCtorParenAfter} は以前からこの規則を持っていた。</p>
      */
     static int[] headerEnd(String src, int from) {
-        int depth = 0;
+        // 括弧 ( [ と山括弧 < は<b>別々に</b>数える。( [ は必ず対で閉じるが、< は
+        // ジェネリクスの開きにも比較演算子にもなるからである。まとめて 1 つの深さで
+        // 数えると `Base(n < 10)` のような引数で深さが 0 に戻らず、本体の { を
+        // 見つけられずクラスの中身が丸ごと消えていた
+        // (`Dialog(ctx, if (Build.VERSION.SDK_INT < 21) …)` は Android の定型句)。
+        // 比較が現れるのは必ず括弧の内側なので、山括弧は<b>括弧の外にいるときだけ</b>
+        // 数える。ジェネリクスの < は宣言名の直後 = 括弧の外にしか現れない。
+        int brackets = 0;
+        int angles = 0;
         int superEnd = -1;
         for (int i = from; i < src.length(); i++) {
             int e = KotlinLightScanner.skipNonCode(src, i);
@@ -200,17 +208,27 @@ final class KotlinHeaderScan {
                 continue;
             }
             char c = src.charAt(i);
-            if (c == '(' || c == '[' || c == '<') {
-                depth++;
+            if (c == '(' || c == '[') {
+                brackets++;
                 continue;
             }
-            if (c == ')' || c == ']' || c == '>') {
-                if (!isArrowGreaterThan(src, i) && depth > 0) {
-                    depth--;
+            if (c == ')' || c == ']') {
+                if (brackets > 0) {
+                    brackets--;
                 }
                 continue;
             }
-            if (depth > 0) {
+            if (brackets == 0 && c == '<') {
+                angles++;
+                continue;
+            }
+            if (brackets == 0 && c == '>') {
+                if (!isArrowGreaterThan(src, i) && angles > 0) {
+                    angles--;
+                }
+                continue;
+            }
+            if (brackets > 0 || angles > 0) {
                 continue;
             }
             if (c == '{') {
@@ -245,14 +263,24 @@ final class KotlinHeaderScan {
     /**
      * ヘッダを終わらせる宣言キーワード。
      *
-     * <p>可視性修飾子と {@code constructor} は<b>入れない</b> —
-     * {@code class A private constructor(…)} のようにヘッダの<b>中</b>にも現れるので、
-     * 入れると継承リストの手前で切ってしまう。{@code val} / {@code var} は
-     * コンストラクタ引数にも現れるが、そちらは括弧の内側 (深さ &gt; 0) なので届かない。</p>
+     * <p>可視性修飾子は<b>入れない</b> — {@code class A private constructor(…)} のように
+     * ヘッダの<b>中</b>にも現れるので、入れると継承リストの手前で切ってしまう。
+     * {@code val} / {@code var} はコンストラクタ引数にも現れるが、そちらは括弧の内側
+     * (深さ &gt; 0) なので届かない。</p>
+     *
+     * <p>{@code constructor} は<b>入れる</b>。プライマリコンストラクタの
+     * {@code constructor} はここへ届かない — 呼び出し側が
+     * {@link #primaryCtorParenAfter} の {@code )} の後ろから走査を始めるからで、
+     * 兄弟経路が既にその位置を知っている。届くのは二次コンストラクタだけであり、
+     * それは<b>次の宣言</b>である。入れていなかったため、本体を持たない宣言
+     * ({@code object X} など) の直後に二次コンストラクタが並ぶと、委譲の
+     * {@code : this(…)} を継承コロンと読んで {@code "this"} という存在しない箱への
+     * 継承線を引き、{@code constructor(…) &#123; … &#125;} の本体をその宣言のものとして
+     * 取り込んでローカル変数をフィールドに仕立てていた。</p>
      */
     private static final java.util.Set<String> DECL_KEYWORDS =
-            new java.util.HashSet<>(java.util.Arrays.asList(
-                    "fun", "val", "var", "class", "interface", "object", "typealias", "init"));
+            new java.util.HashSet<>(java.util.Arrays.asList("fun", "val", "var", "class",
+                    "interface", "object", "typealias", "init", "constructor"));
 
     /** ジェネリック引数の外側にある最初の {@code (} の位置。無ければ -1。 */
     static int topLevelParen(String s) {
@@ -275,6 +303,23 @@ final class KotlinHeaderScan {
     /** ` by <委譲式>` (スーパータイプ項の末尾)。 */
     private static final Pattern DELEGATION = Pattern.compile("\\s+by\\s+.*$");
 
+    /** コロンの後ろが {@code this(…)} / {@code super(…)} = コンストラクタ委譲か。 */
+    private static boolean isConstructorDelegation(String afterColon) {
+        String s = KotlinBlockMask.codeOnly(afterColon).trim();
+        for (String kw : new String[] {"this", "super"}) {
+            if (s.startsWith(kw)) {
+                int i = kw.length();
+                while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+                    i++;
+                }
+                if (i < s.length() && s.charAt(i) == '(') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * クラス名の直後から、<b>プライマリコンストラクタ</b>の開き括弧を探す。
      *
@@ -284,8 +329,22 @@ final class KotlinHeaderScan {
      * 無いため偶然通り、見落とされやすい)。型パラメータ {@code <T>}・アノテーション
      * (引数の括弧ごと)・可視性修飾子・{@code constructor} キーワードを読み飛ばして判定する。</p>
      *
+     * <p>{@code kindKw} が {@code object} / {@code interface} のときは常に -1。これらは
+     * Kotlin の文法上<b>プライマリコンストラクタを持てない</b>ので、直後に現れる
+     * {@code constructor(…)} は必ず<b>囲みクラスの二次コンストラクタ</b>である。
+     * 見分けずに掴んでいたため、本体を持たない {@code object X} の直後に二次
+     * コンストラクタが並ぶと、その引数と本体を {@code object X} のものとして読み、
+     * ローカル変数がフィールドとして図に出ていた。</p>
+     *
      * @return プライマリコンストラクタの {@code (} の位置。無ければ -1
      */
+    static int primaryCtorParenAfter(String src, int from, String kindKw) {
+        if ("object".equals(kindKw) || "interface".equals(kindKw)) {
+            return -1;
+        }
+        return primaryCtorParenAfter(src, from);
+    }
+
     static int primaryCtorParenAfter(String src, int from) {
         int i = from;
         while (i < src.length()) {
@@ -394,6 +453,13 @@ final class KotlinHeaderScan {
             return;
         }
         String list = region.substring(colon + 1);
+        if (isConstructorDelegation(list)) {
+            // `: this(…)` / `: super(…)` は<b>コンストラクタの委譲</b>であって継承ではない。
+            // 継承リストの走査はコメント・where・括弧の深さを知るようになったのに、
+            // 委譲だけ知らなかった。読み違えると "this" / "super" という<b>存在しない箱</b>への
+            // 継承線が引かれる (二次コンストラクタを持つクラスで実測)。
+            return;
+        }
         int depth = 0;
         for (int i = 0; i < list.length(); i++) {
             int nc = KotlinLightScanner.skipNonCode(list, i);

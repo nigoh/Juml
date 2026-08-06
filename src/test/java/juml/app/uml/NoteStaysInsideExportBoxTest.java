@@ -246,53 +246,80 @@ public class NoteStaysInsideExportBoxTest {
     }
 
     /**
-     * 図が描き直されて内容矩形が変わったら、付箋の不変条件を<b>張り直す</b>こと。
+     * 図が描き直されても、付箋の座標と大きさを<b>壊さない</b>こと。
      *
-     * <p>不変条件は付箋を動かす経路にしか適用されていなかった。箱の側が変わる経路
-     * (F5・テーマ変更・深度やフィルタの変更・ソース編集) は付箋に触れないので、図が縮むと
-     * 付箋は内容矩形の外に取り残される — <b>画面には見えているのに書き出しに出ない</b>。
-     * しかもその状態で矢印キーを 1 回押すと、放置されたクランプが遅れて効いて突然ワープした。</p>
+     * <p>「はみ出しは座標を寄せて直す」をモデルへの書き戻しでやったところ、図が一時的に
+     * 小さくなる<b>あらゆる再描画</b>で x/y/w/h が破壊的に上書きされた。元の値はどこにも
+     * 残らないので図が戻っても復元せず、履歴に積まないので Ctrl+Z でも戻せない。
+     * PlantUML エディタのライブプレビューは入力途中の小さい図を正常な描画として流すので、
+     * クラスを 1 つずつ書き足す通常の編集で毎回起きていた。</p>
+     *
+     * <p>モデルは<b>利用者の意図</b>を持つ。はみ出しは書き出し側でキャンバスを広げて解く
+     * ({@link #theExportCanvasGrowsToIncludeEveryNote})。</p>
      */
     @Test
-    public void shrinkingTheDiagramRefitsExistingNotes() {
+    public void redrawingTheDiagramNeverRewritesTheNotes() {
         SvgPreviewPanel panel = new SvgPreviewPanel();
-        panel.setImage(new BufferedImage(1200, 900, BufferedImage.TYPE_INT_ARGB));
-        panel.notes().addNoteAt(new Point(900, 700), 1.0);
+        panel.setImage(new BufferedImage(472, 298, BufferedImage.TYPE_INT_ARGB));
+        panel.notes().addNoteAt(new Point(272, 178), 1.0);
+        DiagramNote n = panel.notes().getNotes().get(0);
+        n.setWidth(190);
+        n.setHeight(110);
+        double x = n.getX();
+        double y = n.getY();
 
-        // 同じタブで図を描き直す (フィルタ変更などで内容矩形が小さくなる)。
-        panel.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+        // 入力途中の小さい図 → 元の大きさへ戻る (ライブプレビューの往復)。
+        panel.setImage(new BufferedImage(61, 60, BufferedImage.TYPE_INT_ARGB));
+        panel.setImage(new BufferedImage(472, 298, BufferedImage.TYPE_INT_ARGB));
 
-        assertFits(panel, "図の縮小後");
+        DiagramNote after = panel.notes().getNotes().get(0);
+        assertTrue("再描画で原点を書き換えないこと: " + after.getX() + "," + after.getY(),
+                after.getX() == x && after.getY() == y);
+        assertTrue("再描画で大きさを書き換えないこと: "
+                        + after.getWidth() + "x" + after.getHeight(),
+                after.getWidth() == 190 && after.getHeight() == 110);
     }
 
     /**
-     * 要素に貼った付箋も、<b>書き出し時に</b>範囲へ収めること。
+     * 書き出しキャンバスは図と<b>全付箋</b>が収まるまで広がること。
      *
-     * <p>要素アンカーの既定配置は「要素の右隣 (要素幅 + 16)」である。図の内容矩形は
-     * 要素に密着しているので、この既定位置は<b>ほぼ必ず</b>図の右外に出る。書き出しは
-     * アンカーを解決して FREE に直すのに、そこだけ不変条件を通していなかったため、
-     * 要素に貼った付箋は本文ごと切り落とされていた。</p>
+     * <p>はみ出しを座標のクランプで解いていたときは、下端に並ぶ要素付箋が全部同じ矩形へ
+     * 潰れて互いを隠し、注釈対象のクラス箱まで覆っていた。画面側に同じクランプが無いので
+     * 画面と書き出しで位置も違った。寄せるのではなく入れ物を広げる。</p>
      */
     @Test
-    public void elementAnchoredNotesAreFittedWhenExported() {
+    public void theExportCanvasGrowsToIncludeEveryNote() {
         SvgPreviewPanel panel = new SvgPreviewPanel();
-        panel.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+        panel.setImage(new BufferedImage(160, 400, BufferedImage.TYPE_INT_ARGB));
         DiagramNotesLayer layer = panel.notes();
-        layer.addNoteAt(new Point(10, 20), 1.0);
-        DiagramNote n = layer.getNotes().get(0);
-        n.setAnchor(DiagramNote.Anchor.ELEMENT);
-        n.setX(280);
-        n.setY(180);
 
-        for (DiagramNote e : layer.notesForExportResolved()) {
-            assertTrue("書き出し時は FREE へ解決すること", e.getAnchor() == DiagramNote.Anchor.FREE);
-            assertTrue("右端が範囲内 right=" + (e.getX() + e.getWidth())
-                            + " limit=" + panel.contentWidth(),
-                    e.getX() >= 0 && e.getX() + e.getWidth() <= panel.contentWidth() + 0.5);
-            assertTrue("下端が範囲内 bottom=" + (e.getY() + e.getHeight())
-                            + " limit=" + panel.contentHeight(),
-                    e.getY() >= 0 && e.getY() + e.getHeight() <= panel.contentHeight() + 0.5);
+        // 図の下端付近に縦に並ぶ 3 要素。付箋は既定どおり「要素の右隣」。
+        final double[][] rects = {{10, 280, 140, 30}, {10, 320, 140, 30}, {10, 360, 140, 30}};
+        layer.setElementResolver(ref -> rects[Integer.parseInt(ref.substring(ref.length() - 1))]);
+        List<DiagramNote> made = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            DiagramNote e = new DiagramNote();
+            e.setAnchor(DiagramNote.Anchor.ELEMENT);
+            e.setTargetRef("Service" + i);
+            e.setX(140 + 16);
+            e.setY(0);
+            e.setWidth(240);
+            e.setHeight(150);
+            made.add(e);
         }
+        layer.setData(made, java.util.Collections.emptyList());
+
+        List<DiagramNote> exported = layer.notesForExportResolved();
+        assertTrue("3 枚とも書き出しに含まれること", exported.size() == 3);
+        for (int i = 0; i < 3; i++) {
+            DiagramNote e = exported.get(i);
+            assertTrue("要素の右隣のまま (画面と同じ位置): x=" + e.getX(), e.getX() == 166);
+            assertTrue("互いに重ならないこと: y=" + e.getY(), e.getY() == rects[i][1]);
+        }
+
+        double[] box = panel.exportCanvas();
+        assertTrue("キャンバスが付箋の右端まで広がること: " + box[0], box[0] >= 166 + 240);
+        assertTrue("キャンバスが付箋の下端まで広がること: " + box[1], box[1] >= 360 + 150);
     }
 
     /** 付箋の矩形全体が図の内容矩形に収まっていること。 */

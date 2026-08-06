@@ -20,6 +20,15 @@ public final class ErSketchModel {
     private final List<Relation> relations = new ArrayList<>();
     /** {@code @startuml <name>} の名前サフィックス (無ければ空文字)。往復で保全する。 */
     private String diagramName = "";
+    /**
+     * 元テキストに {@code hide circle} があったか。往復で保全する。
+     *
+     * <p>持たずに書き戻し側が<b>常に</b>付けていたため、指令の無い ER 図を設計器で 1 回
+     * 触るだけで 1 行増え、描画が変わっていた (エンティティの丸バッジが消える)。
+     * 同梱の ER テンプレートに {@code hide circle} は入っていないので、
+     * 「新規 ER 図 → ドラッグ」で必ず起きる。読んだものだけを書き戻す。</p>
+     */
+    private boolean hideCircle;
 
     public List<Entity> getEntities() {
         return entities;
@@ -37,6 +46,16 @@ public final class ErSketchModel {
     /** {@code @startuml} の図名を設定する (null は空文字として扱う)。 */
     public void setDiagramName(String name) {
         this.diagramName = name != null ? name : "";
+    }
+
+    /** 元テキストに {@code hide circle} があったか。 */
+    public boolean isHideCircle() {
+        return hideCircle;
+    }
+
+    /** {@code hide circle} の有無を設定する。 */
+    public void setHideCircle(boolean hideCircle) {
+        this.hideCircle = hideCircle;
     }
 
     /** 別名 (alias) でエンティティを探す (無ければ null)。 */
