@@ -136,7 +136,8 @@ public final class KotlinLightScanner {
             // 次のクラス宣言位置を上限に探索し、本体 {} を持たないクラスが後続クラスの
             // ブレース/括弧を誤って取り込まないようにする。
             int nextHeader = nextClassHeaderStart(source, headerEnd, nonCode, prefixes);
-            int primaryCtorParen = KotlinHeaderScan.primaryCtorParenAfter(source, headerEnd);
+            int primaryCtorParen =
+                    KotlinHeaderScan.primaryCtorParenAfter(source, headerEnd, kindKw);
             if (nextHeader >= 0 && primaryCtorParen >= nextHeader) {
                 primaryCtorParen = -1;
             }

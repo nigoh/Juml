@@ -598,4 +598,27 @@ public class SketchDiagramTypeTest {
                 + "!include foo.puml\n@enduml\n";
         assertEquals(SketchDiagramType.DEPLOYMENT, SketchDiagramType.detect(puml));
     }
+
+    /**
+     * {@code @startuml} が無い断片でも {@code detect} が落ちないこと。
+     *
+     * <p>PlantUML 側の図種判定は「判定できなければ null」を返す契約なのに、受け側の
+     * 照合表が {@link java.util.Map#of} 由来で<b>null キーを受け付けない</b> —
+     * {@code get(null)} は null ではなく NPE を投げる。周りの走査はいずれも例外を
+     * 捕まえて守っているのに、この 1 行だけ素通しだった。Design サブタブは
+     * テキストが変わるたびに判定を呼ぶので、{@code @startuml} をまだ書いていない
+     * バッファにコメント行を 1 行足すと EDT 上に例外が飛んでタブが落ちていた。</p>
+     */
+    @Test
+    public void detectSurvivesAFragmentWithoutStartuml() {
+        // 到達条件: 行走査で決めた図種のコーデックが読めない行を含み、かつ
+        // PlantUML が図種を返さない (= @startuml が無い)。
+        SketchDiagramType.detect("class A\n'note");
+        SketchDiagramType.detect("'note only");
+        SketchDiagramType.detect("");
+        SketchDiagramType.detect("何でもない文字列\n@@@");
+        // 非退行: 完全な図は従来どおり判定できること。
+        assertEquals(SketchDiagramType.CLASS,
+                SketchDiagramType.detect("@startuml\nclass A\nclass B\nA --> B\n@enduml\n"));
+    }
 }

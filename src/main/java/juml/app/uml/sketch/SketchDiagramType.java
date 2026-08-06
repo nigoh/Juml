@@ -411,14 +411,29 @@ public enum SketchDiagramType {
 
     /** PlantUML 自身の解釈が許す設計器 (解釈できなければ null = 制約なし)。 */
     private static java.util.Set<SketchDiagramType> parsedKindTypes(String source) {
-        return PARSED_KIND_TYPES.get(juml.core.formats.uml.PumlDiagramScan.parsedKind(source));
+        return allowedFor(juml.core.formats.uml.PumlDiagramScan.parsedKind(source));
+    }
+
+    /**
+     * 図種キーワードに対して許される設計器。{@code kind} が null なら null (= 制約なし)。
+     *
+     * <p>{@code PARSED_KIND_TYPES} は {@link java.util.Map#of} 由来で<b>null キーを
+     * 受け付けない</b> — {@code get(null)} は null ではなく NPE を投げる。
+     * {@code parsedKind} は「判定できなければ null」を返す契約なので、{@code @startuml} を
+     * まだ書いていないバッファにコメント行を 1 行足すだけで EDT 上に例外が飛び、
+     * Design サブタブが落ちていた。周りの {@code fullySupportedBy} /
+     * {@code recognisedNothing} / {@code parsedDiagramKind} はいずれも例外を捕まえて
+     * 守っているのに、ここだけ素通しだった。</p>
+     */
+    private static java.util.Set<SketchDiagramType> allowedFor(String kind) {
+        return kind == null ? null : PARSED_KIND_TYPES.get(kind);
     }
 
     private static SketchDiagramType parserCheckedFallback(String source,
                                                            SketchDiagramType guess) {
         String kind = juml.core.formats.uml.PumlDiagramScan.parsedKind(source);
         java.util.Set<SketchDiagramType> allowed = withoutPositionlessDesigners(
-                PARSED_KIND_TYPES.get(kind), source);
+                allowedFor(kind), source);
         if (allowed == null || allowed.isEmpty() || allowed.contains(guess)) {
             // 解釈できない図 (構文エラー・未対応記法) は走査の答えのまま扱う。
             return guess;
@@ -438,7 +453,8 @@ public enum SketchDiagramType {
                 return candidate;
             }
         }
-        return PARSED_KIND_FALLBACK.get(kind);
+        // 兄弟の照合表も同じ規約に揃える (null キーで NPE を投げる Map.of 由来)。
+        return kind == null ? null : PARSED_KIND_FALLBACK.get(kind);
     }
 
     /** どのコーデックも完全には扱えないテキスト向けの行走査 (表示ロックする設計器を選ぶ)。 */

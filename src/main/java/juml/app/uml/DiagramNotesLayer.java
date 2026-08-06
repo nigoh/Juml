@@ -159,20 +159,41 @@ final class DiagramNotesLayer {
      * エクスポート用: アンカーを解決して絶対図座標へ変換した付箋コピーを返す。
      * ELEMENT アンカー付箋の x/y は「対象要素からのオフセット」であり、そのまま
      * SVG に書くと原点付近へ飛んでしまうため、必ずこちらを使うこと。
+     *
+     * <p>ここで<b>内容矩形へ寄せてはいけない</b>。以前は寄せていたが、要素アンカーの
+     * 既定配置 (要素の右隣) は図の外に出るのが普通なので、下端に並ぶ付箋が全部同じ矩形へ
+     * 潰れて<b>互いを隠し、注釈対象のクラス箱まで覆って</b>いた。しかも画面側には同じ
+     * クランプが無いので、画面と書き出しで位置が違った。付箋がはみ出すなら寄せるのではなく
+     * <b>書き出しキャンバスを広げる</b> ({@link #exportBounds})。</p>
      */
     List<DiagramNote> notesForExportResolved() {
         List<DiagramNote> out = new ArrayList<>(notes.size());
         for (DiagramNote n : notes) {
             DiagramNote c = n.copyDeep();
             c.setAnchor(DiagramNote.Anchor.FREE);
-            // 解決して FREE になった時点で不変条件の対象になる。ELEMENT のまま
-            // 素通ししていたため、要素の右隣に置く既定配置 (要素幅 + 16) が
-            // <b>ほぼ必ず</b>図の右外に出て、書き出しから本文ごと切り落とされていた。
-            // 図の内容矩形は要素に密着しているので「右隣」は必ず外なのである。
-            fitFree(c, effX(n), effY(n), n.getWidth(), n.getHeight());
+            c.setX(effX(n));
+            c.setY(effY(n));
             out.add(c);
         }
         return out;
+    }
+
+    /**
+     * 図と全付箋が収まる書き出しキャンバスの大きさ {@code [w, h]}。
+     *
+     * <p>付箋は図の内容矩形からはみ出しうる (要素アンカーの既定配置、図が縮んだあと)。
+     * はみ出しを座標のクランプで解くとモデルが壊れるか付箋どうしが重なるので、
+     * <b>入れ物の側を広げる</b>。SVG・PNG・画像コピーの 3 経路が同じ答えを使うことで、
+     * 「SVG には出るのに PNG では切れる」という食い違いも同時に無くなる。</p>
+     */
+    double[] exportBounds(double diagramWidth, double diagramHeight) {
+        double w = Math.max(0, diagramWidth);
+        double h = Math.max(0, diagramHeight);
+        for (DiagramNote n : notes) {
+            w = Math.max(w, effX(n) + n.getWidth());
+            h = Math.max(h, effY(n) + n.getHeight());
+        }
+        return new double[] {w, h};
     }
 
     /** 指定 id の付箋の実効矩形 {@code [x,y,w,h]} (図座標)。なければ null。 */
@@ -703,34 +724,6 @@ final class DiagramNotesLayer {
     private double roomFrom(double origin, double size, boolean horizontal) {
         double limit = contentLimit(horizontal);
         return limit <= 0 ? size : Math.max(0, Math.min(size, limit - Math.max(0, origin)));
-    }
-
-    /**
-     * 図が描き直されて内容矩形が変わったときに、全付箋の不変条件を張り直す。
-     *
-     * <p>不変条件は付箋を動かす側の経路にしか適用されていなかった。箱の側が変わる経路
-     * (F5・テーマ変更・深度やフィルタの変更・エディタでのソース編集) は付箋に触れないので、
-     * 図が縮むと付箋は内容矩形の外に取り残され、<b>画面には見えているのに書き出しに
-     * 出ない</b>。しかもその状態で矢印キーを 1 回押すと、放置されていたクランプが遅れて
-     * 効いて付箋が突然ワープしていた。</p>
-     */
-    void refitToContent() {
-        boolean changed = false;
-        for (DiagramNote n : notes) {
-            if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
-                continue;
-            }
-            double x = n.getX();
-            double y = n.getY();
-            double w = n.getWidth();
-            double h = n.getHeight();
-            fitFree(n, x, y, w, h);
-            changed |= x != n.getX() || y != n.getY()
-                    || w != n.getWidth() || h != n.getHeight();
-        }
-        if (changed) {
-            owner.repaint();
-        }
     }
 
     /** 図の内容矩形の幅/高さ。所有者が答えられなければ 0 (= 制限なし)。 */

@@ -101,8 +101,12 @@ public final class ErSketchCodec {
                 }
                 continue;
             }
-            if (line.isEmpty() || line.equals("@enduml") || line.equals("hide circle")) {
-                // hide circle は ER 図の見た目指令。toPuml が常に再付与するため消費して無視する。
+            if (line.equals("hide circle")) {
+                // 見た目指令。モデルに持って書き戻しで<b>あったときだけ</b>再付与する。
+                model.setHideCircle(true);
+                continue;
+            }
+            if (line.isEmpty() || line.equals("@enduml")) {
                 continue;
             }
             Matcher pos = POS.matcher(line);
@@ -313,7 +317,11 @@ public final class ErSketchCodec {
                 SketchMultiDiagram.startLine("@startuml", model.getDiagramName()));
         sb.append('\n');
         // hide circle: エンティティを丸ではなく表として描かせる ER 図の定番指令。
-        sb.append("hide circle\n");
+        // 元テキストに<b>あったときだけ</b>再付与する。無条件に付けていたため、指令の
+        // 無い図 (同梱の ER テンプレートがそう) を設計器で 1 回触るだけで描画が変わっていた。
+        if (model.isHideCircle()) {
+            sb.append("hide circle\n");
+        }
         for (ErSketchModel.Entity e : model.getEntities()) {
             appendEntity(sb, e);
         }

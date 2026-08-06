@@ -16,8 +16,6 @@ import java.awt.GraphicsEnvironment;
 import java.awt.Point;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 /**
  * プロジェクト未ロードで作った付箋が、<b>最初にプロジェクトを開いたとき</b>に
@@ -74,16 +72,6 @@ public class NotesSurviveFirstProjectLoadTest {
         });
     }
 
-    /** プロジェクト未ロードのプレビューは「未保存」と答えること。 */
-    @Test
-    public void aPreviewWithoutAProjectIsReportedAsUnpersisted() {
-        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
-        SvgPreviewPanel preview = GuiActionRunner.execute(() -> pane.activePreviewPanel());
-
-        assertFalse("プロジェクト未ロードでは保存先が無いこと",
-                pane.notesBinder().isPersisted(preview));
-    }
-
     /** 最初のプロジェクト読込で、まだ保存先の無い付箋を捨てないこと。 */
     @Test
     public void notesMadeBeforeAnyProjectSurviveTheFirstLoad() {
@@ -102,7 +90,38 @@ public class NotesSurviveFirstProjectLoadTest {
         assertEquals("保存先の無い付箋を消さないこと",
                 1, preview.notes().getNotes().size());
         assertEquals("あとで直す", preview.notes().getNotes().get(0).getText());
-        assertTrue("以後は保存先を持つこと",
-                pane.notesBinder().isPersisted(preview));
+    }
+
+    /**
+     * 2 回目のプロジェクト切替でも消えないこと。
+     *
+     * <p>「保存済みか」を<b>保存先が割り当てられたか</b>で答えていたため、1 回目の切替で
+     * 救った付箋がそのルートへ保存されないまま印だけ立ち、2 回目の切替で
+     * {@code setData(empty, empty)} に消されていた — 防ごうとした失敗が 1 回分<b>遅れて</b>
+     * 起きるだけだった。{@code setData} は履歴も消すので Ctrl+Z でも戻らない。
+     * 引き取り時に実際に保存することで、この判定が意味を持つ。</p>
+     */
+    @Test
+    public void notesSurviveASecondProjectSwitchToo() throws Exception {
+        GuiActionRunner.execute(() -> pane.openPumlEditor(PUML, null));
+        SvgPreviewPanel preview = GuiActionRunner.execute(() -> pane.activePreviewPanel());
+        GuiActionRunner.execute(() -> {
+            preview.notes().addNoteAt(new Point(10, 20), 1.0);
+            preview.notes().getNotes().get(0).setText("あとで直す");
+        });
+
+        java.io.File projectA = tmp.newFolder("projectA");
+        java.io.File projectB = tmp.newFolder("projectB");
+
+        cache.setLoadedRootForTest(projectA);
+        GuiActionRunner.execute(() -> pane.onProjectSwitched());
+        assertEquals("1 回目の切替で残ること", 1, preview.notes().getNotes().size());
+
+        cache.setLoadedRootForTest(projectB);
+        GuiActionRunner.execute(() -> pane.onProjectSwitched());
+
+        assertEquals("2 回目の切替でも残ること",
+                1, preview.notes().getNotes().size());
+        assertEquals("あとで直す", preview.notes().getNotes().get(0).getText());
     }
 }

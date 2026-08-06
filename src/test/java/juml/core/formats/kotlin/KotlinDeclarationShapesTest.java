@@ -362,4 +362,76 @@ public class KotlinDeclarationShapesTest {
         assertEquals(List.of("hex", "jp"), c.getFields().stream()
                 .map(JavaFieldInfo::getName).collect(Collectors.toList()));
     }
+
+    /**
+     * スーパークラスの引数に比較演算子 {@code <} が入ってもクラス本体が消えないこと。
+     *
+     * <p>ヘッダ終端の走査が {@code (} {@code [} と {@code <} を<b>同じ深さ</b>で数えていた。
+     * {@code (} は必ず対で閉じるが {@code <} は比較演算子にもなるので、対になる {@code >} が
+     * 無いと深さが 0 に戻らず、本体の {@code &#123;} を見つけられない。結果クラスの中身が
+     * <b>丸ごと消える</b> — しかも {@code >} 版は偶然通るので非対称だった。
+     * {@code Build.VERSION.SDK_INT < N} は Android の定型句である。</p>
+     */
+    @Test
+    public void aComparisonInSuperArgumentsDoesNotSwallowTheBody() {
+        JavaClassInfo lt = scanOne("package p\nclass Foo(n: Int) : Base(n < 10) {\n"
+                + "  val x: Int = 1\n  fun go(): Int = 2\n}\n");
+        assertEquals(List.of("x"), lt.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+        assertEquals("go", method(lt, "go").getName());
+
+        JavaClassInfo android = scanOne("package p\nclass MyDialog(ctx: Context) : Dialog(ctx,\n"
+                + "    if (Build.VERSION.SDK_INT < 21) R.style.Old else R.style.New) {\n"
+                + "  private val title: String = \"\"\n  fun show2() {}\n}\n");
+        assertEquals(List.of("title"), android.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+        assertEquals("show2", method(android, "show2").getName());
+
+        // 非退行: 本物のジェネリクスは従来どおり読めること。
+        JavaClassInfo generic = scanOne("package p\n"
+                + "class Box<T : Comparable<T>>(val v: T) : Base() {\n  fun get(): T = v\n}\n");
+        assertEquals("Base", generic.getSuperClass());
+        assertEquals("get", method(generic, "get").getName());
+    }
+
+    /**
+     * 二次コンストラクタを<b>次の宣言</b>として扱うこと。
+     *
+     * <p>宣言キーワードの一覧に {@code constructor} が無く、しかも
+     * {@code primaryCtorParenAfter} が二次コンストラクタの {@code (} をプライマリのものと
+     * 誤認していた。そのため本体を持たない宣言の直後に二次コンストラクタが並ぶと、
+     * 委譲の {@code : this(…)} を継承コロンと読んで {@code "this"} という<b>存在しない箱</b>への
+     * 継承線を引き、{@code constructor(…) &#123; … &#125;} の本体を取り込んで
+     * ローカル変数をフィールドに仕立てていた。{@code object} / {@code interface} は
+     * 文法上プライマリコンストラクタを持てないので、直後の {@code constructor} は
+     * 必ず囲みクラスのものである。</p>
+     */
+    @Test
+    public void aSecondaryConstructorIsTheNextDeclaration() {
+        for (String kw : List.of("object", "class", "interface")) {
+            JavaClassInfo inner = KotlinLightScanner.scan("package p\nclass Outer {\n"
+                    + "  " + kw + " Inner\n\n"
+                    + "  constructor(x: Int) : this(x, 0)\n\n"
+                    + "  val real: String = \"\"\n}\n", null).stream()
+                    .filter(c -> "Inner".equals(c.getSimpleName())).findFirst().orElseThrow();
+            assertEquals(kw + ": 委譲を継承として読まないこと", null, inner.getSuperClass());
+            assertTrue(kw + ": 実装線も引かないこと: " + inner.getInterfaces(),
+                    inner.getInterfaces().isEmpty());
+        }
+
+        JavaClassInfo obj = KotlinLightScanner.scan("package p\nclass Outer {\n"
+                + "  object Inner\n\n  constructor(x: Int) { val local: Int = x }\n\n"
+                + "  val real: String = \"\"\n}\n", null).stream()
+                .filter(c -> "Inner".equals(c.getSimpleName())).findFirst().orElseThrow();
+        assertTrue("コンストラクタのローカル変数をフィールドにしないこと: " + obj.getFields(),
+                obj.getFields().isEmpty());
+
+        // 非退行: プライマリの `private constructor(…)` は従来どおり読めること。
+        JavaClassInfo primary = scanOne(
+                "package p\nclass A private constructor(val id: Long) : Base(), Runnable\n");
+        assertEquals("Base", primary.getSuperClass());
+        assertEquals(List.of("Runnable"), primary.getInterfaces());
+        assertEquals(List.of("id"), primary.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+    }
 }

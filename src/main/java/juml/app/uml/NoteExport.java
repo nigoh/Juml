@@ -93,7 +93,62 @@ final class NoteExport {
             f.append("</div></foreignObject>");
         }
         f.append("</g>");
-        return svg.substring(0, idx) + f + svg.substring(idx);
+        return growCanvas(svg.substring(0, idx), notes) + f + svg.substring(idx);
+    }
+
+    /** {@code <svg …>} の開始タグ。 */
+    private static final java.util.regex.Pattern SVG_TAG =
+            java.util.regex.Pattern.compile("(?is)<svg\\b[^>]*>");
+
+    /** 開始タグ内の {@code width="123px"} / {@code height="45"}。属性の順序に依存しない。 */
+    private static java.util.regex.Pattern lengthAttr(String name) {
+        return java.util.regex.Pattern.compile(
+                "(?i)\\b" + name + "=\"([0-9.]+)([a-z%]*)\"");
+    }
+
+    /** 開始タグから長さ属性を読む。無ければ NaN。 */
+    private static double lengthOf(String tag, String name) {
+        java.util.regex.Matcher m = lengthAttr(name).matcher(tag);
+        return m.find() ? Double.parseDouble(m.group(1)) : Double.NaN;
+    }
+
+    /**
+     * 付箋が図の外へはみ出す分だけ {@code <svg>} のキャンバスを広げる。
+     *
+     * <p>付箋の座標は PlantUML SVG と同じ座標系なので、はみ出した付箋は viewBox の外に
+     * なり<b>そのまま切り落とされる</b>。要素アンカーの既定配置は要素の右隣なので、
+     * 図の右端の要素に貼ったメモはほぼ必ずここに当たる。座標を内容矩形へ寄せて解くと
+     * 付箋どうしが重なって読めなくなるので、入れ物の側を広げる — PNG 経路
+     * ({@link SvgPreviewPanel#renderDiagramWithNotes}) と同じ規則である。</p>
+     */
+    private static String growCanvas(String head, List<DiagramNote> notes) {
+        double needW = 0;
+        double needH = 0;
+        for (DiagramNote n : notes) {
+            needW = Math.max(needW, n.getX() + n.getWidth());
+            needH = Math.max(needH, n.getY() + n.getHeight());
+        }
+        java.util.regex.Matcher m = SVG_TAG.matcher(head);
+        if (!m.find()) {
+            return head;
+        }
+        String tag = m.group();
+        double w = lengthOf(tag, "width");
+        double h = lengthOf(tag, "height");
+        if (Double.isNaN(w) || Double.isNaN(h) || (needW <= w && needH <= h)) {
+            return head;
+        }
+        double nw = Math.max(w, needW);
+        double nh = Math.max(h, needH);
+        String rebuilt = lengthAttr("width").matcher(tag)
+                .replaceFirst("width=\"" + num(nw) + "$2\"");
+        rebuilt = lengthAttr("height").matcher(rebuilt)
+                .replaceFirst("height=\"" + num(nh) + "$2\"");
+        // viewBox も同じだけ広げる (width/height だけ変えると図が引き伸ばされる)。
+        rebuilt = rebuilt.replaceAll("(?is)\\bviewBox=\"\\s*([-0-9.]+)\\s+([-0-9.]+)\\s+"
+                        + "[-0-9.]+\\s+[-0-9.]+\\s*\"",
+                "viewBox=\"$1 $2 " + num(nw) + " " + num(nh) + "\"");
+        return head.substring(0, m.start()) + rebuilt + head.substring(m.end());
     }
 
     /**
