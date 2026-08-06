@@ -252,6 +252,9 @@ public class SvgPreviewPanel extends JPanel {
         renderCache.invalidate();
         minimap.invalidate();
         updatePreferredSize();
+        // 内容矩形が変わったので付箋の不変条件を張り直す。張り直さないと、図が縮んだとき
+        // 付箋が矩形の外に取り残され、画面には見えているのに書き出しから消える。
+        notesLayer.refitToContent();
         revalidate();
         repaint();
     }
@@ -350,6 +353,7 @@ public class SvgPreviewPanel extends JPanel {
         renderCache.invalidate();
         minimap.invalidate();
         updatePreferredSize();
+        notesLayer.refitToContent();   // 内容矩形が変わったので不変条件を張り直す
         revalidate();
         repaint();
     }

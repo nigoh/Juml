@@ -322,13 +322,9 @@ public final class PlantUmlManifestDiagram {
         if (s == null) {
             return "";
         }
-        // 引用符付きラベル ("...") へ埋め込むため、まずダブルクォートをアポストロフィに、
-        // 改行・タブを空白に畳んでラベル文字列が途中で閉じないようにする。そのうえで
-        // 共通エスケーパ (制御文字除去・"<" のチルダエスケープ・"[[" の無害化・図境界
-        // ディレクティブの分断) に通し、applicationLabel 等に "<" や改行が入っても
-        // creole 解釈やハードエラーにならないようにする。
-        String t = s.replace('"', '\'').replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
-        return PlantUmlCommentFormatter.escapeText(t);
+        // 規則の本体は共有実装へ。ここに書き写していたため、同じ規則を持たない
+        // 兄弟の生成器が 4 つ残っていた。
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 
     private static void emitLegend(StringBuilder out, Options o) {

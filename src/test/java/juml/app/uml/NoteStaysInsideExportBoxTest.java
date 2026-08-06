@@ -214,6 +214,87 @@ public class NoteStaysInsideExportBoxTest {
         assertFits(panel, "高さ合わせ");
     }
 
+    /**
+     * 大きさを変える操作は<b>原点を動かさない</b>こと。
+     *
+     * <p>「矩形を範囲へ寄せる」不変条件をリサイズにもそのまま使ったせいで、幅が箱幅まで
+     * 育った瞬間に原点が押し出され、付箋の左辺が図の左端まで走った。マウスを戻しても
+     * 復元しない。リサイズで許される上限は「箱の幅」ではなく<b>原点から端までの残り</b>
+     * である。ラウンド 21 の修正が作り込んだ退行なので、ここで固定する。</p>
+     */
+    @Test
+    public void resizingNeverMovesTheOrigin() {
+        SvgPreviewPanel panel = new SvgPreviewPanel();
+        panel.setImage(new BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB));
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(400, 300), 1.0);
+        DiagramNote n = layer.getNotes().get(0);
+
+        int hx = (int) Math.round(n.getX() + n.getWidth()) - 2;
+        int hy = (int) Math.round(n.getY() + n.getHeight()) - 2;
+        assertTrue("リサイズ操作が始まること",
+                layer.pressed(new MouseEvent(panel, MouseEvent.MOUSE_PRESSED, 1L, 0,
+                        hx, hy, 1, false, MouseEvent.BUTTON1), 1.0));
+        layer.dragged(new MouseEvent(panel, MouseEvent.MOUSE_DRAGGED, 1L, 0,
+                1100, 900, 0, false, MouseEvent.BUTTON1), 1.0);
+        layer.released();
+
+        DiagramNote after = layer.getNotes().get(0);
+        assertTrue("原点が動かないこと: x=" + after.getX() + " y=" + after.getY(),
+                after.getX() == 400 && after.getY() == 300);
+        assertFits(panel, "リサイズ");
+    }
+
+    /**
+     * 図が描き直されて内容矩形が変わったら、付箋の不変条件を<b>張り直す</b>こと。
+     *
+     * <p>不変条件は付箋を動かす経路にしか適用されていなかった。箱の側が変わる経路
+     * (F5・テーマ変更・深度やフィルタの変更・ソース編集) は付箋に触れないので、図が縮むと
+     * 付箋は内容矩形の外に取り残される — <b>画面には見えているのに書き出しに出ない</b>。
+     * しかもその状態で矢印キーを 1 回押すと、放置されたクランプが遅れて効いて突然ワープした。</p>
+     */
+    @Test
+    public void shrinkingTheDiagramRefitsExistingNotes() {
+        SvgPreviewPanel panel = new SvgPreviewPanel();
+        panel.setImage(new BufferedImage(1200, 900, BufferedImage.TYPE_INT_ARGB));
+        panel.notes().addNoteAt(new Point(900, 700), 1.0);
+
+        // 同じタブで図を描き直す (フィルタ変更などで内容矩形が小さくなる)。
+        panel.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+
+        assertFits(panel, "図の縮小後");
+    }
+
+    /**
+     * 要素に貼った付箋も、<b>書き出し時に</b>範囲へ収めること。
+     *
+     * <p>要素アンカーの既定配置は「要素の右隣 (要素幅 + 16)」である。図の内容矩形は
+     * 要素に密着しているので、この既定位置は<b>ほぼ必ず</b>図の右外に出る。書き出しは
+     * アンカーを解決して FREE に直すのに、そこだけ不変条件を通していなかったため、
+     * 要素に貼った付箋は本文ごと切り落とされていた。</p>
+     */
+    @Test
+    public void elementAnchoredNotesAreFittedWhenExported() {
+        SvgPreviewPanel panel = new SvgPreviewPanel();
+        panel.setImage(new BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB));
+        DiagramNotesLayer layer = panel.notes();
+        layer.addNoteAt(new Point(10, 20), 1.0);
+        DiagramNote n = layer.getNotes().get(0);
+        n.setAnchor(DiagramNote.Anchor.ELEMENT);
+        n.setX(280);
+        n.setY(180);
+
+        for (DiagramNote e : layer.notesForExportResolved()) {
+            assertTrue("書き出し時は FREE へ解決すること", e.getAnchor() == DiagramNote.Anchor.FREE);
+            assertTrue("右端が範囲内 right=" + (e.getX() + e.getWidth())
+                            + " limit=" + panel.contentWidth(),
+                    e.getX() >= 0 && e.getX() + e.getWidth() <= panel.contentWidth() + 0.5);
+            assertTrue("下端が範囲内 bottom=" + (e.getY() + e.getHeight())
+                            + " limit=" + panel.contentHeight(),
+                    e.getY() >= 0 && e.getY() + e.getHeight() <= panel.contentHeight() + 0.5);
+        }
+    }
+
     /** 付箋の矩形全体が図の内容矩形に収まっていること。 */
     private static void assertFits(SvgPreviewPanel panel, String label) {
         for (DiagramNote n : panel.notes().getNotes()) {

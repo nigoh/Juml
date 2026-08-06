@@ -147,7 +147,10 @@ public final class KotlinLightScanner {
                     ? matchParen(source, primaryCtorParen) : -1;
             int bodySearchFrom = primaryCtorClose > primaryCtorParen
                     ? primaryCtorClose + 1 : headerEnd;
-            int bodyBraceOpen = findNextChar(source, bodySearchFrom, '{');
+            // ヘッダの終わり (本体の { と、スーパータイプを読んでよい終端) は 1 回の走査で
+            // 決める。3 経路がばらばらに決めていて、どれも違っていた。
+            int[] hdr = KotlinHeaderScan.headerEnd(source, bodySearchFrom);
+            int bodyBraceOpen = hdr[0];
             if (nextHeader >= 0 && bodyBraceOpen >= nextHeader) {
                 bodyBraceOpen = -1;
             }
@@ -165,9 +168,11 @@ public final class KotlinLightScanner {
             }
 
             // スーパークラス / インタフェースの取り込み (: A(), B, C)
-            int superRegionEnd = bodyBraceOpen >= 0 ? bodyBraceOpen
-                    : (nextHeader >= 0 ? nextHeader : source.length());
-            extractSupertypes(source, headerEnd, superRegionEnd, info);
+            int superRegionEnd = hdr[1];
+            if (nextHeader >= 0 && superRegionEnd > nextHeader) {
+                superRegionEnd = nextHeader;
+            }
+            KotlinHeaderScan.extractSupertypes(source, headerEnd, superRegionEnd, info);
 
             // クラス本体
             if (bodyBraceOpen >= 0) {
@@ -261,67 +266,6 @@ public final class KotlinLightScanner {
     /** {@code idx} がマスク範囲内かつ非コードなら true。範囲外は false。 */
     private static boolean isMasked(boolean[] mask, int idx) {
         return idx >= 0 && idx < mask.length && mask[idx];
-    }
-
-    /**
-     * {@code [start, end)} 区間からスーパータイプリスト ({@code : A(), B, C}) を取り込む。
-     * コンストラクタ呼び出し ({@code A()}) を伴う型をスーパークラス、それ以外をインタフェース
-     * とみなす (Kotlin ではスーパークラスのみ {@code ()} を伴う)。{@code <...>} / {@code (...)}
-     * のネスト内の {@code :} は無視するため、プライマリコンストラクタの {@code val x: Int} は誤検出しない。
-     */
-    private static void extractSupertypes(String source, int start, int end,
-                                          JavaClassInfo info) {
-        if (start < 0 || end <= start || end > source.length()) {
-            return;
-        }
-        String region = source.substring(start, end);
-        int colon = KotlinHeaderScan.topLevelColon(region);
-        if (colon < 0) {
-            return;
-        }
-        String list = region.substring(colon + 1);
-        for (int i = 0; i < list.length(); i++) {
-            int nc = skipNonCode(list, i);
-            if (nc > i) {
-                i = nc - 1;
-                continue;
-            }
-            char c = list.charAt(i);
-            // `where` の型制約はスーパータイプではない。継承コロンが<b>無い</b>形は
-            // topLevelColon が打ち切るが、スーパータイプが有ると先に継承コロンが
-            // 返るのでここまで来る — 同じ規則を両方の経路に入れる。入れないと
-            // 最後の項が where 節を丸ごと飲み込み、`Marker where T : Comparable` と
-            // いう存在しない箱への実装線が引かれ、本物への線は 1 本も引かれない。
-            if (c == '{' || c == '}' || KotlinHeaderScan.isWordAt(list, i, "where")) {
-                list = list.substring(0, i);
-                break;
-            }
-        }
-        for (String raw : KotlinHeaderScan.splitTopLevelCommas(list)) {
-            String e = KotlinBlockMask.codeOnly(raw).trim();
-            if (e.isEmpty()) {
-                continue;
-            }
-            // by 委譲 (`Repo by RepoImpl()`) は「インタフェース + 委譲先の式」なので、
-            // 括弧判定より先に ` by <expr>` を落とす。後回しにすると委譲先が呼び出し形
-            // (`by RepoImpl()` / `by MainScope()` — 最も一般的) のとき ( が先に見つかり、
-            // "Repo by RepoImpl" という架空の名前がスーパークラスとして図に出てしまう。
-            boolean delegated = KotlinHeaderScan.hasDelegation(e);
-            if (delegated) {
-                e = KotlinHeaderScan.stripDelegation(e);
-            }
-            // 型引数の中の ( ) (関数型 `(Int) -> Unit` 等) は「コンストラクタ呼び出し」では
-            // ないので、深さ 0 の ( だけを見る。
-            int paren = delegated ? -1 : KotlinHeaderScan.topLevelParen(e);
-            if (paren >= 0) {
-                String sup = e.substring(0, paren).trim();
-                if (!sup.isEmpty() && info.getSuperClass() == null) {
-                    info.setSuperClass(sup);
-                }
-            } else if (!e.isEmpty()) {
-                info.getInterfaces().add(e);
-            }
-        }
     }
 
     /**
