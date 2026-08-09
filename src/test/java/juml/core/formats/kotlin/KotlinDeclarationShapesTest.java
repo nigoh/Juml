@@ -348,8 +348,10 @@ public class KotlinDeclarationShapesTest {
      * enum 定数の<b>引数の文字列</b>を空白へ潰さないこと。
      *
      * <p>コメント除去を「非コードは空白 1 つに畳む」で書いたところ、文字列リテラルまで
-     * 畳んでしまった。{@code RED("#ff0000", "赤")} が {@code RED( , )} になり、
-     * 引数を表示する設定で<b>図から文言が消える</b>。文字列は宣言の一部なので残す。</p>
+     * 畳んでしまった。実測すると {@code RED("#ff0000", "赤")} の引数が {@code ( ,  )} に
+     * なり、引数を表示する設定で<b>図から文言だけが消える</b>。定数名は残るので気付きにくい
+     * — このテスト自身、名前とフィールドしか見ていなかったため<b>欠陥が残ったまま通って
+     * いた</b>。コメントは宣言ではないが、文字列リテラルは宣言の一部である。</p>
      */
     @Test
     public void enumConstantArgumentsKeepTheirStrings() {
@@ -359,8 +361,30 @@ public class KotlinDeclarationShapesTest {
                 + "  BLUE(\"#0000ff\", \"青\")\n"
                 + "}\n");
         assertEquals(List.of("RED", "BLUE"), c.getEnumConstants());
+        assertEquals(List.of("(\"#ff0000\", \"赤\")", "(\"#0000ff\", \"青\")"),
+                c.getEnumConstantArgs());
         assertEquals(List.of("hex", "jp"), c.getFields().stream()
                 .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+    }
+
+    /**
+     * 文字列を残すようにしても、その中の {@code ;} で定数が切れないこと。
+     *
+     * <p>enum 本体は最初の<b>深さ 0 の</b> {@code ;} で「定数の並び」と「メンバー」に割れる。
+     * 文字列を潰していた頃はここに文字列が届かなかったので、残すようにしたことで
+     * 新たに届くようになる。区切り文字を値に持つ enum ({@code SEMI(";")} — CSV の
+     * 区切り記号の選択肢は珍しくない) が実際に通ることをここで固定しておく
+     * (引数は必ず括弧の内側なので深さで守られる、という前提の明文化でもある)。</p>
+     */
+    @Test
+    public void aSemicolonInsideAStringIsNotTheMemberSeparator() {
+        JavaClassInfo c = scanOne("package p\n"
+                + "enum class Sep(val ch: String) {\n"
+                + "  COMMA(\",\"),\n"
+                + "  SEMI(\";\"),\n"
+                + "  TAB(\"\\t\")\n"
+                + "}\n");
+        assertEquals(List.of("COMMA", "SEMI", "TAB"), c.getEnumConstants());
     }
 
     /**

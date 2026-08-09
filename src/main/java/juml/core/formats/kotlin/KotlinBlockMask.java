@@ -319,7 +319,15 @@ final class KotlinBlockMask {
         for (int i = 0; i < s.length(); i++) {
             int e = KotlinLightScanner.skipNonCode(s, i);
             if (e > i) {
-                sb.append(' ');
+                // 文字列リテラルは<b>そのまま残す</b> — 中身は宣言の一部だからである。
+                // 潰していたため enum 定数の引数が `RED( )` になり、生成 PlantUML から
+                // 文字列が消えていた (Java 側の同じ enum は正しく残る、という食い違い)。
+                // 消してよいのはコメントだけ。
+                if (s.charAt(i) == '/') {
+                    sb.append(' ');
+                } else {
+                    sb.append(s, i, e);
+                }
                 i = e - 1;
                 continue;
             }
