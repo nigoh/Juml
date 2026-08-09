@@ -36,6 +36,13 @@ import java.util.function.Consumer;
 final class NoteExport {
 
     private static final String BORDER = "#C9A227";
+    /** ラスタ経路 ({@link NoteRenderer}) と同じ色 — 図種で見た目が変わらないようにする。 */
+    private static final String LEADER = "#C9A227";
+    private static final String CONNECTOR = "#6B7280";
+    private static final String TAG_BG = "#FFFFFF";
+    private static final String TAG_FG = "#3A6EA5";
+    /** タグ帯の高さ (10px フォントの行高に合わせた固定値)。 */
+    private static final int TAG_STRIP_H = 13;
 
     private NoteExport() {
     }
@@ -48,12 +55,13 @@ final class NoteExport {
      * ({@link SvgPreviewPanel#notesForExport()}) を渡すこと。Swing コンポーネントに
      * 触れないため、バックグラウンドスレッドから呼んでよい。</p>
      */
-    static void writeSvg(File target, String puml, List<DiagramNote> notes) throws IOException {
+    static void writeSvg(File target, String puml,
+                         DiagramNotesLayer.ExportOverlay overlay) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PlantUmlRenderer.renderSvg(puml, buf);
         String svg = new String(buf.toByteArray(), StandardCharsets.UTF_8);
-        if (notes != null && !notes.isEmpty()) {
-            svg = injectIntoSvg(svg, notes);
+        if (overlay != null && overlay.notes != null && !overlay.notes.isEmpty()) {
+            svg = injectIntoSvg(svg, overlay);
         }
         // 一時ファイルへ書いてから原子的に置換する。既存ファイルへ直接書いて途中で失敗
         // (ディスク満杯/権限変化) すると、直前の正しい SVG が破損した状態で残るため。
@@ -62,18 +70,39 @@ final class NoteExport {
     }
 
     /**
-     * SVG 文字列の {@code </svg>} 直前に付箋メモを表す要素群を注入する。
-     * 各付箋は色付き角丸矩形 + {@code <foreignObject>} 内の XHTML (Markdown 変換結果)。
+     * オーバーレイ全体 (付箋 + コネクタ + リーダー線 + タグ帯) を SVG へ注入する。
+     *
+     * <p>以前は矩形と本文しか書いていなかったため、同じ右クリックメニューの
+     * Save SVG と Save PNG / 画像コピーで<b>中身が違って</b>いた — 利用者が明示的に
+     * 引いたコネクタも、要素へのリーダー線も、タグ帯も、SVG のときだけ消えていた。
+     * 端点の計算は {@link NoteRenderer#borderPoint} をラスタ経路と共有する。</p>
      */
-    static String injectIntoSvg(String svg, List<DiagramNote> notes) {
-        if (svg == null || notes == null || notes.isEmpty()) {
+    static String injectIntoSvg(String svg, DiagramNotesLayer.ExportOverlay overlay) {
+        if (svg == null || overlay == null || overlay.notes == null || overlay.notes.isEmpty()) {
             return svg;
         }
+        List<DiagramNote> notes = overlay.notes;
         int idx = svg.lastIndexOf("</svg>");
         if (idx < 0) {
             return svg;
         }
         StringBuilder f = new StringBuilder("<g class=\"juml-notes\">");
+        // リーダー線・コネクタは付箋の下へ潜らせる (ラスタ経路と同じ描画順)。
+        for (double[] l : overlay.leaderLines) {
+            f.append("<line x1=\"").append(num(l[0])).append("\" y1=\"").append(num(l[1]))
+                    .append("\" x2=\"").append(num(l[2])).append("\" y2=\"").append(num(l[3]))
+                    .append("\" stroke=\"").append(LEADER)
+                    .append("\" stroke-width=\"1.2\" fill=\"none\"/>");
+            f.append("<circle cx=\"").append(num(l[2])).append("\" cy=\"").append(num(l[3]))
+                    .append("\" r=\"3\" fill=\"").append(LEADER).append("\"/>");
+        }
+        for (double[] c : overlay.connectorLines) {
+            f.append("<line x1=\"").append(num(c[0])).append("\" y1=\"").append(num(c[1]))
+                    .append("\" x2=\"").append(num(c[2])).append("\" y2=\"").append(num(c[3]))
+                    .append("\" stroke=\"").append(CONNECTOR)
+                    .append("\" stroke-width=\"1.4\" fill=\"none\"/>");
+            f.append(arrowHead(c[0], c[1], c[2], c[3]));
+        }
         for (DiagramNote n : notes) {
             double x = n.getX();
             double y = n.getY();
@@ -91,9 +120,38 @@ final class NoteExport {
                     + "style=\"font:11px sans-serif;color:#222;overflow:hidden;\">");
             f.append(xhtml(MarkdownRenderer.toHtml(n.getText())));
             f.append("</div></foreignObject>");
+            f.append(tagStrip(n, x, y, w, h));
         }
         f.append("</g>");
         return growCanvas(svg.substring(0, idx), notes) + f + svg.substring(idx);
+    }
+
+    /** 付箋下端のタグ帯 ({@code #a  #b})。タグが無ければ空文字。 */
+    private static String tagStrip(DiagramNote n, double x, double y, double w, double h) {
+        String tags = NoteRenderer.tagStrip(n);
+        if (tags.isEmpty() || h < TAG_STRIP_H + 4) {
+            return "";
+        }
+        double sy = y + h - TAG_STRIP_H;
+        return "<rect x=\"" + num(x + 1) + "\" y=\"" + num(sy)
+                + "\" width=\"" + num(Math.max(1, w - 2)) + "\" height=\"" + TAG_STRIP_H
+                + "\" fill=\"" + TAG_BG + "\" fill-opacity=\"0.75\"/>"
+                + "<text x=\"" + num(x + 4) + "\" y=\"" + num(y + h - 4)
+                + "\" font-family=\"sans-serif\" font-size=\"10\" fill=\"" + TAG_FG + "\">"
+                + attr(tags) + "</text>";
+    }
+
+    /** {@code (x2,y2)} に {@code (x1,y1)} から向かう矢じり (ラスタ経路と同じ形)。 */
+    private static String arrowHead(double x1, double y1, double x2, double y2) {
+        double ang = Math.atan2(y2 - y1, x2 - x1);
+        double spread = Math.toRadians(22);
+        double len = 9;
+        double ax = x2 - len * Math.cos(ang - spread);
+        double ay = y2 - len * Math.sin(ang - spread);
+        double bx = x2 - len * Math.cos(ang + spread);
+        double by = y2 - len * Math.sin(ang + spread);
+        return "<polygon points=\"" + num(x2) + "," + num(y2) + " " + num(ax) + "," + num(ay)
+                + " " + num(bx) + "," + num(by) + "\" fill=\"" + CONNECTOR + "\"/>";
     }
 
     /** {@code <svg …>} の開始タグ。 */
@@ -148,8 +206,36 @@ final class NoteExport {
         rebuilt = rebuilt.replaceAll("(?is)\\bviewBox=\"\\s*([-0-9.]+)\\s+([-0-9.]+)\\s+"
                         + "[-0-9.]+\\s+[-0-9.]+\\s*\"",
                 "viewBox=\"$1 $2 " + num(nw) + " " + num(nh) + "\"");
+        rebuilt = rewriteStyleLengths(rebuilt, nw, nh);
         return head.substring(0, m.start()) + rebuilt + head.substring(m.end());
     }
+
+    /**
+     * 開始タグの inline style にある {@code width:…px} / {@code height:…px} も書き換える。
+     *
+     * <p>PlantUML はキャンバス寸法を<b>4 か所</b>に書く — {@code width} 属性・
+     * {@code height} 属性・{@code viewBox}・そして
+     * {@code style="width:98px;height:144px;background:#FFFFFF;"}。SVG2 では
+     * {@code width}/{@code height} は geometry presentation property なので
+     * <b>inline style が属性に勝つ</b>。3 か所だけ広げると、ブラウザは旧サイズで
+     * レイアウトするのに viewBox は新サイズ、しかも PlantUML は
+     * {@code preserveAspectRatio="none"} を付けるため、図も付箋も<b>非等方に潰れて</b>
+     * 表示される (実測: 横 0.22 倍・縦 0.9 倍)。背景色など他の宣言は残す。</p>
+     */
+    private static String rewriteStyleLengths(String tag, double nw, double nh) {
+        java.util.regex.Matcher sm = STYLE_ATTR.matcher(tag);
+        if (!sm.find()) {
+            return tag;
+        }
+        String style = sm.group(1)
+                .replaceAll("(?i)\\bwidth\\s*:\\s*[0-9.]+px", "width:" + num(nw) + "px")
+                .replaceAll("(?i)\\bheight\\s*:\\s*[0-9.]+px", "height:" + num(nh) + "px");
+        return tag.substring(0, sm.start(1)) + style + tag.substring(sm.end(1));
+    }
+
+    /** 開始タグ内の {@code style="…"}。 */
+    private static final java.util.regex.Pattern STYLE_ATTR =
+            java.util.regex.Pattern.compile("(?is)\\bstyle=\"([^\"]*)\"");
 
     /**
      * 図 + 付箋を 1 枚の PNG に描画して保存する。描画は EDT (呼び出し元) で行い、

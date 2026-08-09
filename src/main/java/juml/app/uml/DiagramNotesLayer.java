@@ -138,7 +138,7 @@ final class DiagramNotesLayer {
         if (onModelChanged != null) {
             onModelChanged.run();
         }
-        owner.repaint();
+        refreshOwner();
     }
 
     /** 現在の付箋一覧 (コピー)。 */
@@ -152,7 +152,7 @@ final class DiagramNotesLayer {
         if (byId(id) != null) {
             selectedIds.add(id);
         }
-        owner.repaint();
+        refreshOwner();
     }
 
     /**
@@ -176,6 +176,79 @@ final class DiagramNotesLayer {
             out.add(c);
         }
         return out;
+    }
+
+    /**
+     * 書き出しオーバーレイの幾何 — 付箋・付箋間コネクタ・要素リーダー線。
+     *
+     * <p>ラスタ経路 ({@link #paintForExport}) はレイヤをそのまま描けるので全部出るが、
+     * SVG 注入は付箋一覧しか受け取っておらず、<b>矩形と本文しか書いていなかった</b>。
+     * そのため同じ右クリックメニューの Save SVG と Save PNG / 画像コピーで内容が違い、
+     * 利用者が明示的に引いたコネクタが SVG のときだけ消えていた。端点の計算は
+     * {@link NoteRenderer#borderPoint} を共有する (書き出し側で計算し直すと、また
+     * 「同じ規則を 2 か所に書く」形になる)。</p>
+     */
+    static final class ExportOverlay {
+
+        /** アンカー解決済みの付箋 (図座標)。 */
+        final List<DiagramNote> notes;
+        /** 付箋間コネクタの線分 {@code [x1,y1,x2,y2]} (矢じりは終点側)。 */
+        final List<double[]> connectorLines;
+        /** ELEMENT 付箋のリーダー線 {@code [x1,y1,x2,y2]} (終点側に丸を打つ)。 */
+        final List<double[]> leaderLines;
+
+        ExportOverlay(List<DiagramNote> notes, List<double[]> connectorLines,
+                      List<double[]> leaderLines) {
+            this.notes = notes;
+            this.connectorLines = connectorLines;
+            this.leaderLines = leaderLines;
+        }
+
+        /** 付箋だけのオーバーレイ (コネクタ・リーダー線なし)。 */
+        static ExportOverlay ofNotes(List<DiagramNote> notes) {
+            return new ExportOverlay(notes, java.util.Collections.emptyList(),
+                    java.util.Collections.emptyList());
+        }
+    }
+
+    /** 書き出し用のオーバーレイ幾何をまとめて作る。 */
+    ExportOverlay exportOverlay() {
+        List<double[]> lines = new ArrayList<>();
+        Map<String, DiagramNote> byId = new LinkedHashMap<>();
+        for (DiagramNote n : notes) {
+            byId.put(n.getId(), n);
+        }
+        for (DiagramConnector c : connectors) {
+            DiagramNote a = byId.get(c.getFromId());
+            DiagramNote b = byId.get(c.getToId());
+            if (a == null || b == null) {
+                continue;
+            }
+            double ax = effX(a);
+            double ay = effY(a);
+            double bx = effX(b);
+            double by = effY(b);
+            double[] p1 = NoteRenderer.borderPoint(ax, ay, a.getWidth(), a.getHeight(),
+                    bx + b.getWidth() / 2, by + b.getHeight() / 2);
+            double[] p2 = NoteRenderer.borderPoint(bx, by, b.getWidth(), b.getHeight(),
+                    ax + a.getWidth() / 2, ay + a.getHeight() / 2);
+            lines.add(new double[] {p1[0], p1[1], p2[0], p2[1]});
+        }
+        List<double[]> leaders = new ArrayList<>();
+        for (DiagramNote n : notes) {
+            double[] er = anchorRect(n);
+            if (n.getAnchor() != DiagramNote.Anchor.ELEMENT || er == null) {
+                continue;
+            }
+            double nx = effX(n);
+            double ny = effY(n);
+            double[] from = NoteRenderer.borderPoint(nx, ny, n.getWidth(), n.getHeight(),
+                    er[0] + er[2] / 2, er[1] + er[3] / 2);
+            double[] to = NoteRenderer.borderPoint(er[0], er[1], er[2], er[3],
+                    nx + n.getWidth() / 2, ny + n.getHeight() / 2);
+            leaders.add(new double[] {from[0], from[1], to[0], to[1]});
+        }
+        return new ExportOverlay(notesForExportResolved(), lines, leaders);
     }
 
     /**
@@ -205,6 +278,18 @@ final class DiagramNotesLayer {
 
     boolean isDragging() {
         return mode != Mode.NONE;
+    }
+
+    /**
+     * 付箋が変わったので入れ物を測り直して描き直す。
+     *
+     * <p>{@code repaint} だけでは足りない。入れ物の大きさは付箋を含めて決まるので
+     * ({@link SvgPreviewPanel#getPreferredSize})、測り直さないと図の外へ動かした付箋に
+     * スクロールで<b>到達できない</b>ままになる。</p>
+     */
+    private void refreshOwner() {
+        owner.revalidate();
+        owner.repaint();
     }
 
     /** 付箋が 1 件以上あるか (エクスポートに含めるか判定用)。 */
@@ -279,7 +364,7 @@ final class DiagramNotesLayer {
         }
         change.run();
         fireChange();
-        owner.repaint();
+        refreshOwner();
     }
 
     /** 直前の編集を取り消す。取り消したら true。 */
@@ -290,7 +375,7 @@ final class DiagramNotesLayer {
         }
         restore(snap);
         fireChange();
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 
@@ -302,7 +387,7 @@ final class DiagramNotesLayer {
         }
         restore(snap);
         fireChange();
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 
@@ -330,7 +415,7 @@ final class DiagramNotesLayer {
         if (onModelChanged != null) {
             onModelChanged.run();
         }
-        owner.repaint();
+        refreshOwner();
     }
 
     /** 端点の付箋が存在しないコネクタを除去する。 */
@@ -445,7 +530,7 @@ final class DiagramNotesLayer {
             if (n != null && !n.getId().equals(from)) {
                 createConnector(from, n.getId());
             }
-            owner.repaint();
+            refreshOwner();
             return true;
         }
         boolean additive = e.isShiftDown() || e.isControlDown();
@@ -453,7 +538,7 @@ final class DiagramNotesLayer {
             // 付箋外: 追加修飾なしなら選択解除し、パネルのパンに委ねる。
             if (!additive && !selectedIds.isEmpty()) {
                 selectedIds.clear();
-                owner.repaint();
+                refreshOwner();
             }
             return false;
         }
@@ -465,7 +550,7 @@ final class DiagramNotesLayer {
             }
             mode = Mode.NONE;
             active = null;
-            owner.repaint();
+            refreshOwner();
             return true;
         }
         // 未選択の付箋を掴んだら単独選択に切り替える (既に選択集合内ならグループを維持)。
@@ -494,7 +579,7 @@ final class DiagramNotesLayer {
             mode = Mode.NONE;
             active = null;
         }
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 
@@ -533,7 +618,7 @@ final class DiagramNotesLayer {
             resizeFree(active, p.x / zoom - effX(active), p.y / zoom - effY(active));
             dragChanged = true;
         }
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 
@@ -551,7 +636,7 @@ final class DiagramNotesLayer {
         }
         dragUndoSnapshot = null;
         dragChanged = false;
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 
@@ -576,7 +661,7 @@ final class DiagramNotesLayer {
             selectedIds.clear();
             selectedIds.add(n.getId());
         }
-        owner.repaint();
+        refreshOwner();
         NoteContextMenu.show(this, n, e, zoom);
         return true;
     }
@@ -766,7 +851,7 @@ final class DiagramNotesLayer {
     void startConnectorFrom(String fromId) {
         connectFromId = fromId;
         owner.requestFocusInWindow();
-        owner.repaint();
+        refreshOwner();
     }
 
     /** コネクタ作成モードを中断する (Esc)。中断したら true。 */
@@ -775,7 +860,7 @@ final class DiagramNotesLayer {
             return false;
         }
         connectFromId = null;
-        owner.repaint();
+        refreshOwner();
         return true;
     }
 

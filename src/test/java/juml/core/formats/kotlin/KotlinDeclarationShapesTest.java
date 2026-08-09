@@ -434,4 +434,89 @@ public class KotlinDeclarationShapesTest {
         assertEquals(List.of("id"), primary.getFields().stream()
                 .map(JavaFieldInfo::getName).collect(Collectors.toList()));
     }
+
+    /**
+     * 継承リストの<b>カンマ</b>も、比較演算子で見失わないこと。
+     *
+     * <p>ラウンド 25 は「括弧と山括弧を別々に数える」規則を {@code headerEnd} にだけ入れた。
+     * 同じファイルの兄弟走査 ({@code splitTopLevelCommas}) は 1 つの深さのままだったので、
+     * <b>本体は見つかるのに継承リストのカンマが見えず</b>、後ろに並ぶインタフェースが
+     * 1 つ残らず落ちていた。{@code Build.VERSION.SDK_INT < 21} はラウンド 25 自身が
+     * コミットメッセージで挙げた入力であり、{@code >} の綴りなら偶然通るという
+     * 非対称も同じ。図からは実装線が黙って消える。</p>
+     */
+    @Test
+    public void aComparisonInSuperArgumentsDoesNotDropTheInterfaces() {
+        JavaClassInfo lt = scanOne("package p\n"
+                + "class MyDialog(ctx: Context) : "
+                + "Dialog(ctx, if (Build.VERSION.SDK_INT < 21) A else B), Checkable {\n"
+                + "  fun show2() {}\n}\n");
+        assertEquals("Dialog", lt.getSuperClass());
+        assertEquals(List.of("Checkable"), lt.getInterfaces());
+
+        // 同じ意味を '>' で綴った対照。以前はこちらだけ通っていた。
+        JavaClassInfo gt = scanOne("package p\n"
+                + "class MyDialog(ctx: Context) : "
+                + "Dialog(ctx, if (Build.VERSION.SDK_INT > 20) A else B), Checkable {\n"
+                + "  fun show2() {}\n}\n");
+        assertEquals(gt.getSuperClass(), lt.getSuperClass());
+        assertEquals(gt.getInterfaces(), lt.getInterfaces());
+
+        // ラムダの比較・末尾ラムダの比較でも同じこと。
+        assertEquals(List.of("Marker"),
+                scanOne("package p\nclass D4 : Base(cmp = { a, b -> a.x < b.x }), Marker {\n"
+                        + "  fun go() {}\n}\n").getInterfaces());
+        assertEquals(List.of("Runnable", "Marker"),
+                scanOne("package p\nclass D7 : Base(listOf(1).count { it < 3 }), Runnable, Marker {\n"
+                        + "  fun go() {}\n}\n").getInterfaces());
+        // ジェネリクスを持つインタフェースが後ろに並ぶ形。
+        assertEquals(List.of("Marker<String>", "Second"),
+                scanOne("package p\nclass D3 : Base(if (n < 3) x else y), Marker<String>, Second {\n"
+                        + "  fun go() {}\n}\n").getInterfaces());
+    }
+
+    /**
+     * プライマリコンストラクタの<b>既定値</b>の比較で、継承コロンを見失わないこと。
+     *
+     * <p>継承コロンを探す走査はプライマリコンストラクタの引数リストを<b>含む</b>領域に
+     * 掛かるので、{@code style: Int = if (SDK_INT < 21) 0 else 1} (Android のカスタム View の
+     * 定型) がそこへ届く。1 つの深さで数えていたため本物の継承コロンが「入れ子の内側」と
+     * 判定され、スーパークラスもインタフェースも<b>1 つ残らず</b>消えた。メンバーは
+     * 普通に出るので、図は「関係線が 1 本も無い箱」という気付きにくい壊れ方をする。</p>
+     */
+    @Test
+    public void aComparisonInAConstructorDefaultDoesNotHideTheInheritanceColon() {
+        JavaClassInfo v = scanOne("package p\n"
+                + "class MyView(\n"
+                + "    ctx: Context,\n"
+                + "    style: Int = if (Build.VERSION.SDK_INT < 21) 0 else 1\n"
+                + ") : View(ctx, style), Checkable {\n"
+                + "  private val paint: Paint = Paint()\n"
+                + "  fun toggle() {}\n}\n");
+        assertEquals("View", v.getSuperClass());
+        assertEquals(List.of("Checkable"), v.getInterfaces());
+        assertEquals(List.of("paint"), v.getFields().stream()
+                .map(JavaFieldInfo::getName).collect(Collectors.toList()));
+
+        // 比較を含む関数型の既定値でも同じこと。
+        JavaClassInfo cmp = scanOne("package p\n"
+                + "class V3(val cmp: (A, A) -> Int = { a, b -> a.x < b.x }) : Base(), Marker {\n"
+                + "  fun go() {}\n}\n");
+        assertEquals("Base", cmp.getSuperClass());
+        assertEquals(List.of("Marker"), cmp.getInterfaces());
+    }
+
+    /** 非退行: 入れ子ジェネリクスと {@code where} は従来どおり読めること。 */
+    @Test
+    public void nestedGenericsAndWhereStillRead() {
+        JavaClassInfo g = scanOne("package p\n"
+                + "class D8 : Base<Map<String, List<Int>>>(), Marker {\n  fun go() {}\n}\n");
+        assertEquals("Base<Map<String, List<Int>>>", g.getSuperClass());
+        assertEquals(List.of("Marker"), g.getInterfaces());
+
+        JavaClassInfo w = scanOne("package p\n"
+                + "class D9<T> : Base(), Marker where T : Comparable<T> {\n  fun go() {}\n}\n");
+        assertEquals("Base", w.getSuperClass());
+        assertEquals(List.of("Marker"), w.getInterfaces());
+    }
 }

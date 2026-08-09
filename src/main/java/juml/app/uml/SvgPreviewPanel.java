@@ -183,13 +183,30 @@ public class SvgPreviewPanel extends JPanel {
      * 同じ右クリックメニューの Save SVG と Save PNG で結果が違っていた。</p>
      */
     public java.awt.image.BufferedImage renderDiagramWithNotes(double desiredScale) {
-        double[] box = notesLayer.exportBounds(svgWidth, svgHeight);
+        double[] box = notesLayer.exportBounds(contentWidth(), contentHeight());
         return NoteExport.rasterize(svgNode, box[0], box[1], desiredScale, notesLayer);
     }
 
-    /** 書き出しキャンバスの大きさ {@code [w, h]} (図 + 全付箋が収まる)。 */
+    /**
+     * 書き出しオーバーレイ (付箋 + コネクタ + リーダー線)。SVG 注入に渡す。
+     *
+     * <p>付箋一覧だけを渡していたため SVG では矩形と本文しか書けず、同じメニューの
+     * Save PNG / 画像コピーとの間で<b>中身が食い違って</b>いた (利用者が引いたコネクタが
+     * SVG のときだけ消える)。Swing に触るので EDT で呼ぶこと。</p>
+     */
+    DiagramNotesLayer.ExportOverlay notesOverlayForExport() {
+        return notesLayer.exportOverlay();
+    }
+
+    /**
+     * 書き出しキャンバスの大きさ {@code [w, h]} (図 + 全付箋が収まる)。
+     *
+     * <p>図の寸法は {@link #contentWidth()} / {@link #contentHeight()} で採る。
+     * {@code svgWidth}/{@code svgHeight} を直に読むと<b>画像モードで 0</b> になり、
+     * 同じ「図の大きさ」が経路によって別の値になる (画面側は contentWidth を使う)。</p>
+     */
     public double[] exportCanvas() {
-        return notesLayer.exportBounds(svgWidth, svgHeight);
+        return notesLayer.exportBounds(contentWidth(), contentHeight());
     }
 
     /** SVG テキスト要素リストを設定する (ラバーバンド選択のヒットテスト用)。null/空でクリア。 */
@@ -527,15 +544,32 @@ public class SvgPreviewPanel extends JPanel {
     }
 
     private void updatePreferredSize() {
+        // 実際の値は getPreferredSize() が毎回測る (付箋を動かしただけでも変わるため)。
+        // ここは「測り直せ」の合図だけを出す。
+        revalidate();
+    }
+
+    /**
+     * 入れ物の大きさ。図だけでなく<b>全付箋</b>が収まる大きさにする。
+     *
+     * <p>図の寸法だけで決めていたため、要素の右隣という既定配置で図の外に出た付箋は
+     * スクロールしても<b>画面上で見ることも掴むこともできない</b>のに、Save SVG /
+     * Save PNG / 画像コピーには出ていた。ラウンド 25 は「モデルは意図を持ち、書き出しが
+     * キャンバスを広げる」という 1 つの規則にしたが、その規則を教わったのは書き出し側
+     * ({@link DiagramNotesLayer#exportBounds}) だけで、画面側の入れ物は元のままだった。
+     * 「画面に無いものが書き出しに出る」という食い違いが向きを変えて残っていたので、
+     * 両方に同じ関数を使わせる。</p>
+     */
+    @Override
+    public Dimension getPreferredSize() {
         double cw = contentWidth();
         double ch = contentHeight();
         if (cw <= 0 || ch <= 0) {
-            setPreferredSize(new Dimension(0, 0));
-            return;
+            return new Dimension(0, 0);
         }
-        int w = (int) Math.max(1, cw * zoomLevel);
-        int h = (int) Math.max(1, ch * zoomLevel);
-        setPreferredSize(new Dimension(w, h));
+        double[] box = notesLayer.exportBounds(cw, ch);
+        return new Dimension((int) Math.max(1, box[0] * zoomLevel),
+                (int) Math.max(1, box[1] * zoomLevel));
     }
 
     /** マウスポインタ位置を画面上の同じ点に保ったままズームする。 */
