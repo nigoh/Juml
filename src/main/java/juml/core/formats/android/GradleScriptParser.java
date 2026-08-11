@@ -504,13 +504,18 @@ public final class GradleScriptParser {
                     info.getDependencies().add(new GradleDependency(scope, notation));
                 }
             }
-            // platform()/enforcedPlatform() でラップされた BOM 依存
+            // platform()/enforcedPlatform() でラップされた BOM 依存。
+            // 座標はラッパを剥がしてから解釈する — 素の notation として渡すと
+            // group が platform('androidx.compose、version が 2024.02.00') になり、
+            // 依存グラフのノード名と jar 索引の探索キーがそのまま壊れる。
             Matcher mpf = DEP_PLATFORM.matcher(body);
             while (mpf.find()) {
                 String scope = mpf.group(1);
-                String notation = "platform('" + mpf.group(2) + "')";
+                String coords = mpf.group(2);
+                String notation = "platform('" + coords + "')";
                 if (seen.add(scope + " " + notation)) {
-                    info.getDependencies().add(new GradleDependency(scope, notation));
+                    info.getDependencies().add(
+                            GradleDependency.forPlatform(scope, coords, false));
                 }
             }
             Matcher mn = DEP_NOTATION.matcher(body);
@@ -640,13 +645,34 @@ public final class GradleScriptParser {
             return extractBlockFrom(src, blockName);
         }
 
+        /**
+         * {@code blockName { … }} の中身。<b>入れ子になっているものは取らない</b>。
+         *
+         * <p>以前は最初に見つかった綴りを無条件に採っていた。Groovy DSL の
+         * {@code build.gradle} でファイル中<b>最初の</b> {@code dependencies {} は
+         * {@code buildscript {}} の内側 (classpath 宣言) なので、モジュール本来の
+         * 依存ブロックが一度も読まれず、<b>依存が 1 件も出ない</b>。しかも
+         * {@code classpath} はどのスコープ語にも一致しないので黙って 0 件になり、
+         * そのモジュールは依存グラフから孤立ノードとして落とされる。</p>
+         *
+         * <p>同じメソッドの兄弟規則は既にこの限界を持っていない — {@code include} は
+         * 全一致を走査し、{@code apply plugin:} はソース全体に掛かるので、
+         * <b>モジュール名とプラグインだけは生き残って依存だけが消える</b>という
+         * 気付きにくい壊れ方になっていた。</p>
+         */
         private static String extractBlockFrom(String text, String blockName) {
             Pattern p = Pattern.compile("\\b" + Pattern.quote(blockName) + "\\s*\\{");
             Matcher m = p.matcher(text);
-            if (!m.find()) {
+            int start = -1;
+            while (m.find()) {
+                if (braceDepthAt(text, m.start()) == 0) {
+                    start = m.end();
+                    break;
+                }
+            }
+            if (start < 0) {
                 return null;
             }
-            int start = m.end();
             int depth = 1;
             int i = start;
             while (i < text.length() && depth > 0) {
@@ -666,6 +692,26 @@ public final class GradleScriptParser {
                 i++;
             }
             return text.substring(start, Math.min(i, text.length()));
+        }
+
+        /** {@code text} の位置 {@code at} が波括弧の何段目か (文字列リテラルは数えない)。 */
+        private static int braceDepthAt(String text, int at) {
+            int depth = 0;
+            int i = 0;
+            while (i < at && i < text.length()) {
+                char c = text.charAt(i);
+                if (c == '"' || c == '\'') {
+                    i = skipString(text, i, c);
+                    continue;
+                }
+                if (c == '{') {
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                }
+                i++;
+            }
+            return depth;
         }
 
         private static int skipString(String text, int i, char q) {

@@ -345,7 +345,53 @@ final class NoteExport {
         if (isWellFormedFragment(x)) {
             return x;
         }
-        return attr(x.replaceAll("<[^>]*>", ""));
+        return stripTags(x);
+    }
+
+    /**
+     * タグを落として本文だけにする。<b>本文の文字は変えない</b>。
+     *
+     * <p>入力は {@code MarkdownRenderer.escape} を通った後の文字列なので、{@code &amp;} は
+     * 既に {@code &amp;amp;} になっている。ここで再エスケープすると {@code &amp;amp;amp;} になり、
+     * 利用者には {@code &amp;amp;} という文字列がそのまま見える — 画面と PNG は
+     * {@code &amp;} と正しく出るので、<b>同じ付箋が書き出し形式で別物になる</b>。</p>
+     *
+     * <p>タグ剥がしも {@code <[^>]*>} ではいけない。この分岐へ来る断片は入れ子が
+     * 崩れているので、属性値の中の {@code <} でマッチが途中で切れ、{@code href} の
+     * 断片が本文として残る (実測: 本文 {@code t} が {@code a"&gt;t} になった)。
+     * 引用符の中を数えながら剥がす。</p>
+     *
+     * <p>この関数の言明は「<b>装飾</b>を捨てる」であって、本文の文字を変えることではない。</p>
+     */
+    private static String stripTags(String html) {
+        StringBuilder out = new StringBuilder(html.length());
+        int i = 0;
+        while (i < html.length()) {
+            char c = html.charAt(i);
+            if (c != '<') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            // タグの終わりを探す。属性値の引用符の中の '>' はタグを閉じない。
+            int j = i + 1;
+            char quote = 0;
+            while (j < html.length()) {
+                char d = html.charAt(j);
+                if (quote != 0) {
+                    if (d == quote) {
+                        quote = 0;
+                    }
+                } else if (d == '"' || d == '\'') {
+                    quote = d;
+                } else if (d == '>') {
+                    break;
+                }
+                j++;
+            }
+            i = j < html.length() ? j + 1 : html.length();
+        }
+        return out.toString();
     }
 
     /** 断片が XML として整形式か (foreignObject へ入れて壊さないか)。 */

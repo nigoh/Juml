@@ -262,8 +262,30 @@ public final class IndexCommand {
         return listTargets(projectRoot, listener).javaFiles;
     }
 
+    /** 走査の深さ上限 (シンボリックリンクの輪で無限に潜らないための保険)。 */
+    private static final int MAX_WALK_DEPTH = 64;
+
+    /**
+     * 走査から外すディレクトリか。
+     *
+     * <p>{@link AndroidProjectScanner#scan} は生成物ディレクトリ ({@code build} /
+     * {@code out} / {@code .git} など) を外すのに、その隣で呼ばれる手書きの走査には
+     * 同じ規則が掛かっていなかった。そのため索引には
+     * {@code build/generated/aidl/*.aidl} や {@code build/intermediates/…/AndroidManifest.xml}
+     * が入り、<b>ソースのどこにも書かれていないコンポーネント</b>が図と索引に現れていた。
+     * 同じリポジトリの他の手書き走査 (RRO オーバーレイ検出・sepolicy 収集など) は
+     * 以前からこの規則を持っている。</p>
+     */
+    private static boolean skipDir(File dir) {
+        return AndroidProjectScanner.DEFAULT_EXCLUDED_DIRS.contains(dir.getName());
+    }
+
     private static void walkByExtension(File dir, String suffix, List<File> sink) {
-        if (dir == null) {
+        walkByExtension(dir, suffix, sink, 0);
+    }
+
+    private static void walkByExtension(File dir, String suffix, List<File> sink, int depth) {
+        if (dir == null || depth > MAX_WALK_DEPTH) {
             return;
         }
         if (dir.isFile()) {
@@ -278,7 +300,9 @@ public final class IndexCommand {
         }
         for (File f : children) {
             if (f.isDirectory()) {
-                walkByExtension(f, suffix, sink);
+                if (!skipDir(f)) {
+                    walkByExtension(f, suffix, sink, depth + 1);
+                }
             } else if (f.isFile() && f.getName().endsWith(suffix)) {
                 sink.add(f);
             }
@@ -287,7 +311,11 @@ public final class IndexCommand {
 
     /** ルート以下を再帰走査して AndroidManifest.xml を集める (fallback 用)。 */
     private static void walkManifest(File dir, List<File> sink) {
-        if (dir == null) {
+        walkManifest(dir, sink, 0);
+    }
+
+    private static void walkManifest(File dir, List<File> sink, int depth) {
+        if (dir == null || depth > MAX_WALK_DEPTH) {
             return;
         }
         File[] children = dir.listFiles();
@@ -296,7 +324,9 @@ public final class IndexCommand {
         }
         for (File f : children) {
             if (f.isDirectory()) {
-                walkManifest(f, sink);
+                if (!skipDir(f)) {
+                    walkManifest(f, sink, depth + 1);
+                }
             } else if (f.isFile() && "AndroidManifest.xml".equals(f.getName())) {
                 sink.add(f);
             }

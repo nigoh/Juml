@@ -179,17 +179,23 @@ public final class ProjectAnalysisCache {
         LoadOptions o = options != null ? options : new LoadOptions();
 
         p.onProgress(0, -1, "Analyzing project...");
-        AndroidProjectAnalysis a = AndroidProjectAnalyzer.analyze(root, l);
-        if (c.isCancelled()) {
-            return;
-        }
-
         AndroidProjectScanner.Options scanOpts = new AndroidProjectScanner.Options();
         scanOpts.maxFiles = o.maxFiles;
         scanOpts.includeKotlin = o.includeKotlin;
         scanOpts.useAospDefaults = o.useAospDefaults;
         scanOpts.cancelToken = c;
         scanOpts.includeAidl = true;
+        // Android/Gradle の収集にも<b>同じ</b>走査オプションを渡す。以前は 2 引数版を
+        // 呼んでいたので、内部で既定の Options が作られ useAospDefaults が false のままだった。
+        // その結果 AOSP 追加除外 (prebuilts / out-soong / .repo) が .java/.kt/.aidl にだけ
+        // 効き、build.gradle と AndroidManifest.xml は prebuilts/ 配下からも拾っていた
+        // (実測: prebuilts の manifest が解析結果に入り、モジュール名が
+        // prebuilts:sdk:current:androidx:m2repository:app になる)。cancelToken も
+        // 渡らないので「解析中」のキャンセルがこの区間だけ効かなかった。
+        AndroidProjectAnalysis a = AndroidProjectAnalyzer.analyze(root, l, scanOpts);
+        if (c.isCancelled()) {
+            return;
+        }
 
         // ディスクキャッシュは Stage A 用の永続化のみサポート。
         // lazyDetails=true でかつ Hit したら parse をスキップ。ただし DB 記録時から

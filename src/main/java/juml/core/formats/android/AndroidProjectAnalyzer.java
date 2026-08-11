@@ -42,18 +42,47 @@ public final class AndroidProjectAnalyzer {
      */
     public static AndroidProjectAnalysis analyze(File projectRoot, ErrorListener listener,
                                                   boolean includeTests) throws IOException {
+        AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
+        opts.includeTests = includeTests;
+        return analyze(projectRoot, listener, opts);
+    }
+
+    /**
+     * 呼び出し側の走査オプションを引き継ぐ解析。
+     *
+     * <p>これが無かったため、呼び出し側 ({@code ProjectAnalysisCache}) が Java 走査には
+     * {@code useAospDefaults} と {@code cancelToken} を渡しているのに、Android/Gradle の
+     * 収集だけは内部で既定の Options が作られていた。結果、AOSP 追加除外
+     * ({@code prebuilts} / {@code out-soong} / {@code .repo}) が {@code .java}/{@code .kt} に
+     * だけ効き、{@code build.gradle} と {@code AndroidManifest.xml} は
+     * {@code prebuilts/} 配下からも拾われていた。キャンセルもこの区間だけ効かなかった。</p>
+     *
+     * <p>収集対象の種別フラグ (gradle / manifest / layout / navigation / values) は
+     * 解析に必須なのでここで立てる。除外・上限・キャンセルは呼び出し側の値を尊重する。</p>
+     */
+    public static AndroidProjectAnalysis analyze(File projectRoot, ErrorListener listener,
+                                                  AndroidProjectScanner.Options scanOpts)
+            throws IOException {
         if (projectRoot == null) {
             throw new IllegalArgumentException("projectRoot is null");
         }
         ErrorListener l = listener != null ? listener : ErrorListener.silent();
         AndroidProjectAnalysis analysis = new AndroidProjectAnalysis();
+        AndroidProjectScanner.Options base =
+                scanOpts != null ? scanOpts : new AndroidProjectScanner.Options();
         AndroidProjectScanner.Options opts = new AndroidProjectScanner.Options();
+        opts.excludedDirs = base.excludedDirs;
+        opts.useAospDefaults = base.useAospDefaults;
+        opts.maxDepth = base.maxDepth;
+        opts.maxFiles = base.maxFiles;
+        opts.followSymlinks = base.followSymlinks;
+        opts.cancelToken = base.cancelToken;
+        opts.includeTests = base.includeTests;
         opts.includeGradle = true;
         opts.includeManifest = true;
         opts.includeLayout = true;
         opts.includeNavigation = true;
         opts.includeValues = true;
-        opts.includeTests = includeTests;
         List<File> files = AndroidProjectScanner.scan(projectRoot, opts);
 
         // 0. gradle/libs.versions.toml があれば先に読み込み、後段のパースで参照する
