@@ -104,7 +104,6 @@ public class UmlMainFrame extends JFrame {
     /** 左右分割 (左: ツリーサイドバー / 右: タブ)。Ctrl+B で折りたたむ対象。 */
     private JSplitPane centerSplit;
     private CenterCardView centerCards; // Welcome 空状態 ↔ ワークスペース切替
-    private ActivityBar activityBar;
     /** コマンドパレット (Ctrl+Shift+P) のコマンド一覧。メニューと同じコールバック由来。 */
     private java.util.List<CommandPalette.Command> paletteCommands;
 
@@ -340,17 +339,13 @@ public class UmlMainFrame extends JFrame {
         mcb.dynamicTabFocused = () -> tabPane != null && tabPane.dynamicTabFocused();
         mcb.hasTabsToRightOfActive = () -> tabPane != null && tabPane.hasTabsToRightOfActive();
         mcb.openCommandPalette = () -> CommandPalette.show(this, paletteCommands);
-        mcb.toggleSidebar = () -> {
-            AppShortcuts.toggleSidebar(centerSplit);
-            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
-        };
+        mcb.toggleSidebar = () -> AppShortcuts.toggleSidebar(centerSplit);
         mcb.openSourceForActiveTab = () -> tabPane.showSourceForActiveTab();
         mcb.addNoteToActiveTab = () -> tabPane.addNoteToActiveTab();
         mcb.toggleNotesPanel = () -> tabPane.toggleActiveNotesPanel();
         mcb.focusExplorer = () -> {
             if (centerSplit.getDividerLocation() <= 2) {
                 AppShortcuts.toggleSidebar(centerSplit);
-                activityBar.setSidebarActive(true);
             }
             treePanel.requestFocusInWindow();
         };
@@ -462,19 +457,6 @@ public class UmlMainFrame extends JFrame {
                 new WelcomePanel(this::chooseProject, this::openArchive, this::loadProject,
                         () -> openPumlEditorTab(PumlTemplate.CLASS.body(), null)));
         add(centerCards, BorderLayout.CENTER);
-
-        // VS Code 風の左端アクティビティバー (主要導線をアイコン縦列に集約)。
-        ActivityBar.Actions acts = new ActivityBar.Actions();
-        acts.openProject = this::chooseProject;
-        acts.toggleSidebar = () -> {
-            AppShortcuts.toggleSidebar(centerSplit);
-            activityBar.setSidebarActive(centerSplit.getDividerLocation() > 2);
-        };
-        acts.search = () -> controller.openEntitySearch();
-        acts.commandPalette = () -> CommandPalette.show(this, paletteCommands);
-        acts.preferences = this::openPreferences;
-        activityBar = new ActivityBar(acts);
-        add(activityBar, BorderLayout.WEST);
     }
 
     /** 上部ツールバーを構築する。 */
