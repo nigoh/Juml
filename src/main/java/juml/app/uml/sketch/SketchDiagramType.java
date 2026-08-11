@@ -143,6 +143,8 @@ public enum SketchDiagramType {
     private static final Pattern DATABASE_LINE = Pattern.compile("^database" + DECL_ARG);
     /** ユースケース図が出す {@code actor} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
     private static final Pattern ACTOR_LINE = Pattern.compile("^actor" + DECL_ARG);
+    /** ER 図が出す {@code entity} 宣言 (シーケンス図の参加者宣言と綴りを共有する)。 */
+    private static final Pattern ENTITY_LINE = Pattern.compile("^entity" + DECL_ARG);
     /** クラス図に固有の宣言行。 */
     private static final Pattern CLASS_LINE = Pattern.compile(
             "^(abstract\\s+)?(class|interface|enum)\\b.*$");
@@ -533,6 +535,16 @@ public enum SketchDiagramType {
                 }
                 if (ACTOR_LINE.matcher(line).matches()) {
                     return USECASE;
+                }
+                // entity も database / actor と同じく綴りをシーケンス図と共有する。
+                // 規則が 2 つの宣言にしか適用されておらず entity だけ漏れていた。
+                // ER コーデックは `hide circle` を<b>元テキストにあったときだけ</b>
+                // 出すようになったので、列を 1 つも持たず関係も無い ER 図は目印を
+                // 1 つも持たなくなり、自分の設計器へ戻れずシーケンス図として
+                // 空のロックされたキャンバスになっていた (ER 設計器で全列と全関係を
+                // 消せば作れる。以前は toPuml が必ず hide circle を出していたので戻れた)。
+                if (ENTITY_LINE.matcher(line).matches()) {
+                    return ER;
                 }
             }
         }

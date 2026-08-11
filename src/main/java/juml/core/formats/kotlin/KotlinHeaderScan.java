@@ -34,6 +34,51 @@ final class KotlinHeaderScan {
     }
 
     /**
+     * 入れ子の深さ。このファイルの走査は<b>すべてこれを使う</b>。
+     *
+     * <p>括弧 {@code ( [ &#123;} と山括弧 {@code &lt;} は<b>別々に</b>数える。括弧は必ず対で
+     * 閉じるが、{@code &lt;} はジェネリクスの開きにも<b>比較演算子</b>にもなるからである。
+     * 1 つの深さでまとめて数えると {@code Base(n &lt; 10)} のような引数で深さが 0 に戻らず、
+     * 以降のトップレベル判定がすべて偽になる。比較が現れるのは必ず括弧の内側なので、
+     * 山括弧は<b>括弧の外にいるときだけ</b>数える (ジェネリクスの {@code &lt;} は宣言名の
+     * 直後 = 括弧の外にしか現れない)。</p>
+     *
+     * <p>この規則は {@link #headerEnd} にだけ入れられていた。同じファイルの兄弟走査
+     * ({@link #topLevelColon} / {@link #splitTopLevelCommas} / {@link #topLevelParen} と
+     * {@link #extractSupertypes} の打ち切り) は 1 つの深さのままだったため、
+     * {@code Dialog(ctx, if (SDK_INT &lt; 21) A else B), Checkable} で<b>本体は見つかるのに
+     * 継承リストのカンマが見えず</b>、後ろに並ぶインタフェースが 1 つ残らず消えていた。
+     * {@code &gt;} の綴りなら偶然通るという非対称も同じ。実装をここへ 1 本化する。</p>
+     */
+    static final class Depth {
+
+        private int brackets;
+        private int angles;
+
+        /** {@code s[i]} を読み込んで深さを更新する。 */
+        void feed(String s, int i) {
+            char c = s.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                brackets++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                if (brackets > 0) {
+                    brackets--;
+                }
+            } else if (brackets == 0 && c == '<') {
+                angles++;
+            } else if (brackets == 0 && c == '>'
+                    && !isArrowGreaterThan(s, i) && angles > 0) {
+                angles--;
+            }
+        }
+
+        /** 入れ子の外側 (トップレベル) にいるか。 */
+        boolean top() {
+            return brackets == 0 && angles == 0;
+        }
+    }
+
+    /**
      * {@code <>} / {@code ()} / {@code []} のネスト外にある最初の {@code :} の位置。無ければ -1。
      *
      * <p>{@code where} 節に入ったらそこで打ち切る。{@code class Sorter<T> where T : Comparable<T>}
@@ -45,7 +90,12 @@ final class KotlinHeaderScan {
      * 知らない状態だった。</p>
      */
     static int topLevelColon(String s) {
-        int depth = 0;
+        // 走査の開始位置はプライマリコンストラクタの引数リストを<b>含む</b>ので、
+        // 既定値の中の比較 (`style: Int = if (SDK_INT < 21) 0 else 1` は Android の
+        // カスタム View の定型) がここへ届く。1 つの深さで数えていたため、本物の
+        // 継承コロンが「入れ子の内側」と判定されて -1 が返り、スーパークラスも
+        // インタフェースも<b>1 つ残らず</b>消えていた (関係線がゼロ本の箱になる)。
+        Depth depth = new Depth();
         for (int i = 0; i < s.length(); i++) {
             // コメント・文字列は宣言ではない。ヘッダ検出・プロパティ・関数・引数の
             // 4 経路は以前からこの規則を持っていて、ヘッダ区間の走査だけが生テキストの
@@ -57,19 +107,16 @@ final class KotlinHeaderScan {
                 continue;
             }
             char c = s.charAt(i);
-            if (c == '<' || c == '(' || c == '[') {
-                depth++;
-            } else if (c == '>' || c == ')' || c == ']') {
-                if (!isArrowGreaterThan(s, i) && depth > 0) {
-                    depth--;
+            // 打ち切り判定は深さを進める<b>前</b>に見る (本体の { は深さではなく終端)。
+            if (depth.top()) {
+                if (c == ':') {
+                    return i;
                 }
-            } else if (c == ':' && depth == 0) {
-                return i;
-            } else if ((c == '{' || c == '}') && depth == 0) {
-                return -1;
-            } else if (depth == 0 && isWordAt(s, i, "where")) {
-                return -1;
+                if (c == '{' || c == '}' || isWordAt(s, i, "where")) {
+                    return -1;
+                }
             }
+            depth.feed(s, i);
         }
         return -1;
     }
@@ -89,7 +136,7 @@ final class KotlinHeaderScan {
     /** ネストの外側にあるカンマで分割する (要素内の {@code <>}/{@code ()} は保つ)。 */
     static List<String> splitTopLevelCommas(String s) {
         List<String> out = new ArrayList<>();
-        int depth = 0;
+        Depth depth = new Depth();
         StringBuilder cur = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
             // コメントの中のカンマ・括弧で分割しない。読み飛ばしつつ<b>本文には残す</b> —
@@ -102,14 +149,8 @@ final class KotlinHeaderScan {
                 continue;
             }
             char c = s.charAt(i);
-            if (c == '<' || c == '(' || c == '[' || c == '{') {
-                depth++;
-            } else if (c == '>' || c == ')' || c == ']' || c == '}') {
-                if (!isArrowGreaterThan(s, i) && depth > 0) {
-                    depth--;
-                }
-            }
-            if (c == ',' && depth == 0) {
+            depth.feed(s, i);
+            if (c == ',' && depth.top()) {
                 out.add(cur.toString());
                 cur.setLength(0);
             } else {
@@ -191,15 +232,10 @@ final class KotlinHeaderScan {
      * 兄弟の {@link #primaryCtorParenAfter} は以前からこの規則を持っていた。</p>
      */
     static int[] headerEnd(String src, int from) {
-        // 括弧 ( [ と山括弧 < は<b>別々に</b>数える。( [ は必ず対で閉じるが、< は
-        // ジェネリクスの開きにも比較演算子にもなるからである。まとめて 1 つの深さで
-        // 数えると `Base(n < 10)` のような引数で深さが 0 に戻らず、本体の { を
-        // 見つけられずクラスの中身が丸ごと消えていた
-        // (`Dialog(ctx, if (Build.VERSION.SDK_INT < 21) …)` は Android の定型句)。
-        // 比較が現れるのは必ず括弧の内側なので、山括弧は<b>括弧の外にいるときだけ</b>
-        // 数える。ジェネリクスの < は宣言名の直後 = 括弧の外にしか現れない。
-        int brackets = 0;
-        int angles = 0;
+        // 深さの数え方は {@link Depth} に 1 本化してある (括弧と山括弧を別々に数え、
+        // 山括弧は括弧の外だけ)。以前はこの規則がこの走査にだけ書かれていて、
+        // 同じファイルの兄弟走査は 1 つの深さのままだった。
+        Depth depth = new Depth();
         int superEnd = -1;
         for (int i = from; i < src.length(); i++) {
             int e = KotlinLightScanner.skipNonCode(src, i);
@@ -208,27 +244,8 @@ final class KotlinHeaderScan {
                 continue;
             }
             char c = src.charAt(i);
-            if (c == '(' || c == '[') {
-                brackets++;
-                continue;
-            }
-            if (c == ')' || c == ']') {
-                if (brackets > 0) {
-                    brackets--;
-                }
-                continue;
-            }
-            if (brackets == 0 && c == '<') {
-                angles++;
-                continue;
-            }
-            if (brackets == 0 && c == '>') {
-                if (!isArrowGreaterThan(src, i) && angles > 0) {
-                    angles--;
-                }
-                continue;
-            }
-            if (brackets > 0 || angles > 0) {
+            if (!depth.top()) {
+                depth.feed(src, i);
                 continue;
             }
             if (c == '{') {
@@ -246,6 +263,8 @@ final class KotlinHeaderScan {
             }
             if (!KotlinLightScanner.isIdentPart(c)
                     || (i > 0 && KotlinLightScanner.isIdentPart(src.charAt(i - 1)))) {
+                // 語でない文字 (括弧・山括弧を含む) はここで深さへ数える。
+                depth.feed(src, i);
                 continue;
             }
             int wordEnd = i;
@@ -284,18 +303,18 @@ final class KotlinHeaderScan {
 
     /** ジェネリック引数の外側にある最初の {@code (} の位置。無ければ -1。 */
     static int topLevelParen(String s) {
-        int depth = 0;
+        Depth depth = new Depth();
         for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '<') {
-                depth++;
-            } else if (c == '>') {
-                if (!isArrowGreaterThan(s, i) && depth > 0) {
-                    depth--;
-                }
-            } else if (c == '(' && depth == 0) {
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                i = e - 1;
+                continue;
+            }
+            // 「コンストラクタ呼び出しの (」は深さを進める<b>前</b>に見る。
+            if (s.charAt(i) == '(' && depth.top()) {
                 return i;
             }
+            depth.feed(s, i);
         }
         return -1;
     }
@@ -460,7 +479,9 @@ final class KotlinHeaderScan {
             // 継承線が引かれる (二次コンストラクタを持つクラスで実測)。
             return;
         }
-        int depth = 0;
+        // 入れ子の内側の { } や where は打ち切りではない。深さを数えないと
+        // `Base(object : Cb() { … }), Marker` の Marker が落ちる。
+        Depth depth = new Depth();
         for (int i = 0; i < list.length(); i++) {
             int nc = KotlinLightScanner.skipNonCode(list, i);
             if (nc > i) {
@@ -468,30 +489,16 @@ final class KotlinHeaderScan {
                 continue;
             }
             char c = list.charAt(i);
-            // 入れ子の内側の { } や where は打ち切りではない。深さを数えないと
-            // `Base(object : Cb() { … }), Marker` の Marker が落ちる。
-            if (c == '(' || c == '[' || c == '<') {
-                depth++;
-                continue;
-            }
-            if (c == ')' || c == ']' || c == '>') {
-                if (!isArrowGreaterThan(list, i) && depth > 0) {
-                    depth--;
-                }
-                continue;
-            }
-            if (depth > 0) {
-                continue;
-            }
             // `where` の型制約はスーパータイプではない。継承コロンが<b>無い</b>形は
             // topLevelColon が打ち切るが、スーパータイプが有ると先に継承コロンが
             // 返るのでここまで来る — 同じ規則を両方の経路に入れる。入れないと
             // 最後の項が where 節を丸ごと飲み込み、`Marker where T : Comparable` と
             // いう存在しない箱への実装線が引かれ、本物への線は 1 本も引かれない。
-            if (c == '{' || c == '}' || isWordAt(list, i, "where")) {
+            if (depth.top() && (c == '{' || c == '}' || isWordAt(list, i, "where"))) {
                 list = list.substring(0, i);
                 break;
             }
+            depth.feed(list, i);
         }
         for (String raw : splitTopLevelCommas(list)) {
             String e = KotlinBlockMask.codeOnly(raw).trim();

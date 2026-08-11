@@ -214,8 +214,13 @@ final class NoteRenderer {
         g2.fillOval(x2 - 3, y2 - 3, 6, 6); // 対象要素側の端点
     }
 
-    /** 矩形中心から {@code (tx,ty)} に向かう半直線が矩形枠と交わる点。 */
-    private static double[] borderPoint(double x, double y, double w, double h,
+    /**
+     * 矩形中心から {@code (tx,ty)} に向かう半直線が矩形枠と交わる点。
+     *
+     * <p>SVG 書き出し ({@link NoteExport}) も同じ端点を使う。書き出し側で計算し直すと
+     * 「同じ規則を 2 か所に書く」形になり、片方だけ直る事故が起きる。</p>
+     */
+    static double[] borderPoint(double x, double y, double w, double h,
                                         double tx, double ty) {
         double cx = x + w / 2;
         double cy = y + h / 2;
@@ -340,13 +345,7 @@ final class NoteRenderer {
         if (stripH + 4 > ph) {
             return;
         }
-        StringBuilder sb = new StringBuilder();
-        for (String t : tags) {
-            if (sb.length() > 0) {
-                sb.append("  ");
-            }
-            sb.append('#').append(t);
-        }
+        StringBuilder sb = new StringBuilder(tagStrip(n));
         int sy = py + ph - stripH;
         g2.setColor(tagBg());
         g2.fillRect(px + 1, sy, pw - 2, stripH);
@@ -355,6 +354,18 @@ final class NoteRenderer {
         g2.setColor(tagFg());
         g2.drawString(sb.toString(), px + 4, py + ph - fm.getDescent() - 1);
         g2.setClip(clip);
+    }
+
+    /** タグ帯に描く文字列 ({@code #a  #b})。タグが無ければ空文字。SVG 書き出しと共有する。 */
+    static String tagStrip(DiagramNote n) {
+        StringBuilder sb = new StringBuilder();
+        for (String t : n.getTags()) {
+            if (sb.length() > 0) {
+                sb.append("  ");
+            }
+            sb.append('#').append(t);
+        }
+        return sb.toString();
     }
 
     /** 右上に描く小さな錠前アイコン (ロック中の目印)。{@code x,y} は左上。 */

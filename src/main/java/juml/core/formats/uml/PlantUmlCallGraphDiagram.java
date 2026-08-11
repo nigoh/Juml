@@ -69,7 +69,16 @@ public final class PlantUmlCallGraphDiagram {
 
         StringBuilder sb = new StringBuilder();
         sb.append("@startwbs\n");
-        sb.append("skinparam Padding 5\n");
+        // `skinparam Padding` は同梱 PlantUML 1.2026.6 では非推奨で、描画結果の先頭へ
+        // 黄色の警告ボックス ("Please use CSS style instead of skinparam padding") を
+        // <b>図の一部として描き込む</b>。コールグラフ図はこの 1 行のせいで全描画に
+        // 英語の警告帯が乗っていた。リポジトリ内で非推奨の skinparam を出すのは
+        // ここだけで、他の生成器は使っていない。CSS style へ置き換える。
+        sb.append("<style>\n");
+        sb.append("  wbsDiagram {\n");
+        sb.append("    padding 5\n");
+        sb.append("  }\n");
+        sb.append("</style>\n");
         sb.append("\n");
 
         // 起点ルートノード (WBS depth 1)

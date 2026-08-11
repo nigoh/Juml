@@ -98,10 +98,43 @@ final class DiagramNotesBinder {
     private final Map<SvgPreviewPanel, Object> bindToken =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
+    /** プレビューごとの現在の保存先ルート (再バインド判断に使う)。 */
+    private final Map<SvgPreviewPanel, File> boundRoot =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /**
+     * プロジェクト切替に伴う再バインド。<b>保存先を移してよいときだけ</b>移す。
+     *
+     * <p>{@link #bind} は保存フックを新ストアへ差し替えるが、ロード側は
+     * 「レイヤが空のときだけ反映する」規則しか持っていない。つまり規則が掛かって
+     * いるのは<b>ロード経路だけ</b>で、保存経路には掛かっていなかった。旧プロジェクトの
+     * 付箋が載ったままのタブを無条件に再バインドすると、切替先の保存済み付箋は
+     * (レイヤが空でないので) 読み込まれず、その状態で付箋を 1 つ触った瞬間に
+     * <b>画面上の旧プロジェクトの付箋一覧が切替先の .juml/notes.json を丸ごと上書き</b>
+     * する。タブキーは Untitled エディタでは再利用されるため衝突は現実に起きるし、
+     * 衝突しなくても他プロジェクトのメモ本文が (git 共有前提の) ファイルへ混入する。</p>
+     *
+     * <p>判断は 1 つ: <b>画面の付箋が既に別プロジェクトのものなら、保存先は移さない</b>。
+     * 空なら移して切替先の付箋を読み込む。まだ一度も実プロジェクトへ束ねていない
+     * (プロジェクト未ロードで作った) 付箋は<b>どこのものでもない</b>ので、
+     * 切替先が引き取ってよい — これが「プロジェクトを開く前に書いたメモ」の正規の導線である。</p>
+     */
+    void rebindForProject(SvgPreviewPanel preview, File newRoot, String diagramKey) {
+        File previous = boundRoot.get(preview);
+        if (previous != null && !Objects.equals(previous, newRoot)
+                && preview.notes().hasNotes()) {
+            return;
+        }
+        bind(preview, newRoot, diagramKey);
+    }
+
     void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
         final DiagramNotesStore s = storeFor(projectRoot);
         final Object token = new Object();
         bindToken.put(preview, token);
+        if (projectRoot != null) {
+            boundRoot.put(preview, projectRoot);
+        }
         // 変更時はバックグラウンドで保存 (移動・リサイズ・削除・色変更時の EDT フリーズ防止)。
         // スナップショットは EDT 上で深いコピーを取る。ライブオブジェクトを IO スレッドで
         // 直列化すると、ドラッグ中の座標変更やタグ変更と競合して不正な値が保存されうる。
