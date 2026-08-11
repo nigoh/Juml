@@ -54,6 +54,8 @@ final class KotlinHeaderScan {
 
         private int brackets;
         private int angles;
+        /** これまでに空白以外のコードを読んだか (区間先頭の {@code &lt;} 判定に使う)。 */
+        private boolean sawCode;
 
         /** {@code s[i]} を読み込んで深さを更新する。 */
         void feed(String s, int i) {
@@ -69,6 +71,9 @@ final class KotlinHeaderScan {
             } else if (brackets == 0 && c == '>'
                     && !isArrowGreaterThan(s, i) && angles > 0) {
                 angles--;
+            }
+            if (!Character.isWhitespace(c)) {
+                sawCode = true;
             }
         }
 
@@ -86,15 +91,21 @@ final class KotlinHeaderScan {
          * ({@code List&lt;String&gt;})、比較の {@code &lt;} は式との間に空白が入る
          * ({@code SDK_INT &lt; 21})。{@code &lt;=} と {@code &lt;&lt;} は比較・シフトで確定。
          * 対応する {@code &gt;} が後方に無いものもジェネリクスではない。</p>
+         *
+         * <p><b>区間の先頭は例外</b>。ヘッダ走査はクラス名の直後から読み始めるので、
+         * 型パラメータリストは区間の先頭に来る。Kotlin は名前と {@code &lt;T&gt;} の間に
+         * 空白・改行・コメントを許すため、位置 0 だけを特別扱いすると
+         * {@code class Foo &lt;T : Any&gt; : Base()} で制約のコロンを継承コロンと読み、
+         * <b>存在しない箱への継承線を引いて本物のスーパークラスを消す</b>。
+         * 判定は位置ではなく<b>まだコードを 1 文字も読んでいないか</b>で行う —
+         * こうすれば {@code = SDK_INT &lt; 21} は ({@code = SDK_INT} を読んだ後なので)
+         * 従来どおり比較のままである。</p>
          */
-        private static boolean isGenericOpen(String s, int i) {
+        private boolean isGenericOpen(String s, int i) {
             if (i + 1 < s.length() && (s.charAt(i + 1) == '=' || s.charAt(i + 1) == '<')) {
                 return false;
             }
-            // 走査区間の先頭に来る {@code <} は型引数リストの開き。ヘッダ走査はクラス名の
-            // 直後から読み始めるので {@code <T : Comparable<T>>(…) : Base()} がこの形になる。
-            // 式が {@code <} で始まることは無いので、比較と取り違える余地は無い。
-            if (i > 0 && !KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
+            if (sawCode && !KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
                 return false;
             }
             for (int j = i + 1; j < s.length(); j++) {

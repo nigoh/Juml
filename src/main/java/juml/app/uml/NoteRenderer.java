@@ -54,14 +54,26 @@ final class NoteRenderer {
     private static final BasicStroke LEADER_STROKE = new BasicStroke(1.2f);
     /** タグ表示 (付箋下端のストリップ)。 */
     private static final Font TAG_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
-    private static Color tagBg() {
-        return EditorColors.isDark()
-                ? new Color(0, 0, 0, 160) : new Color(255, 255, 255, 190);
+    /**
+     * タグ帯の色。<b>書き出しではテーマに追従させない</b>。
+     *
+     * <p>付箋の地色は保存値、枠は固定色なのに、タグ帯だけアプリのテーマ (ダーク/ライト) で
+     * 変わっていた。SVG 注入側は定数 ({@code #FFFFFF} / {@code #3A6EA5}) を書くので、
+     * ダークテーマで書き出すと<b>同じ図の PNG と SVG でタグ帯の色が反転</b>する。
+     * 書き出しはアプリの見た目ではなく図の内容を出すものなので、SVG 側に揃える。</p>
+     */
+    private Color tagBg() {
+        if (!exportMode && EditorColors.isDark()) {
+            return new Color(0, 0, 0, 160);
+        }
+        return new Color(255, 255, 255, 190);
     }
 
-    private static Color tagFg() {
-        return EditorColors.isDark()
-                ? new Color(0x6EA5D4) : new Color(0x3A6EA5);
+    private Color tagFg() {
+        if (!exportMode && EditorColors.isDark()) {
+            return new Color(0x6EA5D4);
+        }
+        return new Color(0x3A6EA5);
     }
     /** 孤児 (追従先が消えた ELEMENT 付箋) を示す破線枠。 */
     private static final BasicStroke ORPHAN_STROKE = new BasicStroke(2f, BasicStroke.CAP_BUTT,
@@ -292,7 +304,10 @@ final class NoteRenderer {
         g2.fillRoundRect(px, py, pw, ph, 10, 10);
         boolean selected = selectedIds.contains(n.getId());
         // ELEMENT アンカーだが対象要素が見つからない (孤児) 付箋は破線枠で知らせる。
-        boolean orphan = n.getAnchor() == DiagramNote.Anchor.ELEMENT && anchorRect(n) == null;
+        // これは<b>エディタ側の状態通知</b>であって図の内容ではないので書き出しには出さない
+        // (SVG 経路には元から無く、PNG / 画像コピーにだけ赤い破線が焼き込まれていた)。
+        boolean orphan = !exportMode
+                && n.getAnchor() == DiagramNote.Anchor.ELEMENT && anchorRect(n) == null;
         g2.setColor(orphan ? ORPHAN_BORDER : (selected ? SELECTED_BORDER : BORDER));
         g2.setStroke(orphan ? ORPHAN_STROKE : (selected ? SELECTED_STROKE : BORDER_STROKE));
         g2.drawRoundRect(px, py, pw, ph, 10, 10);
@@ -333,7 +348,8 @@ final class NoteRenderer {
         // タグがあれば下端にストリップで表示する。
         paintTags(g2, n, px, py, pw, ph, zoom);
         // ロック中は右上に錠前アイコンを描く (移動・リサイズ不可の目印)。
-        if (n.isLocked()) {
+        // 孤児枠と同じくエディタ側の状態通知なので書き出しには出さない。
+        if (n.isLocked() && !exportMode) {
             drawLock(g2, px + pw - 15, py + 4);
         }
         // リサイズハンドルは「単一選択かつ非ロック」のときだけ出す。

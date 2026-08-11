@@ -2002,6 +2002,8 @@ public final class DiagramTabPane {
          * juml-errcode: / juml-copy: リンクのクリックも受け付ける。
          */
         private final javax.swing.JEditorPane messageLabel = new javax.swing.JEditorPane();
+        /** いま "msg" カード (描画失敗・図なし・描画中・メモリ解放) を出しているか。 */
+        private boolean showingMessage;
         private final javax.swing.JProgressBar renderSpinner = new javax.swing.JProgressBar();
         private String renderedPuml;
         private String renderedSvgXml;
@@ -2479,10 +2481,28 @@ public final class DiagramTabPane {
         /** プレビュー(SVG)カードを前面に出す。 */
         private void showPreviewCard() {
             cards.show(viewCards, "view");
+            showingMessage = false;
         }
 
-        /** 図内検索バー (Ctrl+F) を表示してフォーカスする。 */
+        /**
+         * 図内検索バー (Ctrl+F) を表示してフォーカスする。
+         *
+         * <p>メッセージカードを出しているときは<b>切り替えない</b>。"msg" は描画失敗・
+         * 図なし・描画中・メモリ解放の 4 経路が共有する情報カードで、失敗時には
+         * エラー ID・PlantUML の診断・「対処法を見る」「詳細をコピー」リンクを載せている
+         * 唯一の場所である。Ctrl+F でそれを空のプレビューへ差し替えると、
+         * {@code DiagramFindBar.close()} はカードを戻さないので Esc で閉じても
+         * 白紙のまま残り、F5 で描き直すまで復帰しない。</p>
+         *
+         * <p>{@code showPreviewCard()} を呼ぶ他の 2 箇所はどちらも
+         * <b>プレビューに実体があることが保証された</b>経路 (描画成功時と、
+         * 直前の正常な図を保ったままライブ失敗バナーを出すとき) で、
+         * ここだけが同じ規則を守っていなかった。</p>
+         */
         void activateFind() {
+            if (showingMessage) {
+                return;
+            }
             showPreviewCard();
             findBar.activate();
         }
@@ -2497,6 +2517,7 @@ public final class DiagramTabPane {
             messageLabel.setCaretPosition(0);
             renderSpinner.setVisible(showSpinner);
             cards.show(viewCards, "msg");
+            showingMessage = true;
         }
 
         /**

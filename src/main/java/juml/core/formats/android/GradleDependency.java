@@ -51,6 +51,28 @@ public class GradleDependency {
         return d;
     }
 
+    /**
+     * {@code implementation platform('androidx.compose:compose-bom:2024.02.00')} のような
+     * BOM 依存を表すインスタンスを生成する。座標は<b>ラッパを剥がしてから</b>解釈する。
+     *
+     * <p>兄弟の {@link #forFile} / {@link #forFileTree} は既にこの形だったが、
+     * platform だけ素の座標として {@code new GradleDependency(scope, "platform('…')")} を
+     * 呼んでいた。{@link #parseNotation} は {@code project(} 以外を素の座標とみなして
+     * {@code :} で割るので、group が {@code platform('androidx.compose}、version が
+     * {@code 2024.02.00')} という<b>ラッパの断片を含んだ座標</b>になる。依存グラフは
+     * それをそのままノード名に使い、jar 索引はその名前でキャッシュを探して
+     * 「解決できなかった依存」として数える。</p>
+     */
+    public static GradleDependency forPlatform(String scope, String coords, boolean enforced) {
+        String wrapper = enforced ? "enforcedPlatform" : "platform";
+        GradleDependency d = new GradleDependency(scope, wrapper + "('" + coords + "')");
+        String[] parts = coords.split(":");
+        d.group = parts.length > 0 && !parts[0].isEmpty() ? parts[0] : null;
+        d.name = parts.length > 1 ? parts[1] : (parts.length > 0 ? parts[0] : coords);
+        d.version = parts.length > 2 ? parts[2] : null;
+        return d;
+    }
+
     private void parseNotation() {
         String n = notation;
         if (n.startsWith("project(")) {

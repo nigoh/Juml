@@ -35,8 +35,10 @@ final class DiagramNotesBinder {
         return t;
     });
 
-    private DiagramNotesStore store;
-    private File storeRoot;
+    /** 「保存先なし」を Map のキーにするための番人 (null はキーにできない)。 */
+    private static final Object NO_ROOT = new Object();
+    /** プロジェクトルート → ストア。同じルートには必ず同じ実体を返す。 */
+    private final Map<Object, DiagramNotesStore> stores = new java.util.HashMap<>();
     /** ステータスバー通知 (保存失敗・ロード件数)。null 可。 */
     private final Consumer<String> status;
     /** 保存失敗メッセージの乱発抑制 (一度出したら次の成功までは再表示しない)。 */
@@ -56,13 +58,25 @@ final class DiagramNotesBinder {
         }
     }
 
-    /** 現在のプロジェクトルートに対応するストア (ルート変更時は作り直す)。 */
+    /**
+     * プロジェクトルートに対応するストア。<b>同じルートには常に同じ実体を返す</b>。
+     *
+     * <p>以前は「いまのルート」1 個しか覚えない単一フィールドで、ルートが変わるたびに
+     * 作り直していた。{@link DiagramNotesStore} は初回にファイル全体をメモリへ読み、
+     * 保存のたびに<b>全体を書き直す</b>ので、同じ {@code notes.json} に対して実体が 2 つ
+     * 生きると、古い像を持つ側の 1 回の保存が新しい像で書かれた他タブのエントリを
+     * まとめて消す (後勝ち)。</p>
+     *
+     * <p>ルートが「いまのプロジェクト以外」へ振れる経路は {@link #migrateKey} が作る。
+     * 旧プロジェクトに束ねられたタブを Save As するとフィールドが旧ルートへ戻り、
+     * その後で現プロジェクトの図タブを開くとそのストアが<b>2 個目</b>として生まれる。
+     * つまりこの穴は「別プロジェクトの付箋を載せたタブは保存先を移さない」という
+     * 規則そのものが前提を作っている。ルート → ストアの対応を持てば起きない。</p>
+     */
     private synchronized DiagramNotesStore storeFor(File projectRoot) {
-        if (store == null || !Objects.equals(projectRoot, storeRoot)) {
-            store = new DiagramNotesStore(projectRoot);
-            storeRoot = projectRoot;
-        }
-        return store;
+        // null ルート (保存先なし) も 1 実体で共有してよい (no-op ストア)。
+        return stores.computeIfAbsent(projectRoot == null ? NO_ROOT : projectRoot,
+                k -> new DiagramNotesStore(k == NO_ROOT ? null : (File) k));
     }
 
     /**

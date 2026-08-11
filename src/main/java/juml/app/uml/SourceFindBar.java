@@ -54,6 +54,8 @@ final class SourceFindBar extends JPanel {
     /** 置換 UI を出せるか (編集可能ペインのみ)。 */
     private final boolean replaceCapable;
     private final List<int[]> hits = new ArrayList<>(); // {start, end}
+    /** 自分の置換で文書を書き換えている最中か (自分の変更でヒットを取り直さない)。 */
+    private boolean replacing;
     private final List<Object> tags = new ArrayList<>();
     private int index = -1;
     /**
@@ -104,6 +106,38 @@ final class SourceFindBar extends JPanel {
             @Override public void changedUpdate(DocumentEvent e) {
                 run(field.getText());
             }
+        });
+        // 対象文書が<b>外から</b>編集されたらヒットを取り直す。ヒットは int オフセット
+        // なので、編集で位置がずれた瞬間に「旧内容基準の座標を新しい文書へ適用する」ことに
+        // なり、Ctrl+H が無関係な本文を削って置換文字列を差し込む (実測: 打ったばかりの
+        // コメント行の一部が消えて置換文字列が入り、置換対象そのものは無傷で残った)。
+        // 同じ規則は全文差し替え経路 (PumlSourcePanel.setText → reset) と図側
+        // (DiagramFindBar は再描画のたびに reset) には既に入っていて、
+        // <b>利用者の逐次編集という経路にだけ</b>掛かっていなかった。
+        DocumentListener targetWatcher = new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) {
+                targetChanged();
+            }
+
+            @Override public void removeUpdate(DocumentEvent e) {
+                targetChanged();
+            }
+
+            @Override public void changedUpdate(DocumentEvent e) {
+                // 属性だけの変更 (ハイライト等) は位置を動かさない。
+            }
+        };
+        target.getDocument().addDocumentListener(targetWatcher);
+        target.addPropertyChangeListener("document", ev -> {
+            if (ev.getOldValue() instanceof javax.swing.text.Document) {
+                ((javax.swing.text.Document) ev.getOldValue())
+                        .removeDocumentListener(targetWatcher);
+            }
+            if (ev.getNewValue() instanceof javax.swing.text.Document) {
+                ((javax.swing.text.Document) ev.getNewValue())
+                        .addDocumentListener(targetWatcher);
+            }
+            targetChanged();
         });
         field.registerKeyboardAction(e -> move(1),
                 KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), JComponent.WHEN_FOCUSED);
@@ -302,6 +336,30 @@ final class SourceFindBar extends JPanel {
         info.setText((index + 1) + " / " + hits.size());
     }
 
+    /**
+     * 対象文書が編集された。ヒットの int オフセットは無効になるので取り直す。
+     *
+     * <p>自分の置換による変更は除く (置換は自分でオフセットを畳んでいる)。
+     * 文書変更通知の中で文書を触ると {@code IllegalStateException} になるので、
+     * 取り直しは次のイベントへ回す。</p>
+     */
+    private void targetChanged() {
+        if (replacing) {
+            return;
+        }
+        if (!isVisible()) {
+            // 見えていないときは走らせない。開き直したときに run() が取り直す。
+            hits.clear();
+            index = -1;
+            return;
+        }
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (isVisible() && !replacing) {
+                run(field.getText());
+            }
+        });
+    }
+
     /** 現在ヒットを置換テキストへ書き換え、再検索して次ヒットへ移る。 */
     private void replaceCurrent() {
         if (!replaceCapable || !target.isEditable() || index < 0 || index >= hits.size()) {
@@ -309,11 +367,14 @@ final class SourceFindBar extends JPanel {
         }
         int[] hit = hits.get(index);
         String with = replaceField.getText();
+        replacing = true;
         try {
             target.getDocument().remove(hit[0], hit[1] - hit[0]);
             target.getDocument().insertString(hit[0], with, null);
         } catch (BadLocationException ex) {
             return;
+        } finally {
+            replacing = false;
         }
         // 置換でオフセットがずれるため、次ヒットは置換後位置を起点に取り直す。
         searchAnchor = hit[0] + with.length();
@@ -333,15 +394,20 @@ final class SourceFindBar extends JPanel {
             return;
         }
         String with = replaceField.getText();
-        // hits はテキスト順。末尾から置換すれば手前のオフセットは不変。
-        for (int i = hits.size() - 1; i >= 0; i--) {
-            int[] hit = hits.get(i);
-            try {
-                target.getDocument().remove(hit[0], hit[1] - hit[0]);
-                target.getDocument().insertString(hit[0], with, null);
-            } catch (BadLocationException ignored) {
-                // 範囲外は無視。
+        replacing = true;
+        try {
+            // hits はテキスト順。末尾から置換すれば手前のオフセットは不変。
+            for (int i = hits.size() - 1; i >= 0; i--) {
+                int[] hit = hits.get(i);
+                try {
+                    target.getDocument().remove(hit[0], hit[1] - hit[0]);
+                    target.getDocument().insertString(hit[0], with, null);
+                } catch (BadLocationException ignored) {
+                    // 範囲外は無視。
+                }
             }
+        } finally {
+            replacing = false;
         }
         searchAnchor = 0;
         run(field.getText());
