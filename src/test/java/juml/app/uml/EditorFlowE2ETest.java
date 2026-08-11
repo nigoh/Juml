@@ -95,7 +95,7 @@ public class EditorFlowE2ETest {
         // 解決後の絶対座標は要素の隣 (原点付近ではない)。
         assertTrue("付箋 X は要素の右側 (>500)", resolved.get(0).getX() > 500);
 
-        String withNotes = NoteExport.injectIntoSvg(bareSvg, resolved);
+        String withNotes = NoteExport.injectIntoSvg(bareSvg, DiagramNotesLayer.ExportOverlay.ofNotes(resolved));
         assertTrue("付箋グループが注入される", withNotes.contains("juml-notes"));
         assertWellFormedXml(withNotes);
     }

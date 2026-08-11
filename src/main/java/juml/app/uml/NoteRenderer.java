@@ -67,6 +67,17 @@ final class NoteRenderer {
     private static final BasicStroke ORPHAN_STROKE = new BasicStroke(2f, BasicStroke.CAP_BUTT,
             BasicStroke.JOIN_MITER, 10f, new float[] {4f, 3f}, 0f);
 
+    /**
+     * 書き出し中か。true の間は<b>画面の操作ヒント</b>を描かない
+     * (空本文のプレースホルダなど、図の内容ではないもの)。
+     */
+    private boolean exportMode;
+
+    /** 書き出しモードを切り替える ({@link DiagramNotesLayer#paintForExport} が挟む)。 */
+    void setExportMode(boolean on) {
+        exportMode = on;
+    }
+
     private final CellRendererPane rendererPane = new CellRendererPane();
     private final JEditorPane htmlView = new JEditorPane();
     private java.util.function.Function<String, double[]> elementResolver;
@@ -214,8 +225,13 @@ final class NoteRenderer {
         g2.fillOval(x2 - 3, y2 - 3, 6, 6); // 対象要素側の端点
     }
 
-    /** 矩形中心から {@code (tx,ty)} に向かう半直線が矩形枠と交わる点。 */
-    private static double[] borderPoint(double x, double y, double w, double h,
+    /**
+     * 矩形中心から {@code (tx,ty)} に向かう半直線が矩形枠と交わる点。
+     *
+     * <p>SVG 書き出し ({@link NoteExport}) も同じ端点を使う。書き出し側で計算し直すと
+     * 「同じ規則を 2 か所に書く」形になり、片方だけ直る事故が起きる。</p>
+     */
+    static double[] borderPoint(double x, double y, double w, double h,
                                         double tx, double ty) {
         double cx = x + w / 2;
         double cy = y + h / 2;
@@ -315,7 +331,7 @@ final class NoteRenderer {
             g2.fillRoundRect(px + 1, py + ph - fadeH, pw - 2, fadeH - 1, 8, 8);
         }
         // タグがあれば下端にストリップで表示する。
-        paintTags(g2, n, px, py, pw, ph);
+        paintTags(g2, n, px, py, pw, ph, zoom);
         // ロック中は右上に錠前アイコンを描く (移動・リサイズ不可の目印)。
         if (n.isLocked()) {
             drawLock(g2, px + pw - 15, py + 4);
@@ -328,25 +344,27 @@ final class NoteRenderer {
         }
     }
 
-    /** 付箋下端にタグを {@code #tag} 形式のストリップで描く。タグが無ければ何もしない。 */
-    private void paintTags(Graphics2D g2, DiagramNote n, int px, int py, int pw, int ph) {
+    /**
+     * 付箋下端にタグを {@code #tag} 形式のストリップで描く。タグが無ければ何もしない。
+     *
+     * <p>帯の高さ・文字サイズは {@code zoom} に追従させる。付箋本体は
+     * {@code ng.scale(zoom, zoom)} で拡大されるのに、ここだけデバイス px 固定だったため、
+     * scale=2.0 で書き出す PNG では帯だけ等倍で残り、同じ付箋のタグが SVG (図座標で
+     * 出力するので付箋と同じ比率) と PNG で別の大きさになっていた。</p>
+     */
+    private void paintTags(Graphics2D g2, DiagramNote n, int px, int py, int pw, int ph,
+                           double zoom) {
         List<String> tags = n.getTags();
         if (tags.isEmpty()) {
             return;
         }
-        g2.setFont(TAG_FONT);
+        g2.setFont(TAG_FONT.deriveFont((float) (TAG_FONT.getSize2D() * zoom)));
         FontMetrics fm = g2.getFontMetrics();
         int stripH = fm.getHeight();
         if (stripH + 4 > ph) {
             return;
         }
-        StringBuilder sb = new StringBuilder();
-        for (String t : tags) {
-            if (sb.length() > 0) {
-                sb.append("  ");
-            }
-            sb.append('#').append(t);
-        }
+        StringBuilder sb = new StringBuilder(tagStrip(n));
         int sy = py + ph - stripH;
         g2.setColor(tagBg());
         g2.fillRect(px + 1, sy, pw - 2, stripH);
@@ -355,6 +373,18 @@ final class NoteRenderer {
         g2.setColor(tagFg());
         g2.drawString(sb.toString(), px + 4, py + ph - fm.getDescent() - 1);
         g2.setClip(clip);
+    }
+
+    /** タグ帯に描く文字列 ({@code #a  #b})。タグが無ければ空文字。SVG 書き出しと共有する。 */
+    static String tagStrip(DiagramNote n) {
+        StringBuilder sb = new StringBuilder();
+        for (String t : n.getTags()) {
+            if (sb.length() > 0) {
+                sb.append("  ");
+            }
+            sb.append('#').append(t);
+        }
+        return sb.toString();
     }
 
     /** 右上に描く小さな錠前アイコン (ロック中の目印)。{@code x,y} は左上。 */
@@ -368,6 +398,13 @@ final class NoteRenderer {
     private String html(String md) {
         // プレースホルダ (空本文) は locale 依存で安価なためキャッシュしない。
         if (md == null || md.trim().isEmpty()) {
+            // 書き出しでは出さない。「ダブルクリックで編集…」は<b>画面の操作ヒント</b>で
+            // あって図の内容ではないのに、PNG / 画像コピーへ焼き込まれていた。空の付箋は
+            // 色マーカーとしての正当な使い方があり、SVG 経路では無地になるので、
+            // 同じ付箋が書き出し形式によって別物になっていた。
+            if (exportMode) {
+                return MarkdownRenderer.wrapDocument("", 0, 11);
+            }
             String phColor = EditorColors.isDark() ? "#AAA" : "#666";
             return MarkdownRenderer.wrapDocument(
                     "<span style=\"color:" + phColor + ";\">"

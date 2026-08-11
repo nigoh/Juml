@@ -148,7 +148,10 @@ public class PlantUmlManifestDiagramTest {
     public void testPermissionsRendered() {
         String puml = PlantUmlManifestDiagram.generate(buildAnalysis());
         assertTrue(puml, puml.contains("package \"uses-permission\""));
-        assertTrue(puml, puml.contains("[INTERNET]"));
+        // 素の [name] は使わない。permission 名は manifest の属性値なので ']' や改行が
+        // 入りうるし、[name] は表示名と<b>エイリアスを兼ねる</b>ので末尾セグメントが
+        // 同じ 2 つが 1 個に畳まれる。兄弟の emitFeatures と同じ引用符付き + 別名の形。
+        assertTrue(puml, puml.contains("component \"INTERNET\" as P"));
         assertTrue(puml, puml.contains("<<permission>>"));
     }
 

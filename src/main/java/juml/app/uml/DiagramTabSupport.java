@@ -188,8 +188,8 @@ final class DiagramTabSupport {
         if (fmt == UmlExporter.Format.SVG) {
             // SVG も PlantUML の完全レンダリングを伴うため背景実行する。付箋スナップ
             // ショットは Swing に触るため EDT で先に取る。
-            final java.util.List<DiagramNote> notes =
-                    withNotes ? preview.notesForExport() : null;
+            final DiagramNotesLayer.ExportOverlay notes =
+                    withNotes ? preview.notesOverlayForExport() : null;
             if (reporter != null) {
                 reporter.accept(juml.util.Messages.get("status.exportingSvg"));
             }

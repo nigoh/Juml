@@ -47,8 +47,9 @@ final class DiagramMinimap {
         }
         Dimension ext = vp.getExtentSize();
         double zoom = panel.getZoomLevel();
-        double pw = panel.contentWidth() * zoom;
-        double ph = panel.contentHeight() * zoom;
+        double[] canvas = panel.exportCanvas();
+        double pw = canvas[0] * zoom;
+        double ph = canvas[1] * zoom;
         // どちらかの軸でスクロールが必要なときだけ表示する (+数px の余裕)。
         return pw > ext.width + 4 || ph > ext.height + 4;
     }
@@ -58,8 +59,9 @@ final class DiagramMinimap {
         if (!shouldShow(panel, vp)) {
             return null;
         }
-        double cw = panel.contentWidth();
-        double ch = panel.contentHeight();
+        double[] canvas = panel.exportCanvas();
+        double cw = canvas[0];
+        double ch = canvas[1];
         if (cw <= 0 || ch <= 0) {
             return null;
         }
@@ -80,8 +82,13 @@ final class DiagramMinimap {
         if (r == null) {
             return;
         }
-        double cw = panel.contentWidth();
-        double ch = panel.contentHeight();
+        // 寸法は図ではなく<b>書き出しキャンバス</b>から採る。付箋が図の外に出ると
+        // 入れ物 (getPreferredSize) はそちらへ合わせて広がるので、図の寸法のままだと
+        // (a) スクロールが必要なのにミニマップが出ない、(b) 出ても縮小図とクリック写像が
+        // 図の部分しか覆わず、付箋のある領域へミニマップから移動できない、が起きる。
+        double[] canvas = panel.exportCanvas();
+        double cw = canvas[0];
+        double ch = canvas[1];
         double scale = r.width / cw;
         ensureThumb(panel, r.width, r.height, scale);
 
@@ -195,7 +202,7 @@ final class DiagramMinimap {
 
     /** ミニマップ上の点を図座標へ写像し、その点を中心にビューポートを移動する。 */
     private void recenter(Point p, Rectangle r, SvgPreviewPanel panel, JViewport vp) {
-        double scale = r.width / panel.contentWidth();
+        double scale = r.width / panel.exportCanvas()[0];
         double contentX = (p.x - r.x) / scale;
         double contentY = (p.y - r.y) / scale;
         double zoom = panel.getZoomLevel();

@@ -22,7 +22,8 @@ public class NoteExportTest {
     public void injectsNoteRectAndForeignObjectBeforeClosingSvg() {
         DiagramNote n = new DiagramNote(10, 20, 200, 120, "**bold** note");
         n.setColor("#D6F5C8");
-        String out = NoteExport.injectIntoSvg(BASE, Collections.singletonList(n));
+        String out = NoteExport.injectIntoSvg(BASE, DiagramNotesLayer.ExportOverlay.ofNotes(
+                Collections.singletonList(n)));
 
         assertTrue("注入グループがあること", out.contains("<g class=\"juml-notes\">"));
         assertTrue("付箋矩形があること", out.contains("fill=\"#D6F5C8\""));
@@ -39,22 +40,24 @@ public class NoteExportTest {
     public void selfClosesVoidElements() {
         // 改行を含む本文 -> <br> が生成されるが、foreignObject では <br/> でなければならない
         DiagramNote n = new DiagramNote(0, 0, 100, 80, "line1\nline2");
-        String out = NoteExport.injectIntoSvg(BASE, Collections.singletonList(n));
+        String out = NoteExport.injectIntoSvg(BASE, DiagramNotesLayer.ExportOverlay.ofNotes(
+                Collections.singletonList(n)));
         assertTrue(out.contains("<br/>"));
         assertTrue("生の <br> (非自己終端) が残らないこと", !out.contains("<br>"));
     }
 
     @Test
     public void noNotesReturnsUnchanged() {
-        assertEquals(BASE, NoteExport.injectIntoSvg(BASE, Collections.emptyList()));
-        assertEquals(BASE, NoteExport.injectIntoSvg(BASE, null));
+        assertEquals(BASE, NoteExport.injectIntoSvg(BASE, DiagramNotesLayer.ExportOverlay.ofNotes(
+                Collections.emptyList())));
+        assertEquals(BASE, NoteExport.injectIntoSvg(BASE, (DiagramNotesLayer.ExportOverlay) null));
     }
 
     @Test
     public void multipleNotesAllInjected() {
-        String out = NoteExport.injectIntoSvg(BASE, Arrays.asList(
-                new DiagramNote(0, 0, 50, 40, "a"),
-                new DiagramNote(60, 0, 50, 40, "b")));
+        String out = NoteExport.injectIntoSvg(BASE, DiagramNotesLayer.ExportOverlay.ofNotes(
+                Arrays.asList(new DiagramNote(0, 0, 50, 40, "a"),
+                        new DiagramNote(60, 0, 50, 40, "b"))));
         int first = out.indexOf("<foreignObject");
         int second = out.indexOf("<foreignObject", first + 1);
         assertTrue("2 件とも注入されること", first >= 0 && second > first);

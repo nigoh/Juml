@@ -887,9 +887,10 @@ public final class DiagramTabPane {
             previewTabKey = newKey;
         }
         // 付箋の保存先を新キーへ。ストア上のエントリも移す (移さないと旧キーに取り残され、
-        // ファイルを開き直しても付箋がロードされない)。
-        notesBinder.renameKey(cache.getProjectRoot(), oldKey, newKey);
-        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        // ファイルを開き直しても付箋がロードされない)。移す先は<b>現在のプロジェクトでは
+        // なくタブがいま束ねられているストア</b>である — エディタタブはプロジェクト切替でも
+        // 読込中断でも生き残るので、この 2 つは食い違いうる。
+        notesBinder.migrateKey(tab.previewPanel, cache.getProjectRoot(), oldKey, newKey);
         navHistory.replaceKey(oldKey, newKey);
         // メモリ管理の MRU も追従させる (旧キーの幽霊が退避枠を浪費しないように)。
         tabMemory.rename(oldKey, newKey);
@@ -1472,9 +1473,12 @@ public final class DiagramTabPane {
                 // 唯一の実体を消す</b>ことと引き換えで、setData は履歴も消すので
                 // Ctrl+Z でも戻らない。「保存済みなら消してよい」という条件を付けても、
                 // 保存が済むのは切替の後なので消える時期が 1 回遅れるだけだった。
-                // 保存先だけ新プロジェクトへ移す。非同期ロードは「レイヤが空のときだけ
-                // 反映する」規則を既に持っているので、画面の付箋が上書きされることはない。
-                notesBinder.bind(t.previewPanel, switchedRoot, t.key);
+                // 保存先だけ新プロジェクトへ移す。ただし<b>移してよいときだけ</b> —
+                // 「レイヤが空のときだけ反映する」規則が掛かっているのはロード経路だけで、
+                // 保存経路には掛かっていなかった。旧プロジェクトの付箋が載ったまま保存先を
+                // 移すと、切替先の保存済み付箋は読み込まれないのに、次に付箋を 1 つ触った
+                // 瞬間に画面上の旧プロジェクトの一覧が切替先の notes.json を上書きする。
+                notesBinder.rebindForProject(t.previewPanel, switchedRoot, t.key);
             }
             navHistory.push(t.key);
         }

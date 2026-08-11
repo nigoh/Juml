@@ -87,4 +87,31 @@ public class PlantUmlCallGraphDiagramEscapeTest {
         assertTrue("ラムダ本体内の work() が WBS に現れるべき: " + puml,
                 puml.contains("work()"));
     }
+
+    /**
+     * コールグラフ図に PlantUML の<b>非推奨警告バナー</b>が焼き込まれないこと。
+     *
+     * <p>{@code skinparam Padding} は同梱 PlantUML 1.2026.6 では非推奨で、図の先頭に
+     * 黄色の警告ボックスと "Please use CSS style instead of skinparam padding" という
+     * 英文を<b>描画結果の一部として</b>描き込む。利用者から見ると正常なコールグラフの上に
+     * エラーらしき帯が常に乗る。この生成器だけが非推奨の skinparam を出していて、
+     * 他の図種の生成器は使っていなかった (規則を 1 か所だけ更新し忘れた形)。
+     * 判定は文字列一致ではなく<b>実描画</b>で行う。</p>
+     */
+    @Test
+    public void theCallGraphRendersWithoutADeprecationBanner() throws java.io.IOException {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "class Svc { void work() {} }\n"
+                        + "class A { Svc svc = new Svc(); void run() { svc.work(); } }");
+        String puml = PlantUmlCallGraphDiagram.generate(infos, "A", "run", null);
+        assertFalse("非推奨の skinparam を出さないこと: " + puml,
+                puml.toLowerCase(java.util.Locale.ROOT).contains("skinparam padding"));
+
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        PlantUmlRenderer.renderSvg(puml, out);
+        String svg = out.toString("UTF-8");
+        assertFalse("描画結果に警告バナーが出ないこと",
+                svg.contains("#FFFFCC") || svg.contains("skinparam"));
+        assertTrue("ノードは従来どおり描かれること", svg.contains("work"));
+    }
 }

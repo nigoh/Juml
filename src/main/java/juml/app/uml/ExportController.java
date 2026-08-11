@@ -237,7 +237,8 @@ final class ExportController {
         if (fmt == UmlExporter.Format.SVG) {
             // SVG も PlantUML の完全レンダリング (数百 ms〜数秒) を伴うため背景実行する。
             // 付箋スナップショットだけ EDT で先に取る (Swing コンポーネントに触るため)。
-            final java.util.List<DiagramNote> notes = withNotes ? preview.notesForExport() : null;
+            final DiagramNotesLayer.ExportOverlay notes =
+                    withNotes ? preview.notesOverlayForExport() : null;
             final String puml = state.currentPuml;
             status.setText(Messages.get("status.exportingSvg"));
             new javax.swing.SwingWorker<Void, Void>() {

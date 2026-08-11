@@ -118,13 +118,29 @@ final class MarkdownRenderer {
         return "<html><head><style>"
                 + "body{margin:" + marginPx + "px;font-family:sans-serif;font-size:"
                 + bodyFontPx + "px;color:#222;}"
-                + "h1{font-size:" + (bodyFontPx + 4) + "px;margin:2px 0;}"
-                + "h2{font-size:" + (bodyFontPx + 2) + "px;margin:2px 0;}"
-                + "h3{font-size:" + (bodyFontPx + 1) + "px;margin:2px 0;}"
-                + "p{margin:2px 0;}ul,ol{margin:2px 0 2px 16px;}"
-                + "blockquote{margin:2px 0;padding-left:6px;color:#555;}"
-                + "pre{margin:2px 0;}code{font-family:monospace;}"
+                + bodyRules("", bodyFontPx)
                 + "</style></head><body>" + body + "</body></html>";
+    }
+
+    /**
+     * 本文の見た目を決める CSS 規則 (body 自体の指定を除く)。
+     *
+     * <p>付箋本文の「見た目の一貫性」を決めているのはこの規則だけである。画面と PNG は
+     * {@link #wrapDocument} 経由でこれを受け取るのに、SVG 注入は
+     * {@code font:11px sans-serif} のインライン指定しか置いていなかった。そのため
+     * SVG だけ h1 が UA 既定の 2em、リストの字下げが 40px になり、<b>画面と PNG では
+     * 収まっていた本文が縦にあふれて切れて</b>いた。両経路がここを読む。</p>
+     *
+     * @param prefix セレクタの接頭辞 (SVG では {@code .juml-note-body } のようにスコープする)
+     */
+    static String bodyRules(String prefix, int bodyFontPx) {
+        String p = prefix == null ? "" : prefix;
+        return p + "h1{font-size:" + (bodyFontPx + 4) + "px;margin:2px 0;}"
+                + p + "h2{font-size:" + (bodyFontPx + 2) + "px;margin:2px 0;}"
+                + p + "h3{font-size:" + (bodyFontPx + 1) + "px;margin:2px 0;}"
+                + p + "p{margin:2px 0;}" + p + "ul," + p + "ol{margin:2px 0 2px 16px;}"
+                + p + "blockquote{margin:2px 0;padding-left:6px;color:#555;}"
+                + p + "pre{margin:2px 0;}" + p + "code{font-family:monospace;}";
     }
 
     private static void flushParagraph(StringBuilder out, StringBuilder para) {

@@ -66,7 +66,7 @@ public class NoteExportCanvasTest {
 
         List<DiagramNote> notes = new ArrayList<>();
         notes.add(noteAt(w0 + 40, 10, 240, 150));
-        String grown = NoteExport.injectIntoSvg(svg, notes);
+        String grown = NoteExport.injectIntoSvg(svg, DiagramNotesLayer.ExportOverlay.ofNotes(notes));
 
         assertTrue("付箋の右端まで広がること: " + svgLength(grown, "width"),
                 svgLength(grown, "width") >= w0 + 40 + 240);
@@ -84,7 +84,8 @@ public class NoteExportCanvasTest {
         List<DiagramNote> notes = new ArrayList<>();
         notes.add(noteAt(0, 0, 10, 10));
 
-        assertEquals(w0, svgLength(NoteExport.injectIntoSvg(svg, notes), "width"), 0.001);
+        assertEquals(w0, svgLength(NoteExport.injectIntoSvg(svg,
+                DiagramNotesLayer.ExportOverlay.ofNotes(notes)), "width"), 0.001);
     }
 
     /** レイヤが答える書き出し範囲は、図と全付箋を含むこと (PNG 経路が使う値)。 */
@@ -106,5 +107,96 @@ public class NoteExportCanvasTest {
         double[] same = inside.exportBounds(300, 200);
         assertEquals(300.0, same[0], 0.001);
         assertEquals(200.0, same[1], 0.001);
+    }
+
+    /**
+     * キャンバスを広げるとき、{@code <svg>} の<b>inline style</b> も一緒に書き換えること。
+     *
+     * <p>PlantUML はキャンバス寸法を 4 か所に書く — {@code width} 属性・{@code height} 属性・
+     * {@code viewBox}・そして {@code style="width:98px;height:144px;background:#FFF;"}。
+     * SVG2 では {@code width}/{@code height} は geometry presentation property なので
+     * <b>inline style が属性に勝つ</b>。3 か所だけ広げると、ブラウザは旧サイズでレイアウト
+     * するのに viewBox は新サイズ、しかも PlantUML は {@code preserveAspectRatio="none"} を
+     * 付けるので、図も付箋も<b>非等方に潰れて</b>表示される (実測: 横 0.22 倍・縦 0.9 倍)。
+     * 「はみ出したらキャンバスを広げる」という 1 つの規則を、寸法を書いている場所の
+     * 一部にしか適用していなかった、という形である。</p>
+     */
+    @Test
+    public void growingTheCanvasAlsoRewritesTheInlineStyle() throws IOException {
+        String svg = render("@startuml\nclass Alpha\nclass Beta\nAlpha --> Beta\n@enduml\n");
+        double w0 = svgLength(svg, "width");
+        double h0 = svgLength(svg, "height");
+
+        List<DiagramNote> notes = new ArrayList<>();
+        notes.add(noteAt(w0 + 40, h0 + 20, 240, 150));
+        String grown = NoteExport.injectIntoSvg(svg,
+                DiagramNotesLayer.ExportOverlay.ofNotes(notes));
+
+        String tag = rootTag(grown);
+        assertTrue("inline style に旧幅が残らないこと: " + tag,
+                !tag.contains("width:" + (long) w0 + "px"));
+        assertTrue("inline style に旧高さが残らないこと: " + tag,
+                !tag.contains("height:" + (long) h0 + "px"));
+        assertEquals("style の幅が属性と一致すること",
+                svgLength(grown, "width"), styleLength(tag, "width"), 0.001);
+        assertEquals("style の高さが属性と一致すること",
+                svgLength(grown, "height"), styleLength(tag, "height"), 0.001);
+        assertTrue("背景色など他の宣言は残すこと: " + tag, tag.contains("background:"));
+    }
+
+    /** {@code <svg …>} 開始タグ。 */
+    private static String rootTag(String svg) {
+        Matcher m = Pattern.compile("(?is)<svg\\b[^>]*>").matcher(svg);
+        assertTrue("<svg> 開始タグがあること", m.find());
+        return m.group();
+    }
+
+    /** 開始タグの inline style から {@code width:…px} を読む。 */
+    private static double styleLength(String tag, String name) {
+        Matcher m = Pattern.compile("(?i)\\b" + name + "\\s*:\\s*([0-9.]+)px").matcher(tag);
+        assertTrue("style に " + name + " があること: " + tag, m.find());
+        return Double.parseDouble(m.group(1));
+    }
+
+    /**
+     * SVG 注入は、ラスタ経路が描くもの (コネクタ・リーダー線・タグ帯) も書くこと。
+     *
+     * <p>注入は矩形と本文しか書いていなかったので、同じ右クリックメニューの Save SVG と
+     * Save PNG / 画像コピーで<b>中身が違って</b>いた。とくにコネクタは利用者が明示的に
+     * 引いた線なので、SVG で保存したときだけ<b>付箋どうしの関係が失われる</b>。
+     * 端点は {@link NoteRenderer#borderPoint} をラスタ経路と共有する。</p>
+     */
+    @Test
+    public void theSvgOverlayDrawsWhatTheRasterOverlayDraws() throws IOException {
+        String svg = render("@startuml\nclass A\nclass B\nA --> B\n@enduml\n");
+
+        DiagramNotesLayer layer = new DiagramNotesLayer(new javax.swing.JPanel());
+        DiagramNote a = noteAt(10, 10, 120, 60);
+        DiagramNote b = noteAt(300, 200, 120, 60);
+        a.setTags(List.of("todo"));
+        List<DiagramNote> notes = new ArrayList<>();
+        notes.add(a);
+        notes.add(b);
+        DiagramConnector c = new DiagramConnector(a.getId(), b.getId());
+        layer.setData(notes, List.of(c));
+
+        String out = NoteExport.injectIntoSvg(svg, layer.exportOverlay());
+
+        assertTrue("コネクタの線が出ること", out.contains("<line") && out.contains("#6B7280"));
+        assertTrue("矢じりが出ること", out.contains("<polygon"));
+        assertTrue("タグ帯の文字が出ること", out.contains("#todo"));
+    }
+
+    /** 非退行: コネクタもタグも無ければ余計な要素を書かないこと。 */
+    @Test
+    public void withoutConnectorsOrTagsNothingExtraIsWritten() throws IOException {
+        String svg = render("@startuml\nclass A\n@enduml\n");
+        DiagramNotesLayer layer = new DiagramNotesLayer(new javax.swing.JPanel());
+        layer.setData(List.of(noteAt(5, 5, 60, 40)), Collections.emptyList());
+
+        String out = NoteExport.injectIntoSvg(svg, layer.exportOverlay());
+        String overlay = out.substring(out.indexOf("<g class=\"juml-notes\">"));
+        assertTrue("線を書かないこと", !overlay.contains("<line"));
+        assertTrue("矢じりを書かないこと", !overlay.contains("<polygon"));
     }
 }

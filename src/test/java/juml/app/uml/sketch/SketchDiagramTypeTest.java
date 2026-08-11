@@ -621,4 +621,42 @@ public class SketchDiagramTypeTest {
         assertEquals(SketchDiagramType.CLASS,
                 SketchDiagramType.detect("@startuml\nclass A\nclass B\nA --> B\n@enduml\n"));
     }
+
+    /**
+     * 列も関係も持たない ER 図が、自分の設計器へ戻れること。
+     *
+     * <p>ラウンド 25 は {@code ErSketchCodec.toPuml} が無条件に出していた
+     * {@code hide circle} を「元テキストにあったときだけ再付与」へ変えた。ところが
+     * 判定側はその指令を<b>ER コーデックだけが出す目印</b>として使い続けていたので、
+     * 規則が片方の経路にしか適用されていない状態になった。ER の目印は他に
+     * crow's-foot 関係と「列ブロックを開く entity 行」しか無いため、<b>関係が無く
+     * 全エンティティが列を持たない</b> ER 図は目印を 1 つも持たなくなり、
+     * シーケンス図と判定されて空のロックされたキャンバスになる。ER 設計器は
+     * 全列と全関係を削除できるので、設計器自身の出力で起きる。</p>
+     *
+     * <p>{@code entity} は {@code database} / {@code actor} と同じく綴りをシーケンス図の
+     * 参加者宣言と共有する。座標コメントがあれば設計器の出力だと分かるという規則は
+     * 既にこの 2 つへ入っていて、{@code entity} だけが漏れていた。</p>
+     */
+    @Test
+    public void anErDiagramWithoutColumnsOrRelationsStillDetectsAsEr() {
+        String noColumns = "@startuml\n"
+                + "entity User\n"
+                + "entity Order\n"
+                + "\n"
+                + "'@pos User 40 40\n"
+                + "'@pos Order 300 40\n"
+                + "@enduml\n";
+        assertEquals(SketchDiagramType.ER, SketchDiagramType.detect(noColumns));
+
+        // 非退行: 従来の目印を持つ形はそのまま ER であること。
+        assertEquals(SketchDiagramType.ER, SketchDiagramType.detect(
+                "@startuml\nhide circle\nentity User\n@enduml\n"));
+        assertEquals(SketchDiagramType.ER, SketchDiagramType.detect(
+                "@startuml\nentity User {\n  * id : int\n}\n@enduml\n"));
+
+        // 非退行: 座標コメントの無い素のシーケンス図は ER にしないこと。
+        assertEquals(SketchDiagramType.SEQUENCE, SketchDiagramType.detect(
+                "@startuml\nentity DB\nAlice -> DB: query\nDB -> Alice: rows\n@enduml\n"));
+    }
 }

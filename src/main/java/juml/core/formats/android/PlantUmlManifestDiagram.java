@@ -275,6 +275,7 @@ public final class PlantUmlManifestDiagram {
             return;
         }
         out.append("package \"uses-permission\" {\n");
+        int seq = 0;
         for (String p : perms) {
             int dot = p.lastIndexOf('.');
             String shortP = dot >= 0 ? p.substring(dot + 1) : p;
@@ -282,7 +283,15 @@ public final class PlantUmlManifestDiagram {
             // 必須宣言なので、別ステレオタイプで識別できるようにする。
             String stereo = ForegroundServiceTypeCatalog.isForegroundServicePermission(p)
                     ? " <<permission>> <<fgs>>" : " <<permission>>";
-            out.append("  [").append(shortP).append("]").append(stereo).append('\n');
+            // 素の [name] を使わない理由は 2 つある。(1) permission 名は manifest の
+            // 属性値なので &#10; で本物の改行が、あるいは ']' が入りうる。すると
+            // [...] が途中で閉じて<b>図が 1 枚も出ない</b>。(2) [name] は表示名で
+            // あると同時に<b>エイリアスでもある</b>ため、末尾セグメントが同じ 2 つ
+            // (android.permission.CAMERA と com.x.permission.CAMERA) が同一エイリアス
+            // として二重宣言され、PlantUML が後勝ちで 1 個に畳んで片方が消える。
+            // 兄弟の emitFeatures と PlantUmlComponentDiagram は既にこの形である。
+            out.append("  component \"").append(escape(shortP))
+                    .append("\" as P").append(seq++).append(stereo).append('\n');
         }
         out.append("}\n");
     }
