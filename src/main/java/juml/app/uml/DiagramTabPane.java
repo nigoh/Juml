@@ -887,9 +887,10 @@ public final class DiagramTabPane {
             previewTabKey = newKey;
         }
         // 付箋の保存先を新キーへ。ストア上のエントリも移す (移さないと旧キーに取り残され、
-        // ファイルを開き直しても付箋がロードされない)。
-        notesBinder.renameKey(cache.getProjectRoot(), oldKey, newKey);
-        notesBinder.bind(tab.previewPanel, cache.getProjectRoot(), newKey);
+        // ファイルを開き直しても付箋がロードされない)。移す先は<b>現在のプロジェクトでは
+        // なくタブがいま束ねられているストア</b>である — エディタタブはプロジェクト切替でも
+        // 読込中断でも生き残るので、この 2 つは食い違いうる。
+        notesBinder.migrateKey(tab.previewPanel, cache.getProjectRoot(), oldKey, newKey);
         navHistory.replaceKey(oldKey, newKey);
         // メモリ管理の MRU も追従させる (旧キーの幽霊が退避枠を浪費しないように)。
         tabMemory.rename(oldKey, newKey);

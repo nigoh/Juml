@@ -301,9 +301,13 @@ final class DiagramNotesLayer {
     void paintForExport(Graphics2D g2, double scale) {
         Set<String> saved = new LinkedHashSet<>(selectedIds);
         selectedIds.clear(); // 選択装飾を出さない
+        // 抑止していたのは選択装飾<b>だけ</b>だったので、本文側の操作ヒント
+        // (空本文のプレースホルダ) が書き出しへ焼き込まれていた。
+        renderer.setExportMode(true);
         try {
             paint(g2, scale);
         } finally {
+            renderer.setExportMode(false);
             selectedIds.clear();
             selectedIds.addAll(saved);
         }
@@ -416,6 +420,38 @@ final class DiagramNotesLayer {
             onModelChanged.run();
         }
         refreshOwner();
+    }
+
+    /**
+     * 保存済みの付箋を<b>画面のものを消さずに</b>足し込む (プロジェクトの引き取り時)。
+     *
+     * <p>「プロジェクトを開く前に書いたメモ」を最初のプロジェクトが引き取る導線では、
+     * 画面の付箋 (どこのものでもない) と引き取り先の保存済み付箋が<b>両方とも</b>
+     * 正当な実体である。{@link #setData} は差し替えなので、どちらか一方が必ず消える。
+     * 引き取り先の保存済み付箋が消える方は、利用者が以前のセッションで書いたものが
+     * 復旧不能に失われる形になるため、ここでは両方を残す。</p>
+     *
+     * <p>付箋 ID は UUID なので衝突しないが、二重ロードに備えて ID の重複は捨てる。</p>
+     */
+    void mergeData(List<DiagramNote> noteList, List<DiagramConnector> connectorList) {
+        if (noteList == null || noteList.isEmpty()) {
+            return;
+        }
+        List<DiagramNote> merged = new ArrayList<>(notes);
+        Set<String> ids = new LinkedHashSet<>();
+        for (DiagramNote n : merged) {
+            ids.add(n.getId());
+        }
+        for (DiagramNote n : noteList) {
+            if (ids.add(n.getId())) {
+                merged.add(n);
+            }
+        }
+        List<DiagramConnector> mergedConns = new ArrayList<>(connectors);
+        if (connectorList != null) {
+            mergedConns.addAll(connectorList);
+        }
+        setData(merged, mergedConns);
     }
 
     /** 端点の付箋が存在しないコネクタを除去する。 */

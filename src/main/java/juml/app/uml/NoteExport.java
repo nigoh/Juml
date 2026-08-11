@@ -87,6 +87,11 @@ final class NoteExport {
             return svg;
         }
         StringBuilder f = new StringBuilder("<g class=\"juml-notes\">");
+        // 本文の見た目を決める CSS を 1 度だけ置き、各付箋の div へクラスで効かせる。
+        // インライン style だけでは見出し・リストが UA 既定になり、画面 / PNG と
+        // 別サイズになってあふれる (規則の出どころは MarkdownRenderer に 1 本化)。
+        f.append("<style>").append(MarkdownRenderer.bodyRules(".juml-note-body ", 11))
+                .append("</style>");
         // リーダー線・コネクタは付箋の下へ潜らせる (ラスタ経路と同じ描画順)。
         for (double[] l : overlay.leaderLines) {
             f.append("<line x1=\"").append(num(l[0])).append("\" y1=\"").append(num(l[1]))
@@ -116,7 +121,7 @@ final class NoteExport {
             f.append("<foreignObject x=\"").append(num(x + 6)).append("\" y=\"").append(num(y + 6))
                     .append("\" width=\"").append(num(Math.max(1, w - 12)))
                     .append("\" height=\"").append(num(Math.max(1, h - 12))).append("\">");
-            f.append("<div xmlns=\"http://www.w3.org/1999/xhtml\" "
+            f.append("<div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"juml-note-body\" "
                     + "style=\"font:11px sans-serif;color:#222;overflow:hidden;\">");
             f.append(xhtml(MarkdownRenderer.toHtml(n.getText())));
             f.append("</div></foreignObject>");
@@ -320,10 +325,46 @@ final class NoteExport {
         return img;
     }
 
-    /** {@link MarkdownRenderer} の HTML を foreignObject 用に XML 整形 (void 要素を自己終端化)。 */
+    /**
+     * {@link MarkdownRenderer} の HTML を foreignObject 用に XML 整形 (void 要素を自己終端化)。
+     *
+     * <p>整形できても<b>整形式 (well-formed) とは限らない</b>。{@code MarkdownRenderer}
+     * のインライン装飾は正規表現の置換なので、強調記号が既に挿入されたタグの境界を
+     * またぐと {@code <a …><b>a</a></b>} のような入れ子崩れを出しうる。SVG は XML
+     * なので、これが 1 つ混ざるとファイル全体が致命的パースエラーになり、ブラウザでも
+     * Juml 自身の Batik でも<b>開けなくなる</b> — 同じ本文をラスタ経路は
+     * {@code JEditorPane} の寛容なパーサで普通に描くので、SVG で保存したときだけ
+     * 成果物が丸ごと失われる形だった。</p>
+     *
+     * <p>整形式でなければ装飾を捨てて平文へ落とす。<b>飾りが減ること</b>と
+     * <b>ファイルが開けないこと</b>なら、前者を選ぶ。</p>
+     */
     private static String xhtml(String html) {
         // br/hr/img 等の void 要素を XML 準拠で自己終端化する (将来の記法追加にも耐える)。
-        return html.replaceAll("(?i)<(br|hr|img|input|meta|link)([^>]*?)/?>", "<$1$2/>");
+        String x = html.replaceAll("(?i)<(br|hr|img|input|meta|link)([^>]*?)/?>", "<$1$2/>");
+        if (isWellFormedFragment(x)) {
+            return x;
+        }
+        return attr(x.replaceAll("<[^>]*>", ""));
+    }
+
+    /** 断片が XML として整形式か (foreignObject へ入れて壊さないか)。 */
+    private static boolean isWellFormedFragment(String fragment) {
+        try {
+            javax.xml.parsers.DocumentBuilderFactory dbf =
+                    javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            dbf.setNamespaceAware(false);
+            dbf.setValidating(false);
+            dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd",
+                    false);
+            javax.xml.parsers.DocumentBuilder db = dbf.newDocumentBuilder();
+            db.setErrorHandler(null);
+            String doc = "<juml-fragment>" + fragment + "</juml-fragment>";
+            db.parse(new org.xml.sax.InputSource(new java.io.StringReader(doc)));
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static String num(double d) {

@@ -336,10 +336,25 @@ final class KotlinBlockMask {
         return sb.toString();
     }
 
-    /** {@code ()} / {@code []} / {@code &#123;&#125;} のネスト外にある最初の {@code ;} の位置。無ければ -1。 */
+    /**
+     * {@code ()} / {@code []} / {@code &#123;&#125;} のネスト外にある最初の {@code ;} の位置。無ければ -1。
+     *
+     * <p>文字列リテラルの中の括弧は数えない。{@link #codeOnly} はコメントだけを潰して
+     * <b>文字列は原文のまま残す</b>ので (中身が enum 定数の引数だからである)、括弧を
+     * 引数に持つ enum ({@code RPAREN(")")} のようなトークン種別) の {@code ")"} が
+     * 深さを狂わせ、本物の {@code ;} が「入れ子の内側」と判定されて -1 が返っていた。
+     * そうなると定数部が本体ごと丸呑みになり、続く {@code ENUM_CONST} の貪欲な
+     * {@code (\(.*\))?} が<b>メンバー宣言を最後の定数の引数として吸い込む</b>。
+     * このファイルで唯一 {@code skipNonCode} を通っていない走査だった。</p>
+     */
     static int topLevelSemicolon(String s) {
         int depth = 0;
         for (int i = 0; i < s.length(); i++) {
+            int e = KotlinLightScanner.skipNonCode(s, i);
+            if (e > i) {
+                i = e - 1;
+                continue;
+            }
             char c = s.charAt(i);
             if (c == '(' || c == '[' || c == '{') {
                 depth++;

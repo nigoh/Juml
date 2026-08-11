@@ -64,12 +64,45 @@ final class KotlinHeaderScan {
                 if (brackets > 0) {
                     brackets--;
                 }
-            } else if (brackets == 0 && c == '<') {
+            } else if (brackets == 0 && c == '<' && isGenericOpen(s, i)) {
                 angles++;
             } else if (brackets == 0 && c == '>'
                     && !isArrowGreaterThan(s, i) && angles > 0) {
                 angles--;
             }
+        }
+
+        /**
+         * {@code s[i]} の {@code &lt;} がジェネリクスの開きか (比較演算子でないか)。
+         *
+         * <p>「比較は必ず括弧の内側に現れる」という前提は<b>ヘッダ区間の走査でしか成り立たない</b>。
+         * {@link #splitTopLevelCommas} には括弧を<b>先に剥がした</b>本文が来る経路が 2 つあり
+         * ({@code KotlinLightScanner} のプライマリコンストラクタ引数と関数引数)、そこでは
+         * {@code val compact: Boolean = SDK_INT &lt; 21} の比較が深さ 0 に現れる。閉じる
+         * {@code &gt;} は来ないので以降ずっとトップレベル判定が偽になり、<b>後ろの引数が
+         * 1 つ残らず消えて</b>図に誤ったシグネチャが出ていた。</p>
+         *
+         * <p>綴りで見分ける: ジェネリクスの {@code &lt;} は型名の<b>直後に空白なし</b>で続き
+         * ({@code List&lt;String&gt;})、比較の {@code &lt;} は式との間に空白が入る
+         * ({@code SDK_INT &lt; 21})。{@code &lt;=} と {@code &lt;&lt;} は比較・シフトで確定。
+         * 対応する {@code &gt;} が後方に無いものもジェネリクスではない。</p>
+         */
+        private static boolean isGenericOpen(String s, int i) {
+            if (i + 1 < s.length() && (s.charAt(i + 1) == '=' || s.charAt(i + 1) == '<')) {
+                return false;
+            }
+            // 走査区間の先頭に来る {@code <} は型引数リストの開き。ヘッダ走査はクラス名の
+            // 直後から読み始めるので {@code <T : Comparable<T>>(…) : Base()} がこの形になる。
+            // 式が {@code <} で始まることは無いので、比較と取り違える余地は無い。
+            if (i > 0 && !KotlinLightScanner.isIdentPart(s.charAt(i - 1))) {
+                return false;
+            }
+            for (int j = i + 1; j < s.length(); j++) {
+                if (s.charAt(j) == '>' && !isArrowGreaterThan(s, j)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /** 入れ子の外側 (トップレベル) にいるか。 */

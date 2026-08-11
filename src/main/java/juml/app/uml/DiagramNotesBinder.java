@@ -121,14 +121,48 @@ final class DiagramNotesBinder {
      */
     void rebindForProject(SvgPreviewPanel preview, File newRoot, String diagramKey) {
         File previous = boundRoot.get(preview);
-        if (previous != null && !Objects.equals(previous, newRoot)
-                && preview.notes().hasNotes()) {
+        boolean onScreen = preview.notes().hasNotes();
+        if (previous != null && !Objects.equals(previous, newRoot) && onScreen) {
             return;
         }
-        bind(preview, newRoot, diagramKey);
+        // 「引き取り」分岐 (previous == null かつ画面に付箋がある) には、上の
+        // 上書き禁止規則が掛かっていなかった。引き取り先に保存済み付箋があると
+        // ロード側の「レイヤが空のときだけ反映する」規則でそれが読み込まれず、
+        // 次に付箋を 1 つ触った瞬間に画面の一覧が引き取り先の notes.json を
+        // <b>丸ごと上書き</b>して以前のセッションの付箋を消していた。Untitled の
+        // タブキーはセッションごとに 0 から振り直されるため衝突は既定である。
+        // 画面の付箋も引き取り先の付箋もどちらも正当なので、両方を残す。
+        bind(preview, newRoot, diagramKey, previous == null && onScreen);
     }
 
     void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
+        bind(preview, projectRoot, diagramKey, false);
+    }
+
+    /**
+     * Save As によるタブキーの移行。付箋は<b>いま束ねられているストアの中で</b>
+     * キーだけを移す。
+     *
+     * <p>この経路は {@link #rebindForProject} の 2 つの規則をどちらも通っていなかった。
+     * (1) 別プロジェクトの付箋が載ったタブを現在のプロジェクトへ無条件に bind するため、
+     * 切替先の保存済み付箋を上書きして消す。(2) 読み込み中断などで現在のルートが null
+     * だと no-op ストアが差し込まれ、以後の付箋編集がすべて黙って捨てられる
+     * (save が成功を返すので失敗通知も出ない) 上、{@code boundRoot} は旧ルートのまま
+     * 残るので後からプロジェクトを開いても救済されない。</p>
+     *
+     * @param fallbackRoot まだ一度も束ねていないタブ向けの保存先 (現在のプロジェクト)
+     */
+    void migrateKey(SvgPreviewPanel preview, File fallbackRoot, String oldKey, String newKey) {
+        File root = boundRoot.get(preview);
+        if (root == null) {
+            root = fallbackRoot;
+        }
+        renameKey(root, oldKey, newKey);
+        bind(preview, root, newKey);
+    }
+
+    private void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey,
+                      boolean adopt) {
         final DiagramNotesStore s = storeFor(projectRoot);
         final Object token = new Object();
         bindToken.put(preview, token);
@@ -160,8 +194,16 @@ final class DiagramNotesBinder {
                 SwingUtilities.invokeLater(() -> {
                     // 再バインド済み、またはロード完了前にユーザーが付箋を追加していたら
                     // 反映しない (直前の編集を黙って消さない)。
-                    if (bindToken.get(preview) == token && !preview.notes().hasNotes()) {
+                    if (bindToken.get(preview) != token) {
+                        return;
+                    }
+                    if (!preview.notes().hasNotes()) {
                         preview.notes().setData(loaded, loadedConns);
+                        report(Messages.get("note.loaded") + loaded.size());
+                    } else if (adopt) {
+                        // 引き取り: 画面の付箋も引き取り先の保存済み付箋もどちらも
+                        // 消さない。差し替えるとどちらか一方が必ず失われる。
+                        preview.notes().mergeData(loaded, loadedConns);
                         report(Messages.get("note.loaded") + loaded.size());
                     }
                 });
