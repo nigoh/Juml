@@ -143,6 +143,13 @@ public final class VhalAnalyzer {
         if (src == null || src.isEmpty()) {
             return out;
         }
+        // コメントと文字列リテラルの中身を空白へ潰してから走査する。改行と長さは
+        // 保つので、行番号もオフセットもそのまま使える。潰さないと、コメントアウト
+        // した呼び出しやログ文字列の中の "mgr.getProperty(...)" まで<b>実アクセス</b>
+        // として計上され、VHAL レポートと図に存在しない行が並ぶ。引数テキストの
+        // 文字列リテラルも空白になるが、プロパティ ID / Area は識別子か定数なので
+        // 表示への影響はない。
+        src = maskNonCode(src);
         String packageName = readPackage(src);
         String className = readPrimaryClassName(src);
         String fqn = packageName.isEmpty() ? className
@@ -279,6 +286,69 @@ public final class VhalAnalyzer {
         String lower = receiver.toLowerCase();
         return lower.contains("carpropertymanager") || lower.contains("propertymanager")
                 || lower.equals("mcpm") || lower.equals("cpm");
+    }
+
+    /**
+     * コメントと文字列・文字リテラルの中身を空白に置き換える (改行と長さは保存)。
+     * Java と Kotlin の両方: {@code //} 行コメント、{@code /* *&#47;} ブロックコメント、
+     * {@code "…"} (エスケープ対応)、{@code '…'}、Kotlin の生文字列 {@code """…"""}。
+     */
+    private static String maskNonCode(String src) {
+        char[] out = src.toCharArray();
+        int i = 0;
+        int n = out.length;
+        while (i < n) {
+            char c = out[i];
+            if (c == '/' && i + 1 < n && out[i + 1] == '/') {
+                while (i < n && out[i] != '\n') {
+                    out[i++] = ' ';
+                }
+            } else if (c == '/' && i + 1 < n && out[i + 1] == '*') {
+                out[i++] = ' ';
+                out[i++] = ' ';
+                while (i < n && !(out[i] == '*' && i + 1 < n && out[i + 1] == '/')) {
+                    if (out[i] != '\n') {
+                        out[i] = ' ';
+                    }
+                    i++;
+                }
+                if (i < n) {
+                    out[i++] = ' ';
+                    out[i++] = ' ';
+                }
+            } else if (c == '"' && i + 2 < n && out[i + 1] == '"' && out[i + 2] == '"') {
+                i += 3;
+                while (i < n && !(out[i] == '"' && i + 2 < n
+                        && out[i + 1] == '"' && out[i + 2] == '"')) {
+                    if (out[i] != '\n') {
+                        out[i] = ' ';
+                    }
+                    i++;
+                }
+                if (i < n) {
+                    i += 3;
+                }
+            } else if (c == '"' || c == '\'') {
+                char quote = c;
+                i++;
+                while (i < n && out[i] != quote) {
+                    if (out[i] == '\\' && i + 1 < n) {
+                        out[i] = ' ';
+                        out[i + 1] = ' ';
+                        i += 2;
+                        continue;
+                    }
+                    if (out[i] != '\n') {
+                        out[i] = ' ';
+                    }
+                    i++;
+                }
+                i++;
+            } else {
+                i++;
+            }
+        }
+        return new String(out);
     }
 
     private static String readPackage(String src) {

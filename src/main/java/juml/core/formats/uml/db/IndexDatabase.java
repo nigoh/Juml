@@ -63,16 +63,40 @@ public final class IndexDatabase implements AutoCloseable {
 
         boolean fresh = !dbFile.exists() || dbFile.length() == 0;
         Connection conn = openConnection(dbFile);
-        applyPragmas(conn);
+        Integer have;
+        try {
+            applyPragmas(conn);
 
-        if (fresh) {
-            SchemaInitializer.initialize(conn, projectRoot, toolVersion);
-            return new IndexDatabase(dbFile, conn);
-        }
+            if (fresh) {
+                SchemaInitializer.initialize(conn, projectRoot, toolVersion);
+                return new IndexDatabase(dbFile, conn);
+            }
 
-        Integer have = readSchemaVersion(conn);
-        if (have != null && have == SchemaInitializer.SCHEMA_VERSION) {
-            return new IndexDatabase(dbFile, conn);
+            have = readSchemaVersion(conn);
+            if (have != null && have == SchemaInitializer.SCHEMA_VERSION) {
+                return new IndexDatabase(dbFile, conn);
+            }
+        } catch (SQLException probeFailure) {
+            // 破損した DB (SQLITE_NOTADB 等) は最初の PRAGMA で落ちる。ここで接続を
+            // 閉じないと、開くたびに JDBC コネクション (= fd) がリークしていた —
+            // 呼び出し側 (DiskAnalysisCache) はこの例外を握って毎回開き直すので、
+            // 破損 DB が 1 個あるだけでリークが積み上がる。破損はスキーマ不一致と
+            // 同じ「読めない DB」なので、同じ回復 (退避 → 再構築) に載せる。
+            closeQuietly(conn);
+            File discarded = discardOldDb(dbFile, null);
+            juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_002, "IndexDatabase",
+                    "unreadable index db (" + probeFailure.getMessage()
+                            + "); discarded to " + discarded.getName()
+                            + ", full rescan required");
+            Connection rebuilt = openConnection(dbFile);
+            try {
+                applyPragmas(rebuilt);
+                SchemaInitializer.initialize(rebuilt, projectRoot, toolVersion);
+            } catch (SQLException ex) {
+                closeQuietly(rebuilt);
+                throw ex;
+            }
+            return new IndexDatabase(dbFile, rebuilt);
         }
 
         // 不一致 (have が null = meta テーブル無し、または旧バージョン)。
@@ -84,9 +108,22 @@ public final class IndexDatabase implements AutoCloseable {
                 + "); discarded old DB to " + discarded.getName() + ", full rescan required");
 
         Connection fresh2 = openConnection(dbFile);
-        applyPragmas(fresh2);
-        SchemaInitializer.initialize(fresh2, projectRoot, toolVersion);
+        try {
+            applyPragmas(fresh2);
+            SchemaInitializer.initialize(fresh2, projectRoot, toolVersion);
+        } catch (SQLException ex) {
+            closeQuietly(fresh2);
+            throw ex;
+        }
         return new IndexDatabase(dbFile, fresh2);
+    }
+
+    private static void closeQuietly(Connection c) {
+        try {
+            c.close();
+        } catch (SQLException ignored) {
+            // close の失敗はどうにもできない。
+        }
     }
 
     /** 既存接続を取り出す。{@link AutoCloseable} で close するまで有効。 */

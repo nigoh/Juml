@@ -143,6 +143,32 @@ public final class ProjectSettingsPersistor {
             if (saved.containsKey("classDiagram.hiddenAnnotations"))
                 s.setClassDiagramHiddenAnnotations(saved.get("classDiagram.hiddenAnnotations"));
 
+            // 保存側と同じ「後から増えた項目」。復元側にも同時に入れる —
+            // 片側だけだと次の保存で値が既定へ巻き戻る。
+            if (saved.containsKey("style.caption")) style.setCaption(saved.get("style.caption"));
+            if (saved.containsKey("style.monochrome")) {
+                try {
+                    style.setMonochrome(
+                            DiagramStyle.Monochrome.valueOf(saved.get("style.monochrome")));
+                } catch (IllegalArgumentException ignored) { }
+            }
+            if (saved.containsKey("style.roundCorner"))
+                style.setRoundCorner(parseIntOrZero(saved.get("style.roundCorner")));
+            if (saved.containsKey("classDiagram.colorCodeRelations"))
+                s.setClassDiagramColorCodeRelations(
+                        Boolean.parseBoolean(saved.get("classDiagram.colorCodeRelations")));
+            if (saved.containsKey("classDiagram.hideEmptyMembers"))
+                s.setClassDiagramHideEmptyMembers(
+                        Boolean.parseBoolean(saved.get("classDiagram.hideEmptyMembers")));
+            if (saved.containsKey("classDiagram.hideUnlinked"))
+                s.setClassDiagramHideUnlinked(
+                        Boolean.parseBoolean(saved.get("classDiagram.hideUnlinked")));
+            if (saved.containsKey("classDiagram.colorCodeStereotypes"))
+                s.setClassDiagramColorCodeStereotypes(
+                        Boolean.parseBoolean(saved.get("classDiagram.colorCodeStereotypes")));
+            if (saved.containsKey("callGraph.maxDepth"))
+                s.setCallGraphMaxDepth(parseIntOrZero(saved.get("callGraph.maxDepth")));
+
             onStyleRestored.run();
         } catch (RuntimeException ignored) {
             // 設定復元はベストエフォート
@@ -202,6 +228,21 @@ public final class ProjectSettingsPersistor {
             m.put("classDiagram.commentMaxLength",
                     Integer.toString(s.getClassDiagramCommentMaxLength()));
             m.put("classDiagram.hiddenAnnotations", s.getClassDiagramHiddenAnnotations());
+            // 以下は後から増えた項目で、保存にも復元にも入っていなかった。兄弟項目は
+            // 保存されるので「プロジェクトを開き直すと一部の設定だけ戻る」という
+            // 気付きにくい形で現れる (スタイル 3 + クラス図 4 + コールグラフ深さ)。
+            m.put("style.caption", style.getCaption());
+            m.put("style.monochrome", style.getMonochrome().name());
+            m.put("style.roundCorner", Integer.toString(style.getRoundCorner()));
+            m.put("classDiagram.colorCodeRelations",
+                    Boolean.toString(s.isClassDiagramColorCodeRelations()));
+            m.put("classDiagram.hideEmptyMembers",
+                    Boolean.toString(s.isClassDiagramHideEmptyMembers()));
+            m.put("classDiagram.hideUnlinked",
+                    Boolean.toString(s.isClassDiagramHideUnlinked()));
+            m.put("classDiagram.colorCodeStereotypes",
+                    Boolean.toString(s.isClassDiagramColorCodeStereotypes()));
+            m.put("callGraph.maxDepth", Integer.toString(s.getCallGraphMaxDepth()));
             juml.ProjectRepository.getInstance().saveSettings(currentProjectRoot, m);
         } catch (RuntimeException ignored) {
             // 設定保存はベストエフォート

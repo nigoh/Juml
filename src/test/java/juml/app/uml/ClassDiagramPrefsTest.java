@@ -25,7 +25,11 @@ public class ClassDiagramPrefsTest {
         assertFalse(cp.excludeExternal);
         assertFalse(cp.markExternalSupertypes);
         assertFalse(cp.colorCodeRelations);
-        assertEquals(80, cp.commentMaxLength);
+        // 製品既定は 0 (= 全文表示)。PlantUmlClassDiagram.Options.commentMaxLength と
+        // Setting の既定がどちらも 0 なのに、この既定値だけ 80 だったため、
+        // 「既定値へ戻す」がどこにも存在しない値へ「戻って」いた (このテストは
+        // そのずれの方を固定してしまっていた)。
+        assertEquals(0, cp.commentMaxLength);
         assertTrue(cp.hiddenAnnotations.contains("Override"));
         assertTrue(cp.hiddenAnnotations.contains("SuppressWarnings"));
     }

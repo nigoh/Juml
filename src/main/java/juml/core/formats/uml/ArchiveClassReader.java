@@ -161,7 +161,11 @@ public final class ArchiveClassReader {
                 }
                 try {
                     out.add(ExternalClassReader.readHeader(zip, archivePath));
-                } catch (IOException ex) {
+                } catch (IOException | RuntimeException ex) {
+                    // IOException だけを受けていたが、壊れた .class は
+                    // IllegalArgumentException 等の実行時例外でも落ちる。1 エントリの
+                    // 破損で jar 全体 (他の全クラス) を失わない — このガードの目的は
+                    // 最初から「個別エントリの失敗を通知して続行する」ことである。
                     l.onError(juml.util.ErrorCode.PRJ_004, archivePath, -1,
                             "failed to read class " + entryName + ": " + ex.getMessage());
                 }
