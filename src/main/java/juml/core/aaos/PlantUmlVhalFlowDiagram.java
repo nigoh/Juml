@@ -3,6 +3,8 @@
 
 package juml.core.aaos;
 
+import juml.core.formats.uml.PlantUmlCommentFormatter;
+
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -116,7 +118,20 @@ public final class PlantUmlVhalFlowDiagram {
         return sb.toString();
     }
 
+    /**
+     * 引用符付きラベルへ埋め込む文字列のエスケープ。
+     *
+     * <p>{@code "} を潰すだけだった。プロパティ ID や呼び出し元のトークンは
+     * <b>ソースの生テキスト</b>から切り出されるので、引数が複数行に折り返されていれば
+     * 改行がそのまま入る。PlantUML はクォート内の生改行を受け付けないため、
+     * <b>折り返しが 1 箇所あるだけで図が 1 枚も出ない</b> (実測:
+     * {@code Syntax Error? (Assumed diagram type: component)} で SVG 未生成)。</p>
+     *
+     * <p>判定は {@link PlantUmlCommentFormatter#escapeQuotedLabel} に 1 本化する
+     * (改行を畳み、creole と {@code [[…]]} を無害化する)。Android 系の生成器は
+     * 以前から同じ理由でここへ寄せてある。</p>
+     */
     private static String escape(String s) {
-        return s == null ? "" : s.replace("\"", "\\\"");
+        return PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 }

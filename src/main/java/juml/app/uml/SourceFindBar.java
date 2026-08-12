@@ -247,6 +247,21 @@ final class SourceFindBar extends JPanel {
     }
 
     private void run(String query) {
+        run(query, true);
+    }
+
+    /**
+     * 検索を実行する。
+     *
+     * @param moveCaret ヒットへキャレットを移動しスクロールするか。
+     *     利用者が検索フィールドを打ったときは true。<b>対象文書の編集に追随して
+     *     取り直すときは false</b> — ラウンド 28 で入れた追随がここを区別しておらず、
+     *     バーを開いたまま本文を 1 文字打つたびに EDT の次サイクルでキャレットが
+     *     ヒットへ引き戻されてヒット語が選択状態になり、続く 1 打が
+     *     {@code JTextComponent} の既定動作で<b>その選択範囲を置換</b>していた。
+     *     陳腐化を防ぐために入れた監視が、防いだものより破壊的な誤編集を作っていた。
+     */
+    private void run(String query, boolean moveCaret) {
         clearHighlights();
         if (query == null || query.isEmpty()) {
             return;
@@ -295,7 +310,12 @@ final class SourceFindBar extends JPanel {
                 break;
             }
         }
-        showCurrent();
+        if (moveCaret) {
+            showCurrent();
+        } else {
+            // ハイライトと件数だけ更新する。キャレットは利用者のものなので触らない。
+            info.setText((index + 1) + " / " + hits.size());
+        }
     }
 
     /** {@code from} 以降で大文字小文字を無視して {@code needle} を探す (元テキスト基準)。 */
@@ -355,7 +375,9 @@ final class SourceFindBar extends JPanel {
         }
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (isVisible() && !replacing) {
-                run(field.getText());
+                // 取り直すのはヒットとハイライトだけ。キャレットは動かさない —
+                // 打っているのは利用者であり、その位置は利用者のものである。
+                run(field.getText(), false);
             }
         });
     }

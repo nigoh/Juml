@@ -210,10 +210,6 @@ public final class DiskAnalysisCache {
         archiveLegacyOnce();
         File dbFile = DbBootstrap.resolveDbFile(baseDir, projectRoot);
         ensureParent(dbFile);
-        // 全件上書きするため、既存 DB は丸ごと破棄する (TSV 時代の挙動と同じ)。
-        deleteQuietly(dbFile);
-        deleteQuietly(new File(dbFile.getAbsolutePath() + "-wal"));
-        deleteQuietly(new File(dbFile.getAbsolutePath() + "-shm"));
 
         try (IndexDatabase db = IndexDatabase.openOrCreate(
                 dbFile, projectRoot.getAbsolutePath(), TOOL_VERSION)) {
@@ -228,6 +224,7 @@ public final class DiskAnalysisCache {
                     byFile.putIfAbsent(st.file, java.util.Collections.emptyList());
                 }
             }
+            java.util.Set<String> written = new java.util.LinkedHashSet<>();
             for (Map.Entry<File, List<JavaClassInfo>> e : byFile.entrySet()) {
                 File source = e.getKey();
                 String relPath = relativize(projectRoot, source);
@@ -237,11 +234,38 @@ public final class DiskAnalysisCache {
                 SourceStat st = stats.get(source);
                 long mtime = st != null ? st.mtime : source.lastModified();
                 long size = st != null ? st.size : source.length();
-                writer.upsertFile(relPath, IndexWriter.KIND_JAVA, mtime, size,
-                        module, null, e.getValue(), null);
+                try {
+                    writer.upsertFile(relPath, IndexWriter.KIND_JAVA, mtime, size,
+                            module, null, e.getValue(), null);
+                    written.add(relPath);
+                } catch (SQLException perFile) {
+                    // 1 ファイルの失敗で保存全体を中断しない。中断すると DB が中途半端に
+                    // 残り、以後の load は必ずミスして毎回フル再解析になる。
+                    // CLI 側 (IndexCommand) は以前からこの形で続行している。
+                    juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_002, "DiskAnalysisCache",
+                            relPath + ": " + perFile.getMessage());
+                }
             }
+            // 走査から消えた JAVA 行だけを落とす。<b>DB ファイルごと消してはいけない</b> —
+            // 同じ index.db は CLI の `juml index` と共有していて、そちらが持つ
+            // AIDL / Manifest / 集約テーブルまで巻き添えで消えていた
+            // (実測: GUI でプロジェクトを開いた瞬間に aidl_interfaces / manifests /
+            //  components / intent_filters / external_endpoints が全部 0 行になる)。
+            pruneMissingJavaRows(db.connection(), written);
         } catch (SQLException ex) {
             throw new IOException("Failed to save analysis cache: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** DB に残る {@code KIND_JAVA} 行のうち、今回書かなかったものを削除する。 */
+    private static void pruneMissingJavaRows(java.sql.Connection conn,
+            java.util.Set<String> written) throws SQLException {
+        for (String path : new java.util.ArrayList<>(
+                juml.core.formats.uml.db.dao.FilesDao
+                        .listByKind(conn, IndexWriter.KIND_JAVA).keySet())) {
+            if (!written.contains(path)) {
+                juml.core.formats.uml.db.dao.FilesDao.delete(conn, path);
+            }
         }
     }
 

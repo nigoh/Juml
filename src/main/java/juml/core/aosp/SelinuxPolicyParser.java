@@ -39,10 +39,19 @@ public final class SelinuxPolicyParser {
     // subject / target / class / permission には SELinux のワイルドカード '*' と
     // 補集合演算子 '~' が現れ得る (例: allow domain *:process ...; / allow X Y:file ~{ append };)。
     // 文字クラスに '*' '~' を許容し、permission は '~{ ... }' 補集合・'*' 全許可も拾う。
+    // subject / target は「1 トークン」または「{ ... } の集合」のどちらかである。
+    // 以前は reluctant な文字クラスひとつで両方を受けようとしていたので、
+    // `neverallow { domain -init } foo:...` の subject が `{` の直後の空白で切れて
+    // subject="{"、target が残り全部 (`domain -init } foo`) を飲み込んでいた。
+    // AOSP の neverallow はほぼ全部この集合形なので、実ツリーでは表の Subject 列が
+    // 全行 `{` に潰れ、Allow 表には `{` という<b>架空のドメイン</b>のセクションが生えた。
+    // objectClass だけは stripBraces を通していて、兄弟の subject / target には
+    // 同じ規則が掛かっていなかった。集合は 1 つのトークンとして先に食う。
+    private static final String OPERAND = "(?:\\{[^}]*\\}|[A-Za-z_*~][A-Za-z0-9_*~-]*)";
     private static final Pattern ALLOW_RULE = Pattern.compile(
             "(?m)^\\s*(allow|neverallow|dontaudit|auditallow)\\s+"
-                    + "([A-Za-z_{*~][A-Za-z0-9_{}\\s,~*-]*?)\\s+"
-                    + "([A-Za-z_{*~][A-Za-z0-9_{}\\s,~*-]*?)\\s*:\\s*"
+                    + "(" + OPERAND + ")\\s+"
+                    + "(" + OPERAND + ")\\s*:\\s*"
                     + "([A-Za-z_{*~][A-Za-z0-9_{}\\s,~*-]*?)\\s*"
                     + "(?:(~)?\\{\\s*([^}]+?)\\s*\\}|(\\*|[A-Za-z_][A-Za-z0-9_]*))\\s*;");
 
@@ -115,8 +124,8 @@ public final class SelinuxPolicyParser {
                 default: continue;
             }
             SelinuxRule.Builder b = SelinuxRule.builder(kind)
-                    .subject(ar.group(2).trim())
-                    .target(ar.group(3).trim())
+                    .subject(stripBraces(ar.group(2)).trim())
+                    .target(stripBraces(ar.group(3)).trim())
                     .objectClass(stripBraces(ar.group(4)).trim())
                     .complement(ar.group(5) != null)
                     .file(filePath)

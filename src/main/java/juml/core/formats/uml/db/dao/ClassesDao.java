@@ -30,11 +30,23 @@ public final class ClassesDao {
     private ClassesDao() {
     }
 
-    /** {@link JavaClassInfo} を classes/class_interfaces/class_imports に INSERT。新 id を返す。 */
+    /**
+     * {@link JavaClassInfo} を classes/class_interfaces/class_imports に登録し id を返す。
+     *
+     * <p>{@code classes.qn} は UNIQUE なので、同じ完全修飾名を宣言するファイルが 2 つ
+     * あると素の INSERT は制約違反で落ちる。{@code src/main} と {@code src/debug} に
+     * 同名クラスを置く配置は Android のビルドバリアントでごく普通で、Juml はツリー全体を
+     * 走査するので両方拾う。落ちると (a) {@code IndexWriter.upsertFile} が
+     * ファイル行ごとロールバックするので<b>増分スキャンが永久に収束せず</b>、
+     * (b) GUI のディスクキャッシュ保存は途中で中断して以後<b>毎回フル再解析</b>になる。</p>
+     *
+     * <p>図はいずれにせよ 1 つの完全修飾名を 1 つの箱としてしか描けないので、
+     * 後勝ちで上書きする。こうすればファイル行は両方とも残り、走査は収束する。</p>
+     */
     public static long insert(Connection conn, JavaClassInfo info, Long fileId) throws SQLException {
         long classId;
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO classes("
+                "INSERT OR REPLACE INTO classes("
                 + "qn, simple_name, package_name, kind, enclosing, super_class, "
                 + "modifiers, annotations, aaos_category, android_comp, jetpack_stereo, "
                 + "origin, jar_path, detailed, comment, file_id) "
