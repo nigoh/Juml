@@ -62,18 +62,26 @@ public class PumlSourcePanel extends JPanel {
     private final Timer highlightTimer;
     /** 本文を変えない装飾 (ハイライト・現在行・対応括弧・エラー行)。 */
     private final PumlSourceDecorations decorations;
+    /** リネーム・クイックフィックス・整形 (編集モードで配線)。 */
+    private PumlEditorCommands commands;
 
     public PumlSourcePanel() {
         super(new BorderLayout());
         textPane = new JTextPane() {
             @Override public String getToolTipText(java.awt.event.MouseEvent e) {
-                // 波線の理由をその場で読めるようにする。指摘が無ければ既定の
+                // 波線の理由をその場で読めるようにする。指摘が無ければ矢印記法の
+                // 意味 (<|-- は継承、*-- は合成…) を出し、それも無ければ既定の
                 // ツールチップ (読み取り専用ヒント) に譲る。
+                int offset = viewToModel2D(e.getPoint());
                 if (decorations != null) {
-                    String hint = decorations.diagnosticAt(viewToModel2D(e.getPoint()));
+                    String hint = decorations.diagnosticAt(offset);
                     if (hint != null) {
                         return hint;
                     }
+                }
+                String arrow = PumlCompletionDictionary.arrowHover(getText(), offset);
+                if (arrow != null) {
+                    return arrow;
                 }
                 return super.getToolTipText(e);
             }
@@ -269,6 +277,11 @@ public class PumlSourcePanel extends JPanel {
     /** テスト用: 記号一覧バー。 */
     PumlOutlineBar outlineBarForTest() {
         return outlineBar;
+    }
+
+    /** テスト用: リネーム・クイックフィックス・整形コマンド (編集モード前は null)。 */
+    PumlEditorCommands commandsForTest() {
+        return commands;
     }
 
     /**
@@ -635,6 +648,9 @@ public class PumlSourcePanel extends JPanel {
         am.put("juml-surround", action(this::showSurroundMenu));
         // VS Code 相当の編集キー (Enter 自動インデント・自動閉じペア・行移動/複製/削除)。
         PumlEditorKeys.install(textPane, this::runAsCompound);
+        // 書いた後を直すコマンド (リネーム / クイックフィックス / 整形)。
+        commands = new PumlEditorCommands(textPane, this::runAsCompound);
+        commands.install(im, am);
         // 雛形の穴を Tab で巡る配線。素の Tab インデントより優先し、補完ポップアップには
         // 譲る必要があるため、PumlEditorKeys の後・補完ポップアップの前に入れる。
         insertions().install(im, am);
