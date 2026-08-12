@@ -149,7 +149,16 @@ public final class SelinuxPolicyParser {
         return s.replace("{", " ").replace("}", " ").trim();
     }
 
-    /** プロジェクト下を再帰走査して {@code *.te} を集める。 */
+    /**
+     * プロジェクト下を再帰走査して {@code *.te} を集める。
+     *
+     * <p>除外は {@link AospScanExcludes} を使う。以前は 4 つのディレクトリ名を
+     * 手書きしていて、{@code prebuilts} / {@code .repo} / {@code out-soong} 等の
+     * AOSP 追加除外が掛かっていなかった — 同じパッケージの Android.bp / Android.mk /
+     * VINTF 走査は共通の除外を通しているのに、{@code .te} 収集だけが独自の
+     * 短いリストを持つ非対称だった。実 AOSP では {@code prebuilts/} は数十 GB あり、
+     * ここを歩くだけで解析が終わらなくなる。</p>
+     */
     private static void collectTeFiles(File dir, List<File> out, int depth) {
         // シンボリックリンク循環による無限再帰 (StackOverflow) を防ぐ深さ制限。
         if (depth > 64) {
@@ -159,9 +168,7 @@ public final class SelinuxPolicyParser {
         if (children == null) return;
         for (File c : children) {
             if (c.isDirectory()) {
-                String name = c.getName();
-                if (name.equals(".git") || name.equals(".gradle")
-                        || name.equals("build") || name.equals("out")) {
+                if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
                 collectTeFiles(c, out, depth + 1);

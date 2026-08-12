@@ -147,6 +147,10 @@ public final class UmlCommands {
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos;
         if (fileIn.isDirectory()) {
             infos = UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener);
+        } else if (isArchiveFile(fileIn)) {
+            // -c / -q と同じ分岐。無いと .jar/.aar/.class がソーステキストとして読まれ、
+            // クラスが 1 つも抽出できず<b>無言で空の一覧</b>が出ていた。
+            infos = UmlGenerator.extractFromArchive(fileIn, listener);
         } else {
             String src = AndroidProjectScanner.readFile(fileIn);
             infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
@@ -191,6 +195,9 @@ public final class UmlCommands {
                     .addAll(result.getClasses());
             refIndex = idx;
             actions = new UiActionScanner().analyzeProject(fileIn, ctx.includeTests);
+        } else if (isArchiveFile(fileIn)) {
+            // -c / -q と同じ分岐 (上の handleListMethods と同じ理由)。
+            infos = UmlGenerator.extractFromArchive(fileIn, listener);
         } else {
             String src = AndroidProjectScanner.readFile(fileIn);
             infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
