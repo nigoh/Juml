@@ -7,7 +7,10 @@ import juml.util.Messages;
 import org.junit.After;
 import org.junit.Test;
 
-import javax.swing.JToggleButton;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
+import javax.swing.JToolBar;
+import java.awt.Component;
 
 import static org.junit.Assert.*;
 
@@ -29,55 +32,119 @@ public class ToolBarBuilderTest {
         return new ToolBarBuilder(DiagramKind.CLASS, cb).build();
     }
 
+    /** ポップアップに実際に並んだメニュー項目の数。 */
+    private static int menuItemCount(JPopupMenu popup) {
+        int n = 0;
+        for (Component c : popup.getComponents()) {
+            if (c instanceof JMenuItem) {
+                n++;
+            }
+        }
+        return n;
+    }
+
     /**
-     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) とレイアウトの画面/実寸を除く全図種に
-     * トグルが作られること。これらは各図タブ上部の切替バーへ一本化したため、ツールバーには
-     * 出さない (LAYOUT は入口として残す)。
+     * メソッド系図種 (SEQUENCE/ACTIVITY/CALLGRAPH) とレイアウトの画面/実寸を除く全図種が
+     * 図種ドロップダウンの一覧に並ぶこと。これらは各図タブ上部の切替バーへ一本化したため、
+     * 一覧には出さない (LAYOUT は入口として残す)。
      */
     @Test
-    public void build_createsToggleForEveryNonMethodDiagramKind() {
+    public void build_createsPopupItemForEveryNonMethodDiagramKind() {
         ToolBarBuilder.Result r = buildDefault();
         for (DiagramKind k : DiagramKind.values()) {
             if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
                     || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
-                assertNull("In-bar-only kind " + k + " should not appear in the toolbar",
-                        r.diagramToggles.get(k));
+                assertNull("In-bar-only kind " + k + " should not appear in the dropdown",
+                        r.diagramKindChooser.itemFor(k));
             } else {
-                assertNotNull("Missing toggle for " + k, r.diagramToggles.get(k));
+                assertNotNull("Missing dropdown item for " + k,
+                        r.diagramKindChooser.itemFor(k));
             }
         }
         assertEquals(DiagramKind.values().length - ToolBarBuilder.DIAGRAMS_METHOD.size()
                         - ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.size(),
-                r.diagramToggles.size());
+                menuItemCount(r.diagramKindChooser.popup()));
     }
 
-    /** メソッド系図種はツールバーのトグルとして生成されないこと。 */
+    /** メソッド系図種は図種ドロップダウンの一覧に出ないこと。 */
     @Test
-    public void build_omitsMethodKindToggles() {
+    public void build_omitsMethodKindsFromPopup() {
         ToolBarBuilder.Result r = buildDefault();
-        assertNull(r.diagramToggles.get(DiagramKind.SEQUENCE));
-        assertNull(r.diagramToggles.get(DiagramKind.ACTIVITY));
-        assertNull(r.diagramToggles.get(DiagramKind.CALLGRAPH));
+        assertNull(r.diagramKindChooser.itemFor(DiagramKind.SEQUENCE));
+        assertNull(r.diagramKindChooser.itemFor(DiagramKind.ACTIVITY));
+        assertNull(r.diagramKindChooser.itemFor(DiagramKind.CALLGRAPH));
     }
 
+    /** ボタンのラベルは初期図種を示すこと (一覧を開かなくても現在の図種が分かる)。 */
     @Test
-    public void build_initialKindIsSelected() {
+    public void build_buttonLabelShowsInitialKind() {
         ToolBarBuilder.Result r = buildDefault();
-        JToggleButton classBtn = r.diagramToggles.get(DiagramKind.CLASS);
-        assertTrue("CLASS button should be selected initially", classBtn.isSelected());
+        String label = r.diagramKindChooser.component().getText();
+        assertTrue("Button label should show the initial kind but was: " + label,
+                label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.CLASS)));
     }
 
+    /** ボタンのラベルは選ばれていない図種を示さないこと。 */
     @Test
-    public void build_nonInitialKindIsNotSelected() {
+    public void build_buttonLabelOmitsNonInitialKind() {
         ToolBarBuilder.Result r = buildDefault();
-        JToggleButton pkgBtn = r.diagramToggles.get(DiagramKind.PACKAGE);
-        assertFalse("PACKAGE button should not be selected initially", pkgBtn.isSelected());
+        String label = r.diagramKindChooser.component().getText();
+        assertFalse("Button label should not show PACKAGE but was: " + label,
+                label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.PACKAGE)));
     }
 
     @Test
     public void build_toolBarPanelIsNotNull() {
         ToolBarBuilder.Result r = buildDefault();
         assertNotNull(r.toolBarPanel);
+    }
+
+    /**
+     * 上部ツールバーは 1 段だけであること。以前はアクション行の下に図種切替行を積んで
+     * いたが、メニューバーと合わせて 3 段になり縦の作業領域を圧迫していたため、
+     * 図種切替はアクション行末尾のドロップダウンへ畳んだ。
+     */
+    @Test
+    public void build_toolBarPanelHasNoDiagramKindRow() {
+        ToolBarBuilder.Result r = buildDefault();
+        assertTrue("Tool bar should be a single JToolBar row but was: "
+                + r.toolBarPanel.getClass().getName(), r.toolBarPanel instanceof JToolBar);
+        for (Component c : ((JToolBar) r.toolBarPanel).getComponents()) {
+            assertFalse("A nested tool bar row should not exist any more",
+                    c instanceof JToolBar);
+        }
+    }
+
+    /** 図種ドロップダウンのボタンがアクション行に載っていること。 */
+    @Test
+    public void build_toolBarContainsDiagramKindButton() {
+        ToolBarBuilder.Result r = buildDefault();
+        boolean found = false;
+        for (Component c : ((JToolBar) r.toolBarPanel).getComponents()) {
+            if (c == r.diagramKindChooser.component()) {
+                found = true;
+            }
+        }
+        assertTrue("Diagram kind dropdown should sit on the action tool bar", found);
+    }
+
+    /**
+     * カテゴリ区切りは「実際に項目が並んだカテゴリ」の間にだけ入ること。メソッド系
+     * カテゴリは一覧から全滅するので、素朴にカテゴリごとへ区切りを入れると空の区切りが
+     * 残る。先頭/末尾の区切りと連続した区切りが無いことで検証する。
+     */
+    @Test
+    public void build_popupHasNoStraySeparators() {
+        ToolBarBuilder.Result r = buildDefault();
+        Component[] cs = r.diagramKindChooser.popup().getComponents();
+        assertTrue("Popup should not be empty", cs.length > 0);
+        assertTrue("Popup should not start with a separator", cs[0] instanceof JMenuItem);
+        assertTrue("Popup should not end with a separator",
+                cs[cs.length - 1] instanceof JMenuItem);
+        for (int i = 1; i < cs.length; i++) {
+            assertFalse("Two separators in a row at index " + i,
+                    !(cs[i] instanceof JMenuItem) && !(cs[i - 1] instanceof JMenuItem));
+        }
     }
 
     @Test

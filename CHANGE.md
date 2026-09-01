@@ -4,6 +4,16 @@ Change log
 2.1
 --------
 
+* **メニューが 3 段でわかりづらい問題を解消: 図種切替ツールバーを「図種ドロップダウン」1 個へ集約** (`DiagramKindChooser` 新規 / `ToolBarBuilder` / `DiagramController` / `DiagramControllerDeps` / `UmlMainFrame`)
+    * **背景**: ウィンドウ上部が「メニューバー + アクションツールバー + 図種切替ツールバー」の 3 段構成で、図種切替の入口も「Diagram メニューのラジオ / トップの図種トグル / タブ内切替バー」の 3 箇所に分散し、どこを操作すればよいか迷う状態だった。図種トグル行は 16 個のボタンが常時 1 行を占有し、縦の作業領域も削っていた。
+    * **図種切替行 (3 段目) を廃止し、アクション行の末尾に「図種: &lt;現在の図種&gt; ▾」ボタンを 1 個置く**: 押すとカテゴリ区切り・カテゴリ色アイコン付きのポップアップが開く。カテゴリ順・区切り・アイコン・ツールチップ・アクセシブル名は従来のトグル行からそのまま引き継ぎ、一覧性は落とさずに上部を 2 段へ減らした。
+    * **ボタンのラベルは常に現在の図種を表示**: 一覧を開かなくても状態を見失わない。一覧に項目を持たない図種 (Sequence / Activity / Call Graph / Layout の画面・実寸。切替はタブ上部の切替バーへ一本化済み) がアクティブなときもラベルには出す。図種を持たない自由編集エディタタブではプレースホルダを表示する。
+    * **有効/無効の方針は維持**: 到達できない図種は項目を消さずグレーアウト。プロジェクト未ロード (空集合) ではボタンごと無効化し、「押しても何も起きない」状態を避ける。
+    * **`DiagramController` から Swing 部品の直接操作を排除**: `EnumMap<DiagramKind, JToggleButton>` + `ButtonGroup` を渡す形をやめ、`setCurrentKind` / `setAvailableKinds` の 2 メソッドだけを持つ `DiagramKindChooser` を受け取る形にした (`.claude/rules/gui-tab-architecture.md` の責務分離に沿う)。参照ゼロの dead field だった `Result.diagramToolbarGroup` も削除。
+    * **図種切替が無反応に見える経路を塞いだ**: `selectDiagramKind` の早期 return 経路 (フォーカス中タブの題材を保って開き直す場合) は UI 同期を `addOrFocusTab` に委ねていたが、未ロード時や既に選択中の同一タブでは何も発火しないためラベルが古いまま残る。同経路でも `reflectKindInToolbar` を呼ぶよう修正。
+    * テスト: `ToolBarBuilderTest` を一覧項目ベースへ書き換え (項目 16 種・メソッド系は一覧に出ない・ラベルが初期図種を示す) し、「上部が 1 段の `JToolBar` で図種切替行を持たない」「空カテゴリで余分な区切りが出ない」回帰を追加。`DiagramControllerTest` に「一覧に無い図種でもラベル更新」「null 図種でプレースホルダ」「空集合でボタン無効化」を追加。`ReadmeDemoRecordingIT` の図種切替操作をボタン→一覧項目の 2 段クリックへ更新。
+    * 目的: 「メニューが 3 段でわかりづらい・もっと簡単な操作にしたい」という要望に対し、上部を 2 段へ減らして縦の作業領域を広げ、図種切替の入口を 1 箇所に絞るため。
+
 * **GUI 実起動スクリーンショット + a11y/操作性監査で確定したバグ・改善を修正** (`PlantUmlRenderer` / `DiagramTabPane` / `UmlMainFrame` / `GotoLineBar` / `PumlCompletionPopup` / `ExportController` / `SketchViewport`)
     * **背景**: Xvfb 上で `UmlMainFrame` を実起動して主要画面 (ウェルカム/エディタ/補完/keep-last-good 失敗/デザイナー、ライト+ダーク) を PNG 採取し、`gui-auditor` のコード監査と突き合わせて、実際に使えない/使いにくい箇所を洗い出した。
     * **[Critical] 下書き復元プロンプトを Esc / ウィンドウクローズで閉じると全下書きが無警告削除されていた** (`UmlMainFrame.promptDraftRecovery`): `showConfirmDialog` は Esc/×で `CLOSED_OPTION` を返し、それが `else`(破棄) に落ちていた。クラッシュ保護が最も自然な離脱操作でデータ消失を招く重大バグ。明示的な「いいえ」(`NO_OPTION`) のときだけ破棄し、Esc/×では下書きを保持して次回また尋ねる非破壊デフォルトへ修正 (注入シーム化して回帰テスト `DraftRecoveryPromptTest`)。

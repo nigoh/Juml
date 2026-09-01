@@ -22,7 +22,6 @@ import javax.swing.JProgressBar;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
-import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
@@ -81,8 +80,8 @@ public class UmlMainFrame extends JFrame {
     private JMenuItem cancelLoadingItem;
     private ButtonGroup diagramGroup;
     private java.util.EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems;
-    /** ツールバー上の「図種切替」トグルボタン。メニュー側ラジオと選択状態を同期する。 */
-    private java.util.EnumMap<DiagramKind, JToggleButton> diagramToggles;
+    /** ツールバー末尾の図種ドロップダウン。メニュー側ラジオと表示を同期する。 */
+    private DiagramKindChooser diagramKindChooser;
     private javax.swing.JButton addNoteButton; // アクティブタブ無し時に無効化
     /** プロジェクト未ロード時に無効化するエクスポート系 UI 要素。 */
     private java.util.List<JMenuItem> exportMenuItems;
@@ -470,7 +469,7 @@ public class UmlMainFrame extends JFrame {
         tcb.selectDiagramKind = k -> controller.selectDiagramKind(k);
         ToolBarBuilder.Result toolBarResult =
                 new ToolBarBuilder(DiagramKind.CLASS, tcb).build();
-        diagramToggles = toolBarResult.diagramToggles;
+        diagramKindChooser = toolBarResult.diagramKindChooser;
         addNoteButton = toolBarResult.addNoteButton;
         exportToolbarButton = toolBarResult.saveButton;
         if (addNoteButton != null) {
@@ -583,7 +582,7 @@ public class UmlMainFrame extends JFrame {
         deps.state = state;
         deps.cacheSupplier = () -> cache;
         deps.diagramItems = diagramItems;
-        deps.diagramToggles = diagramToggles;
+        deps.diagramKindChooser = diagramKindChooser;
         deps.treePanel = treePanel;
         deps.mainTabs = mainTabs;
         deps.tabPane = tabPane;

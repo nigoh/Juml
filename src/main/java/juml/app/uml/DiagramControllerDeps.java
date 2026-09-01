@@ -5,7 +5,6 @@ package juml.app.uml;
 
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTabbedPane;
-import javax.swing.JToggleButton;
 import java.util.EnumMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -19,7 +18,8 @@ public final class DiagramControllerDeps {
     public DiagramState state;
     public Supplier<ProjectAnalysisCache> cacheSupplier;
     public EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems;
-    public EnumMap<DiagramKind, JToggleButton> diagramToggles;
+    /** ツールバーの図種ドロップダウン。UI を組まないテストでは null でよい。 */
+    public DiagramKindChooser diagramKindChooser;
     public ProjectTreePanel treePanel;
     public JTabbedPane mainTabs;
     public DiagramTabPane tabPane;

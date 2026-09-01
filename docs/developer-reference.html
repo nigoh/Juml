@@ -542,7 +542,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
         <thead><tr><th>領域</th><th>コンポーネント</th><th>責務</th></tr></thead>
         <tbody>
           <tr><td>上部</td><td>メニューバー</td><td>UI 構築のみ。操作は <code>Callbacks</code> 経由で委譲</td></tr>
-          <tr><td>NORTH</td><td>ツールバー（2 段）</td><td>上段=アクション、下段=図種トグル</td></tr>
+          <tr><td>NORTH</td><td>ツールバー（1 段）</td><td>アクション + 行末尾の図種ドロップダウン</td></tr>
           <tr><td>CENTER 左</td><td><code>ProjectTreePanel</code></td><td>サイドバー。module→package→class→method の遅延ツリー + 凡例</td></tr>
           <tr><td>CENTER 右</td><td><code>DiagramTabPane</code></td><td>動的ダイアグラムタブ + 末尾固定ユーティリティタブ 6 本</td></tr>
           <tr><td>SOUTH</td><td>ステータスバー</td><td>中央=メッセージ、右=プログレスバー + ズーム率</td></tr>
@@ -593,7 +593,7 @@ java -jar Juml.jar --all -o ./out ~/AndroidStudioProjects/MyApp</code></pre>
         <p><b>Help:</b> Usage <kbd>F1</kbd> / About。</p>
       </details>
       <h4>ツールバー</h4>
-      <p>上段アクション：<span class="pill">Open</span><span class="pill">Save</span><span class="pill">Refresh</span><span class="pill">Search</span>。下段は <code>DiagramKind.values()</code> 全 18 種の排他トグル（Class / Package / Sequence / Activity / Component / Dependency / Manifest / Layout / Screen / Resources / Common / Cycles / Navigation / Module / Inherit / Call Graph / Screen Flow / Soong）。</p>
+      <p>アクション：<span class="pill">Open</span><span class="pill">Save</span><span class="pill">Refresh</span><span class="pill">Search</span>。行末尾の図種ドロップダウン（<code>DiagramKindChooser</code>）から選ぶのは（Class / Package / Sequence / Activity / Component / Dependency / Manifest / Layout / Screen / Resources / Common / Cycles / Navigation / Module / Inherit / Call Graph / Screen Flow / Soong）。</p>
 
       <h3 id="gui-tabs">タブのライフサイクルとフォーカス連動</h3>
       <ul>
