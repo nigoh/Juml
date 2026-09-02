@@ -9,7 +9,6 @@ import juml.util.Messages;
 
 import javax.swing.JOptionPane;
 import javax.swing.JRadioButtonMenuItem;
-import javax.swing.JToggleButton;
 import javax.swing.JTabbedPane;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -32,7 +31,7 @@ public final class DiagramController {
     final DiagramState state;
     private final Supplier<ProjectAnalysisCache> cacheSupplier;
     final EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems;
-    private final EnumMap<DiagramKind, JToggleButton> diagramToggles;
+    private final DiagramKindChooser diagramKindChooser;
     private final ProjectTreePanel treePanel;
     private final JTabbedPane mainTabs;
     private final DiagramTabPane tabPane;
@@ -53,7 +52,7 @@ public final class DiagramController {
         this.state = deps.state;
         this.cacheSupplier = deps.cacheSupplier;
         this.diagramItems = deps.diagramItems;
-        this.diagramToggles = deps.diagramToggles;
+        this.diagramKindChooser = deps.diagramKindChooser;
         this.treePanel = deps.treePanel;
         this.mainTabs = deps.mainTabs;
         this.tabPane = deps.tabPane;
@@ -473,13 +472,14 @@ public final class DiagramController {
     // -------------------------------------------------------------------------
 
     /**
-     * 利用可能な図種に応じてツールバーのトグルと Diagram メニューのラジオを有効/無効化する。
-     * 非表示 (setVisible) ではなく無効化 (setEnabled) にすることで、ボタンの存在は伝えつつ
-     * 「今は到達できない」ことを示す。プロジェクト未ロード時は空集合を渡して全無効化する。
+     * 利用可能な図種に応じて図種ドロップダウンの項目と Diagram メニューのラジオを
+     * 有効/無効化する。非表示 (setVisible) ではなく無効化 (setEnabled) にすることで、
+     * 項目の存在は伝えつつ「今は到達できない」ことを示す。
+     * プロジェクト未ロード時は空集合を渡して全無効化する。
      */
     public void updateAvailableDiagrams(EnumSet<DiagramKind> allowed) {
-        for (java.util.Map.Entry<DiagramKind, JToggleButton> e : diagramToggles.entrySet()) {
-            e.getValue().setEnabled(allowed.contains(e.getKey()));
+        if (diagramKindChooser != null) {
+            diagramKindChooser.setAvailableKinds(allowed);
         }
         for (java.util.Map.Entry<DiagramKind, JRadioButtonMenuItem> e : diagramItems.entrySet()) {
             e.getValue().setEnabled(allowed.contains(e.getKey()));
@@ -532,7 +532,10 @@ public final class DiagramController {
         }
     }
 
-    /** メニューラジオ/ツールバートグルの選択を {@code kind} に合わせる (見た目のみ)。 */
+    /**
+     * メニューラジオの選択とツールバーの図種ドロップダウン表示を {@code kind} に合わせる
+     * (見た目のみ)。図種を持たないタブでは {@code kind} が null で呼ばれ得る。
+     */
     void reflectKindInToolbar(DiagramKind kind) {
         JRadioButtonMenuItem item = diagramItems.get(kind);
         if (item != null) {
@@ -593,6 +596,9 @@ public final class DiagramController {
             TreeNodeOpenRequest reopen = reopenRequestFor(tabPane.focusedTabRequest(), kind);
             if (reopen != null) {
                 tabPane.addOrFocusTab(reopen);
+                // addOrFocusTab は未ロード時や既に選択中の同一タブでは何も発火しない。
+                // その場合もツールバーの表示はアクティブタブの図種へ揃えておく。
+                reflectKindInToolbar(tabPane.activeTabKind());
                 return;
             }
         }
@@ -710,16 +716,13 @@ public final class DiagramController {
     }
 
     /**
-     * ツールバーのトグルボタン側で現在の図種を反映する (メニューラジオと双方向同期)。
+     * ツールバーの図種ドロップダウン側で現在の図種を反映する (メニューラジオと双方向同期)。
+     * 一覧に項目を持たない図種 (メソッド系・レイアウトの画面/実寸) や、図種を持たない
+     * タブの {@code null} でもボタンのラベルは更新する。
      */
     public void syncDiagramToggle(DiagramKind kind) {
-        JToggleButton b = diagramToggles.get(kind);
-        if (b != null) {
-            if (!b.isSelected()) {
-                b.setSelected(true);
-            }
-        } else {
-            clearButtonGroupOf(diagramToggles.values()); // トグルなし図種: stale 選択を解除
+        if (diagramKindChooser != null) {
+            diagramKindChooser.setCurrentKind(kind);
         }
     }
 

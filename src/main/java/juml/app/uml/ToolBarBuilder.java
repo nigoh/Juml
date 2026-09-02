@@ -7,18 +7,20 @@ import juml.util.Messages;
 
 import javax.swing.JButton;
 import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JToggleButton;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JToolBar;
-import java.awt.BorderLayout;
 import java.awt.event.ActionListener;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.function.Consumer;
 
 /**
- * ウィンドウ上部のツールバー（アクション行 + 図種切替行）を構築するクラス。
+ * ウィンドウ上部のアクションツールバーを構築するクラス。
+ *
+ * <p>以前は「アクション行 + 図種切替行」の 2 段を返していたが、メニューバーと合わせて
+ * 3 段が積み重なり縦の作業領域を圧迫していたため、図種切替は行末尾の
+ * {@link DiagramKindChooser} (ドロップダウン 1 個) へ畳んで 1 段にした。</p>
  *
  * <p>UI の構築のみ担当し、状態変更は行わない。
  * アクションはすべて {@link Callbacks} 経由で呼び出し側に委譲する。</p>
@@ -72,21 +74,19 @@ public final class ToolBarBuilder {
     /** {@link #build()} の戻り値。 */
     public static final class Result {
         public final JComponent toolBarPanel;
-        public final EnumMap<DiagramKind, JToggleButton> diagramToggles;
-        public final javax.swing.ButtonGroup diagramToolbarGroup;
+        /** 図種ドロップダウン (現在の図種の表示と切替)。 */
+        public final DiagramKindChooser diagramKindChooser;
         /** 「図に付箋を追加」ボタン (アクティブタブ無し時に無効化する用)。null 可。 */
         public final JButton addNoteButton;
         /** エクスポートボタン (プロジェクト未ロード時に無効化する用)。 */
         public final JButton saveButton;
 
         Result(JComponent toolBarPanel,
-               EnumMap<DiagramKind, JToggleButton> diagramToggles,
-               javax.swing.ButtonGroup diagramToolbarGroup,
+               DiagramKindChooser diagramKindChooser,
                JButton addNoteButton,
                JButton saveButton) {
             this.toolBarPanel = toolBarPanel;
-            this.diagramToggles = diagramToggles;
-            this.diagramToolbarGroup = diagramToolbarGroup;
+            this.diagramKindChooser = diagramKindChooser;
             this.addNoteButton = addNoteButton;
             this.saveButton = saveButton;
         }
@@ -97,6 +97,8 @@ public final class ToolBarBuilder {
     /** {@link #buildActionToolBar()} が生成する付箋ボタンの参照 (Result へ渡す)。 */
     private JButton addNoteButton;
     private JButton saveButton;
+    /** {@link #buildActionToolBar()} が生成する図種ドロップダウン (Result へ渡す)。 */
+    private DiagramKindChooser diagramKindChooser;
 
     public ToolBarBuilder(DiagramKind initialKind, Callbacks cb) {
         this.initialKind = initialKind;
@@ -105,12 +107,8 @@ public final class ToolBarBuilder {
 
     /** ツールバーコンポーネントを構築して返す。EDT から呼ぶこと。 */
     public Result build() {
-        JPanel container = new JPanel(new BorderLayout(0, 0));
-        container.add(buildActionToolBar(), BorderLayout.NORTH);
-        EnumMap<DiagramKind, JToggleButton> toggles = new EnumMap<>(DiagramKind.class);
-        javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
-        container.add(buildDiagramKindToolBar(toggles, group), BorderLayout.SOUTH);
-        return new Result(container, toggles, group, addNoteButton, saveButton);
+        JToolBar bar = buildActionToolBar();
+        return new Result(bar, diagramKindChooser, addNoteButton, saveButton);
     }
 
     private JToolBar buildActionToolBar() {
@@ -144,6 +142,11 @@ public final class ToolBarBuilder {
                     e -> cb.addNote.run());
             bar.add(addNoteButton);
         }
+        // 図種切替は専用の 1 行を持たず、この行の末尾のドロップダウンへ集約する。
+        // 付箋ボタンの有無 (cb.addNote) に関わらず常に置く。
+        bar.addSeparator();
+        diagramKindChooser = buildDiagramKindChooser();
+        bar.add(diagramKindChooser.component());
         return bar;
     }
 
@@ -180,21 +183,26 @@ public final class ToolBarBuilder {
     }
 
     /**
-     * トップツールバーには出さない図種。メソッド系 (SEQUENCE/ACTIVITY/CALLGRAPH) は
+     * 図種ドロップダウンの一覧には出さない図種。メソッド系 (SEQUENCE/ACTIVITY/CALLGRAPH) は
      * メソッド図タブ上部の切替バー ({@link DiagramTabPane} の kindBar) へ一本化したため、
-     * ツールバーからは除外する。{@link #CATEGORIES}（アイコン着色に使う）からは外さず、
-     * 描画時にここでフィルタする。
+     * 一覧からは除外する。{@link #CATEGORIES}（アイコン着色に使う）からは外さず、
+     * 項目生成時にここでフィルタする。
+     *
+     * <p>これらの図種もアクティブになればボタンのラベルには表示される
+     * ({@link DiagramKindChooser#setCurrentKind})。一覧から選べないだけで、
+     * 現在の図種としては正しく示す。</p>
      */
     private static final EnumSet<DiagramKind> TOOLBAR_HIDDEN_KINDS = EnumSet.of(
             DiagramKind.SEQUENCE, DiagramKind.ACTIVITY, DiagramKind.CALLGRAPH,
             DiagramKind.LAYOUT_SCREEN, DiagramKind.LAYOUT_RENDER);
 
-    private JToolBar buildDiagramKindToolBar(EnumMap<DiagramKind, JToggleButton> toggles,
-                                             javax.swing.ButtonGroup group) {
-        JToolBar bar = new JToolBar();
-        bar.setFloatable(false);
-        bar.setRollover(true);
-        bar.add(new JLabel(Messages.get("toolbar.diagramLabel")));
+    /**
+     * 図種ドロップダウンを組み立てる。カテゴリ順・カテゴリ間の区切り・カテゴリ色の
+     * アイコンは、以前の図種切替行と同じ並びをそのまま引き継ぐ。
+     */
+    private DiagramKindChooser buildDiagramKindChooser() {
+        JPopupMenu popup = new JPopupMenu();
+        EnumMap<DiagramKind, JMenuItem> items = new EnumMap<>(DiagramKind.class);
         boolean anyRendered = false;
         for (DiagramCategory cat : CATEGORIES) {
             boolean firstInCategory = true;
@@ -202,29 +210,24 @@ public final class ToolBarBuilder {
                 if (TOOLBAR_HIDDEN_KINDS.contains(k)) {
                     continue;
                 }
-                // カテゴリの先頭ボタンを描く直前だけセパレータを入れる (空カテゴリでは入れない)。
+                // カテゴリの先頭項目を作る直前だけセパレータを入れる (空カテゴリでは入れない)。
                 if (firstInCategory && anyRendered) {
-                    bar.addSeparator();
+                    popup.addSeparator();
                 }
                 firstInCategory = false;
                 anyRendered = true;
                 // 図種ごとの Material グリフをカテゴリ色で着色し、ひと目で図種を識別できるようにする。
                 javax.swing.Icon icon = MaterialIcons.of(kindGlyph(k), 16, cat.color);
-                JToggleButton b = new JToggleButton(toolbarLabel(k), icon);
-                b.setToolTipText(k.getDisplayName() + tooltipExtra(k));
-                b.getAccessibleContext().setAccessibleName(k.getDisplayName());
-                b.setIconTextGap(4);
-                if (k == initialKind) {
-                    b.setSelected(true);
-                }
+                JMenuItem item = new JMenuItem(toolbarLabel(k), icon);
+                item.setToolTipText(k.getDisplayName() + tooltipExtra(k));
+                item.getAccessibleContext().setAccessibleName(k.getDisplayName());
                 final DiagramKind kind = k;
-                b.addActionListener(e -> cb.selectDiagramKind.accept(kind));
-                group.add(b);
-                toggles.put(k, b);
-                bar.add(b);
+                item.addActionListener(e -> cb.selectDiagramKind.accept(kind));
+                items.put(k, item);
+                popup.add(item);
             }
         }
-        return bar;
+        return new DiagramKindChooser(initialKind, popup, items);
     }
 
     /**

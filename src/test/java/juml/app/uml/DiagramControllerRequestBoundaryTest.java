@@ -9,7 +9,6 @@ import org.junit.Test;
 import javax.swing.JLabel;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTabbedPane;
-import javax.swing.JToggleButton;
 import java.util.EnumMap;
 import java.util.Set;
 
@@ -39,16 +38,13 @@ public class DiagramControllerRequestBoundaryTest {
         state = new DiagramState();
         ProjectAnalysisCache cache = new ProjectAnalysisCache();
         EnumMap<DiagramKind, JRadioButtonMenuItem> items = new EnumMap<>(DiagramKind.class);
-        EnumMap<DiagramKind, JToggleButton> toggles = new EnumMap<>(DiagramKind.class);
         for (DiagramKind k : DiagramKind.values()) {
             items.put(k, new JRadioButtonMenuItem(k.name()));
-            toggles.put(k, new JToggleButton(k.name()));
         }
         DiagramControllerDeps deps = new DiagramControllerDeps();
         deps.state = state;
         deps.cacheSupplier = () -> cache;
         deps.diagramItems = items;
-        deps.diagramToggles = toggles;
         deps.treePanel = new ProjectTreePanel();
         deps.mainTabs = new JTabbedPane();
         deps.tabPane = null;
