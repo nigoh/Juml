@@ -330,4 +330,30 @@ public class GitRepoServiceTest {
         // HEAD が先頭 (ソート順 ordinal 0)。
         assertEquals(GitRepoService.RefLabel.Type.HEAD, atHead.get(0).type);
     }
+
+    /**
+     * bug-hunt R3 で発見: 比較ダイアログ (クラス図 / メソッド図) が旧内容を新パスで読み、
+     * リネームされたファイルの旧側が null (全追加) に化けていた。旧側パスの解決を検証する。
+     */
+    @Test
+    public void oldPathFor_resolvesRenamedSourceOnlyForParentCompare() throws Exception {
+        Files.delete(new File(root, "a.txt").toPath());
+        writeFile("renamed.txt", "line1\nline2\n");
+        git.add().addFilepattern("renamed.txt").call();
+        git.rm().setCached(true).addFilepattern("a.txt").call();
+        RevCommit renamed = git.commit().setMessage("rename a.txt to renamed.txt")
+                .setAuthor("Dave", "dave@example.com")
+                .setCommitter("Dave", "dave@example.com").call();
+        String rev = renamed.getName();
+
+        assertEquals("親比較ではリネーム元のパスを返す",
+                "a.txt", service.oldPathFor("renamed.txt", null, rev));
+        assertEquals("任意 2 リビジョン比較では新パスのまま",
+                "renamed.txt", service.oldPathFor("renamed.txt", second.getName(), rev));
+        assertEquals("リネームでないファイルはそのまま",
+                "b.txt", service.oldPathFor("b.txt", null, rev));
+        String oldSrc = service.fileContentAt(service.parentOf(rev),
+                service.oldPathFor("renamed.txt", null, rev));
+        assertEquals("旧パス経由で旧内容が読めること", "line1\nline2\n", oldSrc);
+    }
 }

@@ -105,7 +105,10 @@ final class GitDiagramCompareDialog extends JDialog {
                 String base = oldRev != null ? oldRev : svc.parentOf(newRev);
                 String baseLabel = base != null
                         ? shortSha(base) : Messages.get("git.umldiff.emptyBase");
-                String oldSrc = base != null ? svc.fileContentAt(base, relPath) : null;
+                // リネームされたファイルは旧内容を旧パスから読む (GitUmlDiffDialog と同じ)。
+                // 新パスのまま読むと base 側に無く null (= 全追加) に化ける。
+                String oldPath = svc.oldPathFor(relPath, oldRev, newRev);
+                String oldSrc = base != null ? svc.fileContentAt(base, oldPath) : null;
                 String newSrc = svc.fileContentAt(newRev, relPath);
 
                 List<ClassStructureDiff.ClassDiff> diff = ClassStructureDiff.compare(

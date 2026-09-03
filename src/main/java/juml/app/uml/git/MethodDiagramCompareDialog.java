@@ -141,8 +141,10 @@ abstract class MethodDiagramCompareDialog extends JDialog {
         new SwingWorker<List<Entry>, Void>() {
             @Override protected List<Entry> doInBackground() throws Exception {
                 String base = oldRev != null ? oldRev : svc.parentOf(newRev);
+                // リネームされたファイルは旧内容を旧パスから読む (全追加への化け防止)。
+                String oldPath = svc.oldPathFor(relPath, oldRev, newRev);
                 oldClasses = parseQuietly(base != null
-                        ? svc.fileContentAt(base, relPath) : null);
+                        ? svc.fileContentAt(base, oldPath) : null);
                 newClasses = parseQuietly(svc.fileContentAt(newRev, relPath));
                 return buildEntries(oldClasses, newClasses);
             }

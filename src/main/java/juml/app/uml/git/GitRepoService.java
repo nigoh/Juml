@@ -502,6 +502,20 @@ public final class GitRepoService implements AutoCloseable {
         return null;
     }
 
+    /**
+     * 比較の旧側で読むべきパスを返す。親コミットとの比較 ({@code oldRev == null}) で
+     * {@code newPath} が {@code newRev} でリネームされていれば旧パス、それ以外は
+     * {@code newPath} そのまま。旧内容を新パスで読むと base 側に存在せず null
+     * (= 全追加) に化けるため、比較ダイアログは必ずこれを経由する。
+     */
+    public String oldPathFor(String newPath, String oldRev, String newRev) throws IOException {
+        if (oldRev != null) {
+            return newPath;
+        }
+        String renamedFrom = renamedFromPath(newRev, newPath);
+        return renamedFrom != null ? renamedFrom : newPath;
+    }
+
     /** 指定コミットの第 1 親の SHA を返す。親がなければ (初回コミット等) null。 */
     public String parentOf(String rev) throws IOException {
         ObjectId id = repo.resolve(rev);
