@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "diagrams": {
+    "PUML:untitled-38": [
+      {
+        "id": "6b0b11ae-aca7-40a0-9146-062767a05b48",
+        "anchor": "FREE",
+        "x": 0,
+        "y": 0,
+        "w": 201.0417022705078,
+        "h": 160,
+        "color": "#FFF4B0",
+        "text": ""
+      }
+    ],
+    "KIND:PACKAGE": [
+      {
+        "id": "f62c4c6a-53fd-43a5-a866-cf515210d373",
+        "anchor": "FREE",
+        "x": 36.66668701171875,
+        "y": 0,
+        "w": 280,
+        "h": 160,
+        "color": "#FFF4B0",
+        "text": ""
+      }
+    ]
+  }
+}

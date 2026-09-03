@@ -516,4 +516,32 @@ public class PlantUmlRendererErrorDetectionTest {
         assertTrue("crash marker should be detected",
                 PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
     }
+
+    @Test
+    public void testCrashImageIsClassifiedAsLayoutFailureEvenWithLineMarker() throws IOException {
+        // 動的検証で発見: 巨大図で PlantUML 自身がクラッシュ画像を返すと、構文エラー (UML-R001)
+        // に分類されて対処法 (Graphviz 導入 / 図の分割) が引けなかった。クラッシュ画像は
+        // 行番号らしき表記が混ざっていてもレイアウト障害 (UML-R002) とする。
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            String svg = "<svg><text>An error has occurred : "
+                    + "java.lang.UnsupportedOperationException: 7sgp99x1l3</text>"
+                    + "<text>PlantUML (1.2026.6) has crashed.</text>"
+                    + "<text>[From string (line 3) ]</text></svg>";
+            try {
+                out.write(svg.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        try {
+            PlantUmlRenderer.renderSvg("@startuml\nclass X\n@enduml\n", new ByteArrayOutputStream());
+            fail("Expected PlantUmlRenderFailedException");
+        } catch (PlantUmlRenderFailedException expected) {
+            assertEquals(juml.util.ErrorCode.UML_R002, expected.getErrorCode());
+        }
+        assertTrue(PlantUmlRenderer.isCrashImage(
+                "<svg>PlantUML (1.2026.6) has crashed.</svg>".getBytes(StandardCharsets.UTF_8)));
+        assertTrue(!PlantUmlRenderer.isCrashImage(
+                "<svg><text>Syntax Error?</text></svg>".getBytes(StandardCharsets.UTF_8)));
+    }
 }

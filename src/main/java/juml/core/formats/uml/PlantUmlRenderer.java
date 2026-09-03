@@ -384,6 +384,17 @@ public final class PlantUmlRenderer {
      * 持つ {@link PlantUmlRenderFailedException} を構築し、{@link juml.util.AppLog} に
      * 詳細を記録する。
      */
+    /** PlantUML の内部クラッシュ画像 (構文エラーでなく実行時例外) かどうか。 */
+    static boolean isCrashImage(byte[] svgBytes) {
+        if (svgBytes == null || svgBytes.length == 0) {
+            return false;
+        }
+        String head = new String(svgBytes, 0, Math.min(svgBytes.length, 8192),
+                StandardCharsets.UTF_8);
+        return head.contains("has crashed.") || head.contains("An error has occurred")
+                || head.contains("An error has occured");
+    }
+
     private static PlantUmlRenderFailedException buildRenderFailure(
             String puml, byte[] errorSvg, String capturedStderr) {
         String detail = extractErrorDetail(errorSvg);
@@ -392,9 +403,12 @@ public final class PlantUmlRenderer {
         // 生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが見つかれば添える。
         String hint = PlantUmlSyntaxChecker.summarize(puml);
         // 原因を ID に分類する: 行番号や構文診断があれば構文エラー (UML-R001)、
-        // それ以外はレイアウトエンジン側の失敗 (UML-R002) とみなす。
-        boolean syntaxLike = errorLine > 0 || detail.contains("Syntax Error")
-                || !hint.isEmpty();
+        // それ以外はレイアウトエンジン側の失敗 (UML-R002) とみなす。PlantUML 自身の
+        // クラッシュ画像 ("has crashed" バナー) は巨大図での内部例外なので、生成元の
+        // 軽量リンタが何か拾っていても構文エラー扱いにしない (対処法が違う)。
+        boolean crashImage = isCrashImage(errorSvg);
+        boolean syntaxLike = !crashImage && (errorLine > 0 || detail.contains("Syntax Error")
+                || !hint.isEmpty());
         juml.util.ErrorCode code = syntaxLike
                 ? juml.util.ErrorCode.UML_R001 : juml.util.ErrorCode.UML_R002;
 
