@@ -193,4 +193,23 @@ public class DiagramNotesStoreTest {
         assertEquals("rename も外部の Y を残すこと", 1, fresh.load("Y").size());
         assertEquals(1, fresh.load("X2").size());
     }
+
+
+    /** bug-hunt R2: UTF-8 BOM 付きの notes.json を壊れたファイルと誤判定して退避していた。 */
+    @Test
+    public void utf8BomIsNotTreatedAsCorruption() throws Exception {
+        File root = tmp.newFolder("bom");
+        new DiagramNotesStore(root).save("k", Arrays.asList(new DiagramNote(1, 2, 60, 44, "bom")));
+        File json = new File(new File(root, ".juml"), "notes.json");
+        byte[] body = java.nio.file.Files.readAllBytes(json.toPath());
+        byte[] withBom = new byte[body.length + 3];
+        withBom[0] = (byte) 0xEF;
+        withBom[1] = (byte) 0xBB;
+        withBom[2] = (byte) 0xBF;
+        System.arraycopy(body, 0, withBom, 3, body.length);
+        java.nio.file.Files.write(json.toPath(), withBom);
+        assertEquals(1, new DiagramNotesStore(root).load("k").size());
+        File[] backups = new File(root, ".juml").listFiles((d, n) -> n.contains(".corrupt-"));
+        assertTrue("BOM 付きファイルを退避しないこと", backups == null || backups.length == 0);
+    }
 }

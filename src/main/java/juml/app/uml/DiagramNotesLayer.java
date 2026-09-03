@@ -449,7 +449,19 @@ final class DiagramNotesLayer {
         }
         List<DiagramConnector> mergedConns = new ArrayList<>(connectors);
         if (connectorList != null) {
-            mergedConns.addAll(connectorList);
+            // 同じ端点対のコネクタは足さない (再バインド / Save As のたびに倍増して保存されていた)。
+            for (DiagramConnector c : connectorList) {
+                boolean dup = false;
+                for (DiagramConnector have : mergedConns) {
+                    if (have.sameEndpoints(c)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    mergedConns.add(c);
+                }
+            }
         }
         setData(merged, mergedConns);
     }

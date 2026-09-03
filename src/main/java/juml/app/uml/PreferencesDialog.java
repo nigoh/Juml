@@ -415,6 +415,7 @@ public final class PreferencesDialog extends JDialog {
                 currentRestoreLastProject, currentLanguage, currentRenderQuality,
                 currentMaxTabs, currentRenderedTabs, currentAutoFit);
         dlg.setVisible(true);
+        dlg.dispose(); // モーダル終了後にネイティブ窓を解放する (× で閉じても非表示のまま残っていた)
         return dlg.result;
     }
 

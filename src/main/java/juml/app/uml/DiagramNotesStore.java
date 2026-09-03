@@ -132,6 +132,9 @@ final class DiagramNotesStore {
         try {
             String json = new String(Files.readAllBytes(jsonFile.toPath()),
                     StandardCharsets.UTF_8);
+            if (json.startsWith("\uFEFF")) {
+                json = json.substring(1); // エディタ由来の UTF-8 BOM は壊れたファイルではない
+            }
             Object root = MiniJson.parse(json);
             if (!(root instanceof Map)) {
                 return;

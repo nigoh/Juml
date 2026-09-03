@@ -415,4 +415,21 @@ public class DiagramNotesLayerTest {
         assertTrue("広げる方向のドラッグで潰れないこと: " + after.getWidth(), after.getWidth() >= 190);
         assertTrue(after.getHeight() >= 110);
     }
+
+
+    /** bug-hunt R2: 再バインド / Save As のたびに同じコネクタが倍増して保存されていた。 */
+    @Test
+    public void mergeDataDoesNotDuplicateConnectors() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        DiagramNote a = new DiagramNote(0, 0, 100, 60, "a");
+        DiagramNote b = new DiagramNote(300, 0, 100, 60, "b");
+        DiagramConnector ab = new DiagramConnector(a.getId(), b.getId());
+        layer.setData(new java.util.ArrayList<>(List.of(a, b)),
+                new java.util.ArrayList<>(List.of(ab)));
+        layer.mergeData(List.of(a, b), List.of(new DiagramConnector(a.getId(), b.getId())));
+        layer.mergeData(List.of(a, b), List.of(new DiagramConnector(b.getId(), a.getId())));
+        assertEquals("同じ端点対のコネクタは 1 本のまま", 1, layer.getConnectors().size());
+        assertEquals(2, layer.getNotes().size());
+    }
 }

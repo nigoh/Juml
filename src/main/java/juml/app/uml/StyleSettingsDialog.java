@@ -851,6 +851,7 @@ public final class StyleSettingsDialog extends JDialog {
                 currentSeqQualify, currentSeqMaxDepth, currentSeqShowArgs,
                 currentActivityPrefs, currentClassPrefs, currentCallGraphMaxDepth);
         dlg.setVisible(true);
+        dlg.dispose(); // モーダル終了後にネイティブ窓と部品木を解放する (開くたびのリーク防止)
         return dlg.result;
     }
 }

@@ -749,6 +749,7 @@ public final class DiagramController {
             }
             dlg.setVisible(true);
             EntitySearchDialog.Entry result = dlg.getResult();
+            dlg.dispose(); // 全エンティティのツリーモデルごと解放する
             if (result == null) {
                 return;
             }
