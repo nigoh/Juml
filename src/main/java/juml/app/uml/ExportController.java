@@ -276,8 +276,9 @@ final class ExportController {
     }
 
     private void reportExportFailure(File chosen, Exception ex) {
-        juml.util.AppLog.error(juml.util.ErrorCode.EXP_001, "ExportController",
-                "Diagram export failed: " + chosen.getAbsolutePath(), ex);
+        // 描画失敗 (UML-R 系) は元の ID で記録し、対処法が引けるようにする。
+        juml.util.AppLog.error(juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.EXP_001),
+                "ExportController", "Diagram export failed: " + chosen.getAbsolutePath(), ex);
         JOptionPane.showMessageDialog(parent,
                 Messages.get("export.failed") + ex.getMessage(),
                 Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
@@ -424,18 +425,38 @@ final class ExportController {
         }
         rememberExportDirectory(chosen);
         final File target = chosen;
-        try {
-            // 一時ファイルへ書き切ってから置換する。対象へ直接書くと、生成途中の失敗
-            // (ディスク満杯・POI の例外) で前回出力した xlsx が壊れた状態で失われる。
-            juml.util.AtomicFileWrite.write(target,
-                    os -> juml.core.formats.uml.MemberWorkbookExporter.write(classes, os));
-            status.setText(Messages.get("status.saved") + target.getAbsolutePath());
-        } catch (Exception ex) {
-            juml.util.AppLog.error(juml.util.ErrorCode.EXP_004, "ExportController",
-                    "Member workbook export failed: " + chosen.getAbsolutePath(), ex);
-            JOptionPane.showMessageDialog(parent,
-                    Messages.get("export.failed") + ex.getMessage(),
-                    Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
-        }
+        // ワークブック生成 (POI) は大きなプロジェクトで秒〜十秒かかるため、SVG 書き出しと
+        // 同じく SwingWorker で背景実行する (bug-hunt R2: EDT で同期実行し画面が固まっていた)。
+        status.setText(Messages.get("status.exportingXlsx"));
+        new javax.swing.SwingWorker<Void, Void>() {
+            private Exception failure;
+
+            @Override
+            protected Void doInBackground() {
+                try {
+                    // 一時ファイルへ書き切ってから置換する。対象へ直接書くと、生成途中の失敗
+                    // (ディスク満杯・POI の例外) で前回出力した xlsx が壊れた状態で失われる。
+                    juml.util.AtomicFileWrite.write(target,
+                            os -> juml.core.formats.uml.MemberWorkbookExporter.write(classes, os));
+                } catch (Exception ex) {
+                    failure = ex;
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (failure == null) {
+                    status.setText(Messages.get("status.saved") + target.getAbsolutePath());
+                    return;
+                }
+                juml.util.AppLog.error(juml.util.ErrorCode.EXP_004, "ExportController",
+                        "Member workbook export failed: " + target.getAbsolutePath(), failure);
+                status.setText(Messages.get("export.failed") + failure.getMessage());
+                JOptionPane.showMessageDialog(parent,
+                        Messages.get("export.failed") + failure.getMessage(),
+                        Messages.get("dlg.error.title"), JOptionPane.ERROR_MESSAGE);
+            }
+        }.execute();
     }
 }

@@ -333,6 +333,10 @@ final class BulkTabExporter {
 
     private static void updateBar(JProgressBar bar, int done, int total) {
         if (total > 0) {
+            // 進捗バーはプロジェクト読込と共有のため、相手の done() で隠されていても
+            // 自分の進捗更新時に可視状態を取り戻す (bug-hunt R2)。
+            bar.setVisible(true);
+            bar.setIndeterminate(false);
             bar.setMaximum(total);
             bar.setValue(Math.min(done, total));
             bar.setString(done + "/" + total);

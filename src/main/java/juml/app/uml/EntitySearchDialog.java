@@ -167,6 +167,7 @@ public class EntitySearchDialog extends JDialog {
                     commit();
                     e.consume();
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    flushPendingFilter();
                     tree.requestFocusInWindow();
                     e.consume();
                 }
@@ -419,7 +420,19 @@ public class EntitySearchDialog extends JDialog {
         return null;
     }
 
+    /**
+     * デバウンス待ちの絞り込みを同期的に消化する。入力後 150ms 以内の Enter / ↓ で
+     * 「前のフィルタ結果」の選択が確定されるのを防ぐ (bug-hunt R2)。
+     */
+    private void flushPendingFilter() {
+        if (debounceTimer.isRunning()) {
+            debounceTimer.stop();
+            rebuildTree(filter.getText());
+        }
+    }
+
     private void commit() {
+        flushPendingFilter();
         Object last = tree.getLastSelectedPathComponent();
         if (last instanceof DefaultMutableTreeNode) {
             Object u = ((DefaultMutableTreeNode) last).getUserObject();
@@ -437,6 +450,7 @@ public class EntitySearchDialog extends JDialog {
 
     /** 選択中のエントリを「ドリルダウン要求」として確定し、ダイアログを閉じる。 */
     private void commitDrillDown() {
+        flushPendingFilter();
         Object last = tree.getLastSelectedPathComponent();
         if (last instanceof DefaultMutableTreeNode) {
             Object u = ((DefaultMutableTreeNode) last).getUserObject();

@@ -409,6 +409,7 @@ public final class ProjectLoader {
 
     void updateLoadProgress(int done, int total, String message) {
         if (total > 0) {
+            loadProgress.setVisible(true); // 一括エクスポートの done() に隠されていても取り戻す
             if (loadProgress.isIndeterminate()) {
                 loadProgress.setIndeterminate(false);
             }

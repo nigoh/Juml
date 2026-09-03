@@ -232,7 +232,14 @@ public final class StyleSettingsDialog extends JDialog {
                 return super.getListCellRendererComponent(list, s, index, isSelected, cellHasFocus);
             }
         });
-        themeCombo.setSelectedItem(initial.getTheme());
+        String initialTheme = initial.getTheme() == null ? "" : initial.getTheme();
+        if (themeCombo.getModel() instanceof javax.swing.DefaultComboBoxModel<String> tm
+                && tm.getIndexOf(initialTheme) < 0) {
+            // 一覧に無いテーマ (設定ファイル直編集や旧版のテーマ名) は非編集コンボでは選択
+            // できず、OK するだけで "" に化けていた。項目として足して保持する。
+            themeCombo.addItem(initialTheme);
+        }
+        themeCombo.setSelectedItem(initialTheme);
         c.gridx = 1; c.gridy = row; c.weightx = 1; c.gridwidth = 2;
         form.add(themeCombo, c);
         c.gridwidth = 1;

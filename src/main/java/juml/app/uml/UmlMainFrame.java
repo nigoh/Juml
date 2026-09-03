@@ -1033,13 +1033,39 @@ public class UmlMainFrame extends JFrame {
                     Messages.get("dlg.functions.title"), JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        LazyDetail.withDetailedClasses(cache, this, detailed ->
-                exportController.exportFunctionList(
+        // レポート生成は UiActionScanner の全ファイル IO と参照索引の構築を含み重いため、
+        // Functions タブと同様に SwingWorker で背景実行し、完了後に保存ダイアログを出す
+        // (bug-hunt R2: EDT 上で 2 形式分を同期生成し、大きなプロジェクトで画面が固まっていた)。
+        LazyDetail.withDetailedClasses(cache, this, detailed -> {
+            status.setText(Messages.get("status.generatingList"));
+            setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+            new javax.swing.SwingWorker<String[], Void>() {
+                @Override
+                protected String[] doInBackground() {
+                    return new String[] {
                         buildFunctionListReport(detailed,
                                 juml.core.formats.uml.MethodUsageReport.Format.TABLE),
                         buildFunctionListReport(detailed,
                                 juml.core.formats.uml.MethodUsageReport.Format.CSV),
-                        Messages.get("dlg.saveFunctionList.title")));
+                    };
+                }
+
+                @Override
+                protected void done() {
+                    setCursor(java.awt.Cursor.getDefaultCursor());
+                    try {
+                        String[] r = get();
+                        exportController.exportFunctionList(r[0], r[1],
+                                Messages.get("dlg.saveFunctionList.title"));
+                    } catch (java.lang.InterruptedException
+                             | java.util.concurrent.ExecutionException ex) {
+                        juml.util.AppLog.error(juml.util.ErrorCode.EXP_003, "UmlMainFrame",
+                                "function list report failed", ex);
+                        status.setText(Messages.get("export.failed") + ex.getMessage());
+                    }
+                }
+            }.execute();
+        });
     }
 
     /** 全クラスのメンバー解析結果を Excel (.xlsx) ワークブックとして保存する (File メニュー)。 */
