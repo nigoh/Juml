@@ -135,4 +135,18 @@ public class EntitySearchDialogTest {
                 java.util.Collections.emptyList(), "");
         assertTrue(all.isEmpty());
     }
+
+
+    /** bug-hunt R2 で発見: 既定ロケール依存の小文字化のため、トルコ語環境では "I" が検索できなかった。 */
+    @Test
+    public void testFilterIsLocaleIndependent() {
+        java.util.Locale saved = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"));
+            List<EntitySearchDialog.Entry> hits = EntitySearchDialog.filter(sampleClasses(), "LISTENER");
+            assertEquals("tr ロケールでも大文字 I を含むクエリが一致すること", 1, hits.size());
+        } finally {
+            java.util.Locale.setDefault(saved);
+        }
+    }
 }

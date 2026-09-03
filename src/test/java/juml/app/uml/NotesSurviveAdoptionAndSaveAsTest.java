@@ -152,4 +152,36 @@ public class NotesSurviveAdoptionAndSaveAsTest {
             binder.shutdown();
         }
     }
+
+
+    /**
+     * bug-hunt R2 で発見: 引き取った付箋は次に何か 1 つ触るまで保存されず、そのまま
+     * 終了すると失われていた。引き取り直後に合流結果が保存されること。
+     */
+    @Test
+    public void adoptedScratchNotesArePersistedWithoutFurtherEdit() throws Exception {
+        assumeFalse("headless では Swing コンポーネントを作れない",
+                GraphicsEnvironment.isHeadless());
+        File projectA = tmp.newFolder("projA2");
+        new DiagramNotesStore(projectA).save(KEY,
+                List.of(note("IMPORTANT-A", 10)), Collections.emptyList());
+        DiagramNotesBinder binder = new DiagramNotesBinder();
+        SvgPreviewPanel[] p = new SvgPreviewPanel[1];
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                p[0] = new SvgPreviewPanel();
+                binder.bind(p[0], null, KEY);
+                p[0].notes().setData(
+                        new ArrayList<>(List.of(note("scratch", 200))), Collections.emptyList());
+            });
+            settle();
+            SwingUtilities.invokeAndWait(() -> binder.rebindForProject(p[0], projectA, KEY));
+            settle();
+            List<String> saved = savedTexts(projectA, KEY);
+            assertTrue("引き取った付箋が編集なしで保存されること: " + saved, saved.contains("scratch"));
+            assertTrue("引き取り先の付箋も残ること: " + saved, saved.contains("IMPORTANT-A"));
+        } finally {
+            binder.shutdown();
+        }
+    }
 }

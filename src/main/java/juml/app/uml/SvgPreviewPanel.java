@@ -925,8 +925,12 @@ public class SvgPreviewPanel extends JPanel {
             if (copyFeedbackListener != null) {
                 copyFeedbackListener.accept(feedback);
             }
-        } catch (IllegalStateException ignored) {
-            // クリップボードが使用中の場合は無視
+        } catch (IllegalStateException busy) {
+            // クリップボードが他アプリに掴まれている: 黙って何も起きないと「コピーできた」と
+            // 誤解するため、ステータスで知らせる (再試行で通ることが多い)。
+            if (copyFeedbackListener != null) {
+                copyFeedbackListener.accept(juml.util.Messages.get("export.copyFailed"));
+            }
         }
     }
 

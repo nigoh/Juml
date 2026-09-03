@@ -270,7 +270,7 @@ public class EntitySearchDialog extends JDialog {
      * 上位ノードは Kind (Class / Method / Field) → パッケージ → クラス → 項目 の階層。
      */
     private void rebuildTree(String query) {
-        String q = query == null ? "" : query.trim().toLowerCase();
+        String q = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
         root.removeAllChildren();
 
         // Kind → Package → Class → List<Entry>
@@ -371,13 +371,13 @@ public class EntitySearchDialog extends JDialog {
         if (q == null || q.isEmpty()) {
             return true;
         }
-        if (e.simpleName.toLowerCase().contains(q)) {
+        if (e.simpleName.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
-        if (e.ownerQn.toLowerCase().contains(q)) {
+        if (e.ownerQn.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
-        if (e.typeOrSignature.toLowerCase().contains(q)) {
+        if (e.typeOrSignature.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
         return false;
@@ -469,7 +469,7 @@ public class EntitySearchDialog extends JDialog {
      */
     public static List<Entry> filter(List<JavaClassInfo> classes, String query) {
         List<Entry> all = collectEntriesStatic(classes);
-        String q = query == null ? "" : query.trim().toLowerCase();
+        String q = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
         List<Entry> out = new ArrayList<>();
         for (Entry e : all) {
             if (matchesEntry(e, q)) {

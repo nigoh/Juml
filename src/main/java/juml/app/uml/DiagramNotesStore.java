@@ -149,10 +149,32 @@ final class DiagramNotesStore {
                 }
             }
         } catch (IOException | RuntimeException ex) {
-            // 壊れた notes.json は空とみなす (アプリを落とさない)。
+            // 壊れた notes.json は空とみなす (アプリを落とさない)。ただしそのまま空で
+            // 続けると次の保存で他の図の付箋ごと上書きして復旧不能になるため、先に
+            // 退避 (rename) してから空で始める (bug-hunt R2)。
             byDiagram = new LinkedHashMap<>();
             connByDiagram = new LinkedHashMap<>();
+            quarantineCorruptFile(ex);
         }
+    }
+
+    /** 読み取れなかった notes.json を {@code notes.json.corrupt-<日時>} へ退避し、警告を記録する。 */
+    private void quarantineCorruptFile(Exception cause) {
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS")
+                .format(new java.util.Date());
+        File backup = new File(jsonFile.getParentFile(), jsonFile.getName() + ".corrupt-" + stamp);
+        boolean moved;
+        try {
+            Files.move(jsonFile.toPath(), backup.toPath());
+            moved = true;
+        } catch (IOException | RuntimeException moveEx) {
+            moved = false;
+        }
+        juml.util.AppLog.warn(juml.util.ErrorCode.NOTE_002, "DiagramNotesStore",
+                "notes.json could not be parsed: " + jsonFile.getAbsolutePath()
+                        + (moved ? " (backed up to " + backup.getName() + ")"
+                                 : " (backup failed; the file will be overwritten on next save)"),
+                cause);
     }
 
     private boolean writeFile() {
@@ -191,6 +213,9 @@ final class DiagramNotesStore {
             return true;
         } catch (IOException ex) {
             // 保存失敗を呼び出し側へ伝え、ステータスバー通知に使う (サイレント消失を防ぐ)。
+            // 原因 (権限 / ディスクフル等) はログビューアで引けるよう ID 付きで記録する。
+            juml.util.AppLog.error(juml.util.ErrorCode.NOTE_003, "DiagramNotesStore",
+                    "failed to save notes: " + jsonFile.getAbsolutePath(), ex);
             return false;
         }
     }

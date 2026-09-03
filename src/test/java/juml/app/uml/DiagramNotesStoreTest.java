@@ -148,4 +148,27 @@ public class DiagramNotesStoreTest {
         assertFalse("一時ファイルが残ってはいけない", tmpFile.exists());
         assertTrue(new File(jumlDir, "notes.json").isFile());
     }
+
+
+    /**
+     * bug-hunt R2 で発見: パース不能な notes.json を空扱いしたまま次の保存で上書きし、
+     * 他の図の付箋まで復旧不能に消していた。壊れたファイルは退避してから空で始めること。
+     */
+    @Test
+    public void corruptFileIsQuarantinedBeforeFirstSave() throws Exception {
+        File root = tmp.newFolder("corrupt");
+        File dir = new File(root, ".juml");
+        assertTrue(dir.mkdirs());
+        File json = new File(dir, "notes.json");
+        java.nio.file.Files.writeString(json.toPath(), "{\"diagrams\": {\"k\": [ <<broken");
+        DiagramNotesStore store = new DiagramNotesStore(root);
+        assertTrue("壊れたファイルは空として読む", store.load("k").isEmpty());
+        assertTrue(store.save("other", Arrays.asList(new DiagramNote(1, 2, 60, 44, "new"))));
+        File[] backups = dir.listFiles((d, n) -> n.startsWith("notes.json.corrupt-"));
+        assertTrue("壊れた notes.json が退避されていること", backups != null && backups.length == 1);
+        assertTrue("退避ファイルに元の内容が残ること",
+                java.nio.file.Files.readString(backups[0].toPath()).contains("<<broken"));
+        assertEquals("新しい notes.json は正常に読めること", 1,
+                new DiagramNotesStore(root).load("other").size());
+    }
 }
