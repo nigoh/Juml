@@ -139,18 +139,10 @@ final class DiagramNotesBinder {
         if (previous != null && !Objects.equals(previous, newRoot) && onScreen) {
             return;
         }
-        // 「引き取り」分岐 (previous == null かつ画面に付箋がある) には、上の
-        // 上書き禁止規則が掛かっていなかった。引き取り先に保存済み付箋があると
-        // ロード側の「レイヤが空のときだけ反映する」規則でそれが読み込まれず、
-        // 次に付箋を 1 つ触った瞬間に画面の一覧が引き取り先の notes.json を
-        // <b>丸ごと上書き</b>して以前のセッションの付箋を消していた。Untitled の
-        // タブキーはセッションごとに 0 から振り直されるため衝突は既定である。
-        // 画面の付箋も引き取り先の付箋もどちらも正当なので、両方を残す。
-        bind(preview, newRoot, diagramKey, previous == null && onScreen);
-    }
-
-    void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
-        bind(preview, projectRoot, diagramKey, false);
+        // 「引き取り」(previous == null かつ画面に付箋がある) では、引き取り先に保存済み
+        // 付箋があっても bind のロード完了ハンドラが画面の付箋と合流させて保存するため、
+        // どちらも失われない (Untitled のタブキーはセッションごとに 0 から振り直され衝突する)。
+        bind(preview, newRoot, diagramKey);
     }
 
     /**
@@ -175,8 +167,7 @@ final class DiagramNotesBinder {
         bind(preview, root, newKey);
     }
 
-    private void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey,
-                      boolean adopt) {
+    void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
         final DiagramNotesStore s = storeFor(projectRoot);
         final Object token = new Object();
         bindToken.put(preview, token);
