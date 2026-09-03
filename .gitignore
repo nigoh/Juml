@@ -15,3 +15,6 @@
 drafts/
 # 並列エージェント用の git worktree チェックアウト (実行時生成物; コミット対象外)
 /.claude/worktrees/
+
+# Juml per-project notes/cache written next to any opened project (also when the repo itself is opened in the GUI)
+.juml/
