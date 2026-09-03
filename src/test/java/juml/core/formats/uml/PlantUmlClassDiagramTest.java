@@ -1458,4 +1458,34 @@ public class PlantUmlClassDiagramTest {
         assertFalse("multi-space should NOT remain after normalization: " + puml,
                 puml.contains("hello   world"));
     }
+
+
+    @Test
+    public void testEmptyClassesNeverEmitEmptyLegendAndRender() throws Exception {
+        // 動的検証で発見: クラス 0 件 + 可視性凡例オフだと本文の無い legend ブロックが出力され、
+        // PlantUML が "No legend defined" で描画失敗 (UML-R001) していた。空 legend を省き、
+        // 空図には案内ノートを置き、実描画が通ることまで確認する。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.showVisibility = false;
+        o.includeLegend = true;
+        String puml = PlantUmlClassDiagram.generate(java.util.Collections.emptyList(), o);
+        org.junit.Assert.assertFalse("empty legend block must be omitted: " + puml,
+                puml.contains("legend"));
+        assertTrue("empty diagram should carry a placeholder note: " + puml,
+                puml.contains("(no classes found)"));
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        PlantUmlRenderer.renderSvg(puml, out);
+        assertTrue("real rendering must succeed", out.size() > 0);
+    }
+
+    @Test
+    public void testLegendStillEmittedWhenItHasRows() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; class Foo { int a; void m() {} }");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.includeLegend = true;
+        String puml = PlantUmlClassDiagram.generate(infos, o);
+        assertTrue(puml, puml.contains("legend top left"));
+        assertTrue(puml, puml.contains("endlegend"));
+    }
 }

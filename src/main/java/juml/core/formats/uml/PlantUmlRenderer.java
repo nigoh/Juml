@@ -68,7 +68,12 @@ public final class PlantUmlRenderer {
     /** PlantUML フォールバック エラー SVG に必ず含まれる決定的マーカー。 */
     private static final String[] ERROR_MARKERS = {
             // PlantUML のレイアウト/内部エラー画像のバナー文言。
+            // 旧版は "occured" (誤綴り)、1.2026.x 以降は "occurred" と綴りが変わったため両方持つ
+            // (動的検証で発見: 綴り変更後のクラッシュ画像が正常出力として素通りし、
+            // 埋め込み PNG を Batik が開けず UML-R007 に化けていた)。
             "An error has occured",
+            "An error has occurred",
+            "has crashed.",
             "I love it when a plan comes together",
     };
 

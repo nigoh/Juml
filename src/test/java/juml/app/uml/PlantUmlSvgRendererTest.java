@@ -133,4 +133,26 @@ public class PlantUmlSvgRendererTest {
         }
         assertTrue("Foo text item not found", checked);
     }
+
+
+    /**
+     * 動的検証で発見: PlantUML が SVG に埋め込む {@code data:image/png} (クラッシュ画像の
+     * アイコン / sprite / {@code <img:>}) を Batik が開けず UML-R007 (BridgeException) に
+     * なっていた。PNG デコーダ (batik-codec) 同梱後は素通しできることを実描画で確認する。
+     */
+    @Test
+    public void testEmbeddedPngDataUriImageRenders() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
+                4, 4, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String b64 = java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\""
+                + " xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"40\" height=\"40\">"
+                + "<image x=\"0\" y=\"0\" width=\"20\" height=\"20\""
+                + " xlink:href=\"data:image/png;base64," + b64 + "\"/></svg>";
+        PlantUmlSvgRenderer.RenderedSvg r = PlantUmlSvgRenderer.render(svg);
+        assertNotNull("PNG data URI image must not break the Batik bridge", r);
+        assertTrue(r.getWidth() > 0);
+    }
 }

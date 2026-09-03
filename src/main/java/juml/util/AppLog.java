@@ -452,9 +452,23 @@ public final class AppLog {
             }
             String text = new String(line.toByteArray(), StandardCharsets.UTF_8);
             line.reset();
+            if (isBenignStderrLine(text)) {
+                record(Level.INFO, ErrorCode.NONE, "stderr", text, null);
+                return;
+            }
             // 発生元不明の stderr 出力は未分類 ID (SYS-001) で拾う。
             // 頻出するパターンが見つかったら専用 ID への昇格を検討する。
             record(Level.WARN, ErrorCode.SYS_001, "stderr", text, null);
         }
+    }
+
+    /**
+     * stderr の 1 行が「ライブラリの通知であり異常ではない」既知パターンかを判定する。
+     * SLF4J のバインディング案内 ("No SLF4J providers were found" → NOP へフォールバック) は
+     * 毎起動で 3 行出るため、WARN (SYS-001) にするとログビューア先頭に並んで本物の警告が
+     * 埋もれる。該当行は INFO へ落とす。
+     */
+    static boolean isBenignStderrLine(String text) {
+        return text != null && text.startsWith("SLF4J");
     }
 }

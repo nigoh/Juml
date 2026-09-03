@@ -394,4 +394,55 @@ public class DiagramControllerTest {
         // ツリーハイライトは suppressNotify なので Home の再描画を誘発しない
         assertEquals(before, refreshCount.get());
     }
+
+
+    /** bug-hunt R1 で発見: ユーティリティタブへ移っても図種ドロップダウンが直前の図種のままだった。 */
+    @Test
+    public void onTabFocused_null_showsPlaceholderInChooser() {
+        DiagramKind before = controller.currentKind;
+        GuiActionRunner.execute(() -> {
+            controller.reflectKindInToolbar(DiagramKind.PACKAGE);
+            controller.onTabFocused(null);
+        });
+        String label = diagramKindChooser.component().getText();
+        assertFalse("ユーティリティタブ選択時は直前の図種を残さない (ラベル: " + label + ")",
+                label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.PACKAGE)));
+        assertEquals("currentKind (最後の図種) は保持する", before, controller.currentKind);
+    }
+
+    /** bug-hunt R1 で発見: 図種を持たない自由編集エディタタブでも直前の図種表示が残っていた。 */
+    @Test
+    public void onTabFocused_editorTabWithoutKind_showsPlaceholderInChooser() {
+        GuiActionRunner.execute(() -> {
+            controller.reflectKindInToolbar(DiagramKind.PACKAGE);
+            controller.onTabFocused(new DiagramTabPane.FocusedTab(null, null));
+        });
+        String label = diagramKindChooser.component().getText();
+        assertFalse("エディタタブでは直前の図種を残さない (ラベル: " + label + ")",
+                label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.PACKAGE)));
+    }
+
+    /** bug-hunt R1 で発見: コマンドパレット経路が無効化済みの図種をすり抜けて空図タブを開いていた。 */
+    @Test
+    public void selectDiagramKind_notAllowed_isRejectedWithStatusMessage() {
+        controller.updateAvailableDiagrams(EnumSet.of(DiagramKind.CLASS));
+        DiagramKind before = controller.currentKind;
+        GuiActionRunner.execute(() -> controller.selectDiagramKind(DiagramKind.SOONG));
+        assertEquals("無効化された図種では currentKind を変えない", before, controller.currentKind);
+        String label = diagramKindChooser.component().getText();
+        assertFalse("無効化された図種をドロップダウンに表示しない (ラベル: " + label + ")",
+                label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.SOONG)));
+        String status = controller.statusLabel.getText();
+        assertTrue("案内メッセージに図種名を含む: " + status,
+                status.contains(DiagramKind.SOONG.getDisplayName()));
+    }
+
+    @Test
+    public void selectDiagramKind_allowed_stillSwitchesKind() {
+        controller.updateAvailableDiagrams(EnumSet.of(DiagramKind.CLASS, DiagramKind.PACKAGE));
+        GuiActionRunner.execute(() -> controller.selectDiagramKind(DiagramKind.PACKAGE));
+        assertEquals(DiagramKind.PACKAGE, controller.currentKind);
+        String label = diagramKindChooser.component().getText();
+        assertTrue(label, label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.PACKAGE)));
+    }
 }

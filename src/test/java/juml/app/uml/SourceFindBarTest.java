@@ -110,4 +110,18 @@ public class SourceFindBarTest {
         }
         assertTrue("2 箇所の foo がハイライトされること", fooHighlights >= 2);
     }
+
+
+    @Test
+    public void activate_withSelection_keepsSelectedOccurrenceAsCurrentHit() {
+        // bug-hunt R1 で発見: キャレットが選択末尾にあるため起点がその位置になり、
+        // 選択中の出現が飛ばされて次の出現へ選択が移っていた (VS Code は選択中の出現を現在ヒットにする)。
+        JTextArea area = new JTextArea("foo bar foo baz foo");
+        SourceFindBar bar = new SourceFindBar(area, null);
+        area.setCaretPosition(8);
+        area.moveCaretPosition(11); // 2 個目の foo を選択 (dot = 11)
+        bar.activate();
+        assertEquals("選択中の出現が現在ヒットのまま保たれること", 8, area.getSelectionStart());
+        assertEquals(11, area.getSelectionEnd());
+    }
 }

@@ -2437,8 +2437,30 @@ public final class DiagramTabPane {
             hsplit.repaint();
         }
 
+        /**
+         * Source サブタブを持つか。自由編集 PlantUML エディタタブは {@link #enableEditor} で
+         * Source サブタブを外しているため false。持たないタブで
+         * {@code bottomTabs.setSelectedComponent(javaSourcePanel)} を呼ぶと
+         * IllegalArgumentException (component not found in tabbed pane) になる。
+         */
+        boolean hasSourceView() {
+            return bottomTabs.indexOfComponent(javaSourcePanel) >= 0;
+        }
+
+        /** Source サブタブが無いタブ (エディタ) なら案内を出して false を返す。 */
+        private boolean ensureSourceView() {
+            if (hasSourceView()) {
+                return true;
+            }
+            reportStatus(Messages.get("source.editorTab"));
+            return false;
+        }
+
         /** Source サブタブを前面に出してソースを表示する (ツリーの「Open source」用)。 */
         void selectSourceView() {
+            if (!ensureSourceView()) {
+                return;
+            }
             bottomTabs.setSelectedComponent(javaSourcePanel);
             ensureSourceLoaded();
         }
@@ -2448,12 +2470,18 @@ public final class DiagramTabPane {
          * 宣言行付きで表示する (図上のメソッドリンク「ソースを開く」用)。
          */
         void selectSourceView(JavaMethodInfo methodOverride) {
+            if (!ensureSourceView()) {
+                return;
+            }
             bottomTabs.setSelectedComponent(javaSourcePanel);
             DiagramTabSupport.showSource(javaSourcePanel, treeSync, cache, methodOverride);
         }
 
         /** Source サブタブを前面に出し、題材クラスのソースを指定行で表示する (逆参照ジャンプ用)。 */
         void selectSourceViewAtLine(int line) {
+            if (!ensureSourceView()) {
+                return;
+            }
             bottomTabs.setSelectedComponent(javaSourcePanel);
             String fqn = (treeSync != null && treeSync.classInfo != null)
                     ? treeSync.classInfo.getQualifiedName() : null;

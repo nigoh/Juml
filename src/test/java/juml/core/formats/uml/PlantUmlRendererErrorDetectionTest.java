@@ -497,4 +497,23 @@ public class PlantUmlRendererErrorDetectionTest {
                 + "<text>[From string (line 3) ]</text></svg>";
         assertTrue(PlantUmlRenderer.isErrorSvg(syntax.getBytes(StandardCharsets.UTF_8)));
     }
+
+
+    @Test
+    public void testIsErrorSvgDetectsModernSpellingBanner() {
+        // 動的検証で発見: PlantUML 1.2026.x はバナーの綴りが "occurred" に変わり、旧綴りだけの
+        // マーカーではクラッシュ画像が正常出力として素通りし、埋め込み PNG を Batik が開けず
+        // UML-R007 に化けていた。新旧両方の綴りを検出する回帰。
+        String body = "<svg><text>An error has occurred : "
+                + "java.lang.UnsupportedOperationException: xyz</text></svg>";
+        assertTrue("modern spelling banner should be detected",
+                PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    public void testIsErrorSvgDetectsCrashedMarker() {
+        String body = "<svg><text>PlantUML (1.2026.6) has crashed.</text></svg>";
+        assertTrue("crash marker should be detected",
+                PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+    }
 }

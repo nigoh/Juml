@@ -260,6 +260,10 @@ public final class PlantUmlClassDiagram {
         }
         StringBuilder out = new StringBuilder();
         appendHeader(out, o, classes);
+        if (classes.isEmpty()) {
+            // 空の図は真っ白なタブになり「壊れた?」と誤解されるため、他の図種と同様に案内ノートを置く。
+            out.append("note as N1\n  (no classes found)\nend note\n");
+        }
         // クラスごとに一意のエイリアスを発行する (PlantUML は "a.b.c" をネスト解釈するため引用符名 + as で切り離す)。
         Set<String> knownNames = new HashSet<>();
         java.util.Map<String, String> aliasByQn = new java.util.LinkedHashMap<>();
@@ -338,7 +342,7 @@ public final class PlantUmlClassDiagram {
                 }
             }
         }
-        if (o.hideUnlinkedClasses) {
+        if (o.hideUnlinkedClasses && !classes.isEmpty()) {
             // 全関連線を出し終えた後で、どの線とも繋がらない孤立クラスをレイアウト解決時に除去する。
             // legend/footer は要素ではないため影響を受けない。
             out.append("remove @unlinked\n");
