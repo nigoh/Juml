@@ -11,6 +11,16 @@
         "h": 160,
         "color": "#FFF4B0",
         "text": ""
+      },
+      {
+        "id": "4049681c-7a8b-40a6-82b0-1ecf91ac012c",
+        "anchor": "FREE",
+        "x": 0,
+        "y": 0,
+        "w": 201.0417022705078,
+        "h": 160,
+        "color": "#FFF4B0",
+        "text": ""
       }
     ],
     "KIND:PACKAGE": [
@@ -20,6 +30,28 @@
         "x": 85.625,
         "y": 0,
         "w": 280,
+        "h": 160,
+        "color": "#FFF4B0",
+        "text": ""
+      },
+      {
+        "id": "76736d06-fd23-41ca-8938-0bf7cf1887f4",
+        "anchor": "FREE",
+        "x": 85.625,
+        "y": 0,
+        "w": 280,
+        "h": 160,
+        "color": "#FFF4B0",
+        "text": ""
+      }
+    ],
+    "PUML:untitled-40": [
+      {
+        "id": "9cdc4158-76df-447d-b08d-5986abb7d306",
+        "anchor": "FREE",
+        "x": 0,
+        "y": 0,
+        "w": 181.25,
         "h": 160,
         "color": "#FFF4B0",
         "text": ""

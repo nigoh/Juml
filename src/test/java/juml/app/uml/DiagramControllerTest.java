@@ -47,8 +47,17 @@ public class DiagramControllerTest {
         lastKind = new AtomicReference<>(DiagramKind.CLASS);
         // Swing コンポーネントの生成・配線は EDT 上で行う (EDT 規律)
         GuiActionRunner.execute(() -> {
+            // production (MenuBarBuilder) と同じ構成: メソッド系図種とレイアウト変種はラジオを
+            // 持たず、残りは 1 つの ButtonGroup に属する (排他選択 / clearSelection の経路を守る)。
+            javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
             for (DiagramKind k : DiagramKind.values()) {
-                diagramItems.put(k, new JRadioButtonMenuItem(k.name()));
+                if (ToolBarBuilder.DIAGRAMS_METHOD.contains(k)
+                        || ToolBarBuilder.LAYOUT_VARIANT_HIDDEN.contains(k)) {
+                    continue;
+                }
+                JRadioButtonMenuItem item = new JRadioButtonMenuItem(k.name());
+                group.add(item);
+                diagramItems.put(k, item);
             }
             // 図種ドロップダウンは production と同じ構成 (項目・並び) を使う。
             ToolBarBuilder.Callbacks tcb = new ToolBarBuilder.Callbacks();
@@ -292,11 +301,19 @@ public class DiagramControllerTest {
     }
 
     @Test
-    public void selectDiagramKind_entryKind_reflectsKindInToolbar() {
+    public void selectDiagramKind_entryKind_reflectsKindInToolbarAndClearsRadios() {
+        // メソッド系図種はメニューラジオを持たない (production 構成)。ドロップダウンには
+        // 反映しつつ、直前の構造図種のラジオ選択は解除されること。
+        controller.selectDiagramKind(DiagramKind.PACKAGE);
         controller.selectDiagramKind(DiagramKind.SEQUENCE);
         assertEquals(DiagramKind.SEQUENCE, controller.currentKind);
-        assertTrue("selectDiagramKind(SEQUENCE) 後 SEQUENCE メニュー項目が選択されていない",
-                diagramItems.get(DiagramKind.SEQUENCE).isSelected());
+        assertNull("メソッド系図種はラジオを持たない", diagramItems.get(DiagramKind.SEQUENCE));
+        for (JRadioButtonMenuItem item : diagramItems.values()) {
+            assertFalse("SEQUENCE 選択後にラジオ " + item.getText() + " が選択されたまま",
+                    item.isSelected());
+        }
+        assertButtonShows("selectDiagramKind(SEQUENCE) 後 図種ボタンが SEQUENCE になっていない",
+                DiagramKind.SEQUENCE);
     }
 
     // --- 動的タブ ↔ ツリー連動 (syncToFocusedTab) ---
@@ -408,6 +425,8 @@ public class DiagramControllerTest {
         assertFalse("ユーティリティタブ選択時は直前の図種を残さない (ラベル: " + label + ")",
                 label.contains(ToolBarBuilder.toolbarLabel(DiagramKind.PACKAGE)));
         assertEquals("currentKind (最後の図種) は保持する", before, controller.currentKind);
+        assertFalse("ユーティリティタブ選択時はメニューラジオも解除される",
+                diagramItems.get(DiagramKind.PACKAGE).isSelected());
     }
 
     /** bug-hunt R1 で発見: 図種を持たない自由編集エディタタブでも直前の図種表示が残っていた。 */

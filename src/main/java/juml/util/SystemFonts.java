@@ -27,6 +27,8 @@ public final class SystemFonts {
     private static final char[] JAPANESE_SAMPLE = {'あ', '日', 'ア'};
 
     private static volatile String[] cachedFamilies;
+    /** {@link #familiesJapaneseFirst()} の結果 (全ファミリの glyph 判定は重いので 1 回だけ行う)。 */
+    private static volatile List<String> cachedJapaneseFirst;
 
     /**
      * インストール済みフォントファミリ名を昇順（ロケール非依存）で返す。
@@ -86,6 +88,21 @@ public final class SystemFonts {
      * UI のフォント選択で日本語フォントを見つけやすくするために用いる。
      */
     public static List<String> familiesJapaneseFirst() {
+        List<String> c = cachedJapaneseFirst;
+        if (c != null) {
+            return new ArrayList<>(c);
+        }
+        List<String> computed = computeJapaneseFirst();
+        cachedJapaneseFirst = computed;
+        return new ArrayList<>(computed);
+    }
+
+    /**
+     * 日本語フォント群 → その他フォント群の並びを計算する。ファミリごとに Font を生成して
+     * glyph 判定するため数百ファミリの環境では秒単位かかる (bug-hunt R1: Style ダイアログを
+     * 開くたび EDT 上で再計算しフリーズしていた)。呼び出し側はキャッシュ経由で使う。
+     */
+    private static List<String> computeJapaneseFirst() {
         String[] all = families();
         List<String> japanese = new ArrayList<>();
         List<String> others = new ArrayList<>();
