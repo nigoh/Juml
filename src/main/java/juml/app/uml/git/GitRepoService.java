@@ -185,7 +185,15 @@ public final class GitRepoService implements AutoCloseable {
                           boolean current, int ahead, int behind) throws IOException {
         RefRow.Tip tip = null;
         if (id != null) {
-            RevCommit c = walk.parseCommit(id);
+            RevCommit c;
+            try {
+                c = walk.parseCommit(id);
+            } catch (org.eclipse.jgit.errors.IncorrectObjectTypeException
+                     | org.eclipse.jgit.errors.MissingObjectException ex) {
+                // blob / tree を指すタグや欠損オブジェクトは「先端コミットなし」の行にする
+                // (1 本でも混ざると一覧全体が例外で消えていた)。
+                return new RefRow(name, type, current, ahead, behind, null);
+            }
             PersonIdent who = c.getAuthorIdent();
             tip = new RefRow.Tip(
                     c.abbreviate(7).name(),

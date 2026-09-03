@@ -178,12 +178,15 @@ abstract class MethodDiagramCompareDialog extends JDialog {
         newHost.revalidate();
         final int gen = ++renderGen;
         new SwingWorker<RenderedSvg[], Void>() {
+            private final String[] renderErrors = new String[2];
+
             @Override protected RenderedSvg[] doInBackground() {
                 String oldD = diagramOf(oldClasses, entry.className, entry.methodName);
                 String newD = diagramOf(newClasses, entry.className, entry.methodName);
                 String[] colored = colorizeDiagram(oldD, newD);
                 return new RenderedSvg[]{
-                        renderQuietly(colored[0]), renderQuietly(colored[1])};
+                        renderOrNull(colored[0], "old", renderErrors, 0),
+                        renderOrNull(colored[1], "new", renderErrors, 1)};
             }
 
             @Override protected void done() {
@@ -194,8 +197,8 @@ abstract class MethodDiagramCompareDialog extends JDialog {
                     RenderedSvg[] svg = get();
                     lastOldSvg = svg[0];
                     lastNewSvg = svg[1];
-                    showSvg(oldHost, oldPanel, svg[0]);
-                    showSvg(newHost, newPanel, svg[1]);
+                    showSvg(oldHost, oldPanel, svg[0], renderErrors[0]);
+                    showSvg(newHost, newPanel, svg[1], renderErrors[1]);
                 } catch (Exception ex) {
                     showNote(oldHost, errText(ex));
                     showNote(newHost, errText(ex));
@@ -250,25 +253,39 @@ abstract class MethodDiagramCompareDialog extends JDialog {
         return false;
     }
 
-    private static RenderedSvg renderQuietly(String puml) {
+    /**
+     * 図を描画する。その版にメソッドが無ければ null (errors は空のまま)。描画に失敗した
+     * 場合も null だが、原因を {@code errors[slot]} に残しエラー ID 付きでログに記録する
+     * (以前は握り潰して「この版にはメソッドがありません」と誤表示していた)。
+     */
+    private static RenderedSvg renderOrNull(String puml, String side, String[] errors, int slot) {
         if (puml == null || puml.isEmpty()) {
             return null; // その版にメソッドが無い
         }
         try {
             return PlantUmlSvgRenderer.render(puml);
         } catch (Exception ex) {
+            errors[slot] = errText(ex);
+            juml.util.AppLog.warn(
+                    juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.UML_R001),
+                    "MethodDiagramCompareDialog",
+                    "method diagram render failed (" + side + "): " + errText(ex));
             return null;
         }
     }
 
-    private static void showSvg(JPanel host, SvgPreviewPanel panel, RenderedSvg svg) {
+    private static void showSvg(JPanel host, SvgPreviewPanel panel, RenderedSvg svg,
+                                String renderError) {
         host.removeAll();
         if (svg != null) {
             panel.setSvgGraphicsNode(svg.getRoot(), svg.getWidth(), svg.getHeight());
             host.add(new JScrollPane(panel), BorderLayout.CENTER);
         } else {
-            host.add(new JLabel(Messages.get("git.actcmp.absent"), SwingConstants.CENTER),
-                    BorderLayout.CENTER);
+            String text = renderError != null
+                    ? java.text.MessageFormat.format(
+                            Messages.get("git.actcmp.renderFailed"), renderError)
+                    : Messages.get("git.actcmp.absent");
+            host.add(new JLabel(text, SwingConstants.CENTER), BorderLayout.CENTER);
         }
         host.revalidate();
         host.repaint();

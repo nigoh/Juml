@@ -104,6 +104,10 @@ final class GitFileHistoryPane extends JPanel {
 
     /** リポジトリが切り替わったら入力・結果をリセットする。 */
     void onRepositoryChanged() {
+        // 走行中の履歴 / 本文 (blame) ワーカーを無効化する。進めないと、リポジトリ切替で
+        // クリアした一覧・本文に旧リポジトリの結果が後から適用される (stale result)。
+        historyGen++;
+        textGen++;
         pathField.setText("");
         historyModel.clear();
         textArea.setText(Messages.get("git.file.hint"));

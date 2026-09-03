@@ -76,7 +76,28 @@ final class SketchEditDialogs {
         target.setKind((SketchClass.Kind) kindCombo.getSelectedItem());
         applyLines(target.getFields(), fieldsArea.getText());
         applyLines(target.getMethods(), methodsArea.getText());
+        normalizeMemberSplit(target.getFields(), target.getMethods());
         return true;
+    }
+
+    /**
+     * codec ({@code SketchPumlCodec}) は再読込時に「{@code (} を含む行 = メソッド、それ以外 =
+     * フィールド」で再分類する。ダイアログの欄と食い違う行があると、GUI 入力しただけで
+     * 次回ロード時に並び崩れ扱い (編集ロック) になるため、同じ規則で振り分け直す。
+     */
+    static void normalizeMemberSplit(java.util.List<String> fields, java.util.List<String> methods) {
+        java.util.List<String> f = new java.util.ArrayList<>();
+        java.util.List<String> m = new java.util.ArrayList<>();
+        for (String line : fields) {
+            (line.contains("(") ? m : f).add(line);
+        }
+        for (String line : methods) {
+            (line.contains("(") ? m : f).add(line);
+        }
+        fields.clear();
+        fields.addAll(f);
+        methods.clear();
+        methods.addAll(m);
     }
 
     /**

@@ -217,8 +217,11 @@ public final class GitPanel extends JPanel {
                         for (String b : branches) {
                             branchCombo.addItem(b);
                         }
-                        if (branches.isEmpty() && current != null) {
-                            branchCombo.addItem(current); // detached HEAD など
+                        if (current != null && !branches.contains(current)) {
+                            // detached HEAD (SHA) など: 一覧に無い ref を選択できるよう追加する。
+                            // 追加せずに setSelectedItem すると先頭ブランチが選ばれたままになり、
+                            // チェックアウト中と別ブランチの履歴を表示してしまう。
+                            branchCombo.addItem(current);
                         }
                         branchCombo.setSelectedItem(current);
                     } finally {

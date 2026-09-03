@@ -278,4 +278,22 @@ public class MindmapSketchCodecTest {
         assertFalse("PlantUML が構文エラーを報告した:\n" + puml, svg.contains("Syntax Error"));
         assertTrue("SVG が生成されるはず", svg.contains("<svg"));
     }
+
+    /**
+     * bug-hunt R3 で発見: 記号直後の修飾子 ({@code *[#color]} / {@code *_} / {@code *:}) を
+     * テキストとして取り込み、往復で装飾が消えるのに編集可のままだった。ロック対象にする回帰。
+     */
+    @Test
+    public void parse_nodeModifiers_areUnsupported() {
+        MindmapSketchCodec.ParseResult r = MindmapSketchCodec.parse(String.join("\n",
+                "@startmindmap", "* Root", "**[#lightgreen] Colored", "**_ Boxless",
+                "**: multi", "** _plain", "@endmindmap", ""));
+        assertFalse("修飾子付きノードは未対応 (ロック) のはず", r.isFullySupported());
+        assertTrue(r.unsupportedLines.contains("**[#lightgreen] Colored"));
+        assertTrue(r.unsupportedLines.contains("**_ Boxless"));
+        assertTrue(r.unsupportedLines.contains("**: multi"));
+        assertEquals("空白を挟んだ '_plain' は通常テキストとして取り込む",
+                1, r.model.getRoot().getChildren().size());
+        assertEquals("_plain", r.model.getRoot().getChildren().get(0).getText());
+    }
 }
