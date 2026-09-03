@@ -171,4 +171,26 @@ public class DiagramNotesStoreTest {
         assertEquals("新しい notes.json は正常に読めること", 1,
                 new DiagramNotesStore(root).load("other").size());
     }
+
+
+    /**
+     * bug-hunt R2 で発見: ストアは初回に読んだメモリ像を書き戻すため、同じ notes.json を持つ
+     * 別インスタンス (別プロセスの Juml / git pull) が書いた他図の付箋を次の保存で消していた。
+     */
+    @Test
+    public void twoStoreInstancesDoNotClobberEachOther() throws Exception {
+        File root = tmp.newFolder("shared");
+        DiagramNotesStore s1 = new DiagramNotesStore(root);
+        DiagramNotesStore s2 = new DiagramNotesStore(root);
+        assertTrue(s2.load("Y").isEmpty()); // s2 が空のファイル像を先に読む
+        assertTrue(s1.save("X", Arrays.asList(new DiagramNote(0, 0, 100, 80, "X-NOTE"))));
+        assertTrue(s2.save("Y", Arrays.asList(new DiagramNote(0, 0, 100, 80, "Y-NOTE"))));
+        DiagramNotesStore fresh = new DiagramNotesStore(root);
+        assertEquals("s2 の保存で s1 が書いた X が消えないこと", 1, fresh.load("X").size());
+        assertEquals(1, fresh.load("Y").size());
+        assertTrue(s1.rename("X", "X2"));
+        fresh = new DiagramNotesStore(root);
+        assertEquals("rename も外部の Y を残すこと", 1, fresh.load("Y").size());
+        assertEquals(1, fresh.load("X2").size());
+    }
 }

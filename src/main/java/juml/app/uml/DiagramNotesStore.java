@@ -20,8 +20,10 @@ import java.util.Map;
  * <p>git で共有できるよう、人が読める整形 JSON でプロジェクト内に保存する。
  * 図ごとに {@link DiagramTabPane} のタブキー (図種 + 題材) を辞書キーにして束ねる。</p>
  *
- * <p>ファイル全体をメモリに保持し、{@link #save} のたびに読み・更新・書きを行う
- * (付箋の保存頻度は低いため十分)。パース不能なファイルは握り潰して空として扱い、
+ * <p>{@link #save} / {@link #rename} のたびにディスク像を読み直してから差分を当てて
+ * 書き戻す (付箋の保存頻度は低いため十分)。読み直さずメモリ像を書き戻すと、同じ
+ * プロジェクトを開いた別の Juml や git pull 等の外部変更で書かれた他図の付箋が
+ * 次の 1 回の保存で消える (bug-hunt R2)。パース不能なファイルは退避して空として扱い、
  * 既存メモが壊れていてもアプリが落ちないようにする。</p>
  */
 final class DiagramNotesStore {
@@ -70,7 +72,7 @@ final class DiagramNotesStore {
         if (jsonFile == null) {
             return true;
         }
-        ensureLoaded();
+        reloadFromDisk();
         if (notes == null || notes.isEmpty()) {
             byDiagram.remove(diagramKey);
             connByDiagram.remove(diagramKey);
@@ -96,7 +98,7 @@ final class DiagramNotesStore {
         if (jsonFile == null || oldKey == null || newKey == null || oldKey.equals(newKey)) {
             return true;
         }
-        ensureLoaded();
+        reloadFromDisk();
         List<DiagramNote> notes = byDiagram.remove(oldKey);
         List<DiagramConnector> conns = connByDiagram.remove(oldKey);
         if (notes == null && conns == null) {
@@ -109,6 +111,13 @@ final class DiagramNotesStore {
             connByDiagram.put(newKey, conns);
         }
         return writeFile();
+    }
+
+    /** 書き込み前にディスク像を取り直す (別プロセス / 外部変更との lost-update 防止)。 */
+    private void reloadFromDisk() {
+        byDiagram = null;
+        connByDiagram = null;
+        ensureLoaded();
     }
 
     private void ensureLoaded() {
