@@ -52,4 +52,22 @@ public class DiagramExportTest {
         assertTrue(left.getWidth() > 0 && left.getHeight() > 0);
         assertTrue(right.getWidth() > 0 && right.getHeight() > 0);
     }
+
+    /** PNG エンコードは SwingWorker へ移した (EDT 固まり対策)。書き出し本体の回帰。 */
+    @Test
+    public void writePng_writesDecodableFile() throws Exception {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
+                8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.File dir = java.nio.file.Files.createTempDirectory("juml-export").toFile();
+        java.io.File out = new java.io.File(dir, "compare.png");
+        try {
+            DiagramExport.writePng(img, out);
+            java.awt.image.BufferedImage back = javax.imageio.ImageIO.read(out);
+            org.junit.Assert.assertNotNull("PNG として読み戻せること", back);
+            org.junit.Assert.assertEquals(8, back.getWidth());
+        } finally {
+            out.delete();
+            dir.delete();
+        }
+    }
 }

@@ -12,6 +12,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -120,5 +121,17 @@ public class AppLogTest {
         String line = AppLog.snapshot().get(0).formatLine();
         assertTrue(line, line.contains("WARN"));
         assertTrue(line, line.contains("Comp: msg"));
+    }
+
+
+    @Test
+    public void testSlf4jBindingNoticeIsBenignStderr() {
+        // 動的検証で発見: 起動のたびに SLF4J の案内 3 行が SYS-001 WARN として先頭に並んでいた。
+        assertTrue(AppLog.isBenignStderrLine("SLF4J(W): No SLF4J providers were found."));
+        assertTrue(AppLog.isBenignStderrLine(
+                "SLF4J(W): Defaulting to no-operation (NOP) logger implementation"));
+        assertFalse("未知の stderr 行は引き続き SYS-001 として拾う",
+                AppLog.isBenignStderrLine("Exception in thread \"main\" java.lang.RuntimeException"));
+        assertFalse(AppLog.isBenignStderrLine(null));
     }
 }

@@ -35,14 +35,18 @@ public final class ReferenceIndexCache {
      * 現在のプロジェクトの {@link ReferenceIndex} を返す。
      * プロジェクトが未ロードなら null。プロジェクト切り替え時は再構築。
      */
-    public synchronized ReferenceIndex get() {
+    public ReferenceIndex get() {
         File root = projectCache.getProjectRoot();
         if (root == null || !projectCache.isLoaded()) {
             return null;
         }
-        if (cached != null && root.equals(cachedFor)) {
-            return cached;
+        synchronized (this) {
+            if (cached != null && root.equals(cachedFor)) {
+                return cached;
+            }
         }
+        // 索引の構築はモニタの外で行う。ロックを握ったまま全クラスを走査すると、
+        // プロジェクト切替の invalidate() (とそのキャンセル) が構築完了まで待たされる (bug-hunt R2)。
         ReferenceIndex idx = new ReferenceIndex();
         ReferenceIndexBuilder builder = new ReferenceIndexBuilder(
                 idx,
@@ -50,8 +54,13 @@ public final class ReferenceIndexCache {
                 projectCache.getDependencyIndex(),
                 ErrorListener.silent());
         builder.addAll(projectCache.getClasses());
-        this.cached = idx;
-        this.cachedFor = root;
+        synchronized (this) {
+            // 構築中にプロジェクトが切り替わっていたら公開しない (呼び出し側には返す)。
+            if (root.equals(projectCache.getProjectRoot()) && projectCache.isLoaded()) {
+                this.cached = idx;
+                this.cachedFor = root;
+            }
+        }
         return idx;
     }
 

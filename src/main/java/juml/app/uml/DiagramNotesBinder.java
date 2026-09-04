@@ -139,18 +139,10 @@ final class DiagramNotesBinder {
         if (previous != null && !Objects.equals(previous, newRoot) && onScreen) {
             return;
         }
-        // 「引き取り」分岐 (previous == null かつ画面に付箋がある) には、上の
-        // 上書き禁止規則が掛かっていなかった。引き取り先に保存済み付箋があると
-        // ロード側の「レイヤが空のときだけ反映する」規則でそれが読み込まれず、
-        // 次に付箋を 1 つ触った瞬間に画面の一覧が引き取り先の notes.json を
-        // <b>丸ごと上書き</b>して以前のセッションの付箋を消していた。Untitled の
-        // タブキーはセッションごとに 0 から振り直されるため衝突は既定である。
-        // 画面の付箋も引き取り先の付箋もどちらも正当なので、両方を残す。
-        bind(preview, newRoot, diagramKey, previous == null && onScreen);
-    }
-
-    void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
-        bind(preview, projectRoot, diagramKey, false);
+        // 「引き取り」(previous == null かつ画面に付箋がある) では、引き取り先に保存済み
+        // 付箋があっても bind のロード完了ハンドラが画面の付箋と合流させて保存するため、
+        // どちらも失われない (Untitled のタブキーはセッションごとに 0 から振り直され衝突する)。
+        bind(preview, newRoot, diagramKey);
     }
 
     /**
@@ -175,8 +167,7 @@ final class DiagramNotesBinder {
         bind(preview, root, newKey);
     }
 
-    private void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey,
-                      boolean adopt) {
+    void bind(SvgPreviewPanel preview, File projectRoot, String diagramKey) {
         final DiagramNotesStore s = storeFor(projectRoot);
         final Object token = new Object();
         bindToken.put(preview, token);
@@ -186,7 +177,7 @@ final class DiagramNotesBinder {
         // 変更時はバックグラウンドで保存 (移動・リサイズ・削除・色変更時の EDT フリーズ防止)。
         // スナップショットは EDT 上で深いコピーを取る。ライブオブジェクトを IO スレッドで
         // 直列化すると、ドラッグ中の座標変更やタグ変更と競合して不正な値が保存されうる。
-        preview.notes().setOnChange(() -> {
+        final Runnable saver = () -> {
             List<DiagramNote> snapshot = deepCopy(preview.notes().getNotes());
             List<DiagramConnector> connectors = preview.notes().getConnectors();
             io.submit(() -> {
@@ -199,29 +190,35 @@ final class DiagramNotesBinder {
                     report(Messages.get("note.save.recovered"));
                 }
             });
-        });
+        };
+        preview.notes().setOnChange(saver);
         // 既存付箋 + コネクタをバックグラウンドでロードして EDT で反映。
         io.submit(() -> {
             List<DiagramNote> loaded = s.load(diagramKey);
             List<DiagramConnector> loadedConns = s.loadConnectors(diagramKey);
-            if (!loaded.isEmpty()) {
-                SwingUtilities.invokeLater(() -> {
-                    // 再バインド済み、またはロード完了前にユーザーが付箋を追加していたら
-                    // 反映しない (直前の編集を黙って消さない)。
-                    if (bindToken.get(preview) != token) {
-                        return;
-                    }
-                    if (!preview.notes().hasNotes()) {
+            SwingUtilities.invokeLater(() -> {
+                // 再バインド済みなら反映しない。
+                if (bindToken.get(preview) != token) {
+                    return;
+                }
+                boolean screenHadNotes = preview.notes().hasNotes();
+                if (!loaded.isEmpty()) {
+                    if (!screenHadNotes) {
                         preview.notes().setData(loaded, loadedConns);
-                        report(Messages.get("note.loaded") + loaded.size());
-                    } else if (adopt) {
-                        // 引き取り: 画面の付箋も引き取り先の保存済み付箋もどちらも
-                        // 消さない。差し替えるとどちらか一方が必ず失われる。
+                    } else {
+                        // 引き取り、またはロード完了前にユーザーが付箋を追加していた場合:
+                        // 画面の付箋も保存済み付箋もどちらも消さない (差し替えや読み飛ばしは
+                        // 次の保存で片方を復旧不能に失う)。
                         preview.notes().mergeData(loaded, loadedConns);
-                        report(Messages.get("note.loaded") + loaded.size());
                     }
-                });
-            }
+                    report(Messages.get("note.loaded") + loaded.size());
+                }
+                // 画面側に付箋があった (引き取り / 先行編集) なら、次の編集を待たずに
+                // 合流結果を保存する。保存しないと引き取った付箋は一度触るまで永続化されない。
+                if (screenHadNotes && preview.notes().hasNotes()) {
+                    saver.run();
+                }
+            });
         });
     }
 

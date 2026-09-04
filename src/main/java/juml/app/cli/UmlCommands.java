@@ -153,6 +153,12 @@ public final class UmlCommands {
         }
         java.util.List<juml.core.formats.uml.PlantUmlSequenceDiagram.Candidate> candidates =
                 juml.core.formats.uml.PlantUmlSequenceDiagram.listCandidates(infos);
+        if (candidates.isEmpty()) {
+            // 候補ゼロだと 0 バイトのファイルだけが残り、「解析できなかった」のか
+            // 「該当が無かった」のか区別できない。空の一覧は空のまま書きつつ理由を伝える。
+            System.err.println("No sequence-diagram entry candidates were found in "
+                    + fileIn.getPath() + " (no Java sources, or no methods with calls).");
+        }
         StringBuilder sb = new StringBuilder();
         for (juml.core.formats.uml.PlantUmlSequenceDiagram.Candidate c : candidates) {
             sb.append(c.getEntry())
@@ -195,10 +201,14 @@ public final class UmlCommands {
             String src = AndroidProjectScanner.readFile(fileIn);
             infos = UmlGenerator.extractFromSource(src, fileIn.getName(), listener);
         }
+        // 既定ファイル名は出力形式に合わせる (csv 指定なのに function-list.md ができていた)。
+        String defaultName =
+                format == juml.core.formats.uml.MethodUsageReport.Format.CSV
+                        ? "function-list.csv" : "function-list.md";
         CliOutput.writeText(fileOut,
                 juml.core.formats.uml.MethodUsageReport.render(
                         infos, refIndex, actions, format),
-                "function-list.md");
+                defaultName);
     }
 
     /**
@@ -252,7 +262,9 @@ public final class UmlCommands {
      * 各フォルダごとに 1 枚ずつ PlantUML クラス図 ({@code classes.puml} + {@code classes.svg})
      * を {@code -o} で指定されたディレクトリ配下にサブフォルダ構造を維持して出力する。
      */
-    public static void handleClassDiagramsPerFolder(CliContext ctx) throws IOException {
+    public static int handleClassDiagramsPerFolder(CliContext ctx) throws IOException {
+        // 戻り値 = SVG を書けなかったフォルダ数。終了コードは呼び出し側が決める
+        // (テストから直接呼べるよう、ここでは exit しない)。
         File fileIn = ctx.fileIn;
         File fileOut = ctx.fileOut;
         ErrorListener listener = ctx.listener;
@@ -262,22 +274,22 @@ public final class UmlCommands {
         if (fileIn == null || !fileIn.isDirectory()) {
             System.err.println("--per-folder requires a project directory.");
             System.exit(1);
-            return;
+            return 0;
         }
         if (fileOut == null) {
             System.err.println("--per-folder requires an output directory via -o.");
             System.exit(1);
-            return;
+            return 0;
         }
         if (!fileOut.exists() && !fileOut.mkdirs()) {
             System.err.println("Failed to create output directory: " + fileOut);
             System.exit(1);
-            return;
+            return 0;
         }
         if (!fileOut.isDirectory()) {
             System.err.println("-o must point to a directory for --per-folder: " + fileOut);
             System.exit(1);
-            return;
+            return 0;
         }
         juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
                 new juml.core.formats.uml.PlantUmlClassDiagram.Options();
@@ -310,6 +322,7 @@ public final class UmlCommands {
                 "(" + result.getFolderCount() + " folder(s), "
                         + result.getClassCount() + " class(es))");
         progress.done(fileOut, System.currentTimeMillis() - startMs);
+        return result.getFailedRenderCount();
     }
 
     /**

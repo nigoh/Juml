@@ -100,4 +100,59 @@ public class ArchiveClassReaderTest {
             Files.deleteIfExists(dir);
         }
     }
+
+
+    /**
+     * 同梱サンプル JAR に「壊れた .class」と「multi-release の複製」を足した JAR を組む。
+     */
+    private static File jarWithBadEntryAndVersionedCopy() throws IOException {
+        java.util.Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                Files.newInputStream(copyJarToTemp().toPath()))) {
+            java.util.zip.ZipEntry e;
+            while ((e = zip.getNextEntry()) != null) {
+                if (!e.isDirectory()) {
+                    entries.put(e.getName(), zip.readAllBytes());
+                }
+            }
+        }
+        Path out = Files.createTempFile("juml-archive-mixed-", ".jar");
+        out.toFile().deleteOnExit();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(out))) {
+            // 壊れたクラスを先頭に置く (中断すると以降が 1 つも読めなくなるため)。
+            zos.putNextEntry(new java.util.zip.ZipEntry("com/example/Broken.class"));
+            zos.write("this is not a class file".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+            for (java.util.Map.Entry<String, byte[]> en : entries.entrySet()) {
+                zos.putNextEntry(new java.util.zip.ZipEntry(en.getKey()));
+                zos.write(en.getValue());
+                zos.closeEntry();
+                if (en.getKey().endsWith(".class")) {
+                    zos.putNextEntry(new java.util.zip.ZipEntry(
+                            "META-INF/versions/9/" + en.getKey()));
+                    zos.write(en.getValue());
+                    zos.closeEntry();
+                }
+            }
+        }
+        return out.toFile();
+    }
+
+    /**
+     * bug-hunt R4 で発見: 1 つの不良 .class で読み取り全体が中断し、以降のクラスが失われて
+     * いた。また multi-release JAR の版ごとの複製をそのまま読み、同じクラスが重複していた。
+     */
+    @Test
+    public void skipsBrokenEntriesAndVersionedDuplicates() throws IOException {
+        List<String> reported = new java.util.ArrayList<>();
+        List<JavaClassInfo> infos = ArchiveClassReader.readJar(
+                jarWithBadEntryAndVersionedCopy(),
+                (code, source, line, message) -> reported.add(String.valueOf(message)));
+        assertEquals("壊れたエントリの後ろのクラスも読めること", 2, infos.size());
+        assertTrue("Foo present", infos.stream().anyMatch(c -> "Foo".equals(c.getSimpleName())));
+        assertTrue("Bar present", infos.stream().anyMatch(c -> "Bar".equals(c.getSimpleName())));
+        assertTrue("不良エントリは通知されること: " + reported,
+                reported.stream().anyMatch(m -> m.contains("Broken.class")));
+    }
 }

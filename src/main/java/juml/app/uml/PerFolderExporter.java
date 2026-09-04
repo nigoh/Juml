@@ -136,6 +136,7 @@ final class PerFolderExporter {
     private static void updateBar(JProgressBar bar, JLabel status,
                                     int done, int total, String message) {
         if (total > 0) {
+            bar.setVisible(true); // 共有バーが相手ジョブの done() で隠されていても取り戻す
             if (bar.isIndeterminate()) {
                 bar.setIndeterminate(false);
             }

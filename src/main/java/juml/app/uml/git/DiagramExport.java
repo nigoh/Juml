@@ -46,23 +46,57 @@ final class DiagramExport {
             java.util.function.Supplier<BufferedImage> supplier) {
         javax.swing.JPanel bar = new javax.swing.JPanel(
                 new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 2));
+        javax.swing.JLabel status = new javax.swing.JLabel(" ");
         javax.swing.JButton save = new javax.swing.JButton(Messages.get("git.export.png"));
-        save.addActionListener(e -> {
-            BufferedImage img = supplier.get();
-            if (img != null) {
-                saveAsPng(parent, img, baseName + "-compare.png");
-            }
-        });
         javax.swing.JButton copy = new javax.swing.JButton(Messages.get("git.export.copy"));
-        copy.addActionListener(e -> {
-            BufferedImage img = supplier.get();
-            if (img != null) {
-                copyToClipboard(img);
-            }
-        });
+        save.addActionListener(e -> withComposite(supplier, status, save, copy,
+                img -> saveAsPng(parent, img, baseName + "-compare.png", save)));
+        copy.addActionListener(e -> withComposite(supplier, status, save, copy, img -> {
+            copyToClipboard(img);
+            status.setText(Messages.get("git.export.copied"));
+        }));
+        bar.add(status);
         bar.add(save);
         bar.add(copy);
         return bar;
+    }
+
+    /**
+     * 合成画像を背景スレッドで作り、完成後に {@code action} を EDT で呼ぶ。
+     *
+     * <p>合成は両側の SVG を 2 倍でラスタライズするため大きな図では数秒かかる。EDT で走らせると
+     * ダイアログの親 (メインウィンドウ) ごと無応答になるので SwingWorker へ逃がし、実行中は
+     * ボタンを無効化する。描画完了前 (supplier が null) は無反応に見えないよう案内を出す。</p>
+     */
+    private static void withComposite(java.util.function.Supplier<BufferedImage> supplier,
+            javax.swing.JLabel status, javax.swing.JButton save, javax.swing.JButton copy,
+            java.util.function.Consumer<BufferedImage> action) {
+        status.setText(" ");
+        save.setEnabled(false);
+        copy.setEnabled(false);
+        new javax.swing.SwingWorker<BufferedImage, Void>() {
+            @Override protected BufferedImage doInBackground() {
+                return supplier.get();
+            }
+
+            @Override protected void done() {
+                save.setEnabled(true);
+                copy.setEnabled(true);
+                BufferedImage img;
+                try {
+                    img = get();
+                } catch (Exception ex) {
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    status.setText(Messages.get("git.export.failed") + cause.getMessage());
+                    return;
+                }
+                if (img == null) {
+                    status.setText(Messages.get("git.umldiff.rendering"));
+                    return;
+                }
+                action.accept(img);
+            }
+        }.execute();
     }
 
     /** パスからファイル名の基底 (拡張子・ディレクトリを除く) を取り出す。 */
@@ -133,6 +167,9 @@ final class DiagramExport {
         }
         int w = Math.max(1, (int) Math.ceil(svg.getWidth() * SCALE));
         int h = Math.max(1, (int) Math.ceil(svg.getHeight() * SCALE));
+        // 画面に出ている GraphicsNode を背景スレッドから paint すると EDT の描画と競合するため、
+        // SVG テキストから専用のノードを組み直して描く (組み直せないときだけ元ノードを使う)。
+        RenderedSvg own = reparse(svg);
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -141,13 +178,30 @@ final class DiagramExport {
         g.setColor(Color.WHITE);
         g.fillRect(0, 0, w, h);
         g.scale(SCALE, SCALE);
-        svg.getRoot().paint(g);
+        (own != null ? own : svg).getRoot().paint(g);
         g.dispose();
         return img;
     }
 
-    /** ファイル選択ダイアログで PNG として保存する。 */
-    static void saveAsPng(Component parent, BufferedImage img, String defaultName) {
+    /** 表示中のノードと競合しない専用の {@link RenderedSvg} を作る (作れなければ null)。 */
+    private static RenderedSvg reparse(RenderedSvg svg) {
+        String xml = svg.getSvgXml();
+        if (xml == null || xml.isEmpty()) {
+            return null;
+        }
+        try {
+            return juml.app.uml.PlantUmlSvgRenderer.render(xml);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /**
+     * ファイル選択ダイアログで PNG として保存する。エンコード + 書き込みは SwingWorker で
+     * 行い (2 倍ラスタの大きな図で EDT が数秒固まっていた)、その間 {@code trigger} を無効化する。
+     */
+    static void saveAsPng(Component parent, BufferedImage img, String defaultName,
+                          javax.swing.AbstractButton trigger) {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle(Messages.get("git.export.png"));
         fc.setFileFilter(new FileNameExtensionFilter("PNG", "png"));
@@ -159,20 +213,49 @@ final class DiagramExport {
         if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".png")) {
             file = new File(file.getParentFile(), file.getName() + ".png");
         }
-        try {
-            // 一時ファイルへ書き切ってから置換する。対象へ直接書くと、エンコード失敗や
-            // ディスク満杯で前回保存した PNG が壊れた状態で失われる。ImageIO.write は
-            // エンコーダが無いと例外ではなく false を返すので、それも失敗として扱う。
-            final File target = file;
-            juml.util.AtomicFileWrite.writeFile(target, tmp -> {
-                if (!ImageIO.write(img, "png", tmp)) {
-                    throw new IOException("no PNG encoder available for export");
-                }
-            });
-        } catch (IOException ex) {
-            javax.swing.JOptionPane.showMessageDialog(parent,
-                    Messages.get("git.export.failed") + ex.getMessage());
+        if (file.exists() && javax.swing.JOptionPane.showConfirmDialog(parent,
+                java.text.MessageFormat.format(
+                        Messages.get("git.export.overwrite"), file.getName()),
+                Messages.get("git.export.png"),
+                javax.swing.JOptionPane.YES_NO_OPTION) != javax.swing.JOptionPane.YES_OPTION) {
+            return; // 既存ファイルを黙って上書きしない (アプリ内の他の保存経路と揃える)
         }
+        final File target = file;
+        if (trigger != null) {
+            trigger.setEnabled(false);
+        }
+        new javax.swing.SwingWorker<Void, Void>() {
+            @Override protected Void doInBackground() throws IOException {
+                writePng(img, target);
+                return null;
+            }
+
+            @Override protected void done() {
+                if (trigger != null) {
+                    trigger.setEnabled(true);
+                }
+                try {
+                    get();
+                } catch (Exception ex) {
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    javax.swing.JOptionPane.showMessageDialog(parent,
+                            Messages.get("git.export.failed") + cause.getMessage());
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * 一時ファイルへ書き切ってから置換する。対象へ直接書くと、エンコード失敗や
+     * ディスク満杯で前回保存した PNG が壊れた状態で失われる。ImageIO.write は
+     * エンコーダが無いと例外ではなく false を返すので、それも失敗として扱う。
+     */
+    static void writePng(BufferedImage img, File target) throws IOException {
+        juml.util.AtomicFileWrite.writeFile(target, tmp -> {
+            if (!ImageIO.write(img, "png", tmp)) {
+                throw new IOException("no PNG encoder available for export");
+            }
+        });
     }
 
     /** 画像をシステムクリップボードへコピーする。 */

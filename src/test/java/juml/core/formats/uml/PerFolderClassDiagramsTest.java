@@ -131,4 +131,34 @@ public class PerFolderClassDiagramsTest {
                     new File(out, "com/example/ui/" + PerFolderClassDiagrams.PUML_NAME).isFile());
         }
     }
+
+    /**
+     * bug-hunt R4 で発見: 描画に失敗しても Result からは分からず、CLI は success + exit 0 を
+     * 返していた ({@code -v} なしでは失敗が画面にも出ない)。失敗枚数を数えることを検証する。
+     */
+    @Test
+    public void reportsFailedRenderCount() throws IOException {
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            try {
+                out.write("<svg><text>An error has occured</text></svg>"
+                        .getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        try {
+            File project = tmp.newFolder("project-fail");
+            writeFile(new File(project, "com/example/ui/Foo.java"),
+                    "package com.example.ui; public class Foo {}");
+            File out = tmp.newFolder("out-fail");
+            PerFolderClassDiagrams.Result result = PerFolderClassDiagrams.generate(
+                    project, out, null, null, false, null, ErrorListener.silent());
+            assertEquals("フォルダ自体は処理されること", 1, result.getFolderCount());
+            assertEquals("描画に失敗したフォルダを数えること", 1, result.getFailedRenderCount());
+            assertFalse("失敗した SVG は残らないこと",
+                    new File(out, "com/example/ui/" + PerFolderClassDiagrams.SVG_NAME).isFile());
+        } finally {
+            PlantUmlRenderer.setRendererImplForTest(null);
+        }
+    }
 }

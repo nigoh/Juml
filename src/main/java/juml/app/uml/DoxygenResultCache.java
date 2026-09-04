@@ -27,6 +27,10 @@ final class DoxygenResultCache {
     private DoxModel model;
     private final List<Runnable> listeners = new ArrayList<>();
     private boolean running;
+    /** 実行中のワーカー (プロジェクト切替時に取り消すため保持)。 */
+    private SwingWorker<DoxModel, Void> worker;
+    /** テスト用: doxygen 実行 + XML パースの差し替え (null なら実 doxygen を起動)。 */
+    static volatile java.util.function.Function<File, DoxModel> analyzerForTest;
     /** 実行中/保持中の結果がどのルートのものか。プロジェクト切替の混線防止に使う。 */
     private File modelRoot;
     // 実行中に「別プロジェクト」の Run が来たときの保留 (1 スロット・最新のみ)。
@@ -44,6 +48,13 @@ final class DoxygenResultCache {
     void clear() {
         model = null;
         modelRoot = null;
+        // 実行中の doxygen は旧プロジェクト向けなので取り消す (bug-hunt R1: 巨大ツリーの
+        // doxygen が完走するまで新プロジェクトの Run が待たされ、取り消す手段も無かった)。
+        // done() で running が戻り、保留中の新プロジェクト解析があればそこから開始される。
+        if (worker != null && !worker.isDone()) {
+            worker.cancel(true);
+            DoxygenRunner.cancelRunning();
+        }
         // 保留中の別プロジェクト解析があれば、それも破棄する (更に別プロジェクトへ
         // 切り替わったので陳腐化している)。無効化ボタンが戻るよう後始末は呼ぶ。
         if (pendingOnFinally != null) {
@@ -120,9 +131,13 @@ final class DoxygenResultCache {
         if (onStart != null) {
             onStart.run();
         }
-        new SwingWorker<DoxModel, Void>() {
+        worker = new SwingWorker<DoxModel, Void>() {
             @Override
             protected DoxModel doInBackground() throws Exception {
+                java.util.function.Function<File, DoxModel> stub = analyzerForTest;
+                if (stub != null) {
+                    return stub.apply(root);
+                }
                 // 出力キャッシュ利用: *.java 不変なら doxygen 再実行をスキップして XML を再パース。
                 File xmlDir = DoxygenRunner.runCached(root, ErrorListener.silent());
                 return DoxygenXmlParser.parse(xmlDir, ErrorListener.silent());
@@ -138,6 +153,10 @@ final class DoxygenResultCache {
                     if (root.equals(modelRoot)) {
                         publishResult(m);
                     }
+                } catch (java.util.concurrent.CancellationException ex) {
+                    // プロジェクト切替 (clear) で取り消し済み: 旧プロジェクトの結果は捨てる。
+                    juml.util.AppLog.info("DoxygenResultCache",
+                            "Doxygen run cancelled (project switched): " + root.getAbsolutePath());
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     juml.util.AppLog.error(juml.util.ErrorCode.DIAG_003, "DoxygenResultCache",
@@ -166,7 +185,8 @@ final class DoxygenResultCache {
                     }
                 }
             }
-        }.execute();
+        };
+        worker.execute();
     }
 
     /** 結果を保持し、全リスナーへ通知する。 */

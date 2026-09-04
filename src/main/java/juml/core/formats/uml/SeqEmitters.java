@@ -41,6 +41,24 @@ final class SeqEmitters {
      * ある場合だけ「未展開」note を出して省略を可視化する。展開対象が無い呼び出し
      * (本体が空 等) にまで note を付けてノイズにしないためのガードを内包する。
      */
+    /**
+     * 展開総数の上限に達したことを図に残す (深さ上限の note と同じ流儀で、
+     * 「処理が省略された」ことを利用者に見せる)。
+     */
+    static void emitBudgetLimitNote(StringBuilder body, String indent, String target,
+                                    JavaMethodInfo.Call call, JavaClassInfo currentClass,
+                                    JavaClassInfo nextCls, JavaMethodInfo nextMethod) {
+        if (!hasExpandableBody(call, currentClass, nextCls, nextMethod)) {
+            return;
+        }
+        body.append(indent).append("note over ")
+                .append(PlantUmlSequenceDiagram.quote(target)).append(" : ")
+                .append(PlantUmlCommentFormatter.escapeLabel(
+                        "⋯ 展開数の上限 (" + SeqRender.MAX_EXPANSIONS
+                                + ") に達したため、これ以降は未展開"))
+                .append('\n');
+    }
+
     static void emitDepthLimitNote(StringBuilder body, String indent, String target,
                                    JavaMethodInfo.Call call, JavaClassInfo currentClass,
                                    JavaClassInfo nextCls, JavaMethodInfo nextMethod,

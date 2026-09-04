@@ -144,6 +144,14 @@ public class Main {
         if (initialProject == null) {
             initialProject = restoreLastProjectIfEnabled();
         }
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            // 動的検証で発見: DISPLAY の無い環境で引数なし起動すると EDT 上の HeadlessException
+            // スタックトレースだけを吐いて exit 0 していた。CLI へ誘導して明示的に失敗させる。
+            System.err.println("No display is available (headless environment); the GUI cannot"
+                    + " start. Use the CLI options instead (-h for usage).");
+            System.exit(2);
+            return;
+        }
         UmlApp.launch(initialProject);
     }
 

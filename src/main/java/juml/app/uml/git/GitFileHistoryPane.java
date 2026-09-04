@@ -53,6 +53,7 @@ final class GitFileHistoryPane extends JPanel {
 
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         pathField.setToolTipText(Messages.get("git.file.pathTip"));
+        pathField.addActionListener(e -> loadHistory()); // Enter で履歴を読む
         bar.add(pathField);
         JButton choose = new JButton(Messages.get("git.file.choose"));
         choose.addActionListener(e -> chooseFile());
@@ -104,9 +105,26 @@ final class GitFileHistoryPane extends JPanel {
 
     /** リポジトリが切り替わったら入力・結果をリセットする。 */
     void onRepositoryChanged() {
+        // 走行中の履歴 / 本文 (blame) ワーカーを無効化する。進めないと、リポジトリ切替で
+        // クリアした一覧・本文に旧リポジトリの結果が後から適用される (stale result)。
+        historyGen++;
+        textGen++;
         pathField.setText("");
         historyModel.clear();
         textArea.setText(Messages.get("git.file.hint"));
+    }
+
+    /**
+     * 基準 ref (ブランチコンボ) が変わったときの更新。パス入力は保持したまま、履歴を
+     * 読み込み済みなら新しい ref で読み直す (以前は {@link #onRepositoryChanged()} を
+     * 呼んでいたため、ブランチ切替や更新のたびに入力と結果が消えていた)。
+     */
+    void onRefChanged() {
+        historyGen++;
+        textGen++;
+        if (!pathField.getText().trim().isEmpty() && !historyModel.isEmpty()) {
+            loadHistory();
+        }
     }
 
     /** 作業ツリー内のファイルを選び、リポジトリ相対パスへ変換して入力欄に入れる。 */

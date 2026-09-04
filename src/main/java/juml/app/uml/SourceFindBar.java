@@ -197,7 +197,9 @@ final class SourceFindBar extends JPanel {
         layoutChanged();
         // 検索の起点を今のキャレット位置に固定する (以降のインクリメンタル入力で
         // showCurrent がキャレットを動かしても、初期ヒット選択はここを基準に保つ)。
-        searchAnchor = target.getCaretPosition();
+        // 選択範囲があるときは選択の先頭を起点にし、選択中の出現そのものが「現在ヒット」に
+        // なるようにする (キャレットは選択末尾にあるため、そのままだと次の出現へ飛ぶ)。
+        searchAnchor = target.getSelectionStart();
         String sel = target.getSelectedText();
         if (sel != null && !sel.isEmpty() && !sel.contains("\n")) {
             field.setText(sel);

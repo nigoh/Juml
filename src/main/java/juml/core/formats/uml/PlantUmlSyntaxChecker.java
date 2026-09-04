@@ -93,9 +93,12 @@ public final class PlantUmlSyntaxChecker {
                         line.trim()));
             }
 
+            // creole でリンク括弧をエスケープしている行 ("[~[juml://class/X]]" のような
+            // コメント) は、対応数えの前提 (角括弧 = リンク記法) が成り立たない。
+            // 数えると必ず不一致になり、実際の失敗行を覆い隠す誤検出になるため飛ばす。
             int open = countOccurrences(line, "[[");
             int close = countOccurrences(line, "]]");
-            if (open != close) {
+            if (open != close && !hasEscapedBracket(line)) {
                 issues.add(new Issue(lineNo,
                         "unbalanced link brackets ([[=" + open + " ]]=" + close + ")",
                         line.trim()));
@@ -122,6 +125,11 @@ public final class PlantUmlSyntaxChecker {
             sb.append(" | (+").append(issues.size() - limit).append(" more)");
         }
         return sb.toString();
+    }
+
+    /** creole でエスケープされた角括弧 ({@code ~[} / {@code ~]}) を含む行か。 */
+    private static boolean hasEscapedBracket(String line) {
+        return line.contains("~[") || line.contains("~]");
     }
 
     private static int countOccurrences(String haystack, String needle) {

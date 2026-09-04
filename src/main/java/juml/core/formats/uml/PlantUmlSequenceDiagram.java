@@ -563,19 +563,20 @@ public final class PlantUmlSequenceDiagram {
                         SeqEmitters.argLabelOf(call, opts), opts)))
                 .append('\n');
 
-        // 解析済みクラスに該当する呼び出し先メソッドを引いておく (note と再帰展開で共有)
+        // 呼び出し先メソッドを引いておく (note と再帰展開で共有)
         JavaClassInfo nextCls = findClass(classes, target);
         JavaMethodInfo nextMethod = nextCls != null
                 ? findMethod(nextCls, call.getMethodName()) : null;
         // AT_CALL_SITE モードのとき、呼び出しの直下に呼ばれるメソッドのコメント note を出す
         SeqEmitters.emitCallSiteComment(body, indent, target, nextMethod, opts);
 
-        // 再帰展開: 呼び出し先メソッドが解析済みクラスにあれば深掘りする
+        // 深さ上限に加え、図全体の展開総数でも頭打ちにする (無制限指定でも落ちないように)。
+        if (!r.spendExpansion(body, indent, target, call, currentClass, nextCls, nextMethod)) {
+            return;
+        }
         boolean canRecurse = opts.maxDepth <= 0 || depth < opts.maxDepth;
         if (!canRecurse) {
-            // 深さ上限に達した。本来展開すべき本体/コールバックがあるのに silent に
-            // 落とすと「処理が省略される」原因が利用者に伝わらないため、
-            // 展開対象がある場合だけ「未展開」note を出して可視化する (SeqEmitters に委譲)。
+            // 深さ上限。展開対象がある場合だけ「未展開」note を出して可視化する。
             SeqEmitters.emitDepthLimitNote(body, indent, target, call,
                     currentClass, nextCls, nextMethod, opts);
             return;
@@ -677,7 +678,6 @@ public final class PlantUmlSequenceDiagram {
         stack.remove(key);
         body.append(indent).append("deactivate ").append(idRef(target)).append('\n');
     }
-
 
     /**
      * 解析対象外の participant について、依存 JAR/AAR で解決できれば EXTERNAL_JAR、
@@ -792,7 +792,8 @@ public final class PlantUmlSequenceDiagram {
         if (resolved != null && !resolved.isEmpty()) {
             return outerSimpleName(resolved);
         }
-        String receiver = call.getReceiver();
+        // "this." 前置を外す (残すと head が "this" になり participant "this" が現れる)。
+        String receiver = InlineCallbacks.stripThisPrefix(call.getReceiver());
         if (receiver == null || receiver.isEmpty() || "this".equals(receiver)) {
             return cls.getSimpleName();
         }

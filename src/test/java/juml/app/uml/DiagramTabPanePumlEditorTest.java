@@ -390,4 +390,26 @@ public class DiagramTabPanePumlEditorTest {
         assertEquals("再オープンでテキストが復元されるはず",
                 PUML, GuiActionRunner.execute(() -> pane.activeEditorText()));
     }
+
+
+    /**
+     * 動的検証で発見: エディタタブは下部タブから Java ソースビューを外しているのに、
+     * メニュー/パレットの「ソースを表示」がそのビューを選択しようとして
+     * {@code IllegalArgumentException} を投げていた。案内メッセージで済ませる回帰。
+     */
+    @Test
+    public void showSourceForActiveTab_onEditorTab_reportsStatusInsteadOfThrowing() {
+        java.util.List<String> status = new java.util.ArrayList<>();
+        DiagramTabPane p = GuiActionRunner.execute(() -> {
+            JTabbedPane t = new JTabbedPane();
+            t.addTab("Utility1", new javax.swing.JPanel());
+            return new DiagramTabPane(t, 1, new ProjectAnalysisCache(), new DiagramState(),
+                    status::add, zoom -> { });
+        });
+        GuiActionRunner.execute(() -> p.openPumlEditor(PUML, null));
+        assertTrue(GuiActionRunner.execute(() -> p.activeTabIsPumlEditor()));
+        GuiActionRunner.execute(() -> p.showSourceForActiveTab());
+        assertTrue("案内メッセージが出ること: " + status,
+                status.contains(juml.util.Messages.get("source.editorTab")));
+    }
 }

@@ -27,7 +27,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class DiagramNotesLayerTest {
 
-    private static MouseEvent press(JPanel owner, int x, int y, int mods) {
+    private static MouseEvent press(javax.swing.JComponent owner, int x, int y, int mods) {
         return new MouseEvent(owner, MouseEvent.MOUSE_PRESSED, 1L, mods, x, y, 1, false,
                 MouseEvent.BUTTON1);
     }
@@ -337,5 +337,99 @@ public class DiagramNotesLayerTest {
         assertTrue(after.isLocked());
         assertEquals(x0, after.getX(), 0.001);
         assertEquals(y0, after.getY(), 0.001);
+    }
+
+    private static MouseEvent drag(javax.swing.JComponent owner, int x, int y) {
+        return new MouseEvent(owner, MouseEvent.MOUSE_DRAGGED, 2L, InputEvent.BUTTON1_DOWN_MASK,
+                x, y, 1, false, MouseEvent.BUTTON1);
+    }
+
+    /**
+     * bug-hunt R2 で発見: 要素アンカー付箋は要素相対のため負のオフセットを許すが、図座標まで
+     * 負になると画面外へ出て掴めず、右下にしか広がらない書き出し範囲からも切れていた。
+     * ドラッグで図座標が負にならないこと (要素が原点にあるときはオフセット 0 で止まる)。
+     */
+    @Test
+    public void elementNoteDragIsClampedToNonNegativeDiagramCoordinates() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.setElementResolver(ref -> "E".equals(ref) ? new double[] {0, 0, 100, 50} : null);
+        DiagramNote n = new DiagramNote(10, 10, 80, 50, "anchored");
+        n.setAnchor(DiagramNote.Anchor.ELEMENT);
+        n.setTargetRef("E");
+        layer.setData(new java.util.ArrayList<>(List.of(n)), java.util.Collections.emptyList());
+        assertTrue("付箋を掴めること", layer.pressed(press(owner, 30, 30, 0), 1.0));
+        layer.dragged(drag(owner, -300, -300), 1.0);
+        layer.released();
+        assertEquals("図座標 X が負にならない (要素左上 0 + オフセット)", 0.0, n.getX(), 0.0001);
+        assertEquals("図座標 Y が負にならない", 0.0, n.getY(), 0.0001);
+        // 要素が原点から離れていれば、その分だけ負のオフセットは許される。
+        layer.setElementResolver(ref -> new double[] {200, 100, 100, 50});
+        assertTrue(layer.pressed(press(owner, 230, 130, 0), 1.0));
+        layer.dragged(drag(owner, -500, -500), 1.0);
+        layer.released();
+        assertEquals(-200.0, n.getX(), 0.0001);
+        assertEquals(-100.0, n.getY(), 0.0001);
+    }
+
+
+    /** bug-hunt R2 (検証で発見): 矢印キー移動 (moveSelected) にもドラッグと同じクランプが効くこと。 */
+    @Test
+    public void elementNoteArrowKeyMoveIsClampedToo() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        layer.setElementResolver(ref -> new double[] {10, 10, 100, 40});
+        DiagramNote n = new DiagramNote(5, 5, 80, 50, "anchored");
+        n.setAnchor(DiagramNote.Anchor.ELEMENT);
+        n.setTargetRef("E");
+        layer.setData(new java.util.ArrayList<>(List.of(n)), java.util.Collections.emptyList());
+        assertTrue(layer.pressed(press(owner, 20, 20, 0), 1.0));
+        layer.released();
+        for (int i = 0; i < 40; i++) {
+            layer.moveSelected(-10, -10);
+        }
+        assertEquals("要素 (10,10) なのでオフセットは -10 で止まる", -10.0, n.getX(), 0.0001);
+        assertEquals(-10.0, n.getY(), 0.0001);
+    }
+
+    /**
+     * bug-hunt R2: 図が縮んで付箋の原点が内容矩形の端付近 / 外に来た状態でリサイズすると、
+     * 残り幅が最小サイズ未満のため 60x44 へ潰れていた。マウスで広げた方向に大きくなること。
+     */
+    @Test
+    public void resizeNearShrunkenContentEdgeDoesNotSnapToMinimum() {
+        org.junit.Assume.assumeFalse(java.awt.GraphicsEnvironment.isHeadless());
+        SvgPreviewPanel panel = new SvgPreviewPanel();
+        panel.setImage(new BufferedImage(472, 298, BufferedImage.TYPE_INT_ARGB));
+        panel.notes().addNoteAt(new Point(272, 178), 1.0);
+        DiagramNote n = panel.notes().getNotes().get(0);
+        n.setWidth(190);
+        n.setHeight(110);
+        panel.setImage(new BufferedImage(200, 150, BufferedImage.TYPE_INT_ARGB)); // 一時的に縮んだ図
+        int hx = (int) (n.getX() + n.getWidth()) - 2;
+        int hy = (int) (n.getY() + n.getHeight()) - 2;
+        assertTrue("リサイズハンドルを掴めること", panel.notes().pressed(press(panel, hx, hy, 0), 1.0));
+        panel.notes().dragged(drag(panel, hx + 10, hy + 10), 1.0);
+        panel.notes().released();
+        DiagramNote after = panel.notes().getNotes().get(0);
+        assertTrue("広げる方向のドラッグで潰れないこと: " + after.getWidth(), after.getWidth() >= 190);
+        assertTrue(after.getHeight() >= 110);
+    }
+
+
+    /** bug-hunt R2: 再バインド / Save As のたびに同じコネクタが倍増して保存されていた。 */
+    @Test
+    public void mergeDataDoesNotDuplicateConnectors() {
+        JPanel owner = new JPanel();
+        DiagramNotesLayer layer = new DiagramNotesLayer(owner);
+        DiagramNote a = new DiagramNote(0, 0, 100, 60, "a");
+        DiagramNote b = new DiagramNote(300, 0, 100, 60, "b");
+        DiagramConnector ab = new DiagramConnector(a.getId(), b.getId());
+        layer.setData(new java.util.ArrayList<>(List.of(a, b)),
+                new java.util.ArrayList<>(List.of(ab)));
+        layer.mergeData(List.of(a, b), List.of(new DiagramConnector(a.getId(), b.getId())));
+        layer.mergeData(List.of(a, b), List.of(new DiagramConnector(b.getId(), a.getId())));
+        assertEquals("同じ端点対のコネクタは 1 本のまま", 1, layer.getConnectors().size());
+        assertEquals(2, layer.getNotes().size());
     }
 }

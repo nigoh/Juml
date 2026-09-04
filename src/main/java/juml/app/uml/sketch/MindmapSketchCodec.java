@@ -104,6 +104,14 @@ public final class MindmapSketchCodec {
             return;
         }
         String symbols = m.group(1);
+        char after = line.charAt(symbols.length());
+        if (after == '[' || after == '_' || after == ':') {
+            // 記号直後の修飾子 ({@code *[#color] text} の色 / {@code *_ text} の枠なし /
+            // {@code *: 複数行}) はモデルに持てない。テキストとして取り込むと往復で装飾が
+            // 消えるため、編集ロック対象 (未対応行) にする。
+            unsupported.add(line);
+            return;
+        }
         MindmapNode.Side side = singleFamilySide(symbols);
         if (side == null) {
             // 記号の混在 (例: *-*) はファミリ不整合で PlantUML が壊れるため未対応。

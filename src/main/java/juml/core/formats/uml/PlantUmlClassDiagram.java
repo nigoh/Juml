@@ -224,7 +224,25 @@ public final class PlantUmlClassDiagram {
         if (classes == null) {
             throw new IllegalArgumentException("classes is null");
         }
-        Options o = opts != null ? opts : new Options();
+        if (opts == null) {
+            return generateWith(classes, new Options());
+        }
+        // 焦点モードの前処理 (PlantUmlClassFocus.prepare) は渡された Options を書き換える。
+        // --per-folder のように 1 つの Options を使い回して複数枚描くと、焦点クラスを含まない
+        // フォルダを描いた時点で focusClass が空へ潰され、以降のフォルダで強調が消える
+        // (フォルダ順に依存する非決定的な挙動)。呼び出し側の値は必ず元へ戻す。
+        String focusBefore = opts.focusClass;
+        java.util.Set<String> emphasisBefore = opts.focusEmphasis;
+        try {
+            return generateWith(classes, opts);
+        } finally {
+            opts.focusClass = focusBefore;
+            opts.focusEmphasis = emphasisBefore;
+        }
+    }
+
+    private static String generateWith(List<JavaClassInfo> classes, Options opts) {
+        Options o = opts;
         // 0. module-info (Kind.MODULE) は描画対象外。さらに FQN 昇順で安定ソートし、
         //    エイリアス ID/出力順/maxClasses 切り詰めの実行ごとのぶれを無くす (再現性確保)。
         classes = classes.stream()
@@ -260,6 +278,10 @@ public final class PlantUmlClassDiagram {
         }
         StringBuilder out = new StringBuilder();
         appendHeader(out, o, classes);
+        if (classes.isEmpty()) {
+            // 空の図は真っ白なタブになり「壊れた?」と誤解されるため、他の図種と同様に案内ノートを置く。
+            out.append("note as N1\n  (no classes found)\nend note\n");
+        }
         // クラスごとに一意のエイリアスを発行する (PlantUML は "a.b.c" をネスト解釈するため引用符名 + as で切り離す)。
         Set<String> knownNames = new HashSet<>();
         java.util.Map<String, String> aliasByQn = new java.util.LinkedHashMap<>();
@@ -338,7 +360,7 @@ public final class PlantUmlClassDiagram {
                 }
             }
         }
-        if (o.hideUnlinkedClasses) {
+        if (o.hideUnlinkedClasses && !classes.isEmpty()) {
             // 全関連線を出し終えた後で、どの線とも繋がらない孤立クラスをレイアウト解決時に除去する。
             // legend/footer は要素ではないため影響を受けない。
             out.append("remove @unlinked\n");

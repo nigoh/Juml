@@ -167,6 +167,7 @@ public class EntitySearchDialog extends JDialog {
                     commit();
                     e.consume();
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    flushPendingFilter();
                     tree.requestFocusInWindow();
                     e.consume();
                 }
@@ -270,7 +271,7 @@ public class EntitySearchDialog extends JDialog {
      * 上位ノードは Kind (Class / Method / Field) → パッケージ → クラス → 項目 の階層。
      */
     private void rebuildTree(String query) {
-        String q = query == null ? "" : query.trim().toLowerCase();
+        String q = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
         root.removeAllChildren();
 
         // Kind → Package → Class → List<Entry>
@@ -371,13 +372,13 @@ public class EntitySearchDialog extends JDialog {
         if (q == null || q.isEmpty()) {
             return true;
         }
-        if (e.simpleName.toLowerCase().contains(q)) {
+        if (e.simpleName.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
-        if (e.ownerQn.toLowerCase().contains(q)) {
+        if (e.ownerQn.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
-        if (e.typeOrSignature.toLowerCase().contains(q)) {
+        if (e.typeOrSignature.toLowerCase(java.util.Locale.ROOT).contains(q)) {
             return true;
         }
         return false;
@@ -419,7 +420,19 @@ public class EntitySearchDialog extends JDialog {
         return null;
     }
 
+    /**
+     * デバウンス待ちの絞り込みを同期的に消化する。入力後 150ms 以内の Enter / ↓ で
+     * 「前のフィルタ結果」の選択が確定されるのを防ぐ (bug-hunt R2)。
+     */
+    private void flushPendingFilter() {
+        if (debounceTimer.isRunning()) {
+            debounceTimer.stop();
+            rebuildTree(filter.getText());
+        }
+    }
+
     private void commit() {
+        flushPendingFilter();
         Object last = tree.getLastSelectedPathComponent();
         if (last instanceof DefaultMutableTreeNode) {
             Object u = ((DefaultMutableTreeNode) last).getUserObject();
@@ -437,6 +450,7 @@ public class EntitySearchDialog extends JDialog {
 
     /** 選択中のエントリを「ドリルダウン要求」として確定し、ダイアログを閉じる。 */
     private void commitDrillDown() {
+        flushPendingFilter();
         Object last = tree.getLastSelectedPathComponent();
         if (last instanceof DefaultMutableTreeNode) {
             Object u = ((DefaultMutableTreeNode) last).getUserObject();
@@ -469,7 +483,7 @@ public class EntitySearchDialog extends JDialog {
      */
     public static List<Entry> filter(List<JavaClassInfo> classes, String query) {
         List<Entry> all = collectEntriesStatic(classes);
-        String q = query == null ? "" : query.trim().toLowerCase();
+        String q = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
         List<Entry> out = new ArrayList<>();
         for (Entry e : all) {
             if (matchesEntry(e, q)) {
