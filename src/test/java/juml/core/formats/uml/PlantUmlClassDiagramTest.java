@@ -1488,4 +1488,30 @@ public class PlantUmlClassDiagramTest {
         assertTrue(puml, puml.contains("legend top left"));
         assertTrue(puml, puml.contains("endlegend"));
     }
+
+    /**
+     * bug-hunt R4 で発見: 焦点モードの前処理が呼び出し側の Options を書き換えるため、
+     * 1 つの Options を使い回す --per-folder では、焦点クラスを含まないフォルダを描いた
+     * 時点で以降すべての図から強調が消えていた (フォルダ順に依存する非決定的な挙動)。
+     */
+    @Test
+    public void focusOptionSurvivesGeneratingADiagramWithoutTheFocusClass() {
+        List<JavaClassInfo> withFocus = JavaStructureExtractor.extract(
+                "package x; class Target {} class Near { Target t; }");
+        List<JavaClassInfo> withoutFocus = JavaStructureExtractor.extract(
+                "package y; class Other {}");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.focusClass = "Target";
+
+        String first = PlantUmlClassDiagram.generate(withFocus, o);
+        assertTrue("前提: 焦点クラスを含む図では強調色が出ること",
+                first.contains("#FFF3CD"));
+        assertEquals("呼び出し側の焦点指定は保たれること", "Target", o.focusClass);
+
+        PlantUmlClassDiagram.generate(withoutFocus, o); // 焦点クラスが居ないフォルダ
+        assertEquals("解決できないフォルダを描いても焦点指定を潰さないこと", "Target", o.focusClass);
+
+        String third = PlantUmlClassDiagram.generate(withFocus, o);
+        assertTrue("同じ Options で描き直しても強調が復活すること", third.contains("#FFF3CD"));
+    }
 }

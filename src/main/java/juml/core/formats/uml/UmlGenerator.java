@@ -106,9 +106,14 @@ public final class UmlGenerator {
         ErrorListener wrapped = (listener == null) ? ErrorListener.silent()
                 : wrapWithSource(listener, fileName);
         List<JavaClassInfo> infos;
-        String lowerName = fileName == null ? "" : fileName.toLowerCase();
+        String lowerName = fileName == null ? ""
+                : fileName.toLowerCase(java.util.Locale.ROOT);
         if (lowerName.endsWith(".aidl")) {
             infos = new ArrayList<>(AidlParser.parse(source, wrapped));
+        } else if (lowerName.endsWith(".hal")) {
+            // HIDL (.hal) を Java 抽出器へ落とすと、interface 宣言も型も読めず壊れた
+            // スケルトンになる。専用パーサへ振り分ける。
+            infos = new ArrayList<>(HidlParser.parse(source, wrapped));
         } else if (lowerName.endsWith(".kt") || lowerName.endsWith(".kts")) {
             infos = new ArrayList<>(
                     juml.core.formats.kotlin.KotlinLightScanner.scan(source, wrapped));
@@ -161,7 +166,8 @@ public final class UmlGenerator {
         ErrorListener wrapped = (listener == null) ? ErrorListener.silent()
                 : wrapWithSource(listener, fileName);
         List<JavaClassInfo> infos;
-        String lowerName = fileName == null ? "" : fileName.toLowerCase();
+        String lowerName = fileName == null ? ""
+                : fileName.toLowerCase(java.util.Locale.ROOT);
         if (lowerName.endsWith(".aidl")) {
             // AIDL は元々サイズが小さいのでフル解析からヘッダだけ拾う
             List<JavaClassInfo> full = new ArrayList<>(AidlParser.parse(source, wrapped));
@@ -169,6 +175,12 @@ public final class UmlGenerator {
             for (JavaClassInfo c : full) {
                 JavaClassInfo h = stripToHeader(c);
                 infos.add(h);
+            }
+        } else if (lowerName.endsWith(".hal")) {
+            List<JavaClassInfo> full = new ArrayList<>(HidlParser.parse(source, wrapped));
+            infos = new ArrayList<>(full.size());
+            for (JavaClassInfo c : full) {
+                infos.add(stripToHeader(c));
             }
         } else if (lowerName.endsWith(".kt") || lowerName.endsWith(".kts")) {
             List<JavaClassInfo> full = juml.core.formats.kotlin.KotlinLightScanner
@@ -321,7 +333,7 @@ public final class UmlGenerator {
             CompletionService<FileParseOutcome> cs = new ExecutorCompletionService<>(pool);
             int submitted = 0;
             for (File f : files) {
-                String name = f.getName().toLowerCase();
+                String name = f.getName().toLowerCase(java.util.Locale.ROOT);
                 if (!name.endsWith(".java") && !name.endsWith(".aidl")
                         && !name.endsWith(".kt")) {
                     continue;
