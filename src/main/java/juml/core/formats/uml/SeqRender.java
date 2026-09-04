@@ -29,6 +29,15 @@ final class SeqRender {
     final StringBuilder body;
     final Set<String> stack;
     final PlantUmlSequenceDiagram.Options opts;
+    /**
+     * 再帰展開の残り回数 (図全体で共有する 1 要素の配列)。
+     *
+     * <p>{@code maxDepth <= 0} (無制限) では、枝分かれのある呼び出し木が深さに対して
+     * 指数的に展開される (実測: 1 メソッドが 2 つ呼ぶ形が 18 段で 100 万行超)。
+     * 深さではなく「出力した呼び出しの総数」で頭打ちにして、無警告の OutOfMemoryError を
+     * 防ぐ。上限に達したことは note で図に残す。</p>
+     */
+    final int[] expansionBudget;
     /** 現メソッドスコープ: 格納されたローカル変数コールバック (変数名 → inline 本体)。 */
     final Map<String, List<JavaMethodInfo>> locals = new HashMap<>();
     /** 現メソッドスコープ: 本体内で直接呼び出される receiver の先頭識別子。 */
@@ -39,6 +48,16 @@ final class SeqRender {
               Map<String, LinkedHashSet<String>> participantMethods,
               StringBuilder body, Set<String> stack,
               PlantUmlSequenceDiagram.Options opts) {
+        this(classes, participants, inlineParticipants, participantMethods, body, stack, opts,
+                new int[]{MAX_EXPANSIONS});
+    }
+
+    private SeqRender(List<JavaClassInfo> classes, Set<String> participants,
+              Set<String> inlineParticipants,
+              Map<String, LinkedHashSet<String>> participantMethods,
+              StringBuilder body, Set<String> stack,
+              PlantUmlSequenceDiagram.Options opts, int[] expansionBudget) {
+        this.expansionBudget = expansionBudget;
         this.classes = classes;
         this.participants = participants;
         this.inlineParticipants = inlineParticipants;
@@ -46,6 +65,28 @@ final class SeqRender {
         this.body = body;
         this.stack = stack;
         this.opts = opts;
+    }
+
+    /**
+     * 1 枚のシーケンス図で展開する呼び出しの上限。{@code --seq-depth 0} (無制限) でも
+     * 枝分かれのある木は指数的に膨らむため、総数で頭打ちにして OutOfMemoryError を防ぐ。
+     */
+    static final int MAX_EXPANSIONS = 20_000;
+
+    /**
+     * 展開の残枠を 1 つ消費する。使い切っていたら note を残して false を返す
+     * (呼び出し側はそこで展開を打ち切る)。
+     */
+    boolean spendExpansion(StringBuilder out, String indent, String target,
+            JavaMethodInfo.Call call, JavaClassInfo currentClass,
+            JavaClassInfo nextCls, JavaMethodInfo nextMethod) {
+        if (expansionBudget[0] <= 0) {
+            SeqEmitters.emitBudgetLimitNote(out, indent, target, call,
+                    currentClass, nextCls, nextMethod);
+            return false;
+        }
+        expansionBudget[0]--;
+        return true;
     }
 
     /** 本体内で直接呼び出される receiver の先頭識別子 (現メソッドスコープ)。 */
@@ -59,7 +100,7 @@ final class SeqRender {
      */
     SeqRender scopeFor(List<JavaMethodInfo.Statement> stmts) {
         SeqRender next = new SeqRender(classes, participants, inlineParticipants,
-                participantMethods, body, stack, opts);
+                participantMethods, body, stack, opts, expansionBudget);
         next.invoked = InlineCallbacks.collectInvokedHeads(stmts);
         return next;
     }

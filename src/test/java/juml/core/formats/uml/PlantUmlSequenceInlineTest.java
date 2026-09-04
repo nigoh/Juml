@@ -330,4 +330,30 @@ public class PlantUmlSequenceInlineTest {
         assertFalse("participant \"this\" を作らないこと:\n" + puml, puml.contains("\"this\""));
         assertTrue("フィールド型 Helper が相手になること:\n" + puml, puml.contains("Helper"));
     }
+
+
+    /**
+     * bug-hunt R4 で発見: {@code --seq-depth 0} (無制限) では枝分かれのある呼び出し木が
+     * 深さに対して指数的に展開され、実測で 18 段 100 万行超・現実の規模では
+     * OutOfMemoryError になっていた。展開総数で頭打ちになることを検証する。
+     */
+    @Test
+    public void unlimitedDepthIsBoundedByTheExpansionBudget() {
+        StringBuilder src = new StringBuilder("package x;\n");
+        int levels = 18;
+        for (int i = 0; i < levels; i++) {
+            src.append("class C").append(i).append(" { C").append(i + 1).append(" p = new C")
+               .append(i + 1).append("(); C").append(i + 1).append(" q = new C")
+               .append(i + 1).append("();\n  void m() { p.m(); q.m(); } }\n");
+        }
+        src.append("class C").append(levels).append(" { void m() {} }\n");
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(src.toString());
+        PlantUmlSequenceDiagram.Options o = new PlantUmlSequenceDiagram.Options();
+        o.maxDepth = 0; // 無制限
+        String puml = PlantUmlSequenceDiagram.generate(infos, "C0", "m", o);
+        int lines = puml.split("\n").length;
+        assertTrue("展開総数で頭打ちになること (lines=" + lines + ")",
+                lines < 20 * SeqRender.MAX_EXPANSIONS / 4);
+        assertTrue("打ち切りを図に残すこと", puml.contains("展開数の上限"));
+    }
 }
