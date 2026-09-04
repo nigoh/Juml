@@ -46,6 +46,28 @@ public final class StyleResourceParser {
         Document doc;
         try {
             DocumentBuilder builder = createSecureBuilder();
+            // DocumentBuilder の既定 ErrorHandler は "[Fatal Error] ..." を System.err へ
+            // 直接書く。兄弟パーサと同様に抑止し、通知は ErrorListener 経由へ一本化する
+            // (壊れた values XML が 1 本あるだけでコンソールに生の Xerces 出力が漏れていた)。
+            builder.setErrorHandler(new org.xml.sax.ErrorHandler() {
+                @Override
+                public void warning(org.xml.sax.SAXParseException ex) {
+                    l.onError(juml.util.ErrorCode.PRJ_008, null, ex.getLineNumber(),
+                            "warning: " + ex.getMessage());
+                }
+
+                @Override
+                public void error(org.xml.sax.SAXParseException ex) {
+                    l.onError(juml.util.ErrorCode.PRJ_008, null, ex.getLineNumber(),
+                            "error: " + ex.getMessage());
+                }
+
+                @Override
+                public void fatalError(org.xml.sax.SAXParseException ex)
+                        throws org.xml.sax.SAXParseException {
+                    throw ex;
+                }
+            });
             doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
             l.onError(juml.util.ErrorCode.PRJ_008, null, -1, "styles parse failed: " + ex.getMessage());
