@@ -104,6 +104,31 @@ public final class AndroidProjectScanner {
         public boolean followSymlinks = false;
         /** キャンセルトークン。null なら未キャンセル扱い。 */
         public CancelToken cancelToken;
+
+        /**
+         * 同じ設定の別インスタンスを返す。1 つのフラグだけ変えて走査したい呼び出し側が、
+         * 共有している Options を書き換えずに済むようにする (走査対象の食い違い防止)。
+         */
+        public Options copy() {
+            Options o = new Options();
+            o.includeTests = includeTests;
+            o.includeKotlin = includeKotlin;
+            o.includeAidl = includeAidl;
+            o.includeHidl = includeHidl;
+            o.includeVintf = includeVintf;
+            o.includeGradle = includeGradle;
+            o.includeManifest = includeManifest;
+            o.includeLayout = includeLayout;
+            o.includeNavigation = includeNavigation;
+            o.includeValues = includeValues;
+            o.excludedDirs = excludedDirs;
+            o.useAospDefaults = useAospDefaults;
+            o.maxDepth = maxDepth;
+            o.maxFiles = maxFiles;
+            o.followSymlinks = followSymlinks;
+            o.cancelToken = cancelToken;
+            return o;
+        }
     }
 
     /** デフォルト Options でスキャン。 */
