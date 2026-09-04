@@ -792,7 +792,8 @@ public final class PlantUmlSequenceDiagram {
         if (resolved != null && !resolved.isEmpty()) {
             return outerSimpleName(resolved);
         }
-        String receiver = call.getReceiver();
+        // "this." 前置を外す (残すと head が "this" になり participant "this" が現れる)。
+        String receiver = InlineCallbacks.stripThisPrefix(call.getReceiver());
         if (receiver == null || receiver.isEmpty() || "this".equals(receiver)) {
             return cls.getSimpleName();
         }

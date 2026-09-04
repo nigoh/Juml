@@ -303,7 +303,10 @@ final class PlantUmlClassLegend {
 
     private static void emitRelations(StringBuilder out,
                                        PlantUmlClassDiagram.Options o, Stats s) {
-        boolean any = (o.showInheritance && (s.hasInheritance || s.hasImplements))
+        // 実装線は showImplementations で描かれる。凡例だけ showInheritance を見ていたため、
+        // --relation impl では実装行が消え、--relation inherit では描かない線の凡例が出ていた。
+        boolean any = (o.showInheritance && s.hasInheritance)
+                || (o.showImplementations && s.hasImplements)
                 || (o.showUsageRelations && s.hasUsage);
         if (!any) {
             return;
@@ -319,7 +322,7 @@ final class PlantUmlClassLegend {
                 out.append("A <|-- B  : B extends A (継承)\n");
             }
         }
-        if (o.showInheritance && s.hasImplements) {
+        if (o.showImplementations && s.hasImplements) {
             if (color) {
                 appendColorRelation(out, PlantUmlClassRelations.REALIZE_COLOR,
                         "┈┈▷", "B implements A (実装)");

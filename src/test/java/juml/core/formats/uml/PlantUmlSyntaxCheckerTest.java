@@ -115,4 +115,18 @@ public class PlantUmlSyntaxCheckerTest {
         assertEquals("", PlantUmlSyntaxChecker.summarize(
                 "@startuml\nnote as N\n  write @startuml first\nend note\n@enduml\n"));
     }
+
+
+    /**
+     * bug-hunt R4 で発見: creole でエスケープしたリンク括弧 ("[~[juml://class/X]]") を
+     * 「括弧の不一致」と誤検出し、描画失敗メッセージに無関係な原因候補を並べていた。
+     */
+    @Test
+    public void ignoresLinesThatEscapeLinkBrackets() {
+        String puml = "@startuml\nclass A\nnote as N\n"
+                + "  .. <color:#008800>[~[juml://class/X]] を埋め込む</color> ..\n"
+                + "end note\n@enduml\n";
+        assertTrue(String.valueOf(PlantUmlSyntaxChecker.check(puml)),
+                PlantUmlSyntaxChecker.check(puml).isEmpty());
+    }
 }

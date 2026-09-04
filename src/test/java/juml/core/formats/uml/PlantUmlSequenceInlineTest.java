@@ -313,4 +313,21 @@ public class PlantUmlSequenceInlineTest {
         assertTrue("for-each iterable call repo.findAll() should appear: \n" + diagram,
                 diagram.contains("Repo.findAll("));
     }
+
+    /**
+     * bug-hunt R4 で発見: {@code this.field.method()} のレシーバ解決が "this" で止まり、
+     * フィールド型に解決できず participant "this" という架空の相手が図に現れていた。
+     */
+    @Test
+    public void explicitThisFieldReceiverResolvesToTheFieldType() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x;\n"
+                        + "class Helper { void work() {} }\n"
+                        + "class A { private Helper helper = new Helper();\n"
+                        + "  void run() { this.helper.work(); } }");
+        String puml = PlantUmlSequenceDiagram.generate(
+                infos, "A", "run", new PlantUmlSequenceDiagram.Options());
+        assertFalse("participant \"this\" を作らないこと:\n" + puml, puml.contains("\"this\""));
+        assertTrue("フィールド型 Helper が相手になること:\n" + puml, puml.contains("Helper"));
+    }
 }

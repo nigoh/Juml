@@ -1514,4 +1514,29 @@ public class PlantUmlClassDiagramTest {
         String third = PlantUmlClassDiagram.generate(withFocus, o);
         assertTrue("同じ Options で描き直しても強調が復活すること", third.contains("#FFF3CD"));
     }
+
+
+    /**
+     * bug-hunt R4 で発見: 凡例の implements 行が showImplementations ではなく
+     * showInheritance で分岐していたため、--relation impl では実装線を描くのに凡例から
+     * 実装行が消え、--relation inherit では描かない線の凡例が出ていた。
+     */
+    @Test
+    public void testLegendImplementsRowFollowsShowImplementations() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; interface I {} class C implements I {}");
+        PlantUmlClassDiagram.Options impl = new PlantUmlClassDiagram.Options();
+        impl.showInheritance = false;
+        impl.showImplementations = true;
+        String withImpl = PlantUmlClassDiagram.generate(infos, impl);
+        assertTrue("実装線を描くなら凡例にも実装行が出ること: " + withImpl,
+                withImpl.contains("B implements A"));
+
+        PlantUmlClassDiagram.Options inherit = new PlantUmlClassDiagram.Options();
+        inherit.showInheritance = true;
+        inherit.showImplementations = false;
+        String withoutImpl = PlantUmlClassDiagram.generate(infos, inherit);
+        assertFalse("描かない実装線の凡例は出さないこと: " + withoutImpl,
+                withoutImpl.contains("B implements A"));
+    }
 }
