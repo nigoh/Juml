@@ -177,6 +177,32 @@ public final class CliOutput {
     }
 
     /**
+     * Markdown レポートを書き出す前に、{@code -o} が画像 (.svg/.png) を指していないか確かめる。
+     *
+     * <p>これらのコマンドは図ではなく Markdown を出力するため、{@code -o report.svg} と
+     * 指定されると「拡張子は SVG なのに中身は Markdown」というファイルができる。黙って
+     * 書くと画像ビューアで開けず原因も分からないので、既定のファイル名を添えて stderr に
+     * 注意を出す (書き出し自体は利用者の指定どおり行う)。</p>
+     *
+     * @return 注意を出したなら true (テスト用)
+     */
+    public static boolean warnIfImageExtension(File fileOut, String defaultFileName) {
+        if (fileOut == null || fileOut.isDirectory()) {
+            return false;
+        }
+        String lower = fileOut.getName().toLowerCase(java.util.Locale.ROOT);
+        if (!lower.endsWith(".svg") && !lower.endsWith(".png")) {
+            return false;
+        }
+        System.err.println("[juml] note: this command writes a Markdown report, but -o "
+                + fileOut.getName() + " looks like an image."
+                + " The Markdown was written there as requested"
+                + (defaultFileName != null ? " (default name: " + defaultFileName + ")" : "")
+                + ".");
+        return true;
+    }
+
+    /**
      * PlantUML 系出力の書き出し。{@code fileOut} の拡張子が {@code .svg} なら
      * 同梱 PlantUML で SVG にレンダリングし、それ以外 (null や .puml/.txt) は
      * PlantUML テキストをそのまま書き出す (標準出力可)。

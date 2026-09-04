@@ -323,6 +323,7 @@ public final class AndroidCommands {
                 : xmlParser.analyzeProject(fileIn, ctx.includeTests)) {
             result.addXmlEntry(e);
         }
+        CliOutput.warnIfImageExtension(fileOut, "settings.md");
         CliOutput.writeText(fileOut, MarkdownSettingsReport.render(result), "settings.md");
     }
 
@@ -379,7 +380,9 @@ public final class AndroidCommands {
         return overrides == null ? infos : UmlCommands.applyCliClassFilters(infos, overrides);
     }
 
-    public static void handleAll(CliContext ctx) throws IOException {
+    public static int handleAll(CliContext ctx) throws IOException {
+        // 戻り値 = 描画に失敗した図の枚数。終了コードは呼び出し側 (CliDispatcher) が決める
+        // ため、ここでは exit しない (テストから直接呼べるようにするため)。
         File fileIn = ctx.fileIn;
         File fileOut = ctx.fileOut;
         ErrorListener listener = ctx.listener;
@@ -389,28 +392,31 @@ public final class AndroidCommands {
         if (fileIn == null || !fileIn.isDirectory()) {
             System.err.println("--all requires a project directory.");
             System.exit(1);
-            return;
+            return 0;
         }
         if (fileOut == null) {
             System.err.println("--all requires an output directory via -o.");
             System.exit(1);
-            return;
+            return 0;
         }
         if (!fileOut.exists() && !fileOut.mkdirs()) {
             System.err.println("Failed to create output directory: " + fileOut);
             System.exit(1);
-            return;
+            return 0;
         }
         if (!fileOut.isDirectory()) {
             System.err.println("-o must point to a directory when --all is set: " + fileOut);
             System.exit(1);
-            return;
+            return 0;
         }
 
         // --all は時間がかかる複合処理なので、-v の有無に関わらず進捗ログを stderr に
         // 出す。ユーザが渡したリスナー (verbose なら stderr / silent なら no-op) は
         // パース警告等の付随情報として残しつつ、進捗ログは別経路で確実に表示する。
         ProgressLogger progress = new ProgressLogger();
+        // 図ごとの描画失敗を数える。1 枚でも失敗したまま exit 0 を返すと、CI や
+        // スクリプトからは「全部生成できた」と見えてしまう (単体コマンドは exit 2)。
+        int failures = 0;
         long startMs = System.currentTimeMillis();
         progress.step("Analyzing project: " + fileIn.getAbsolutePath());
 
@@ -431,7 +437,7 @@ public final class AndroidCommands {
             compOpts.includeLegend = false;
         }
         File compFile = new File(fileOut, "component-diagram.svg");
-        CliOutput.renderSvgOrFallback(PlantUmlComponentDiagram.generate(analysis, compOpts),
+        failures += renderOrCount(PlantUmlComponentDiagram.generate(analysis, compOpts),
                 compFile, progress, listener);
 
         // 3) Manifest 図 (SVG) — Application + 配下コンポーネントを 1 枚で可視化
@@ -441,7 +447,7 @@ public final class AndroidCommands {
             manOpts.includeLegend = false;
         }
         File manFile = new File(fileOut, "manifest-diagram.svg");
-        CliOutput.renderSvgOrFallback(PlantUmlManifestDiagram.generate(analysis, manOpts),
+        failures += renderOrCount(PlantUmlManifestDiagram.generate(analysis, manOpts),
                 manFile, progress, listener);
 
         // 4) Deep Link 図 (SVG) — VIEW + BROWSABLE intent-filter の URI 入口を可視化
@@ -451,7 +457,7 @@ public final class AndroidCommands {
             dlOpts.includeLegend = false;
         }
         File dlFile = new File(fileOut, "deeplink-diagram.svg");
-        CliOutput.renderSvgOrFallback(PlantUmlDeepLinkDiagram.generate(analysis, dlOpts),
+        failures += renderOrCount(PlantUmlDeepLinkDiagram.generate(analysis, dlOpts),
                 dlFile, progress, listener);
 
         // 5) 依存グラフ (SVG)
@@ -461,7 +467,7 @@ public final class AndroidCommands {
             depOpts.includeLegend = false;
         }
         File depFile = new File(fileOut, "dependency-graph.svg");
-        CliOutput.renderSvgOrFallback(PlantUmlGradleDependencyGraph.generate(analysis, depOpts),
+        failures += renderOrCount(PlantUmlGradleDependencyGraph.generate(analysis, depOpts),
                 depFile, progress, listener);
 
         // 6) クラス図 (SVG)。UmlGenerator は内部で再走査するが、manifest 連携のため別経路。
@@ -469,32 +475,8 @@ public final class AndroidCommands {
         java.util.List<juml.core.formats.uml.JavaClassInfo> infos =
                 UmlGenerator.extractFromProject(fileIn, ctx.scanOptions(), listener,
                         mergeManifest);
-        java.util.List<juml.core.formats.uml.JavaClassInfo> classDiagramInfos =
-                classDiagramOnly(infos, overrides);
-        juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
-                new juml.core.formats.uml.PlantUmlClassDiagram.Options();
-        if (Boolean.FALSE.equals(legendOverride)) {
-            clsOpts.includeLegend = false;
-        }
-        if (overrides != null) {
-            overrides.applyTo(clsOpts);
-        }
-        File clsFile = new File(fileOut, "class-diagram.svg");
-        String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(
-                classDiagramInfos, clsOpts);
-        try {
-            CliOutput.renderSvgAtomically(clsPuml, clsFile);
-            progress.wrote(clsFile, "(" + classDiagramInfos.size() + " class(es))");
-            listener.onError(null, -1, "wrote " + clsFile.getPath());
-        } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {
-            File clsPumlFallback = CliOutput.siblingPumlFor(clsFile);
-            CliOutput.writeText(clsPumlFallback, clsPuml);
-            System.err.println("[juml]     -> " + clsFile.getName()
-                    + " FAILED: " + ex.getMessage());
-            System.err.println("[juml]        Saved " + clsPumlFallback.getName()
-                    + " -- render externally with: plantuml -tsvg "
-                    + clsPumlFallback.getName());
-        }
+        failures += writeAllClassDiagram(infos, new File(fileOut, "class-diagram.svg"),
+                legendOverride, overrides, progress, listener);
 
         // 7) シーケンス図の起点候補一覧
         progress.step("[7/8] Generating methods.txt (sequence diagram entry candidates)");
@@ -525,5 +507,53 @@ public final class AndroidCommands {
 
         long elapsedMs = System.currentTimeMillis() - startMs;
         progress.done(fileOut, elapsedMs);
+        if (failures > 0) {
+            System.err.println("[juml] " + failures + " diagram(s) could not be rendered;"
+                    + " .puml sidecars were saved next to them.");
+        }
+        return failures;
+    }
+
+    /**
+     * {@code --all} のクラス図 (6/8) を書き出す。描画に失敗したらサイドカー {@code .puml} を
+     * 残して 1 を返す (呼び出し側が残りの成果物を作り終えてから終了コードを決める)。
+     */
+    private static int writeAllClassDiagram(
+            java.util.List<juml.core.formats.uml.JavaClassInfo> infos, File clsFile,
+            Boolean legendOverride, UmlOverrides overrides, ProgressLogger progress,
+            ErrorListener listener) throws IOException {
+        java.util.List<juml.core.formats.uml.JavaClassInfo> classDiagramInfos =
+                classDiagramOnly(infos, overrides);
+        juml.core.formats.uml.PlantUmlClassDiagram.Options clsOpts =
+                new juml.core.formats.uml.PlantUmlClassDiagram.Options();
+        if (Boolean.FALSE.equals(legendOverride)) {
+            clsOpts.includeLegend = false;
+        }
+        if (overrides != null) {
+            overrides.applyTo(clsOpts);
+        }
+        String clsPuml = juml.core.formats.uml.PlantUmlClassDiagram.generate(
+                classDiagramInfos, clsOpts);
+        try {
+            CliOutput.renderSvgAtomically(clsPuml, clsFile);
+            progress.wrote(clsFile, "(" + classDiagramInfos.size() + " class(es))");
+            listener.onError(null, -1, "wrote " + clsFile.getPath());
+            return 0;
+        } catch (juml.core.formats.uml.PlantUmlRenderFailedException ex) {
+            File clsPumlFallback = CliOutput.siblingPumlFor(clsFile);
+            CliOutput.writeText(clsPumlFallback, clsPuml);
+            System.err.println("[juml]     -> " + clsFile.getName()
+                    + " FAILED: " + ex.getMessage());
+            System.err.println("[juml]        Saved " + clsPumlFallback.getName()
+                    + " -- render externally with: plantuml -tsvg "
+                    + clsPumlFallback.getName());
+            return 1;
+        }
+    }
+
+    /** 1 枚書き出して、失敗なら 1 を返す ({@code --all} の失敗集計用)。 */
+    private static int renderOrCount(String puml, File svgFile, ProgressLogger progress,
+            ErrorListener listener) throws IOException {
+        return CliOutput.renderSvgOrFallback(puml, svgFile, progress, listener) ? 0 : 1;
     }
 }
