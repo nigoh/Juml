@@ -57,20 +57,25 @@ final class SketchEditDialogs {
         panel.add(top, BorderLayout.NORTH);
         panel.add(body, BorderLayout.CENTER);
 
-        int choice = JOptionPane.showConfirmDialog(parent, panel,
-                Messages.get("sketch.dlg.title"),
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (choice != JOptionPane.OK_OPTION) {
-            return false;
-        }
-        String newName = nameField.getText().trim();
-        SketchClass sameName = model.findClass(newName);
-        if (!NAME.matcher(newName).matches()
-                || (sameName != null && sameName != target)) {
+        // 名前が不正なら入力内容を保ったままダイアログを開き直す。閉じてしまうと、同時に
+        // 編集していたフィールド/メソッドまで捨てられる。
+        String newName;
+        while (true) {
+            int choice = JOptionPane.showConfirmDialog(parent, panel,
+                    Messages.get("sketch.dlg.title"),
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (choice != JOptionPane.OK_OPTION) {
+                return false;
+            }
+            newName = nameField.getText().trim();
+            SketchClass sameName = model.findClass(newName);
+            if (NAME.matcher(newName).matches()
+                    && (sameName == null || sameName == target)) {
+                break;
+            }
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.dlg.nameError"),
                     Messages.get("sketch.dlg.title"), JOptionPane.WARNING_MESSAGE);
-            return false;
         }
         model.renameClass(target, newName);
         target.setKind((SketchClass.Kind) kindCombo.getSelectedItem());

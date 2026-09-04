@@ -222,6 +222,15 @@ public final class GitRepoService implements AutoCloseable {
         if (start == null) {
             return out; // 空リポジトリ (コミットなし)
         }
+        // 注釈付きタグは resolve が tag オブジェクトを返す。LogCommand.add は commit しか
+        // 受け付けず IncorrectObjectTypeException になるため、コミットまで peel する
+        // (この API はブランチ/タグ/SHA を受ける契約)。
+        try (RevWalk walk = new RevWalk(repo)) {
+            start = walk.parseCommit(start).getId();
+        } catch (org.eclipse.jgit.errors.IncorrectObjectTypeException
+                 | org.eclipse.jgit.errors.MissingObjectException ex) {
+            return out; // コミットへ辿り着けない ref (blob/tree タグ等) は履歴なし
+        }
         try (Git git = new Git(repo)) {
             org.eclipse.jgit.api.LogCommand cmd = git.log().add(start).setMaxCount(limit);
             if (relPath != null && !relPath.isEmpty()) {
@@ -511,17 +520,26 @@ public final class GitRepoService implements AutoCloseable {
     }
 
     /**
-     * 比較の旧側で読むべきパスを返す。親コミットとの比較 ({@code oldRev == null}) で
-     * {@code newPath} が {@code newRev} でリネームされていれば旧パス、それ以外は
-     * {@code newPath} そのまま。旧内容を新パスで読むと base 側に存在せず null
-     * (= 全追加) に化けるため、比較ダイアログは必ずこれを経由する。
+     * 比較の旧側で読むべきパスを返す。{@code newPath} が比較区間でリネームされていれば
+     * その旧パス、それ以外は {@code newPath} そのまま。親コミットとの比較
+     * ({@code oldRev == null}) と任意 2 リビジョン比較の両方を扱う。旧内容を新パスで
+     * 読むと旧側に存在せず null (= 全追加) に化けるため、比較ダイアログは必ずこれを経由する。
      */
     public String oldPathFor(String newPath, String oldRev, String newRev) throws IOException {
-        if (oldRev != null) {
+        if (newPath == null || newPath.isEmpty()) {
             return newPath;
         }
-        String renamedFrom = renamedFromPath(newRev, newPath);
-        return renamedFrom != null ? renamedFrom : newPath;
+        if (oldRev == null) {
+            String renamedFrom = renamedFromPath(newRev, newPath);
+            return renamedFrom != null ? renamedFrom : newPath;
+        }
+        for (DiffEntry e : diffEntriesBetween(oldRev, newRev, newPath)) {
+            if (e.getChangeType() == DiffEntry.ChangeType.RENAME
+                    && newPath.equals(e.getNewPath())) {
+                return e.getOldPath();
+            }
+        }
+        return newPath;
     }
 
     /** 指定コミットの第 1 親の SHA を返す。親がなければ (初回コミット等) null。 */

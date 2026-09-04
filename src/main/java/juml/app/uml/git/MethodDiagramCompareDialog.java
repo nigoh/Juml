@@ -51,8 +51,11 @@ abstract class MethodDiagramCompareDialog extends JDialog {
     private List<JavaClassInfo> oldClasses = List.of();
     private List<JavaClassInfo> newClasses = List.of();
     /** 書き出し用に保持する直近の描画結果 (片側 null 可)。 */
-    private RenderedSvg lastOldSvg;
-    private RenderedSvg lastNewSvg;
+    /** dispose 済みフラグ: 閉じた後にワーカーの結果を適用しない (描画の続行を止める)。 */
+    private volatile boolean disposed;
+
+    private volatile RenderedSvg lastOldSvg;
+    private volatile RenderedSvg lastNewSvg;
     /** 古いワーカー結果で新しい選択を上書きしないための世代。 */
     private int renderGen;
 
@@ -136,6 +139,12 @@ abstract class MethodDiagramCompareDialog extends JDialog {
         return p;
     }
 
+    @Override
+    public void dispose() {
+        disposed = true;
+        super.dispose();
+    }
+
     /** 旧/新ソースを解析し、メソッド一覧 (変更を先頭) を組んでコンボへ流す。 */
     private void startInit(GitRepoService svc, String relPath, String oldRev, String newRev) {
         new SwingWorker<List<Entry>, Void>() {
@@ -150,6 +159,9 @@ abstract class MethodDiagramCompareDialog extends JDialog {
             }
 
             @Override protected void done() {
+                if (disposed) {
+                    return; // 閉じた後にコンボを差し替えると描画が走り続ける
+                }
                 try {
                     List<Entry> entries = get();
                     if (entries.isEmpty()) {
@@ -170,6 +182,9 @@ abstract class MethodDiagramCompareDialog extends JDialog {
 
     /** 選択メソッドの旧/新図を生成・色付けし、左右に描画する。 */
     private void renderMethod(Entry entry) {
+        if (disposed) {
+            return;
+        }
         oldHost.removeAll();
         oldHost.add(loading(), BorderLayout.CENTER);
         newHost.removeAll();
@@ -190,7 +205,7 @@ abstract class MethodDiagramCompareDialog extends JDialog {
             }
 
             @Override protected void done() {
-                if (gen != renderGen) {
+                if (gen != renderGen || disposed) {
                     return;
                 }
                 try {

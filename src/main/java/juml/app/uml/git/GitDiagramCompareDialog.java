@@ -37,9 +37,17 @@ final class GitDiagramCompareDialog extends JDialog {
     private final SvgPreviewPanel newPanel = new SvgPreviewPanel();
     private final JPanel oldHost = new JPanel(new BorderLayout());
     private final JPanel newHost = new JPanel(new BorderLayout());
-    /** 書き出し用に保持する描画結果 (片側 null 可)。 */
-    private RenderedSvg lastOldSvg;
-    private RenderedSvg lastNewSvg;
+    /** 書き出し用に保持する描画結果 (片側 null 可)。書き出しは背景スレッドから読む。 */
+    private volatile RenderedSvg lastOldSvg;
+    private volatile RenderedSvg lastNewSvg;
+    /** dispose 済みフラグ: 閉じた後にワーカーの結果を適用しない。 */
+    private volatile boolean disposed;
+
+    @Override
+    public void dispose() {
+        disposed = true;
+        super.dispose();
+    }
 
     private static final class Result {
         final RenderedSvg oldSvg;
@@ -144,6 +152,9 @@ final class GitDiagramCompareDialog extends JDialog {
             }
 
             @Override protected void done() {
+                if (disposed) {
+                    return;
+                }
                 try {
                     Result r = get();
                     lastOldSvg = r.oldSvg;
