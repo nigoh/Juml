@@ -16,6 +16,7 @@ import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -543,5 +544,38 @@ public class PlantUmlRendererErrorDetectionTest {
                 "<svg>PlantUML (1.2026.6) has crashed.</svg>".getBytes(StandardCharsets.UTF_8)));
         assertTrue(!PlantUmlRenderer.isCrashImage(
                 "<svg><text>Syntax Error?</text></svg>".getBytes(StandardCharsets.UTF_8)));
+    }
+
+
+    /**
+     * bug-hunt R4 で発見: PlantUML が返す行番号はレイアウト prelude 挿入後の座標なのに、
+     * 失敗ログの抜粋は挿入前のテキストに当てていたため、prelude の行数だけずれた別の行を
+     * 「失敗行」として示していた。抜粋が描画に渡したテキストであることを検証する。
+     */
+    @Test
+    public void renderFailureExcerptUsesTheRenderedSource() {
+        juml.util.AppLog.clearBuffer();
+        StringBuilder puml = new StringBuilder("@startuml\n");
+        for (int i = 0; i < 12; i++) {
+            puml.append("class C").append(i).append('\n');
+        }
+        puml.append("class Bad {\n  +m(): void\n}} stray brace\n@enduml\n");
+        try {
+            PlantUmlRenderer.renderSvg(puml.toString(), new java.io.ByteArrayOutputStream());
+            fail("壊れた図は描画失敗になるはず");
+        } catch (Exception expected) {
+            assertTrue(String.valueOf(expected.getMessage()),
+                    expected instanceof PlantUmlRenderFailedException);
+        }
+        String excerpt = null;
+        for (juml.util.AppLog.Entry e : juml.util.AppLog.snapshot()) {
+            String msg = e.getMessage();
+            if (msg != null && msg.contains("rendered PlantUML")) {
+                excerpt = msg;
+            }
+        }
+        assertNotNull("失敗ログに PlantUML 抜粋が残ること", excerpt);
+        assertTrue("描画に渡したテキスト (prelude 込み) を抜粋していること:\n" + excerpt,
+                excerpt.contains("!pragma layout") || excerpt.contains("skinparam"));
     }
 }
