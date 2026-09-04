@@ -153,6 +153,12 @@ public final class UmlCommands {
         }
         java.util.List<juml.core.formats.uml.PlantUmlSequenceDiagram.Candidate> candidates =
                 juml.core.formats.uml.PlantUmlSequenceDiagram.listCandidates(infos);
+        if (candidates.isEmpty()) {
+            // 候補ゼロだと 0 バイトのファイルだけが残り、「解析できなかった」のか
+            // 「該当が無かった」のか区別できない。空の一覧は空のまま書きつつ理由を伝える。
+            System.err.println("No sequence-diagram entry candidates were found in "
+                    + fileIn.getPath() + " (no Java sources, or no methods with calls).");
+        }
         StringBuilder sb = new StringBuilder();
         for (juml.core.formats.uml.PlantUmlSequenceDiagram.Candidate c : candidates) {
             sb.append(c.getEntry())
