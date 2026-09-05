@@ -18,6 +18,7 @@ description: Juml でマルチエージェント・オーケストレーショ�
 |---|---|---|---|
 | `bug-hunt.js` | 対象領域を観点別レンズで並列調査 → bug 判定を敵対的検証 | target, files[], tests[], lenses[], context | `{confirmed, rest, rejectedCount}` |
 | `render-sweep.js` | プロジェクト群 × 図種構成で jar 描画を総ざらい | projects[], jar, outBase, configs[] | `{failures, totalRuns}` |
+| `persona-explore.js` | ペルソナが実際に GUI/CLI を動かし bug 検証 + 成長バックログ集約 | round, seed, fuzz, known[], personas[] | `{confirmed, backlog, rejectedTitles}` |
 
 ### 起動方法（重要 — インライン方式を使う）
 
@@ -74,12 +75,15 @@ Workflow({ script: `export const meta = { name: 'my-bug-hunt', description: '...
 | テストの穴を監査 → 補強 | `/test-audit`（ラウンド制） + `/test-write` |
 | 領域のバグを網羅 → 確定 | **`bug-hunt` ワークフロー**（本スキル） |
 | レンダリング回帰を面で検証 | **`render-sweep` ワークフロー**（本スキル） |
+| 実際に触って困ること（バグ / 操作性 / 不足機能）を集める | **`persona-explore` ワークフロー**（`persona-explore` スキル） |
 | 変更後の合格判定 | `/juml-verify`（CI と同一ゲート） |
 
 ## コストと安全
 
 - ワークフローはトークンを大量に使う。**ユーザーが明示的に求めたときだけ**起動する
   （「オーケストレーションして」「徹底的に」「ワークフローで」等）。
+- **モデル階層 (ADR-0003)**: `agent()` は `model` を明示する。ファインダー / 検証 / 集約は `sonnet`、
+  スイープ実行・軽いペルソナは `haiku`。司令塔 (メインループ = opus/fable) はワーカーの構造化所見だけを読む。
 - ファインダーの `effort` は high、スイープ実行系は low が目安。
 - 修正はワークフロー内で行わない（並列書き込みの競合を避ける）。発見・検証だけを
   並列化し、**修正と commit はメインループが直列に**行う。
