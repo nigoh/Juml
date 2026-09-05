@@ -4,7 +4,9 @@
 package juml.app.cli;
 
 import juml.util.ErrorListener;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -19,6 +21,9 @@ import static org.junit.Assert.assertTrue;
  * ディレクトリ) を解析して PlantUML を標準出力へ流すことを検証する。
  */
 public class NavGraphCommandTest {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
 
     private static final File SAMPLES =
             new File("src/test/resources/samples/navigation");
@@ -46,6 +51,26 @@ public class NavGraphCommandTest {
         // destination とアクション (画面遷移) が出ること
         assertTrue(puml, puml.contains("<<fragment>>"));
         assertTrue(puml, puml.contains("action_home_to_detail"));
+    }
+
+    @Test
+    public void directoryWithoutNavigationGraphsEmitsPlaceholderInsteadOfExiting() throws Exception {
+        // 他の Android 系オプションと同じく「該当データなし」は失敗ではない: 以前は System.exit(1)
+        // していたため、CI でオプションを並べて回すとこのステップだけ落ちていた。
+        File empty = tmp.newFolder("no-nav");
+        PrintStream origErr = System.err;
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(err, true, "UTF-8"));
+        String puml;
+        try {
+            puml = runNavGraph(empty);
+        } finally {
+            System.setErr(origErr);
+        }
+        assertTrue(puml, puml.contains("@startuml"));
+        assertTrue(puml, puml.contains("no navigation graphs found"));
+        String stderr = new String(err.toByteArray(), StandardCharsets.UTF_8);
+        assertTrue(stderr, stderr.contains("No Jetpack Navigation graphs"));
     }
 
     @Test
