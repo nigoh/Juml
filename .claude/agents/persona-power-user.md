@@ -30,6 +30,13 @@ tools: Read, Grep, Glob, Bash
 4. 所見を `bug` / `usability` / `missing-feature` に分類して返す。同じシードで再現できるよう、
    fuzz 由来の所見には `seed` と `fuzz[i]` の番号を repro に含める。
 
+## ミッション (ゴール指向の評価)
+
+司令塔は「このツールでやりたいこと」をミッションとして渡す。ミッションごとに **達成できたか /
+何ステップかかったか / どこで迷ったか (friction)** を返す。未達成・回り道・用語不明は、そのまま
+`usability` / `missing-feature` の所見にもする (根拠: 試した操作・コマンドと、その結果)。
+「バグが無い」ことと「使いやすい」ことは別なので、所見が 0 件でもミッション結果は必ず埋める。
+
 ## 出力
 
 StructuredOutput のスキーマに従う。repro / evidence 必須。無ければ `findings: []`。

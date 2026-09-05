@@ -13,8 +13,12 @@
 
 | ID | 種別 | 重要度 | 工数 | タイトル | ペルソナ | 受け入れ条件 | 状態 | 初出 |
 |---|---|---|---|---|---|---|---|---|
+| PB-001 | missing-feature | medium | M | シーケンス図の参加者数・生成サイズにガードが無い (Main.main で 63447×465157px)。参加者上限 + 「大規模な図」確認を CLASS/INHERITANCE 以外にも | aosp-analyst | 参加者が閾値を超えると note 付きで打ち切られ、GUI では確認ダイアログが出る | open | R1 |
+| PB-002 | missing-feature | medium | M | `--focus` + `--hide-unlinked` でも全クラス (897) を PlantUML に渡すため巨大ツリーで smetana が落ちる。近傍だけを出力する `--focus-only` (または規模ガード) が欲しい | aosp-analyst | src/main/java 全体に `--focus X` を付けると近傍のみの図が描画され、UML-R002 にならない | open | R1 |
+| PB-003 | usability | low | S | ペルソナ (haiku) は「バグが無い」と「使いやすい」を区別せず所見 0 で返した。ミッション (ゴール指向タスク) を渡して達成可否・手順数・摩擦を必ず返させる仕組みに変更 | newcomer, power-user | ラウンド 2 以降で各ペルソナが missions 配列を返す | done (本 PR) | R1 |
 
 ## ラウンド履歴
 
 | ラウンド | 日付 | seed | 所見 (raw) | bug 確定 / 棄却 | バックログ追加 | 備考 |
 |---|---|---|---|---|---|---|
+| R1 | 2026-09-05 | 42 | 5 | 3 / 2 | 3 | 確定 3 のうち修正 2 (nav-graph の終了コード / Batik GVT 事前ウォームアップで EDT 停止解消)。「`]]` エスケープ」は反証で誤認と判明 (実体は 897 クラスの巨大図での smetana クラッシュ = 既知 UML-R002 → PB-002)。usability 所見 0 → ミッション方式を導入 (PB-003) |

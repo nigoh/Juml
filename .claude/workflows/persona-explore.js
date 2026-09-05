@@ -39,9 +39,23 @@ const FINDINGS_SCHEMA = {
         required: ['kind', 'severity', 'title', 'detail', 'repro', 'evidence'],
       },
     },
+    missions: {
+      type: 'array',
+      description: '司令塔から渡されたミッションごとの結果 (usability の一次資料)',
+      items: {
+        type: 'object',
+        properties: {
+          mission: { type: 'string' },
+          achieved: { type: 'boolean' },
+          steps: { type: 'integer', description: '達成までに要した操作/コマンド数 (未達成なら試した数)' },
+          friction: { type: 'string', description: '迷った点・誤解した点・足りなかった機能 (無ければ空)' },
+        },
+        required: ['mission', 'achieved', 'steps', 'friction'],
+      },
+    },
     notes: { type: 'string', description: 'ペルソナとしての総評 (1〜3 行)' },
   },
-  required: ['findings'],
+  required: ['findings', 'missions'],
 }
 
 const VERDICT_SCHEMA = {
@@ -91,24 +105,48 @@ const DEFAULTS = {
 // ペルソナ・カタログ: agentType は .claude/agents/persona-<name>.md。model は ADR-0003 の階層。
 const CATALOG = {
   'newcomer': {
+    missions: [
+      'プロジェクトを開いて「クラス図」を表示し、PNG または SVG として保存する (GUI: エクスポート導線を README なしで見つける)',
+      '特定メソッド (例: EasyPermissions.requestPermissions) のシーケンス図を CLI で出す (--help だけで -q の書式に辿り着けるか)',
+      'ツールバーの「図種」が無効 (グレー) になる場面を作り、なぜ無効なのかをその場の表示だけで理解する',
+      '「ショートカット一覧」または「ヘルプ」に GUI 内から到達する',
+    ],
     model: 'haiku', effort: 'low',
     project: 'src/test/resources/samples/easypermissions', alt: 'src/test/resources/samples/layouts',
     scenarios: 'S2,S3,S1,S5,S13,S15,S21',
     cli: ['-c', '-q <Class.method> (--list-methods で候補を見てから)', '--summary'],
   },
   'power-user': {
+    missions: [
+      'マウスを使わずに: プロジェクトツリーで 3 つのクラスを開き、Ctrl+Tab 相当でタブを行き来し、1 つを閉じて開き直す',
+      'コマンドパレットだけで「クラス図 → パッケージ図 → 継承図」を切り替え、各図種のショートカットの有無を確認する',
+      '自由編集エディタで PlantUML を書き、補完 (Ctrl+Space)・整形・Undo/Redo を使って 10 行の図を完成させる',
+      '図を 200% にズームし、検索 (Ctrl+F) でクラス名を探してその位置へジャンプする',
+    ],
     model: 'haiku', effort: 'low',
     project: 'src/main/java/juml/core/formats/java', alt: 'src/test/resources/samples/easypermissions',
     scenarios: 'S6,S16,S18,S9,S10,S11,S14,S21',
     cli: ['-c --preset minimal', '--function-list --function-list-format csv'],
   },
   'android-dev': {
+    missions: [
+      'AndroidManifest から「起動 Activity → 遷移先」の画面遷移を図で把握する (GUI と CLI --screen-flow の両方)',
+      'res/navigation の nav graph を図にして、deepLink の有無を読み取る (--nav-graph / -D)',
+      'Gradle 依存図 (-G) で「どのライブラリがどのモジュールから使われているか」を読み取る',
+      'Jetpack (ViewModel / Fragment) のステレオタイプ付きクラス図を GUI から開く (--jetpack 相当が GUI にあるか)',
+    ],
     model: 'sonnet', effort: 'medium',
     project: 'src/test/resources/samples/layouts', alt: 'src/test/resources/samples/navigation',
     scenarios: 'S2,S3,S4,S13,S17,S21',
     cli: ['-m', '-M', '-d', '-D', '--nav-graph', '-G', '--screen-flow', '--action-map', '--settings', '-c --jetpack'],
   },
   'aosp-analyst': {
+    missions: [
+      'AIDL インターフェース (samples/aidl) の Stub 実装クラスを --aidl-binding で一覧し、その 1 つのクラス図を GUI で開く',
+      'src/main/java 全体を開き、1 クラス (juml.app.uml.DiagramController) の影響範囲 (--impact / Impact タブ) を辿る',
+      'Android.bp が無いツリーで --android-bp / --selinux / --vintf を実行し、「対象なし」の伝わり方と終了コードを確認する',
+      '巨大なシーケンス図 (Main.main) を開いたときの応答性と、途中でキャンセルできるかを確認する',
+    ],
     model: 'sonnet', effort: 'medium',
     project: 'src/main/java', alt: 'src/test/resources/samples/aidl',
     scenarios: 'S2,S3,S9,S19,S7,S21',
@@ -146,6 +184,12 @@ function explorePrompt(name, p, idx) {
    ${p.cli.map(c => 'java -jar build/libs/Juml.jar ' + c + ' ' + p.project).join('\n   ')}
    終了コード・stderr・出力の中身 (空か / 期待した要素があるか) を見る。
 3. shots/*.png を最低 3 枚 Read で見る。
+4. ミッション (ペルソナがこのツールでやりたいこと) を実際に試す。GUI 操作が必要なものはハーネスの
+   report.json / スクリーンショット / メニュー・パレットのラベル (ソース: src/main/resources の Messages)
+   と CLI の組み合わせで「その導線が存在し、初見で辿れるか」を判断する:
+${p.missions.map((m, k) => '   M' + (k + 1) + '. ' + m).join('\n')}
+   各ミッションについて achieved / steps / friction を必ず返す (missions 配列)。達成できなかった・
+   回り道した・用語が分からなかった場合は、その内容を usability または missing-feature の所見にもする。
 
 報告ルール:
 - report.json の findings は kind ごとに意味が違う: exception / uncaught / stderr / invariant / edt-stall /
@@ -208,6 +252,14 @@ log(`deduped: ${unique.length} (known で除外: ${raw.length - unique.length - 
 
 const bugs = unique.filter(f => f.kind === 'bug')
 const growth = unique.filter(f => f.kind !== 'bug')
+const missionLog = []
+for (const e of explored.filter(Boolean)) {
+  for (const m of (e.result && e.result.missions) || []) {
+    missionLog.push({ persona: e.name, ...m })
+  }
+}
+const failedMissions = missionLog.filter(m => !m.achieved || (m.friction && m.friction.trim()))
+log(`missions: ${missionLog.length} (未達成/摩擦あり: ${failedMissions.length})`)
 
 phase('Verify')
 log(`bug 候補 ${bugs.length} 件を敵対的に検証`)
@@ -230,7 +282,7 @@ const rejected = verified.filter(Boolean).filter(f => f.verdict && !f.verdict.is
 
 phase('Triage')
 let backlog = []
-if (growth.length > 0) {
+if (growth.length > 0 || failedMissions.length > 0) {
   const triaged = await agent(`対象: Juml (Java Swing の UML/Android 解析ツール)。ペルソナ探索で集まった
 使い勝手 / 不足機能の所見を、製品バックログ項目に集約せよ (ラウンド ${cfg.round})。
 - 同じ根本原因の所見は 1 項目にまとめ、sources に元タイトルを列挙する。
@@ -239,7 +291,9 @@ if (growth.length > 0) {
 - effort は S (1 ファイル・数十行) / M (数ファイル) / L (設計変更)。
 - 数を増やさない。根拠の弱いもの (evidence が無い) は落とす。
 --- 所見 ---
-${growth.map((f, i) => `${i + 1}. [${f.kind}/${f.severity}] ${f.title} (persona: ${f.personas.join(',')})\n   detail: ${f.detail}\n   repro: ${f.repro}\n   evidence: ${f.evidence}`).join('\n')}`,
+${growth.map((f, i) => `${i + 1}. [${f.kind}/${f.severity}] ${f.title} (persona: ${f.personas.join(',')})\n   detail: ${f.detail}\n   repro: ${f.repro}\n   evidence: ${f.evidence}`).join('\n') || '(なし)'}
+--- ミッション結果 (未達成 / 摩擦あり) ---
+${failedMissions.map((m, i) => `${i + 1}. [${m.persona}] ${m.mission}\n   achieved: ${m.achieved} steps: ${m.steps}\n   friction: ${m.friction}`).join('\n') || '(なし)'}`,
     { label: 'triage:backlog', phase: 'Triage', schema: BACKLOG_SCHEMA, model: 'sonnet', effort: 'medium' })
   backlog = triaged ? triaged.items : []
 }
@@ -248,5 +302,6 @@ return {
   confirmed,
   backlog,
   rejectedTitles: rejected.map(r => r.title + ' — ' + (r.verdict.reason || '').slice(0, 120)),
+  missions: missionLog,
   raw: { findings: raw.length, personas: explored.filter(Boolean).map(e => ({ name: e.name, ok: !!e.result, notes: e.result && e.result.notes })) },
 }
