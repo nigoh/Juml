@@ -12,6 +12,7 @@
 //     tests: ["..."], lenses: ["【正確性】...", ...], context: "..." // 任意
 //   }})
 // 返り値: { confirmed: [...], rest: [...], rejectedCount, rejectedTitles }
+// モデル階層 (ADR-0003): ファインダー / 検証は sonnet (effort high)。修正は司令塔 (メインループ) が行う。
 //   confirmed = 敵対的検証を生き残った bug。rest = ux / test-gap (検証なし・参考)。
 export const meta = {
   name: 'bug-hunt',
@@ -94,7 +95,7 @@ phase('Find')
 log(`${lensList.length} レンズのファインダーを並列起動`)
 const rounds = await parallel(lensList.map((lens, i) => () =>
   agent(COMMON + `\n\nあなたのレンズ: ${lens}\nこのレンズに該当する問題だけを深く探せ。`,
-    { label: `find:${i + 1}`, phase: 'Find', schema: FINDINGS_SCHEMA, effort: 'high' })))
+    { label: `find:${i + 1}`, phase: 'Find', schema: FINDINGS_SCHEMA, model: 'sonnet', effort: 'high' })))
 
 const all = rounds.filter(Boolean).flatMap(r => r.findings || [])
 log(`raw findings: ${all.length}`)
@@ -120,7 +121,7 @@ line: ${f.line || '?'}
 title: ${f.title}
 detail: ${f.detail}
 repro: ${f.repro}`,
-    { label: `verify:${f.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA, effort: 'high' })
+    { label: `verify:${f.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'sonnet', effort: 'high' })
     .then(v => ({ ...f, verdict: v }))))
 
 const confirmed = verified.filter(Boolean).filter(f => f.verdict && f.verdict.isReal)

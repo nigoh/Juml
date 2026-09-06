@@ -206,8 +206,11 @@ public final class AndroidCommands {
             }
         }
         if (graphs.isEmpty()) {
+            // 他の Android 系オプション (-m / -M / -d / --screen-flow など) と同じく、「該当データなし」は
+            // 失敗ではない: stderr に案内を出し、空図のプレースホルダを通常出力して終了コード 0 にする。
+            // CI でオプションを並べて回すユーザーにとって、このオプションだけ exit 1 になるのは事故になる。
             System.err.println("No Jetpack Navigation graphs (res/navigation/*.xml) found.");
-            System.exit(1);
+            CliOutput.writeUmlOutput(fileOut, PlantUmlNavigationGraphDiagram.generateEmpty(), "nav-graph");
             return;
         }
         PlantUmlNavigationGraphDiagram.Options o = new PlantUmlNavigationGraphDiagram.Options();

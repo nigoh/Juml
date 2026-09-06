@@ -71,6 +71,12 @@ public final class PlantUmlSvgRenderer {
         ctx.setDynamicState(BridgeContext.STATIC);
         GVTBuilder builder = new GVTBuilder();
         GraphicsNode root = builder.build(ctx, doc);
+        // Batik はテキストのグリフ配置 (GlyphLayout) と各ノードの境界を初回参照時に遅延計算する。
+        // 放置すると最初の paint (= EDT 上の DiagramRenderCache.rebuildBuffer) でまとめて走り、
+        // 参加者が数百に膨らんだシーケンス図などでは EDT が数秒止まる (ハーネスで edt-stall として検出)。
+        // render() は常にバックグラウンド (SwingWorker / CLI) で呼ばれるため、ここで境界を一度
+        // 走査して計算結果をノード側にキャッシュさせ、EDT には描画だけを残す。
+        root.getBounds();
         SVGSVGElement el = doc.getRootElement();
         double w = el.getWidth().getBaseVal().getValue();
         double h = el.getHeight().getBaseVal().getValue();

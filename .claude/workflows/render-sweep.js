@@ -12,6 +12,7 @@
 // 返り値: { failures: [{project, tag, flags, message}], totalRuns, projectsSwept }
 //
 // 事前条件: gradle jar 済み (SessionStart フックが jar の鮮度を報告する)。
+// モデル階層 (ADR-0003): スイープ実行は haiku (effort low)。判断は司令塔 (メインループ) が行う。
 export const meta = {
   name: 'render-sweep',
   description: 'プロジェクト群 × 図種オプション群で Juml.jar の描画を並列総ざらいし失敗だけ返す',
@@ -83,7 +84,7 @@ ${configs.map(c => `- tag=${c.tag}: java -jar <jar> ${c.flags} -o <出力先>/${
 各実行の stderr は <出力先>/<tag>.err に保存して判定に使うこと。
 失敗した構成だけを failures に入れ、message には stderr の該当行 (先頭 200 文字) を入れる。
 全部成功なら failures: [] を返す。最終出力は StructuredOutput ツールで返す。`,
-    { label: `sweep:${proj.split('/').filter(Boolean).pop()}`, phase: 'Sweep', schema: RESULT_SCHEMA, effort: 'low' })
+    { label: `sweep:${proj.split('/').filter(Boolean).pop()}`, phase: 'Sweep', schema: RESULT_SCHEMA, model: 'haiku', effort: 'low' })
     .then(r => ({ project: proj, ...r }))))
 
 const ok = results.filter(Boolean)

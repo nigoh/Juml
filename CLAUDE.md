@@ -66,3 +66,8 @@
 
 - **多エージェントで網羅調査・面の回帰検証をするとき**（明示要求時のみ）→
   `orchestrate` スキル + `.claude/workflows/`（`/bug-hunt`・`/render-sweep`）
+- **ペルソナに実際に触らせてバグ・操作性・不足機能を集めるとき** → `persona-explore` スキル +
+  `/persona-explore`（成果は修正 + `docs/persona-backlog.md`）。モデル階層は ADR-0003
+  （司令塔 = opus/fable、ワーカー = sonnet/haiku）に従う。
+- **設計・運用の決定をしたとき** → `docs/adr/` に ADR を書く（書き方は `docs/adr/README.md`）。
+  既存の決定を覆すときは新しい ADR で Supersede する。
