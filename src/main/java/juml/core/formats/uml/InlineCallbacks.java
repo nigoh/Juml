@@ -36,12 +36,25 @@ final class InlineCallbacks {
     private InlineCallbacks() {
     }
 
+    /**
+     * 明示的な {@code this.} 前置を取り除く ({@code "this.cb"} → {@code "cb"})。
+     * 残したままだと receiver の先頭識別子が {@code "this"} になり、フィールド解決
+     * (participant 決定・インラインコールバック展開) がどちらも外れる。
+     */
+    static String stripThisPrefix(String receiver) {
+        String r = receiver;
+        while (r != null && r.startsWith("this.")) {
+            r = r.substring("this.".length());
+        }
+        return r;
+    }
+
     /** 呼び出し receiver の先頭識別子 ({@code "cb.run()"} の {@code "cb"})。無ければ null。 */
     static String receiverHead(JavaMethodInfo.Call call) {
         if (call == null) {
             return null;
         }
-        String receiver = call.getReceiver();
+        String receiver = stripThisPrefix(call.getReceiver());
         if (receiver == null || receiver.isEmpty()) {
             return null;
         }

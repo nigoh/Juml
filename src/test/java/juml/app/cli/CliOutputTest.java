@@ -234,4 +234,32 @@ public class CliOutputTest {
         assertArrayEquals("失敗しても前回の SVG が残ること",
                 previous, java.nio.file.Files.readAllBytes(target.toPath()));
     }
+
+    /**
+     * ラウンド4 で発見: Markdown レポートのコマンド (--rro-overlays / --aidl-binding /
+     * --selinux) に {@code -o report.svg} を渡すと、拡張子は画像なのに中身が Markdown の
+     * ファイルが黙って生まれていた。注意を出すことを検証する。
+     */
+    @Test
+    public void warnIfImageExtension_flagsMarkdownWrittenToImagePath() throws IOException {
+        java.io.PrintStream orig = System.err;
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            assertTrue(CliOutput.warnIfImageExtension(
+                    new File(tmp.getRoot(), "rro.svg"), "rro-overlays.md"));
+            assertTrue(CliOutput.warnIfImageExtension(
+                    new File(tmp.getRoot(), "rro.PNG"), "rro-overlays.md"));
+            assertFalse("Markdown / 未指定は注意なし",
+                    CliOutput.warnIfImageExtension(new File(tmp.getRoot(), "rro.md"), "x.md"));
+            assertFalse(CliOutput.warnIfImageExtension(null, "x.md"));
+            assertFalse("ディレクトリ指定は既定名が使われるので注意不要",
+                    CliOutput.warnIfImageExtension(tmp.getRoot(), "x.md"));
+        } finally {
+            System.setErr(orig);
+        }
+        String err = buf.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(err, err.contains("rro.svg"));
+        assertTrue(err, err.contains("rro-overlays.md"));
+    }
 }

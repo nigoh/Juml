@@ -358,4 +358,28 @@ public class DiskAnalysisCacheTest {
         c.setOrigin(JavaClassInfo.Origin.SOURCE);
         return c;
     }
+
+
+    /** bug-hunt R2: 壊れた index.db の読込失敗が無痕跡で、毎回フル解析になる原因を追えなかった。 */
+    @Test
+    public void testCorruptDbIsLoggedWithCacheErrorCode() throws Exception {
+        File base = tmp.newFolder("base");
+        File projectRoot = tmp.newFolder("proj");
+        File dbFile = DbBootstrap.resolveDbFile(base, projectRoot);
+        assertTrue(dbFile.getParentFile().isDirectory() || dbFile.getParentFile().mkdirs());
+        try (FileWriter w = new FileWriter(dbFile)) {
+            w.write("not a database, definitely not sqlite");
+        }
+        juml.util.AppLog.clearBuffer();
+        Optional<DiskAnalysisCache.Snapshot> snap =
+                new DiskAnalysisCache(base).load(projectRoot, null);
+        assertFalse("壊れた DB は空 (フル解析へ)", snap.isPresent());
+        boolean logged = false;
+        for (juml.util.AppLog.Entry e : juml.util.AppLog.snapshot()) {
+            if (e.getCode() == juml.util.ErrorCode.CACHE_001) {
+                logged = true;
+            }
+        }
+        assertTrue("CACHE-001 で警告が記録されること", logged);
+    }
 }

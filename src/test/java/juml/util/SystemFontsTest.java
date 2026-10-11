@@ -7,7 +7,9 @@ import org.junit.Test;
 
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -50,5 +52,17 @@ public class SystemFontsTest {
     public void canDisplayJapaneseHandlesNullAndEmpty() {
         assertFalse(SystemFonts.canDisplayJapanese(null));
         assertFalse(SystemFonts.canDisplayJapanese(""));
+    }
+
+    @Test
+    public void japaneseFirstIsCachedAndReturnsIndependentCopy() {
+        // bug-hunt R1: Style ダイアログを開くたびに全ファミリの glyph 判定を EDT で再計算していた。
+        java.util.List<String> first = SystemFonts.familiesJapaneseFirst();
+        java.util.List<String> second = SystemFonts.familiesJapaneseFirst();
+        assertEquals("2 回目も同じ並びを返すこと", first, second);
+        assertNotSame("呼び出し側が壊せない独立コピーを返すこと", first, second);
+        first.add("__mutated__");
+        assertFalse("返却リストの変更がキャッシュへ漏れないこと",
+                SystemFonts.familiesJapaneseFirst().contains("__mutated__"));
     }
 }

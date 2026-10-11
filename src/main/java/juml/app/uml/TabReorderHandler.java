@@ -93,7 +93,16 @@ final class TabReorderHandler {
                 Point inTabs = SwingUtilities.convertPoint(header, inHeader, tabs);
                 int target = tabs.indexAtLocation(inTabs.x, inTabs.y);
                 int dyn = Math.max(0, dynamicCount.getAsInt());
-                if (target >= 0 && target < dyn && from < dyn && target != from) {
+                // 幅の違うタブ同士では、相手タブに掛かった瞬間に入れ替えると入れ替え後も
+                // マウスが相手タブ上に残り、イベントごとに往復してしまう (bug-hunt R2)。
+                // 相手タブの中点を越えたときだけ移動する。
+                boolean passedMid = false;
+                if (target >= 0 && target < dyn && target != from) {
+                    java.awt.Rectangle tb = tabs.getBoundsAt(target);
+                    passedMid = tb == null || (from < target
+                            ? inTabs.x >= tb.getCenterX() : inTabs.x <= tb.getCenterX());
+                }
+                if (target >= 0 && target < dyn && from < dyn && target != from && passedMid) {
                     showIndicator(tabs, target, from < target);
                     lastIndicatorIdx = target;
                     moveTab(tabs, from, target);

@@ -20,8 +20,10 @@ import java.util.Map;
  * <p>git で共有できるよう、人が読める整形 JSON でプロジェクト内に保存する。
  * 図ごとに {@link DiagramTabPane} のタブキー (図種 + 題材) を辞書キーにして束ねる。</p>
  *
- * <p>ファイル全体をメモリに保持し、{@link #save} のたびに読み・更新・書きを行う
- * (付箋の保存頻度は低いため十分)。パース不能なファイルは握り潰して空として扱い、
+ * <p>{@link #save} / {@link #rename} のたびにディスク像を読み直してから差分を当てて
+ * 書き戻す (付箋の保存頻度は低いため十分)。読み直さずメモリ像を書き戻すと、同じ
+ * プロジェクトを開いた別の Juml や git pull 等の外部変更で書かれた他図の付箋が
+ * 次の 1 回の保存で消える (bug-hunt R2)。パース不能なファイルは退避して空として扱い、
  * 既存メモが壊れていてもアプリが落ちないようにする。</p>
  */
 final class DiagramNotesStore {
@@ -70,7 +72,7 @@ final class DiagramNotesStore {
         if (jsonFile == null) {
             return true;
         }
-        ensureLoaded();
+        reloadFromDisk();
         if (notes == null || notes.isEmpty()) {
             byDiagram.remove(diagramKey);
             connByDiagram.remove(diagramKey);
@@ -96,7 +98,7 @@ final class DiagramNotesStore {
         if (jsonFile == null || oldKey == null || newKey == null || oldKey.equals(newKey)) {
             return true;
         }
-        ensureLoaded();
+        reloadFromDisk();
         List<DiagramNote> notes = byDiagram.remove(oldKey);
         List<DiagramConnector> conns = connByDiagram.remove(oldKey);
         if (notes == null && conns == null) {
@@ -111,6 +113,13 @@ final class DiagramNotesStore {
         return writeFile();
     }
 
+    /** 書き込み前にディスク像を取り直す (別プロセス / 外部変更との lost-update 防止)。 */
+    private void reloadFromDisk() {
+        byDiagram = null;
+        connByDiagram = null;
+        ensureLoaded();
+    }
+
     private void ensureLoaded() {
         if (byDiagram != null) {
             return;
@@ -123,6 +132,9 @@ final class DiagramNotesStore {
         try {
             String json = new String(Files.readAllBytes(jsonFile.toPath()),
                     StandardCharsets.UTF_8);
+            if (json.startsWith("\uFEFF")) {
+                json = json.substring(1); // エディタ由来の UTF-8 BOM は壊れたファイルではない
+            }
             Object root = MiniJson.parse(json);
             if (!(root instanceof Map)) {
                 return;
@@ -149,10 +161,32 @@ final class DiagramNotesStore {
                 }
             }
         } catch (IOException | RuntimeException ex) {
-            // 壊れた notes.json は空とみなす (アプリを落とさない)。
+            // 壊れた notes.json は空とみなす (アプリを落とさない)。ただしそのまま空で
+            // 続けると次の保存で他の図の付箋ごと上書きして復旧不能になるため、先に
+            // 退避 (rename) してから空で始める (bug-hunt R2)。
             byDiagram = new LinkedHashMap<>();
             connByDiagram = new LinkedHashMap<>();
+            quarantineCorruptFile(ex);
         }
+    }
+
+    /** 読み取れなかった notes.json を {@code notes.json.corrupt-<日時>} へ退避し、警告を記録する。 */
+    private void quarantineCorruptFile(Exception cause) {
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS")
+                .format(new java.util.Date());
+        File backup = new File(jsonFile.getParentFile(), jsonFile.getName() + ".corrupt-" + stamp);
+        boolean moved;
+        try {
+            Files.move(jsonFile.toPath(), backup.toPath());
+            moved = true;
+        } catch (IOException | RuntimeException moveEx) {
+            moved = false;
+        }
+        juml.util.AppLog.warn(juml.util.ErrorCode.NOTE_002, "DiagramNotesStore",
+                "notes.json could not be parsed: " + jsonFile.getAbsolutePath()
+                        + (moved ? " (backed up to " + backup.getName() + ")"
+                                 : " (backup failed; the file will be overwritten on next save)"),
+                cause);
     }
 
     private boolean writeFile() {
@@ -191,6 +225,9 @@ final class DiagramNotesStore {
             return true;
         } catch (IOException ex) {
             // 保存失敗を呼び出し側へ伝え、ステータスバー通知に使う (サイレント消失を防ぐ)。
+            // 原因 (権限 / ディスクフル等) はログビューアで引けるよう ID 付きで記録する。
+            juml.util.AppLog.error(juml.util.ErrorCode.NOTE_003, "DiagramNotesStore",
+                    "failed to save notes: " + jsonFile.getAbsolutePath(), ex);
             return false;
         }
     }

@@ -241,7 +241,12 @@ final class PumlSourceDecorations {
                 continue;
             }
             // 同じ行に複数の指摘が乗ることは稀だが、最初のものを理由として見せる。
-            diagnosticsByLine.putIfAbsent(d.line(), d.message());
+            // その場で直せる指摘には直し方 (Alt+Enter) も添える。理由だけ見せて
+            // 直し方を隠すと、結局手で終端を書きに行くことになる。
+            String tip = d.closer() == null ? d.message()
+                    : d.message() + " — " + java.text.MessageFormat.format(
+                            juml.util.Messages.get("puml.fix.hint"), d.closer());
+            diagnosticsByLine.putIfAbsent(d.line(), tip);
             Element el = root.getElement(li);
             try {
                 diagnosticTags.add(h.addHighlight(el.getStartOffset(),

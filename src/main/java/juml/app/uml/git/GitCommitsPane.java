@@ -364,6 +364,11 @@ final class GitCommitsPane extends JPanel {
      * 1 コミット選択 = そのコミット vs 親、2 コミット以上選択 = 選択の最古 vs 最新で比較する。
      */
     private void onSelectionChanged() {
+        // 走行中の変更ファイル一覧 / diff の SwingWorker を無効化する (世代を進める)。
+        // 進めないと、選択解除でクリアした一覧や別コミットの diff 欄に古い結果が後から
+        // 適用される (stale result)。
+        detailGen++;
+        diffGen++;
         List<CommitInfo> sel = selectedCommits();
         if (sel.isEmpty()) {
             header.setCommit(null);

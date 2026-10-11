@@ -54,6 +54,11 @@ final class SideBySideDiffView extends JPanel {
                 leftScroll.getVerticalScrollBar().getModel());
         leftScroll.setVerticalScrollBarPolicy(
                 JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        // 縦スクロールバーを持たない左ペインでは JScrollPane のホイール処理が横スクロールへ
+        // 落ちるため、ホイールイベントは右ペイン (共有モデルの縦バー持ち) へ転送する。
+        leftScroll.setWheelScrollingEnabled(false);
+        leftScroll.addMouseWheelListener(e -> rightScroll.dispatchEvent(
+                javax.swing.SwingUtilities.convertMouseEvent(leftScroll, e, rightScroll)));
         split.add(leftScroll);
         split.add(rightScroll);
         add(emptyLabel, CARD_EMPTY);

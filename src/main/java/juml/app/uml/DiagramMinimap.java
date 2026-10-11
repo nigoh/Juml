@@ -90,7 +90,10 @@ final class DiagramMinimap {
         double cw = canvas[0];
         double ch = canvas[1];
         double scale = r.width / cw;
-        ensureThumb(panel, r.width, r.height, scale);
+        // サムネイルは図本体の寸法で固定生成し、描画時に現在の縮尺へ拡縮する。
+        // キャンバス寸法 (付箋込み) で生成すると、付箋を図の外へドラッグするたびに寸法が
+        // 変わってフル再描画が走り、大きな図でドラッグが固まる (bug-hunt R2)。
+        ensureThumb(panel);
 
         Graphics2D g = (Graphics2D) g2.create();
         try {
@@ -103,7 +106,9 @@ final class DiagramMinimap {
             g.setColor(bg != null ? bg : Color.WHITE);
             g.fillRoundRect(r.x, r.y, r.width, r.height, 8, 8);
             if (thumb != null) {
-                g.drawImage(thumb, r.x, r.y, null);
+                int dw = (int) Math.max(1, Math.round(panel.contentWidth() * scale));
+                int dh = (int) Math.max(1, Math.round(panel.contentHeight() * scale));
+                g.drawImage(thumb, r.x, r.y, Math.min(dw, r.width), Math.min(dh, r.height), null);
             }
             // 枠線
             Color border = UIManager.getColor("Component.borderColor");
@@ -133,8 +138,16 @@ final class DiagramMinimap {
         }
     }
 
-    /** サムネイルを (必要なら) 生成しキャッシュする。 */
-    private void ensureThumb(SvgPreviewPanel panel, int tw, int th, double scale) {
+    /** サムネイルを (必要なら) 図本体の寸法から生成しキャッシュする。 */
+    private void ensureThumb(SvgPreviewPanel panel) {
+        double cw0 = panel.contentWidth();
+        double ch0 = panel.contentHeight();
+        if (cw0 <= 0 || ch0 <= 0) {
+            return;
+        }
+        double scale = Math.min(MAX_W / cw0, MAX_H / ch0);
+        int tw = (int) Math.max(1, Math.round(cw0 * scale));
+        int th = (int) Math.max(1, Math.round(ch0 * scale));
         Object key = panel.minimapKey();
         if (thumb != null && key != null && key.equals(thumbKey)
                 && thumb.getWidth() == tw && thumb.getHeight() == th) {

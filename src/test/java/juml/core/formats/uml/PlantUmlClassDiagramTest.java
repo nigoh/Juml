@@ -1458,4 +1458,85 @@ public class PlantUmlClassDiagramTest {
         assertFalse("multi-space should NOT remain after normalization: " + puml,
                 puml.contains("hello   world"));
     }
+
+
+    @Test
+    public void testEmptyClassesNeverEmitEmptyLegendAndRender() throws Exception {
+        // 動的検証で発見: クラス 0 件 + 可視性凡例オフだと本文の無い legend ブロックが出力され、
+        // PlantUML が "No legend defined" で描画失敗 (UML-R001) していた。空 legend を省き、
+        // 空図には案内ノートを置き、実描画が通ることまで確認する。
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.showVisibility = false;
+        o.includeLegend = true;
+        String puml = PlantUmlClassDiagram.generate(java.util.Collections.emptyList(), o);
+        org.junit.Assert.assertFalse("empty legend block must be omitted: " + puml,
+                puml.contains("legend"));
+        assertTrue("empty diagram should carry a placeholder note: " + puml,
+                puml.contains("(no classes found)"));
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        PlantUmlRenderer.renderSvg(puml, out);
+        assertTrue("real rendering must succeed", out.size() > 0);
+    }
+
+    @Test
+    public void testLegendStillEmittedWhenItHasRows() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; class Foo { int a; void m() {} }");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.includeLegend = true;
+        String puml = PlantUmlClassDiagram.generate(infos, o);
+        assertTrue(puml, puml.contains("legend top left"));
+        assertTrue(puml, puml.contains("endlegend"));
+    }
+
+    /**
+     * bug-hunt R4 で発見: 焦点モードの前処理が呼び出し側の Options を書き換えるため、
+     * 1 つの Options を使い回す --per-folder では、焦点クラスを含まないフォルダを描いた
+     * 時点で以降すべての図から強調が消えていた (フォルダ順に依存する非決定的な挙動)。
+     */
+    @Test
+    public void focusOptionSurvivesGeneratingADiagramWithoutTheFocusClass() {
+        List<JavaClassInfo> withFocus = JavaStructureExtractor.extract(
+                "package x; class Target {} class Near { Target t; }");
+        List<JavaClassInfo> withoutFocus = JavaStructureExtractor.extract(
+                "package y; class Other {}");
+        PlantUmlClassDiagram.Options o = new PlantUmlClassDiagram.Options();
+        o.focusClass = "Target";
+
+        String first = PlantUmlClassDiagram.generate(withFocus, o);
+        assertTrue("前提: 焦点クラスを含む図では強調色が出ること",
+                first.contains("#FFF3CD"));
+        assertEquals("呼び出し側の焦点指定は保たれること", "Target", o.focusClass);
+
+        PlantUmlClassDiagram.generate(withoutFocus, o); // 焦点クラスが居ないフォルダ
+        assertEquals("解決できないフォルダを描いても焦点指定を潰さないこと", "Target", o.focusClass);
+
+        String third = PlantUmlClassDiagram.generate(withFocus, o);
+        assertTrue("同じ Options で描き直しても強調が復活すること", third.contains("#FFF3CD"));
+    }
+
+
+    /**
+     * bug-hunt R4 で発見: 凡例の implements 行が showImplementations ではなく
+     * showInheritance で分岐していたため、--relation impl では実装線を描くのに凡例から
+     * 実装行が消え、--relation inherit では描かない線の凡例が出ていた。
+     */
+    @Test
+    public void testLegendImplementsRowFollowsShowImplementations() {
+        List<JavaClassInfo> infos = JavaStructureExtractor.extract(
+                "package x; interface I {} class C implements I {}");
+        PlantUmlClassDiagram.Options impl = new PlantUmlClassDiagram.Options();
+        impl.showInheritance = false;
+        impl.showImplementations = true;
+        String withImpl = PlantUmlClassDiagram.generate(infos, impl);
+        assertTrue("実装線を描くなら凡例にも実装行が出ること: " + withImpl,
+                withImpl.contains("B implements A"));
+
+        PlantUmlClassDiagram.Options inherit = new PlantUmlClassDiagram.Options();
+        inherit.showInheritance = true;
+        inherit.showImplementations = false;
+        String withoutImpl = PlantUmlClassDiagram.generate(infos, inherit);
+        assertFalse("描かない実装線の凡例は出さないこと: " + withoutImpl,
+                withoutImpl.contains("B implements A"));
+    }
 }

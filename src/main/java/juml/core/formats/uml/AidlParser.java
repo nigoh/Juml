@@ -146,6 +146,20 @@ public final class AidlParser {
                     continue;
                 }
                 List<String> annotations = readAnnotations();
+                // ネストした型宣言 (parcelable / enum / union / interface) はメソッドではない。
+                // ブロックごと読み飛ばさないと、その閉じ '}' を interface 本体の終わりと
+                // 誤認して、以降のメソッドが 1 つも読めなくなる。
+                if (peek().isKw("parcelable") || peek().isKw("enum")
+                        || peek().isKw("union") || peek().isKw("interface")) {
+                    skipUntilSemicolonOrBlock();
+                    continue;
+                }
+                // const 宣言は定数。括弧付き初期化子 (const int M = (1 << 3);) を
+                // メソッドの引数リストと誤認しないよう、ここでフィールドとして取り込む。
+                if (peek().isKw("const")) {
+                    parseAidlConst(info);
+                    continue;
+                }
                 boolean oneway = false;
                 if (peek().isKw("oneway")) {
                     next();
@@ -153,6 +167,54 @@ public final class AidlParser {
                 }
                 parseAidlMethod(info, annotations, oneway);
             }
+        }
+
+        /**
+         * {@code const <type> <NAME> = <value>;} を定数フィールドとして取り込む。
+         * 値の途中に現れる括弧をメソッドの引数と読み違えないよう、{@code ;} まで読み切る。
+         */
+        private void parseAidlConst(JavaClassInfo cls) {
+            next(); // const
+            int typeStart = peek().start;
+            int typeEnd = typeStart;
+            String name = "";
+            while (!atEnd() && !peek().is("=") && !peek().is(";")) {
+                JavaToken t = peek();
+                if (t.type == JavaToken.Type.IDENT) {
+                    if (!name.isEmpty()) {
+                        typeEnd = Math.max(typeEnd, t.start);
+                    }
+                    name = t.text;
+                }
+                if (name.isEmpty() || t.start < typeEnd) {
+                    typeEnd = Math.max(typeEnd, t.end);
+                }
+                next();
+            }
+            String type = src.substring(typeStart, Math.max(typeStart, typeEnd)).trim();
+            int valueStart = -1;
+            if (peek().is("=")) {
+                next();
+                valueStart = peek().start;
+            }
+            int valueEnd = valueStart;
+            while (!atEnd() && !peek().is(";")) {
+                valueEnd = peek().end;
+                next();
+            }
+            if (peek().is(";")) {
+                next();
+            }
+            JavaFieldInfo f = new JavaFieldInfo();
+            f.setName(name);
+            f.setType(type.isEmpty() ? "int" : type);
+            f.setVisibility(Visibility.PUBLIC);
+            f.setStatic(true);
+            f.setFinal(true);
+            if (valueStart >= 0 && valueEnd > valueStart) {
+                f.setConstantValue(src.substring(valueStart, valueEnd).trim());
+            }
+            cls.getFields().add(f);
         }
 
         private void parseAidlMethod(JavaClassInfo cls, List<String> annotations,

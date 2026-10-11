@@ -95,7 +95,7 @@ public final class GitPanel extends JPanel {
         branchCombo.setPrototypeDisplayValue("feature/some-long-branch-name");
         branchCombo.addActionListener(e -> {
             if (!updatingBranches && service != null) {
-                reloadAll();
+                reloadAll(false);
             }
         });
         bar.add(branchCombo);
@@ -217,14 +217,17 @@ public final class GitPanel extends JPanel {
                         for (String b : branches) {
                             branchCombo.addItem(b);
                         }
-                        if (branches.isEmpty() && current != null) {
-                            branchCombo.addItem(current); // detached HEAD など
+                        if (current != null && !branches.contains(current)) {
+                            // detached HEAD (SHA) など: 一覧に無い ref を選択できるよう追加する。
+                            // 追加せずに setSelectedItem すると先頭ブランチが選ばれたままになり、
+                            // チェックアウト中と別ブランチの履歴を表示してしまう。
+                            branchCombo.addItem(current);
                         }
                         branchCombo.setSelectedItem(current);
                     } finally {
                         updatingBranches = false;
                     }
-                    reloadAll();
+                    reloadAll(true);
                 } catch (Exception ex) {
                     // 新リポジトリのブランチ列挙に失敗しても、旧リポジトリのデータを
                     // 残さない。コンボを空にし各ペインを新サービスで再読込して、
@@ -235,17 +238,25 @@ public final class GitPanel extends JPanel {
                     } finally {
                         updatingBranches = false;
                     }
-                    reloadAll();
+                    reloadAll(true);
                     reportStatusSafe(Messages.get("git.status.failed") + ex.getMessage());
                 }
             }
         }.execute();
     }
 
-    private void reloadAll() {
+    /**
+     * 3 ペインを読み直す。{@code repositoryChanged} が true のときだけ File History の
+     * 入力と結果を捨てる (ブランチ切替 / 更新では入力を保持して読み直すだけ)。
+     */
+    private void reloadAll(boolean repositoryChanged) {
         commitsPane.reload();
         branchesPane.reload();
-        filePane.onRepositoryChanged();
+        if (repositoryChanged) {
+            filePane.onRepositoryChanged();
+        } else {
+            filePane.onRefChanged();
+        }
     }
 
     private void reportStatusSafe(String msg) {

@@ -124,7 +124,11 @@ public final class DiskAnalysisCache {
             prog.onProgress(count, count, "Loaded from cache");
             return Optional.of(new Snapshot(classes, idx));
         } catch (SQLException | IOException ex) {
-            // 破損していたら無効化扱い (次回 save で上書きされる)
+            // 破損していたら無効化扱い (次回 save で上書きされる)。無痕跡だと「毎回フル解析
+            // される」原因を追えないので、既存 ID で警告を残す (bug-hunt R2)。
+            juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_001, "DiskAnalysisCache",
+                    "Failed to load analysis cache " + dbFile + " (will rescan): "
+                            + ex.getMessage(), ex);
             return Optional.empty();
         }
     }

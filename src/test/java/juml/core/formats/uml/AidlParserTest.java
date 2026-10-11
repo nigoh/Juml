@@ -122,4 +122,44 @@ public class AidlParserTest {
             assertTrue(m.isAbstract());
         }
     }
+
+
+    /**
+     * bug-hunt R4 で発見: interface の中にネストした型宣言 (parcelable/enum/union) があると、
+     * その閉じ波括弧を interface 本体の終わりと誤認し、以降のメソッドが 1 つも読めなくなっていた。
+     */
+    @Test
+    public void testNestedDeclarationKeepsFollowingMethods() {
+        List<JavaClassInfo> cs = AidlParser.parse(
+                "package com.x;\ninterface IFoo {\n"
+                        + "  void first();\n"
+                        + "  parcelable Inner { int a; }\n"
+                        + "  enum Mode { A, B }\n"
+                        + "  void second();\n}\n");
+        JavaClassInfo foo = cs.stream()
+                .filter(c -> "IFoo".equals(c.getSimpleName())).findFirst().orElse(null);
+        assertNotNull(String.valueOf(cs), foo);
+        List<String> names = new java.util.ArrayList<>();
+        for (JavaMethodInfo m : foo.getMethods()) {
+            names.add(m.getName());
+        }
+        assertTrue("ネスト宣言の前後どちらのメソッドも残ること: " + names,
+                names.contains("first") && names.contains("second"));
+    }
+
+    /**
+     * bug-hunt R4 で発見: {@code const int M = (1 << 3);} の括弧を引数リストと誤認し、
+     * 定数が偽のメソッドとして図やレポートに並んでいた。
+     */
+    @Test
+    public void testConstWithParenthesisedInitialiserIsAField() {
+        List<JavaClassInfo> cs = AidlParser.parse(
+                "package com.x;\ninterface IFoo {\n"
+                        + "  const int MASK = (1 << 3);\n  void ping();\n}\n");
+        JavaClassInfo foo = cs.get(0);
+        assertEquals("メソッドは ping() だけ", 1, foo.getMethods().size());
+        assertEquals("ping", foo.getMethods().get(0).getName());
+        assertEquals("const はフィールドとして取り込む", 1, foo.getFields().size());
+        assertEquals("MASK", foo.getFields().get(0).getName());
+    }
 }

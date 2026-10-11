@@ -9,7 +9,6 @@ import juml.util.Messages;
 
 import javax.swing.JOptionPane;
 import javax.swing.JRadioButtonMenuItem;
-import javax.swing.JToggleButton;
 import javax.swing.JTabbedPane;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -32,7 +31,9 @@ public final class DiagramController {
     final DiagramState state;
     private final Supplier<ProjectAnalysisCache> cacheSupplier;
     final EnumMap<DiagramKind, JRadioButtonMenuItem> diagramItems;
-    private final EnumMap<DiagramKind, JToggleButton> diagramToggles;
+    /** 現在選択可能な図種 ({@link #updateAvailableDiagrams} で更新。null = 未設定でゲート無し)。 */
+    private EnumSet<DiagramKind> allowedKinds;
+    private final DiagramKindChooser diagramKindChooser;
     private final ProjectTreePanel treePanel;
     private final JTabbedPane mainTabs;
     private final DiagramTabPane tabPane;
@@ -53,7 +54,7 @@ public final class DiagramController {
         this.state = deps.state;
         this.cacheSupplier = deps.cacheSupplier;
         this.diagramItems = deps.diagramItems;
-        this.diagramToggles = deps.diagramToggles;
+        this.diagramKindChooser = deps.diagramKindChooser;
         this.treePanel = deps.treePanel;
         this.mainTabs = deps.mainTabs;
         this.tabPane = deps.tabPane;
@@ -473,13 +474,13 @@ public final class DiagramController {
     // -------------------------------------------------------------------------
 
     /**
-     * 利用可能な図種に応じてツールバーのトグルと Diagram メニューのラジオを有効/無効化する。
-     * 非表示 (setVisible) ではなく無効化 (setEnabled) にすることで、ボタンの存在は伝えつつ
-     * 「今は到達できない」ことを示す。プロジェクト未ロード時は空集合を渡して全無効化する。
+     * 利用可能な図種に応じて図種ドロップダウンの項目とメニューラジオを有効/無効化する
+     * (非表示でなく無効化で「今は到達できない」ことを示す。未ロード時は空集合で全無効化)。
      */
     public void updateAvailableDiagrams(EnumSet<DiagramKind> allowed) {
-        for (java.util.Map.Entry<DiagramKind, JToggleButton> e : diagramToggles.entrySet()) {
-            e.getValue().setEnabled(allowed.contains(e.getKey()));
+        allowedKinds = EnumSet.copyOf(allowed);
+        if (diagramKindChooser != null) {
+            diagramKindChooser.setAvailableKinds(allowed);
         }
         for (java.util.Map.Entry<DiagramKind, JRadioButtonMenuItem> e : diagramItems.entrySet()) {
             e.getValue().setEnabled(allowed.contains(e.getKey()));
@@ -492,13 +493,17 @@ public final class DiagramController {
      */
     public void onTabFocused(DiagramTabPane.FocusedTab info) {
         if (info == null) {
+            // ユーティリティタブ (Functions/Members 等) が選ばれ図タブが非アクティブ:
+            // 図種ドロップダウンはプレースホルダ、メニューラジオ解除、文脈項目は無効化。
+            reflectKindInToolbar(null);
             return;
         }
         syncToFocusedTab(info.treeSync);
         if (info.kind != null) {
             setCurrentKind(info.kind);
-            reflectKindInToolbar(info.kind);
         }
+        // 自由編集エディタタブは kind == null → プレースホルダ表示 (直前の図種を残さない)。
+        reflectKindInToolbar(info.kind);
     }
 
     /**
@@ -506,33 +511,12 @@ public final class DiagramController {
      * {@code select*Node} は suppressNotify なので選択コールバックは発火しない。
      */
     public void syncToFocusedTab(TreeNodeOpenRequest req) {
-        if (req == null) {
-            return;
-        }
-        switch (req.target) {
-            case METHOD:
-                if (req.classInfo != null && req.methodInfo != null) {
-                    treePanel.selectMethodNode(
-                            req.classInfo.getQualifiedName(), req.methodInfo.getName());
-                }
-                break;
-            case CLASS:
-                if (req.classInfo != null) {
-                    treePanel.selectClassNode(req.classInfo.getQualifiedName());
-                }
-                break;
-            case PACKAGE:
-                treePanel.selectPackageNode(req.name);
-                break;
-            case MODULE:
-                treePanel.selectModuleNode(req.name);
-                break;
-            default:
-                break;
+        if (req != null) {
+            treePanel.selectNodeFor(req);
         }
     }
 
-    /** メニューラジオ/ツールバートグルの選択を {@code kind} に合わせる (見た目のみ)。 */
+    /** メニューラジオと図種ドロップダウンの表示を {@code kind} に合わせる (見た目のみ。null 可)。 */
     void reflectKindInToolbar(DiagramKind kind) {
         JRadioButtonMenuItem item = diagramItems.get(kind);
         if (item != null) {
@@ -584,15 +568,24 @@ public final class DiagramController {
      * VS Code 風: アクティブタブを起点に、選んだ図種をタブとして開く / フォーカスする。
      */
     public void selectDiagramKind(DiagramKind kind) {
-        // VS Code 風: 図種切替は「いまフォーカスしているタブの題材」に作用する。
-        // メソッドタブなら同じ Class.method の別図種、クラス/パッケージ/モジュールの
-        // スコープ付きタブなら同じ題材のクラス図を開き直す。これにより単体クラスを
-        // 見ている最中に Class を選んでもプロジェクト全体図 (大規模ガード) へ
-        // 飛ばされ「図が大きい」と誤警告される不具合を防ぐ。
+        if (allowedKinds != null && !allowedKinds.contains(kind)) {
+            // メニュー/ドロップダウンでは無効化済みの図種 (コマンドパレット等の別経路)。
+            // 空図タブを開いたり表示だけ切り替わったりしないよう、案内して終了する。
+            if (statusLabel != null) {
+                statusLabel.setText(java.text.MessageFormat.format(
+                        Messages.get("diagram.kindUnavailable"), kind.getDisplayName()));
+            }
+            return;
+        }
+        // VS Code 風: 図種切替は「いまフォーカスしているタブの題材」に作用する (メソッドタブなら
+        // 同じ Class.method の別図種、スコープ付きタブなら同じ題材のクラス図)。単体クラスを
+        // 見ている最中に Class を選んで全体図の大規模ガードへ飛ばされる誤警告を防ぐ。
         if (tabPane != null && tabPane.dynamicTabFocused()) {
             TreeNodeOpenRequest reopen = reopenRequestFor(tabPane.focusedTabRequest(), kind);
             if (reopen != null) {
                 tabPane.addOrFocusTab(reopen);
+                // addOrFocusTab が何も発火しない場合 (未ロード/同一タブ) も表示と currentKind を揃える。
+                syncKindToActiveTab();
                 return;
             }
         }
@@ -604,9 +597,28 @@ public final class DiagramController {
         }
         openKindAsTab(kind);
         // タブを開かなかった場合 (ダイアログキャンセル等) はアクティブタブの図種へ戻す。
-        if (tabPane.hasActiveTab()) {
-            reflectKindInToolbar(tabPane.activeTabKind());
+        syncKindToActiveTab();
+    }
+
+    /**
+     * 表示と {@link #currentKind} をアクティブタブの図種へ揃える (ダイアログキャンセル等で
+     * 選んだ図種のタブが開かなかったときの食い違い防止)。図タブが無ければプレースホルダ表示。
+     */
+    private void syncKindToActiveTab() {
+        if (tabPane == null) {
+            return;
         }
+        if (!tabPane.hasActiveTab()) {
+            // 図タブが無い (ユーティリティタブ選択中 / 未ロード): 開かなかった図種を
+            // 表示に残さずプレースホルダへ戻す。
+            reflectKindInToolbar(null);
+            return;
+        }
+        DiagramKind active = tabPane.activeTabKind();
+        if (active != null && active != currentKind) {
+            setCurrentKind(active);
+        }
+        reflectKindInToolbar(active);
     }
 
     /**
@@ -709,17 +721,10 @@ public final class DiagramController {
         return s == null || s.isEmpty();
     }
 
-    /**
-     * ツールバーのトグルボタン側で現在の図種を反映する (メニューラジオと双方向同期)。
-     */
+    /** 図種ドロップダウンに現在の図種を反映する (一覧に無い図種や null でもラベルは更新する)。 */
     public void syncDiagramToggle(DiagramKind kind) {
-        JToggleButton b = diagramToggles.get(kind);
-        if (b != null) {
-            if (!b.isSelected()) {
-                b.setSelected(true);
-            }
-        } else {
-            clearButtonGroupOf(diagramToggles.values()); // トグルなし図種: stale 選択を解除
+        if (diagramKindChooser != null) {
+            diagramKindChooser.setCurrentKind(kind);
         }
     }
 
@@ -744,6 +749,7 @@ public final class DiagramController {
             }
             dlg.setVisible(true);
             EntitySearchDialog.Entry result = dlg.getResult();
+            dlg.dispose(); // 全エンティティのツリーモデルごと解放する
             if (result == null) {
                 return;
             }

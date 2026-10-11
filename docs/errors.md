@@ -345,6 +345,20 @@ ID の形式は `領域プレフィックス + 3 桁連番`、ERROR / WARN の�
 - **Summary**: PNG export with notes failed
 - **Remedy**: Check write permission of the destination. For render failures see the UML-R remedies.
 
+### NOTE-002
+
+- **概要**: 付箋ファイル (.juml/notes.json) を読み取れなかったため退避し、付箋は空の状態から始めました
+- **対処**: 読み取れなかったファイルは同じ場所に notes.json.corrupt-<日時> として退避しています。必要なら退避ファイル (またはバージョン管理) から復元して再起動してください。新しい付箋は新規の notes.json に保存されます。
+- **Summary**: Notes file (.juml/notes.json) could not be read; it was backed up and notes start empty
+- **Remedy**: The unreadable file was renamed to notes.json.corrupt-<timestamp> next to it. Restore notes from that backup (or from version control) and restart if you need them; new notes are saved to a fresh notes.json.
+
+### NOTE-003
+
+- **概要**: 付箋ファイル (.juml/notes.json) の保存に失敗しました
+- **対処**: プロジェクトフォルダに書き込めるか、ディスクに空きがあるか確認してください。付箋は画面に残っているので、原因を直してから付箋をどれか 1 つ編集すると保存をやり直します。
+- **Summary**: Notes file (.juml/notes.json) could not be saved
+- **Remedy**: Check that the project folder is writable and the disk is not full; the notes stay on screen, so fix the cause and edit any note to retry the save.
+
 
 ## CFG — 設定・永続化 / Settings & Persistence
 

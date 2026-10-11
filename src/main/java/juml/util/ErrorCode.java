@@ -135,6 +135,10 @@ public enum ErrorCode {
     // ── NOTE ──
     /** ノート付き PNG の出力に失敗しました。 */
     NOTE_001(Area.NOTE, "NOTE-001"),
+    /** 付箋ファイル (.juml/notes.json) を読み取れず、退避して空から始めました。 */
+    NOTE_002(Area.NOTE, "NOTE-002"),
+    /** 付箋ファイル (.juml/notes.json) の保存に失敗しました。 */
+    NOTE_003(Area.NOTE, "NOTE-003"),
 
     // ── CFG ──
     /** 設定の保存に失敗しました。 */

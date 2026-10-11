@@ -10,6 +10,8 @@ final class GitTimes {
 
     private static final long[] STEPS = {60, 3600, 86400, 604800, 2629746, 31556952};
     private static final String[] UNITS = {"minute", "hour", "day", "week", "month", "year"};
+    /** 単位ごとのメッセージキー ({@code {0,choice,...}} で単複を切り替える)。 */
+    private static final String KEY_PREFIX = "git.time.";
 
     private GitTimes() {
     }
@@ -21,7 +23,7 @@ final class GitTimes {
         }
         long secs = (System.currentTimeMillis() - when.getTime()) / 1000L;
         if (secs < 60) {
-            return "just now";
+            return juml.util.Messages.get(KEY_PREFIX + "justNow");
         }
         int i = 0;
         for (; i < STEPS.length - 1; i++) {
@@ -30,6 +32,8 @@ final class GitTimes {
             }
         }
         long n = secs / STEPS[i];
-        return n + " " + UNITS[i] + (n == 1 ? "" : "s") + " ago";
+        // 表示言語に合わせる (以前は英語固定で、日本語 UI でも "3 days ago" のままだった)。
+        return java.text.MessageFormat.format(
+                juml.util.Messages.get(KEY_PREFIX + UNITS[i]), n);
     }
 }

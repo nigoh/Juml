@@ -330,4 +330,59 @@ public class GitRepoServiceTest {
         // HEAD が先頭 (ソート順 ordinal 0)。
         assertEquals(GitRepoService.RefLabel.Type.HEAD, atHead.get(0).type);
     }
+
+    /**
+     * bug-hunt R3 で発見: 比較ダイアログ (クラス図 / メソッド図) が旧内容を新パスで読み、
+     * リネームされたファイルの旧側が null (全追加) に化けていた。旧側パスの解決を検証する。
+     */
+    @Test
+    public void oldPathFor_resolvesRenamedSourceOnlyForParentCompare() throws Exception {
+        Files.delete(new File(root, "a.txt").toPath());
+        writeFile("renamed.txt", "line1\nline2\n");
+        git.add().addFilepattern("renamed.txt").call();
+        git.rm().setCached(true).addFilepattern("a.txt").call();
+        RevCommit renamed = git.commit().setMessage("rename a.txt to renamed.txt")
+                .setAuthor("Dave", "dave@example.com")
+                .setCommitter("Dave", "dave@example.com").call();
+        String rev = renamed.getName();
+
+        assertEquals("親比較ではリネーム元のパスを返す",
+                "a.txt", service.oldPathFor("renamed.txt", null, rev));
+        assertEquals("2 リビジョン比較でもリネーム元のパスを返す",
+                "a.txt", service.oldPathFor("renamed.txt", second.getName(), rev));
+        assertEquals("リネームでないファイルはそのまま",
+                "b.txt", service.oldPathFor("b.txt", null, rev));
+        String oldSrc = service.fileContentAt(service.parentOf(rev),
+                service.oldPathFor("renamed.txt", null, rev));
+        assertEquals("旧パス経由で旧内容が読めること", "line1\nline2\n", oldSrc);
+    }
+
+    /**
+     * bug-hunt R3 で発見: 注釈付きタグ名を渡すと resolve が tag オブジェクトを返し、
+     * LogCommand が IncorrectObjectTypeException を投げていた。peel してから履歴を読む回帰。
+     */
+    @Test
+    public void log_acceptsAnnotatedTagName() throws Exception {
+        git.tag().setName("v9").setAnnotated(true).setMessage("release").call();
+        List<GitRepoService.CommitInfo> log = service.log("v9", 10);
+        assertFalse("注釈付きタグでも履歴が取れること", log.isEmpty());
+        assertEquals("second commit", log.get(0).shortMessage);
+    }
+
+    /** 2 リビジョン比較でも旧内容をリネーム元パスから読めること (全追加への化け防止)。 */
+    @Test
+    public void oldPathFor_twoRevisionCompare_readsRenamedContent() throws Exception {
+        Files.delete(new File(root, "a.txt").toPath());
+        writeFile("renamed.txt", "line1\nline2\n");
+        git.add().addFilepattern("renamed.txt").call();
+        git.rm().setCached(true).addFilepattern("a.txt").call();
+        RevCommit renamed = git.commit().setMessage("rename for two-rev compare")
+                .setAuthor("Eve", "eve@example.com")
+                .setCommitter("Eve", "eve@example.com").call();
+        String oldRev = second.getName();
+        String newRev = renamed.getName();
+        String oldSrc = service.fileContentAt(oldRev,
+                service.oldPathFor("renamed.txt", oldRev, newRev));
+        assertEquals("旧側が null (全追加) にならないこと", "line1\nline2\n", oldSrc);
+    }
 }

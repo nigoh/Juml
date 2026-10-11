@@ -329,6 +329,71 @@ final class PumlCompletionDictionary {
         return List.copyOf(out);
     }
 
+    /**
+     * ホバー用: {@code offset} 位置の矢印記法の意味 (矢印でなければ null)。
+     *
+     * <p>{@code <|--} と {@code *--} のような見分けにくい記法こそ、読んでいる最中に
+     * 意味を知りたくなる。補完候補と同じ i18n 文言をそのまま出す。</p>
+     *
+     * <p>照合は空白区切りのトークン単位。長さ違い ({@code --->}) や色指定
+     * ({@code -[#blue]>}) は代表形へ寄せてから引く。寄せても辞書に無ければ
+     * 黙って null (誤った説明を出すくらいなら何も出さない)。</p>
+     */
+    static String arrowHover(String text, int offset) {
+        if (text == null || text.isEmpty() || offset < 0 || offset >= text.length()) {
+            return null;
+        }
+        int start = offset;
+        while (start > 0 && !isTokenBreak(text.charAt(start - 1))) {
+            start--;
+        }
+        int end = offset;
+        while (end < text.length() && !isTokenBreak(text.charAt(end))) {
+            end++;
+        }
+        String token = text.substring(start, end);
+        if (token.indexOf('-') < 0 && token.indexOf('.') < 0) {
+            return null;
+        }
+        String plain = token.replaceAll("\\[[^\\]]*\\]", "");
+        for (String candidate : new String[] {token, plain,
+                collapseRuns(token, 2), collapseRuns(plain, 2),
+                collapseRuns(token, 1), collapseRuns(plain, 1)}) {
+            for (Entry e : ARROWS) {
+                if (e.word().equals(candidate)) {
+                    return juml.util.Messages.get(e.detailKey());
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isTokenBreak(char c) {
+        return Character.isWhitespace(c);
+    }
+
+    /** {@code -} と {@code .} の連続を {@code max} 文字までに詰める ({@code ---> } → {@code -->})。 */
+    private static String collapseRuns(String token, int max) {
+        StringBuilder sb = new StringBuilder(token.length());
+        int run = 0;
+        char runChar = '\0';
+        for (int i = 0; i < token.length(); i++) {
+            char c = token.charAt(i);
+            if (c == '-' || c == '.') {
+                run = c == runChar ? run + 1 : 1;
+                runChar = c;
+                if (run > max) {
+                    continue;
+                }
+            } else {
+                run = 0;
+                runChar = '\0';
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
     private static void arrow(List<Entry> out, String glyph, Group group, String detailKey) {
         arrow(out, glyph, detailKey, group);
     }

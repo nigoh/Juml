@@ -43,7 +43,11 @@ public final class CliDispatcher {
             return true;
         }
         if (o.all.isSet()) {
-            AndroidCommands.handleAll(ctx);
+            // 1 枚でも描画に失敗したら、単体の図コマンドと同じ exit 2 で知らせる
+            // (成果物は最後まで生成してから終了コードを決める)。
+            if (AndroidCommands.handleAll(ctx) > 0) {
+                System.exit(2);
+            }
             return true;
         }
         if (o.gradle.isSet()) {
@@ -142,7 +146,11 @@ public final class CliDispatcher {
             return true;
         }
         if (o.classDiagram.isSet() && o.perFolder.isSet()) {
-            UmlCommands.handleClassDiagramsPerFolder(ctx);
+            // SVG を 1 枚も書けなくても success + exit 0 だと、スクリプトからは成功に見える。
+            // --all と同じく、書けなかったフォルダがあれば exit 2 で知らせる。
+            if (UmlCommands.handleClassDiagramsPerFolder(ctx) > 0) {
+                System.exit(2);
+            }
             return true;
         }
         if (o.classDiagram.isSet() || o.sequenceDiagram.isSet()) {

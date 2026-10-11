@@ -185,7 +185,15 @@ public final class GitRepoService implements AutoCloseable {
                           boolean current, int ahead, int behind) throws IOException {
         RefRow.Tip tip = null;
         if (id != null) {
-            RevCommit c = walk.parseCommit(id);
+            RevCommit c;
+            try {
+                c = walk.parseCommit(id);
+            } catch (org.eclipse.jgit.errors.IncorrectObjectTypeException
+                     | org.eclipse.jgit.errors.MissingObjectException ex) {
+                // blob / tree を指すタグや欠損オブジェクトは「先端コミットなし」の行にする
+                // (1 本でも混ざると一覧全体が例外で消えていた)。
+                return new RefRow(name, type, current, ahead, behind, null);
+            }
             PersonIdent who = c.getAuthorIdent();
             tip = new RefRow.Tip(
                     c.abbreviate(7).name(),
@@ -213,6 +221,15 @@ public final class GitRepoService implements AutoCloseable {
         List<CommitInfo> out = new ArrayList<>();
         if (start == null) {
             return out; // 空リポジトリ (コミットなし)
+        }
+        // 注釈付きタグは resolve が tag オブジェクトを返す。LogCommand.add は commit しか
+        // 受け付けず IncorrectObjectTypeException になるため、コミットまで peel する
+        // (この API はブランチ/タグ/SHA を受ける契約)。
+        try (RevWalk walk = new RevWalk(repo)) {
+            start = walk.parseCommit(start).getId();
+        } catch (org.eclipse.jgit.errors.IncorrectObjectTypeException
+                 | org.eclipse.jgit.errors.MissingObjectException ex) {
+            return out; // コミットへ辿り着けない ref (blob/tree タグ等) は履歴なし
         }
         try (Git git = new Git(repo)) {
             org.eclipse.jgit.api.LogCommand cmd = git.log().add(start).setMaxCount(limit);
@@ -500,6 +517,29 @@ public final class GitRepoService implements AutoCloseable {
             }
         }
         return null;
+    }
+
+    /**
+     * 比較の旧側で読むべきパスを返す。{@code newPath} が比較区間でリネームされていれば
+     * その旧パス、それ以外は {@code newPath} そのまま。親コミットとの比較
+     * ({@code oldRev == null}) と任意 2 リビジョン比較の両方を扱う。旧内容を新パスで
+     * 読むと旧側に存在せず null (= 全追加) に化けるため、比較ダイアログは必ずこれを経由する。
+     */
+    public String oldPathFor(String newPath, String oldRev, String newRev) throws IOException {
+        if (newPath == null || newPath.isEmpty()) {
+            return newPath;
+        }
+        if (oldRev == null) {
+            String renamedFrom = renamedFromPath(newRev, newPath);
+            return renamedFrom != null ? renamedFrom : newPath;
+        }
+        for (DiffEntry e : diffEntriesBetween(oldRev, newRev, newPath)) {
+            if (e.getChangeType() == DiffEntry.ChangeType.RENAME
+                    && newPath.equals(e.getNewPath())) {
+                return e.getOldPath();
+            }
+        }
+        return newPath;
     }
 
     /** 指定コミットの第 1 親の SHA を返す。親がなければ (初回コミット等) null。 */

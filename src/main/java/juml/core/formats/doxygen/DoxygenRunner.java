@@ -25,6 +25,22 @@ public final class DoxygenRunner {
     private DoxygenRunner() {
     }
 
+    /** 実行中の doxygen プロセス (プロジェクト切替での取り消し用。同時に 1 つしか走らない)。 */
+    private static final java.util.concurrent.atomic.AtomicReference<Process> CURRENT =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /**
+     * 実行中の doxygen プロセスがあれば強制終了する (無ければ何もしない)。
+     * 出力の読み取りはプロセス終了で解けるため、待機中の {@link #run} は
+     * 「exited with code」の {@link IOException} で戻る。
+     */
+    public static void cancelRunning() {
+        Process p = CURRENT.get();
+        if (p != null && p.isAlive()) {
+            p.destroyForcibly();
+        }
+    }
+
     /**
      * 一時ディレクトリへ XML を生成し、{@code index.xml} を含む {@code xml} ディレクトリを返す。
      *
@@ -110,6 +126,7 @@ public final class DoxygenRunner {
         } catch (IOException ex) {
             throw new IOException("failed to start doxygen: " + ex.getMessage(), ex);
         }
+        CURRENT.set(process);
         // doxygen の標準出力/エラーを読み捨てつつ、致命的行だけ通知する。
         // 読み取り/待機のどの段階で例外が飛んでも子プロセスを孤児にしないよう、
         // finally で生存していれば強制終了する (成功時は既に終了済みなので no-op)。
@@ -134,6 +151,7 @@ public final class DoxygenRunner {
                 throw new IOException("doxygen exited with code " + exit);
             }
         } finally {
+            CURRENT.compareAndSet(process, null);
             if (process.isAlive()) {
                 process.destroyForcibly();
             }

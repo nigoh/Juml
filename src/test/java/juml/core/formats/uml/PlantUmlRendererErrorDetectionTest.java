@@ -16,6 +16,7 @@ import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -496,5 +497,85 @@ public class PlantUmlRendererErrorDetectionTest {
         String syntax = "<svg><text>Syntax Error?</text>"
                 + "<text>[From string (line 3) ]</text></svg>";
         assertTrue(PlantUmlRenderer.isErrorSvg(syntax.getBytes(StandardCharsets.UTF_8)));
+    }
+
+
+    @Test
+    public void testIsErrorSvgDetectsModernSpellingBanner() {
+        // 動的検証で発見: PlantUML 1.2026.x はバナーの綴りが "occurred" に変わり、旧綴りだけの
+        // マーカーではクラッシュ画像が正常出力として素通りし、埋め込み PNG を Batik が開けず
+        // UML-R007 に化けていた。新旧両方の綴りを検出する回帰。
+        String body = "<svg><text>An error has occurred : "
+                + "java.lang.UnsupportedOperationException: xyz</text></svg>";
+        assertTrue("modern spelling banner should be detected",
+                PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    public void testIsErrorSvgDetectsCrashedMarker() {
+        String body = "<svg><text>PlantUML (1.2026.6) has crashed.</text></svg>";
+        assertTrue("crash marker should be detected",
+                PlantUmlRenderer.isErrorSvg(body.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    public void testCrashImageIsClassifiedAsLayoutFailureEvenWithLineMarker() throws IOException {
+        // 動的検証で発見: 巨大図で PlantUML 自身がクラッシュ画像を返すと、構文エラー (UML-R001)
+        // に分類されて対処法 (Graphviz 導入 / 図の分割) が引けなかった。クラッシュ画像は
+        // 行番号らしき表記が混ざっていてもレイアウト障害 (UML-R002) とする。
+        PlantUmlRenderer.setRendererImplForTest((puml, out) -> {
+            String svg = "<svg><text>An error has occurred : "
+                    + "java.lang.UnsupportedOperationException: 7sgp99x1l3</text>"
+                    + "<text>PlantUML (1.2026.6) has crashed.</text>"
+                    + "<text>[From string (line 3) ]</text></svg>";
+            try {
+                out.write(svg.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        try {
+            PlantUmlRenderer.renderSvg("@startuml\nclass X\n@enduml\n", new ByteArrayOutputStream());
+            fail("Expected PlantUmlRenderFailedException");
+        } catch (PlantUmlRenderFailedException expected) {
+            assertEquals(juml.util.ErrorCode.UML_R002, expected.getErrorCode());
+        }
+        assertTrue(PlantUmlRenderer.isCrashImage(
+                "<svg>PlantUML (1.2026.6) has crashed.</svg>".getBytes(StandardCharsets.UTF_8)));
+        assertTrue(!PlantUmlRenderer.isCrashImage(
+                "<svg><text>Syntax Error?</text></svg>".getBytes(StandardCharsets.UTF_8)));
+    }
+
+
+    /**
+     * bug-hunt R4 で発見: PlantUML が返す行番号はレイアウト prelude 挿入後の座標なのに、
+     * 失敗ログの抜粋は挿入前のテキストに当てていたため、prelude の行数だけずれた別の行を
+     * 「失敗行」として示していた。抜粋が描画に渡したテキストであることを検証する。
+     */
+    @Test
+    public void renderFailureExcerptUsesTheRenderedSource() {
+        juml.util.AppLog.clearBuffer();
+        StringBuilder puml = new StringBuilder("@startuml\n");
+        for (int i = 0; i < 12; i++) {
+            puml.append("class C").append(i).append('\n');
+        }
+        puml.append("class Bad {\n  +m(): void\n}} stray brace\n@enduml\n");
+        try {
+            PlantUmlRenderer.renderSvg(puml.toString(), new java.io.ByteArrayOutputStream());
+            fail("壊れた図は描画失敗になるはず");
+        } catch (Exception expected) {
+            assertTrue(String.valueOf(expected.getMessage()),
+                    expected instanceof PlantUmlRenderFailedException);
+        }
+        String excerpt = null;
+        for (juml.util.AppLog.Entry e : juml.util.AppLog.snapshot()) {
+            String msg = e.getMessage();
+            if (msg != null && msg.contains("rendered PlantUML")) {
+                excerpt = msg;
+            }
+        }
+        assertNotNull("失敗ログに PlantUML 抜粋が残ること", excerpt);
+        assertTrue("描画に渡したテキスト (prelude 込み) を抜粋していること:\n" + excerpt,
+                excerpt.contains("!pragma layout") || excerpt.contains("skinparam"));
     }
 }

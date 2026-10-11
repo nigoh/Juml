@@ -88,9 +88,13 @@ public final class DiagramNote {
         return width;
     }
 
+    /** 付箋の幅の下限 (図座標)。リサイズハンドルが収まり、本文も最低限読める大きさ。 */
+    public static final double MIN_WIDTH = 60;
+    /** 付箋の高さの下限 (図座標)。 */
+    public static final double MIN_HEIGHT = 44;
+
     public void setWidth(double width) {
-        // リサイズハンドルが収まり、本文も最低限読める下限 (図座標)。
-        this.width = Math.max(60, width);
+        this.width = Math.max(MIN_WIDTH, width);
     }
 
     public double getHeight() {
@@ -98,7 +102,7 @@ public final class DiagramNote {
     }
 
     public void setHeight(double height) {
-        this.height = Math.max(44, height);
+        this.height = Math.max(MIN_HEIGHT, height);
     }
 
     public String getText() {

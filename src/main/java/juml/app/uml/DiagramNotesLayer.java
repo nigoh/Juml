@@ -449,7 +449,19 @@ final class DiagramNotesLayer {
         }
         List<DiagramConnector> mergedConns = new ArrayList<>(connectors);
         if (connectorList != null) {
-            mergedConns.addAll(connectorList);
+            // 同じ端点対のコネクタは足さない (再バインド / Save As のたびに倍増して保存されていた)。
+            for (DiagramConnector c : connectorList) {
+                boolean dup = false;
+                for (DiagramConnector have : mergedConns) {
+                    if (have.sameEndpoints(c)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    mergedConns.add(c);
+                }
+            }
         }
         setData(merged, mergedConns);
     }
@@ -642,10 +654,11 @@ final class DiagramNotesLayer {
                 }
                 double nx = en.getValue()[0] + dx;
                 double ny = en.getValue()[1] + dy;
-                // FREE は図の外 (負) へ出ないよう 0 でクランプ。ELEMENT は要素相対なので負も許容。
+                // FREE は図の外 (負) へ出ないよう 0 でクランプ。ELEMENT は要素相対なので負の
+                // オフセットは許容するが、図座標 (要素左上 + オフセット) まで負になると画面外へ
+                // 出て掴めず、書き出し範囲は右下にしか広がらないため切れる (bug-hunt R2)。
                 if (s.getAnchor() == DiagramNote.Anchor.ELEMENT) {
-                    s.setX(nx);
-                    s.setY(ny);
+                    placeElement(s, nx, ny);
                 } else {
                     placeFree(s, nx, ny);
                 }
@@ -844,7 +857,15 @@ final class DiagramNotesLayer {
     /** 原点 {@code origin} から書き出し範囲の端までに収まる大きさ。 */
     private double roomFrom(double origin, double size, boolean horizontal) {
         double limit = contentLimit(horizontal);
-        return limit <= 0 ? size : Math.max(0, Math.min(size, limit - Math.max(0, origin)));
+        if (limit <= 0) {
+            return size;
+        }
+        double room = limit - Math.max(0, origin);
+        // 原点が内容矩形の端の外 (図が縮んだ後など)、または残りが最小サイズ未満なら制限する
+        // 端が無いものとしてそのままの大きさを許す。最小サイズ未満に潰すと setWidth/setHeight
+        // の下限へ跳ねて、掴んだ角がマウスと無関係に 60x44 へ収縮する (bug-hunt R2)。
+        double min = horizontal ? DiagramNote.MIN_WIDTH : DiagramNote.MIN_HEIGHT;
+        return room < min ? size : Math.min(size, room);
     }
 
     /** 図の内容矩形の幅/高さ。所有者が答えられなければ 0 (= 制限なし)。 */
@@ -960,13 +981,24 @@ final class DiagramNotesLayer {
                 double nx = n.getX() + dx;
                 double ny = n.getY() + dy;
                 if (n.getAnchor() == DiagramNote.Anchor.ELEMENT) {
-                    n.setX(nx);
-                    n.setY(ny);
+                    placeElement(n, nx, ny);
                 } else {
                     placeFree(n, nx, ny);
                 }
             }
         });
+    }
+
+    /**
+     * 要素アンカー付箋のオフセットを設定する。要素相対なので負のオフセットは許すが、
+     * 図座標 (要素左上 + オフセット) が負にならない範囲に留める (ドラッグ / 矢印キー共通)。
+     */
+    private void placeElement(DiagramNote n, double nx, double ny) {
+        double[] r = anchorRect(n);
+        double ox = r == null ? 0 : r[0];
+        double oy = r == null ? 0 : r[1];
+        n.setX(Math.max(nx, -ox));
+        n.setY(Math.max(ny, -oy));
     }
 
     /** 選択中の付箋を複製し、少しずらして配置して複製側を選択する (Ctrl+D)。 */

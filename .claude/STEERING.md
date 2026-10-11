@@ -36,6 +36,8 @@ Anthropic の記事
 | 反復する安全な操作のプロンプト削減 | permissions.allow | `settings.json` |
 | 領域のバグを網羅発見→敵対的検証（バグゼロ要求） | Workflow（`bug-hunt`） | `.claude/workflows/bug-hunt.js` + `/bug-hunt` |
 | 実プロジェクト × 図種で描画を面で回帰検証 | Workflow（`render-sweep`） | `.claude/workflows/render-sweep.js` + `/render-sweep` |
+| ペルソナが実際に触って「困ること」を集め、アプリを育てる | Workflow（`persona-explore`）+ ペルソナ subagent | `.claude/workflows/persona-explore.js` + `/persona-explore` + `docs/persona-backlog.md` |
+| 後から覆しにくい決定の理由を残す | ADR | `docs/adr/`（ADR-0001 に書き方） |
 
 ---
 
@@ -62,7 +64,9 @@ Anthropic の記事
   `gui-auditor`（Swing GUI のユーザビリティ監査・読み取り専用）、
   `gui-test-auditor`（GUI **テスト** の品質・カバレッジ監査・読み取り専用）、
   `test-engineer`（テストの設計・実装・フレーキー修正・書き込み可）、
-  `verify-recorder`（実装確認の録画ハーネス作成・実行・パス返却・書き込み可）。
+  `verify-recorder`（実装確認の録画ハーネス作成・実行・パス返却・書き込み可）、
+  `persona-newcomer` / `persona-power-user`（haiku）・`persona-android-dev` / `persona-aosp-analyst`（sonnet）
+  （ペルソナとして実際にアプリを動かし所見だけを返すワーカー。ADR-0002 / ADR-0003）。
 - **GUI 監査（使い勝手）**: `gui-audit` スキル + `gui-auditor` サブエージェント。
   「GUI が使いづらい」「導線を見直したい」ときに `/gui-audit <対象>` で起動。
   対象は `src/main/java/juml/app/uml/**`。VS Code タブ中心ゴール
@@ -98,6 +102,17 @@ Anthropic の記事
 - **`render-sweep`**（`/render-sweep <プロジェクト群>`）… 実プロジェクト × 図種オプションの
   直積で `Juml.jar` の描画を並列総ざらいし、失敗（エラー SVG / UML-R / 異常終了）だけを
   構造化して返す。レンダリング系の修正後の面の回帰検証に使う。
+- **`persona-explore`**（`/persona-explore [persona,...]`）… ペルソナ・エージェント（haiku/sonnet）が
+  探索ハーネス `GuiMonkey`（`src/test/java/juml/app/uml/`、シード付きランダム操作 S21 を含む）と CLI を
+  **実際に動かし**、bug は sonnet が敵対的に検証、usability / missing-feature は sonnet が
+  バックログ項目に集約して返す。修正と `docs/persona-backlog.md` の更新は司令塔が直列に行う。
+  手順は `persona-explore` スキル、方針は ADR-0002。
+  ※ 同じセッション内で追加したワークフロー / サブエージェントは登録されないため、
+  `Workflow({ scriptPath })` で起動し、ペルソナは定義ファイル Read 方式へ自動フォールバックする。
+
+**モデル階層（ADR-0003）**: 司令塔（メインループ）= opus / fable、ワーカー = sonnet（ファインダー /
+検証 / テスト実装 / ドメイン系ペルソナ）・haiku（実行系スイープ / 軽いペルソナ）。Workflow の
+`agent()` は `model` を明示し、司令塔は生ログを読まない。
 
 設計原則: **発見・検証だけを並列化し、修正と commit はメインループが直列に行う**
 （並列書き込み競合の回避）。検証者には「反証しろ、迷ったら false」を課して偽陽性を落とす。
@@ -129,6 +144,7 @@ Anthropic の記事
 | 品質ゲート | ターン終了（Stop イベント） | ゲート緑 or 1 継続で警告降格 | `hooks/quality-gate.sh` |
 | テスト監査ループ | `/test-audit` | 新規 Critical/High が連続 1–2 ラウンド 0（枯れ） | `test-audit` スキル |
 | バグハントループ | `/bug-hunt`（明示要求時） | 確定バグが 1 ラウンド 0 件（枯れ） | `workflows/bug-hunt.js` + `orchestrate` スキル |
+| ペルソナ探索ループ | `/persona-explore`（明示要求時） | 確定バグが 1 ラウンド 0 件。バックログはユーザーが取捨選択 | `workflows/persona-explore.js` + `persona-explore` スキル |
 
 原則:
 - **停止条件を先に決める**（早期終了と過剰反復の両方を防ぐ）。
@@ -159,5 +175,6 @@ force push は `permissions.deny` と PreToolUse hook（`guard-git-push.sh`）�
 ## メンテナンス指針
 
 - **CLAUDE.md は薄く保つ**（200 行未満目安）。特定ディレクトリにしか効かない指針は Rules へ。
+- **覆しにくい決定は ADR**（`docs/adr/`）。仕組みを足したら該当 ADR を参照し、無ければ書く。
 - **手順は Skill、調査は Subagent、禁止/必須は Hook**。CLAUDE.md に手続きを詰め込まない。
 - 新しい仕組みを足したら、この早見表と各 README を更新する。

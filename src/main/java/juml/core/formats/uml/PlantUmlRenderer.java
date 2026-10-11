@@ -68,7 +68,12 @@ public final class PlantUmlRenderer {
     /** PlantUML フォールバック エラー SVG に必ず含まれる決定的マーカー。 */
     private static final String[] ERROR_MARKERS = {
             // PlantUML のレイアウト/内部エラー画像のバナー文言。
+            // 旧版は "occured" (誤綴り)、1.2026.x 以降は "occurred" と綴りが変わったため両方持つ
+            // (動的検証で発見: 綴り変更後のクラッシュ画像が正常出力として素通りし、
+            // 埋め込み PNG を Batik が開けず UML-R007 に化けていた)。
             "An error has occured",
+            "An error has occurred",
+            "has crashed.",
             "I love it when a plan comes together",
     };
 
@@ -246,12 +251,17 @@ public final class PlantUmlRenderer {
         // 失敗時の DiagramDescription "(Error)" を一次シグナルとして捕捉するホルダ。
         // captureStderrDuring のラムダ内から書き込むため配列で持つ。
         boolean[] descIsError = {false};
+        // PlantUML が実際に読むのはレイアウト prelude を挿入した後のテキスト。報告される
+        // 行番号もその座標系なので、失敗時の抜粋には同じテキストを使う (元テキストに当てると
+        // prelude の行数だけずれて、無関係な行を「失敗行」として示してしまう)。
+        String[] renderedSource = {puml};
         String stderrTail = captureStderrDuring(() -> {
             BiConsumer<String, OutputStream> stub = rendererImplForTest;
             if (stub != null) {
                 stub.accept(puml, buf);
             } else {
-                SourceStringReader reader = new SourceStringReader(injectLayout(puml));
+                renderedSource[0] = injectLayout(puml);
+                SourceStringReader reader = new SourceStringReader(renderedSource[0]);
                 Object desc = reader.outputImage(buf, new FileFormatOption(FileFormat.SVG));
                 // 失敗時の DiagramDescription はちょうど "(Error)" になる (PNG 経路の
                 // PlantUmlImageRenderer と同じ実測済みの一次シグナル)。SVG のマーカー
@@ -261,7 +271,7 @@ public final class PlantUmlRenderer {
         });
         byte[] bytes = buf.toByteArray();
         if (descIsError[0] || isErrorSvg(bytes)) {
-            throw buildRenderFailure(puml, bytes, stderrTail);
+            throw buildRenderFailure(renderedSource[0], bytes, stderrTail);
         }
         // PlantUML はレイアウトエンジンの致命的障害 (dot 実行失敗 / Smetana 内部クラッシュ)
         // を握りつぶし、要素が配置されない「ほぼ空の SVG」を正常出力として返すことがある。
@@ -379,6 +389,17 @@ public final class PlantUmlRenderer {
      * 持つ {@link PlantUmlRenderFailedException} を構築し、{@link juml.util.AppLog} に
      * 詳細を記録する。
      */
+    /** PlantUML の内部クラッシュ画像 (構文エラーでなく実行時例外) かどうか。 */
+    static boolean isCrashImage(byte[] svgBytes) {
+        if (svgBytes == null || svgBytes.length == 0) {
+            return false;
+        }
+        String head = new String(svgBytes, 0, Math.min(svgBytes.length, 8192),
+                StandardCharsets.UTF_8);
+        return head.contains("has crashed.") || head.contains("An error has occurred")
+                || head.contains("An error has occured");
+    }
+
     private static PlantUmlRenderFailedException buildRenderFailure(
             String puml, byte[] errorSvg, String capturedStderr) {
         String detail = extractErrorDetail(errorSvg);
@@ -387,9 +408,12 @@ public final class PlantUmlRenderer {
         // 生成 PlantUML を軽量リンタにかけ、既知のゴミ／構文崩れが見つかれば添える。
         String hint = PlantUmlSyntaxChecker.summarize(puml);
         // 原因を ID に分類する: 行番号や構文診断があれば構文エラー (UML-R001)、
-        // それ以外はレイアウトエンジン側の失敗 (UML-R002) とみなす。
-        boolean syntaxLike = errorLine > 0 || detail.contains("Syntax Error")
-                || !hint.isEmpty();
+        // それ以外はレイアウトエンジン側の失敗 (UML-R002) とみなす。PlantUML 自身の
+        // クラッシュ画像 ("has crashed" バナー) は巨大図での内部例外なので、生成元の
+        // 軽量リンタが何か拾っていても構文エラー扱いにしない (対処法が違う)。
+        boolean crashImage = isCrashImage(errorSvg);
+        boolean syntaxLike = !crashImage && (errorLine > 0 || detail.contains("Syntax Error")
+                || !hint.isEmpty());
         juml.util.ErrorCode code = syntaxLike
                 ? juml.util.ErrorCode.UML_R001 : juml.util.ErrorCode.UML_R002;
 
@@ -538,7 +562,8 @@ public final class PlantUmlRenderer {
         int center = errorLine > 0 ? errorLine : 1;
         int from = Math.max(1, center - 3);
         int to = Math.min(lines.length, center + 3);
-        log.append("--- generated PlantUML (lines ").append(from).append('-').append(to)
+        log.append("--- rendered PlantUML, layout prelude included (lines ")
+                .append(from).append('-').append(to)
                 .append(" of ").append(lines.length).append(") ---");
         for (int i = from; i <= to; i++) {
             log.append('\n').append(i == errorLine ? ">" : " ")

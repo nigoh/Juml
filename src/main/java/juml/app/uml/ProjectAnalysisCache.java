@@ -93,6 +93,8 @@ public final class ProjectAnalysisCache {
     /** {@link #clear()} のたびに進む世代。古いロードの遅延発行を弾くために使う。 */
     private long generation;
     private final DiskAnalysisCache disk;
+    /** 直近のロードがディスクキャッシュ由来か (テスト観測用)。 */
+    private volatile boolean fromDiskCache;
     /** lazy=true 時、全クラスを Stage B 昇格した結果のメモ化 (初回 getDetailedClasses で構築)。 */
     private List<JavaClassInfo> detailedClasses;
     /** {@code detailedClasses} がどのスナップショットに対する昇格結果か。 */
@@ -115,7 +117,16 @@ public final class ProjectAnalysisCache {
      */
     private static List<File> scanSourceFiles(File root,
             juml.core.formats.java.AndroidProjectScanner.Options scanOpts) {
-        List<File> all = juml.core.formats.java.AndroidProjectScanner.scan(root, scanOpts);
+        // 解析本体 (UmlGenerator.extractFromProjectDetailed) は includeKotlin/includeAidl を
+        // 必ず有効にして走るので、突き合わせる側も同じ範囲を見なければならない。既定の
+        // includeKotlin=false のまま走査すると .kt が一覧に現れず、DB に載った .kt 行が
+        // 毎回「削除された」と判定されてディスクキャッシュが恒久的にヒットしない。
+        juml.core.formats.java.AndroidProjectScanner.Options opts =
+                scanOpts != null ? scanOpts.copy()
+                        : new juml.core.formats.java.AndroidProjectScanner.Options();
+        opts.includeKotlin = true;
+        opts.includeAidl = true;
+        List<File> all = juml.core.formats.java.AndroidProjectScanner.scan(root, opts);
         List<File> sources = new java.util.ArrayList<>();
         for (File f : all) {
             String name = f.getName();
@@ -178,6 +189,7 @@ public final class ProjectAnalysisCache {
         CancelToken c = cancel != null ? cancel : CancelToken.NONE;
         LoadOptions o = options != null ? options : new LoadOptions();
 
+        fromDiskCache = false;
         p.onProgress(0, -1, "Analyzing project...");
         AndroidProjectScanner.Options scanOpts = new AndroidProjectScanner.Options();
         scanOpts.maxFiles = o.maxFiles;
@@ -219,6 +231,7 @@ public final class ProjectAnalysisCache {
                 }
                 Optional<DiskAnalysisCache.Snapshot> diskSnap =
                         disk.load(root, p, currentSources);
+                fromDiskCache = diskSnap.isPresent();
                 if (diskSnap.isPresent()) {
                     // 依存 JAR インデックスは DB に持たないため、既に得ている analysis から
                     // 再構築する (parse はスキップ)。省くと 2 回目以降のロードで外部型の
@@ -389,6 +402,14 @@ public final class ProjectAnalysisCache {
     /** 完全修飾名 → モジュール名のマップ (Gradle 解析由来)。 */
     public Map<String, String> getClassToModule() {
         return snap.index.moduleMap();
+    }
+
+    /**
+     * 直近の {@link #load} がディスクキャッシュから復元されたか (テスト用の観測点)。
+     * キャッシュが効かず毎回フル解析になる回帰を検出するために公開している。
+     */
+    boolean isFromDiskCacheForTest() {
+        return fromDiskCache;
     }
 
     public boolean isLoaded() {

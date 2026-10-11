@@ -5,20 +5,21 @@ package juml.gui.recording;
 
 import juml.SettingManager;
 import juml.app.uml.DiagramKind;
+import juml.app.uml.DiagramKindChooser;
 import juml.app.uml.DiagramTabPane;
 import juml.app.uml.UmlMainFrame;
 import org.assertj.swing.edt.GuiActionRunner;
 import org.assertj.swing.fixture.FrameFixture;
-import org.assertj.swing.fixture.JToggleButtonFixture;
+import org.assertj.swing.fixture.JButtonFixture;
 import org.assertj.swing.fixture.JTreeFixture;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import javax.swing.JMenuItem;
 import javax.swing.JProgressBar;
 import javax.swing.JTabbedPane;
-import javax.swing.JToggleButton;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
@@ -29,7 +30,6 @@ import java.awt.Rectangle;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.EnumMap;
 
 /**
  * README 掲載用のデモ GIF を録画するテスト（合否ではなく「動いて見える」記録が目的）。
@@ -37,7 +37,8 @@ import java.util.EnumMap;
  * <p>Juml 自身のソースツリー ({@code src/main/java/juml/core/formats/java}、
  * {@code java} / {@code java.jp} の 2 パッケージ・14 クラス) をプロジェクトとして開き、
  * 「読み込み → 既定の Package 図表示 → ツリーでサブパッケージを選択して Class 図に切替
- * → ツールバーで Inheritance / Package / Class 図種を切り替える」様子を記録する。
+ * → ツールバーの図種ドロップダウンで Inheritance / Package / Class 図種を切り替える」
+ * 様子を記録する。
  *
  * <p>あえて小さめの実サブツリーを選んでいる。全体図の Class / Inheritance には
  * 「クラス数が多いプロジェクトへの警告ダイアログ」(閾値 40) があるため、録画を
@@ -138,10 +139,10 @@ public class ReadmeDemoRecordingIT {
                     "[ReadmeDemoRecording] java.jp パッケージノードが見つからない → 図種切替のみ続行");
         }
 
-        // 4. 図種ツールバー: Class → Inheritance → Package → Class と実クリックで切り替える
-        clickDiagramToggleAndAwait(frame, mainTabs, DiagramKind.INHERITANCE);
-        clickDiagramToggleAndAwait(frame, mainTabs, DiagramKind.PACKAGE);
-        clickDiagramToggleAndAwait(frame, mainTabs, DiagramKind.CLASS);
+        // 4. 図種ドロップダウン: Class → Inheritance → Package → Class と実クリックで切り替える
+        clickDiagramKindAndAwait(frame, mainTabs, DiagramKind.INHERITANCE);
+        clickDiagramKindAndAwait(frame, mainTabs, DiagramKind.PACKAGE);
+        clickDiagramKindAndAwait(frame, mainTabs, DiagramKind.CLASS);
 
         // 最終フレームを録る
         pause(400);
@@ -278,19 +279,35 @@ public class ReadmeDemoRecordingIT {
     }
 
     /**
-     * 図種ツールバーの実トグルボタンを AssertJ-Swing 経由で物理クリックし、描画完了
-     * (スピナー消失) を待ってから、完成した図を少し見せるための短い待ちを挟む
-     * （テスト合否には使わない録画専用の待ち）。
+     * ツールバーの図種ドロップダウンを AssertJ-Swing 経由で物理クリックして開き、
+     * 一覧から目的の図種を選ぶ。描画完了 (スピナー消失) を待ってから、完成した図を
+     * 少し見せるための短い待ちを挟む（テスト合否には使わない録画専用の待ち）。
      */
-    private void clickDiagramToggleAndAwait(UmlMainFrame frame, JTabbedPane mainTabs,
+    private void clickDiagramKindAndAwait(UmlMainFrame frame, JTabbedPane mainTabs,
             DiagramKind kind) throws Exception {
-        EnumMap<DiagramKind, JToggleButton> toggles = getField(frame, "diagramToggles");
-        JToggleButton button = toggles.get(kind);
-        if (button == null) {
-            System.err.println("[ReadmeDemoRecording] トグルボタンが見つからない: " + kind);
+        DiagramKindChooser chooser = getField(frame, "diagramKindChooser");
+        if (chooser == null) {
+            System.err.println("[ReadmeDemoRecording] 図種ドロップダウンが見つからない");
             return;
         }
-        new JToggleButtonFixture(window.robot(), button).click();
+        JMenuItem item = chooser.itemFor(kind);
+        if (item == null) {
+            System.err.println("[ReadmeDemoRecording] 図種の項目が見つからない: " + kind);
+            return;
+        }
+        new JButtonFixture(window.robot(), chooser.component()).click();
+        // 一覧が実際に開くまで待つ (JMenuItemFixture はメニューバー配下の項目専用なので、
+        // ツールバーボタンから開くポップアップの項目は robot で直接クリックする)。
+        long deadline = System.currentTimeMillis() + 3_000;
+        while (!item.isShowing() && System.currentTimeMillis() < deadline) {
+            pause(50);
+        }
+        if (!item.isShowing()) {
+            System.err.println("[ReadmeDemoRecording] 図種の一覧が開かない: " + kind);
+            return;
+        }
+        pause(300); // ポップアップが開いた様子を録る
+        window.robot().click(item);
         awaitRenderIdle(mainTabs, 10_000);
         pause(900);
     }

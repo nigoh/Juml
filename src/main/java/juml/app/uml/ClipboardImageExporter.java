@@ -41,8 +41,19 @@ final class ClipboardImageExporter {
      */
     static void copy(SvgPreviewPanel preview, String puml, Component parent,
                      Consumer<String> onStatus) {
-        // 1) 表示中の図 (付箋込み) を EDT でラスタライズ。savePng と同じ経路で安全。
-        BufferedImage shown = preview != null ? preview.renderDiagramWithNotes(SCALE) : null;
+        // 1) 付箋があるときだけ、表示中の図 (付箋込み) を EDT でラスタライズする (savePng と同じ
+        //    経路)。付箋が無ければ背景レンダリング経路へ落とし、巨大図の 2x ラスタライズで
+        //    EDT が秒単位で固まるのを避ける。OOM は捕捉して同じく背景経路へ (bug-hunt R2)。
+        BufferedImage shown = null;
+        if (preview != null && preview.notes().hasNotes()) {
+            try {
+                shown = preview.renderDiagramWithNotes(SCALE);
+            } catch (OutOfMemoryError oom) {
+                juml.util.AppLog.error(juml.util.ErrorCode.EXP_006, "ClipboardImageExporter",
+                        "on-screen rasterize ran out of memory; falling back to background render",
+                        oom);
+            }
+        }
         if (shown != null) {
             putOnClipboard(shown, parent, onStatus);
             return;

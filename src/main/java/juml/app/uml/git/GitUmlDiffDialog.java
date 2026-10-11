@@ -93,13 +93,7 @@ final class GitUmlDiffDialog extends JDialog {
                 // 親コミットとの比較でファイルがリネームされている場合、旧内容は「旧パス」
                 // から読む必要がある。新パスのまま読むと base 側に存在せず null (= 全追加)
                 // となり、リネームが「まるごと新規」と誤表示される。
-                String oldPath = relPath;
-                if (oldRev == null && base != null) {
-                    String renamedFrom = svc.renamedFromPath(newRev, relPath);
-                    if (renamedFrom != null) {
-                        oldPath = renamedFrom;
-                    }
-                }
+                String oldPath = svc.oldPathFor(relPath, oldRev, newRev);
                 String oldSrc = base != null ? svc.fileContentAt(base, oldPath) : null;
                 String newSrc = svc.fileContentAt(newRev, relPath);
 

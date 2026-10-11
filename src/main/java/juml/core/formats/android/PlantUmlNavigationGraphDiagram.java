@@ -33,6 +33,19 @@ public final class PlantUmlNavigationGraphDiagram {
     }
 
     /** オプション付き生成。 */
+    /**
+     * Navigation graph が 1 つも見つからなかったときのプレースホルダ図。
+     * CLI の「該当データなし」は失敗ではなく空図として通常出力する (他の Android 系オプションと同じ扱い)。
+     */
+    public static String generateEmpty() {
+        return "@startuml\n"
+                + "title Jetpack Navigation graph\n"
+                + "note as N1\n"
+                + "  (no navigation graphs found: res/navigation/*.xml)\n"
+                + "end note\n"
+                + "@enduml\n";
+    }
+
     public static String generate(AndroidNavigationGraphInfo info, Options opts) {
         if (info == null) {
             throw new IllegalArgumentException("info is null");

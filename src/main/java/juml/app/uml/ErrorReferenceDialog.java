@@ -65,7 +65,10 @@ final class ErrorReferenceDialog extends JDialog {
      */
     static void showFor(Window owner, String presetId) {
         if (current == null || !current.isDisplayable()) {
-            current = new ErrorReferenceDialog(owner);
+            // 単一インスタンスのアプリ級リファレンスなので、呼び出し元がモードレスの
+            // ログビューア等でも最上位ウィンドウ (メインフレーム) を親にする。呼び出し元を
+            // 親にすると、その閉じる操作 (dispose) に巻き込まれて消えてしまう。
+            current = new ErrorReferenceDialog(rootWindowOf(owner));
         }
         current.setVisible(true);
         current.toFront();
@@ -73,6 +76,15 @@ final class ErrorReferenceDialog extends JDialog {
         if (presetId != null && !presetId.isEmpty()) {
             current.selectId(presetId);
         }
+    }
+
+    /** {@code w} の所有者チェーンを最上位まで辿る (null なら null)。 */
+    static Window rootWindowOf(Window w) {
+        Window top = w;
+        while (top != null && top.getOwner() != null) {
+            top = top.getOwner();
+        }
+        return top;
     }
 
     private void buildUi() {

@@ -40,11 +40,22 @@ public final class PerFolderClassDiagrams {
         private final int folderCount;
         private final int classCount;
         private final List<File> writtenFiles;
+        private final int failedRenderCount;
 
-        Result(int folderCount, int classCount, List<File> writtenFiles) {
+        Result(int folderCount, int classCount, List<File> writtenFiles,
+               int failedRenderCount) {
             this.folderCount = folderCount;
             this.classCount = classCount;
             this.writtenFiles = writtenFiles;
+            this.failedRenderCount = failedRenderCount;
+        }
+
+        /**
+         * SVG を書き出せなかったフォルダ数。{@code -v} なしだと描画失敗は ErrorListener 止まり
+         * で画面に出ないため、呼び出し側がこの数で終了コードを決められるようにする。
+         */
+        public int getFailedRenderCount() {
+            return failedRenderCount;
         }
 
         /** クラス図を書き出したフォルダ数 (= 出力先サブディレクトリ数)。 */
@@ -110,13 +121,14 @@ public final class PerFolderClassDiagrams {
         Map<File, List<JavaClassInfo>> byFolder = groupByFolder(
                 projectRoot, classes, index, err);
         if (byFolder.isEmpty()) {
-            return new Result(0, 0, Collections.emptyList());
+            return new Result(0, 0, Collections.emptyList(), 0);
         }
 
         Path rootPath = realPathOfDir(projectRoot.getAbsoluteFile());
         List<File> written = new ArrayList<>(byFolder.size() * 2);
         int total = byFolder.size();
         int done = 0;
+        int failedRenders = 0;
         int totalClasses = 0;
 
         prog.onProgress(0, total, "Generating per-folder class diagrams...");
@@ -157,6 +169,7 @@ public final class PerFolderClassDiagrams {
             } catch (IOException | juml.util.JumlException ex) {
                 // 描画失敗 (unchecked の PlantUmlRenderFailedException 含む) でも
                 // 1 フォルダの失敗で全体を止めず、次のフォルダへ続行する。
+                failedRenders++;
                 err.onError(juml.util.JumlException.codeOf(ex, juml.util.ErrorCode.UML_R007),
                         svgFile.getAbsolutePath(), -1,
                         "Failed to render " + SVG_NAME + ": " + ex.getMessage());
@@ -165,7 +178,7 @@ public final class PerFolderClassDiagrams {
             prog.onProgress(done, total, subDir.getName());
         }
 
-        return new Result(byFolder.size(), totalClasses, written);
+        return new Result(byFolder.size(), totalClasses, written, failedRenders);
     }
 
     /**

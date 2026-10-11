@@ -44,15 +44,20 @@ final class PlantUmlClassLegend {
     static void emit(StringBuilder out, List<JavaClassInfo> classes,
                      PlantUmlClassDiagram.Options o) {
         Stats s = collect(classes, o);
-        out.append("legend top left\n");
-        emitVisibility(out, o);
-        emitMemberModifiers(out, o, s);
-        emitKinds(out, s);
-        emitStereotypes(out, s);
-        emitOrigins(out, s);
-        emitRelations(out, o, s);
-        emitNotes(out, o, s);
-        out.append("endlegend\n");
+        // 本文を先に組み立て、1 行も無ければ legend 自体を出さない
+        // (空の legend ブロックは PlantUML が "No legend defined" で描画失敗にする)。
+        StringBuilder body = new StringBuilder();
+        emitVisibility(body, o);
+        emitMemberModifiers(body, o, s);
+        emitKinds(body, s);
+        emitStereotypes(body, s);
+        emitOrigins(body, s);
+        emitRelations(body, o, s);
+        emitNotes(body, o, s);
+        if (body.length() == 0) {
+            return;
+        }
+        out.append("legend top left\n").append(body).append("endlegend\n");
     }
 
     /** 外部 JAR / 未解決 JAR 由来クラスの凡例。出現したものだけ表示。 */
@@ -298,7 +303,10 @@ final class PlantUmlClassLegend {
 
     private static void emitRelations(StringBuilder out,
                                        PlantUmlClassDiagram.Options o, Stats s) {
-        boolean any = (o.showInheritance && (s.hasInheritance || s.hasImplements))
+        // 実装線は showImplementations で描かれる。凡例だけ showInheritance を見ていたため、
+        // --relation impl では実装行が消え、--relation inherit では描かない線の凡例が出ていた。
+        boolean any = (o.showInheritance && s.hasInheritance)
+                || (o.showImplementations && s.hasImplements)
                 || (o.showUsageRelations && s.hasUsage);
         if (!any) {
             return;
@@ -314,7 +322,7 @@ final class PlantUmlClassLegend {
                 out.append("A <|-- B  : B extends A (継承)\n");
             }
         }
-        if (o.showInheritance && s.hasImplements) {
+        if (o.showImplementations && s.hasImplements) {
             if (color) {
                 appendColorRelation(out, PlantUmlClassRelations.REALIZE_COLOR,
                         "┈┈▷", "B implements A (実装)");

@@ -421,6 +421,37 @@ public class ProjectTreePanel extends JPanel {
     }
 
     /**
+     * タブの由来ノード ({@link TreeNodeOpenRequest}) に対応するツリーノードを選択して
+     * ハイライトする (suppressNotify: 選択コールバックは発火しない)。対象が特定できない
+     * 要求 (null / 不明なターゲット) は何もしない。
+     */
+    public void selectNodeFor(TreeNodeOpenRequest req) {
+        if (req == null) {
+            return;
+        }
+        switch (req.target) {
+            case METHOD:
+                if (req.classInfo != null && req.methodInfo != null) {
+                    selectMethodNode(req.classInfo.getQualifiedName(), req.methodInfo.getName());
+                }
+                break;
+            case CLASS:
+                if (req.classInfo != null) {
+                    selectClassNode(req.classInfo.getQualifiedName());
+                }
+                break;
+            case PACKAGE:
+                selectPackageNode(req.name);
+                break;
+            case MODULE:
+                selectModuleNode(req.name);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
      * 指定 FQN クラス + メソッド名のメソッドノードをツリーで選択・スクロールする。
      * クラス/パッケージノードは必要に応じて遅延展開する。
      * 選択変更コールバック ({@link #notifySelection}) は発火しない。

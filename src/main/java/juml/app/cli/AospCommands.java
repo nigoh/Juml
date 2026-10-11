@@ -91,6 +91,7 @@ public final class AospCommands {
         java.util.Map<String, java.util.List<AidlBinding>> bindings =
                 new AidlBindingResolver().resolve(result.getClasses());
         String md = MarkdownAidlBindingReport.render(bindings);
+        CliOutput.warnIfImageExtension(fileOut, "aidl-binding.md");
         CliOutput.writeText(fileOut, md, "aidl-binding.md");
     }
 
@@ -228,6 +229,7 @@ public final class AospCommands {
         java.util.List<SelinuxRule> rules =
                 new SelinuxPolicyParser().analyzeProject(fileIn);
         String md = MarkdownSelinuxReport.render(rules);
+        CliOutput.warnIfImageExtension(fileOut, "selinux.md");
         CliOutput.writeText(fileOut, md, "selinux.md");
     }
 
@@ -246,6 +248,7 @@ public final class AospCommands {
         java.util.List<RroOverlay> overlays =
                 new RroOverlayDetector().analyzeProject(fileIn);
         String md = MarkdownRroReport.render(overlays);
+        CliOutput.warnIfImageExtension(fileOut, "rro-overlays.md");
         CliOutput.writeText(fileOut, md, "rro-overlays.md");
     }
 }

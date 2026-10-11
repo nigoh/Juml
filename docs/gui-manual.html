@@ -96,14 +96,14 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <thead><tr><th>領域</th><th>内容</th></tr></thead>
         <tbody>
           <tr><td>メニューバー</td><td>File / Diagram / View / Style / Settings / Help</td></tr>
-          <tr><td>ツールバー上段</td><td>アクション（Open / Save / Refresh / Search）</td></tr>
-          <tr><td>ツールバー下段</td><td>図種トグル（全 15 種）</td></tr>
+          <tr><td>ツールバー</td><td>アクション（Open / Save / Refresh / Search）＋ 行末尾の図種ドロップダウン</td></tr>
+          
           <tr><td>左ペイン</td><td>プロジェクトツリー（サイドバー / ナビゲータ）</td></tr>
           <tr><td>右ペイン</td><td>動的ダイアグラムタブ + 固定ユーティリティタブ 6 本</td></tr>
           <tr><td>ステータスバー</td><td>進捗メッセージ / プログレスバー / ズーム率</td></tr>
         </tbody>
       </table></div>
-      <div class="note"><b>変更点 (2.x):</b> ツールバー上段はアクション 4 種のみ。Scope / Clear Scope は Diagram メニュー、Zoom は View メニューから操作します。履歴を戻る <b>Back</b> ボタンは廃止されました。</div>
+      <div class="note"><b>変更点 (2.x):</b> ツールバーはアクション 4 種と行末尾の図種ドロップダウンの 1 段のみ（図種切替専用の行は廃止し、上部はメニューバーと合わせて 2 段）。Scope / Clear Scope は Diagram メニュー、Zoom は View メニューから操作します。履歴を戻る <b>Back</b> ボタンは廃止されました。</div>
 
       <h3 id="app-state">アプリ全体の状態遷移</h3>
       <p>Juml の GUI は「未ロード → 解析中 → 図表示」の 3 状態を行き来します。図を表示している間のタブ操作・図種切替・ズームは状態を変えない<b>内部遷移</b>です。</p>
@@ -235,7 +235,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
         <rect class="u-act-node" x="130" y="332" width="300" height="36" rx="9"/>
         <text class="u-act-nm" x="280" y="354" text-anchor="middle">タブで図を表示（既定は PACKAGE 図）</text>
         <rect class="u-act-node" x="130" y="388" width="300" height="36" rx="9"/>
-        <text class="u-act-nm" x="280" y="410" text-anchor="middle">図種を切替（ツールバー下段 / Diagram メニュー）</text>
+        <text class="u-act-nm" x="280" y="410" text-anchor="middle">図種を切替（図種ドロップダウン / Diagram メニュー）</text>
         <rect class="u-act-node" x="130" y="444" width="300" height="36" rx="9"/>
         <text class="u-act-nm" x="280" y="466" text-anchor="middle">スコープ・可視性で絞り込み</text>
         <rect class="u-act-node" x="130" y="500" width="300" height="36" rx="9"/>
@@ -261,7 +261,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
 
     <section id="toolbar">
       <h2>ツールバー</h2>
-      <h3>上段 — アクションボタン</h3>
+      <h3>アクションボタン</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>ボタン</th><th>SC</th><th>説明</th></tr></thead>
         <tbody>
@@ -271,12 +271,14 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
           <tr><td>Search</td><td><kbd>Ctrl+Shift+F</kbd></td><td>エンティティ横断検索</td></tr>
         </tbody>
       </table></div>
-      <h3>下段 — 図種トグルボタン</h3>
-      <p><code>DiagramKind.values()</code> 順に 15 種を排他トグルで切替。Diagram メニューのラジオ選択と双方向同期します。トグルを押すと、現在<b>フォーカス中のタブ</b>を起点に選んだ図種のタブを開きます（VS Code 風タブモデル）。起点や対象ファイルが必要な図種（Sequence / Activity / Call Graph / Layout / Navigation）は、未指定なら選択ダイアログを誘導します。</p>
+      <h3>行末尾 — 図種ドロップダウン</h3>
+      <p>アクション行の末尾に置く「<b>図種: &lt;現在の図種&gt; ▾</b>」ボタン 1 個から、カテゴリ区切り付きの一覧を開いて切り替えます（<code>DiagramKindChooser</code>）。以前は上部に図種切替専用の行を設けてトグルボタンを並べていましたが、メニューバー・アクション行と合わせて 3 段になり縦の作業領域を圧迫していたため、1 個のドロップダウンへ畳んで上部を 2 段にしました。</p>
+      <p>ボタンのラベルは常に現在の図種を示すので、一覧を開かなくても状態が分かります。Diagram メニューのラジオ選択とも双方向同期し、一覧に項目を持たない図種（Sequence / Activity / Call Graph / Layout の画面・実寸）がアクティブなときもラベルには表示されます（切替はタブ上部の切替バーから）。項目を選ぶと、現在<b>フォーカス中のタブ</b>を起点に選んだ図種のタブを開きます（VS Code 風タブモデル）。起点や対象ファイルが必要な図種（Sequence / Activity / Call Graph / Layout / Navigation）は、未指定なら選択ダイアログを誘導します。</p>
+      <p>プロジェクト未ロード時はボタンごと無効化し、ロード後も入力が無くて空図しか出せない図種（Soong / build.ninja / .intermediates）は一覧に残したままグレーアウトします（消さずに「今は到達できない」ことを示す）。</p>
       <p><span class="pill">Class</span><span class="pill">Package</span><span class="pill">Sequence</span><span class="pill">Activity</span><span class="pill">Component</span><span class="pill">Dependency</span><span class="pill">Manifest</span><span class="pill">Layout</span><span class="pill">Common</span><span class="pill">Navigation</span><span class="pill">Module</span><span class="pill">Inherit</span><span class="pill">Call Graph</span><span class="pill">Screen Flow</span><span class="pill">Soong</span></p>
 
-      <h4>各トグルがどう解析して図解化するか</h4>
-      <p>各トグルは <code>DiagramService.generatePuml</code> から対応する <code>PlantUml*Diagram</code> 生成器にディスパッチされます。入力源は大きく 3 系統です。</p>
+      <h4>各図種がどう解析して図解化するか</h4>
+      <p>各図種は <code>DiagramService.generatePuml</code> から対応する <code>PlantUml*Diagram</code> 生成器にディスパッチされます。入力源は大きく 3 系統です。</p>
       <ul>
         <li><b>解析済み Java モデル（<code>JavaClassInfo</code> 群）</b>: ロード時に構築済みのモデルを再利用。スコープで絞り込み、必要なクラスだけ Stage B（詳細）へ昇格してから描画。</li>
         <li><b>Android XML / Gradle 解析（<code>AndroidProjectAnalysis</code>）</b>: AndroidManifest・layout・navigation・build.gradle を解析した結果から生成。</li>
@@ -426,7 +428,7 @@ java -jar Juml.jar ~/AndroidStudioProjects/MyApp</code></pre>
 
     <section id="kinds">
       <h2>図種の選択と切り替え</h2>
-      <p>ツールバー下段のトグル、または Diagram メニューのラジオで選択します。15 種の詳細は <a href="./developer-reference.html#diagrams">開発者リファレンスの図種カタログ</a>も参照してください。</p>
+      <p>ツールバー末尾の図種ドロップダウン、または Diagram メニューのラジオで選択します。15 種の詳細は <a href="./developer-reference.html#diagrams">開発者リファレンスの図種カタログ</a>も参照してください。</p>
       <div class="table-wrap"><table>
         <thead><tr><th>図種</th><th>用途</th><th>起点指定</th></tr></thead>
         <tbody>

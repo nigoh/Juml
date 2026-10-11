@@ -57,26 +57,52 @@ final class SketchEditDialogs {
         panel.add(top, BorderLayout.NORTH);
         panel.add(body, BorderLayout.CENTER);
 
-        int choice = JOptionPane.showConfirmDialog(parent, panel,
-                Messages.get("sketch.dlg.title"),
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (choice != JOptionPane.OK_OPTION) {
-            return false;
-        }
-        String newName = nameField.getText().trim();
-        SketchClass sameName = model.findClass(newName);
-        if (!NAME.matcher(newName).matches()
-                || (sameName != null && sameName != target)) {
+        // 名前が不正なら入力内容を保ったままダイアログを開き直す。閉じてしまうと、同時に
+        // 編集していたフィールド/メソッドまで捨てられる。
+        String newName;
+        while (true) {
+            int choice = JOptionPane.showConfirmDialog(parent, panel,
+                    Messages.get("sketch.dlg.title"),
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (choice != JOptionPane.OK_OPTION) {
+                return false;
+            }
+            newName = nameField.getText().trim();
+            SketchClass sameName = model.findClass(newName);
+            if (NAME.matcher(newName).matches()
+                    && (sameName == null || sameName == target)) {
+                break;
+            }
             JOptionPane.showMessageDialog(parent,
                     Messages.get("sketch.dlg.nameError"),
                     Messages.get("sketch.dlg.title"), JOptionPane.WARNING_MESSAGE);
-            return false;
         }
         model.renameClass(target, newName);
         target.setKind((SketchClass.Kind) kindCombo.getSelectedItem());
         applyLines(target.getFields(), fieldsArea.getText());
         applyLines(target.getMethods(), methodsArea.getText());
+        normalizeMemberSplit(target.getFields(), target.getMethods());
         return true;
+    }
+
+    /**
+     * codec ({@code SketchPumlCodec}) は再読込時に「{@code (} を含む行 = メソッド、それ以外 =
+     * フィールド」で再分類する。ダイアログの欄と食い違う行があると、GUI 入力しただけで
+     * 次回ロード時に並び崩れ扱い (編集ロック) になるため、同じ規則で振り分け直す。
+     */
+    static void normalizeMemberSplit(java.util.List<String> fields, java.util.List<String> methods) {
+        java.util.List<String> f = new java.util.ArrayList<>();
+        java.util.List<String> m = new java.util.ArrayList<>();
+        for (String line : fields) {
+            (line.contains("(") ? m : f).add(line);
+        }
+        for (String line : methods) {
+            (line.contains("(") ? m : f).add(line);
+        }
+        fields.clear();
+        fields.addAll(f);
+        methods.clear();
+        methods.addAll(m);
     }
 
     /**

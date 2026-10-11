@@ -290,8 +290,13 @@ public class MainCliTest {
                             + "<activity android:name='.MainActivity'/></application></manifest>");
 
             File outDir = new File(tmp.getRoot(), "fallback-out");
-            Main.main(new String[]{"--all", "-o", outDir.getAbsolutePath(),
-                    root.getAbsolutePath()});
+            assertTrue(outDir.mkdirs());
+            // Main.main 経由だと、失敗枚数 > 0 のとき CliDispatcher が exit 2 してテスト JVM
+            // ごと落ちる。--all の本体を直接呼び、戻り値 (失敗枚数) も併せて検証する。
+            int failures = juml.app.cli.AndroidCommands.handleAll(
+                    new juml.app.cli.CliContext(root, outDir,
+                            juml.util.ErrorListener.silent(), null, false, null, false));
+            assertEquals("依存グラフ 1 枚だけが失敗するはず", 1, failures);
 
             // 依存図は SVG が無く、.puml が残ること
             File depSvg = new File(outDir, "dependency-graph.svg");

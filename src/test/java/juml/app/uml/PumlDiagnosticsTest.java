@@ -50,10 +50,11 @@ public class PumlDiagnosticsTest {
     }
 
     @Test
-    public void strayEnd_isReported() {
-        List<PumlDiagnostics.Diagnostic> d = check("@startuml", "A -> B", "end", "@enduml");
-        assertEquals(1, d.size());
-        assertEquals(3, d.get(0).line());
+    public void strayEnd_isNotReported() {
+        // アクティビティ図では end が「フローの終端」という独立した文で、開始と
+        // 対にならないのが正しい。対応の無い素の end を指摘すると誤検出になる。
+        clean("@startuml", "start", ":a;", "end", "@enduml");
+        clean("@startuml", "A -> B", "end", "@enduml");
     }
 
     @Test

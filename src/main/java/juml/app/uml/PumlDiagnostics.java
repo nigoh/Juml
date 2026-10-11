@@ -40,10 +40,17 @@ final class PumlDiagnostics {
     static final class Diagnostic {
         private final int line;
         private final String message;
+        /** 挿し込めば直る終端テキスト (機械的に決められないものは null)。 */
+        private final String closer;
 
         Diagnostic(int line, String message) {
+            this(line, message, null);
+        }
+
+        Diagnostic(int line, String message, String closer) {
             this.line = line;
             this.message = message;
+            this.closer = closer;
         }
 
         /** 1 始まりの行番号。 */
@@ -54,6 +61,11 @@ final class PumlDiagnostics {
         /** 利用者に見せる説明 (i18n 済み)。 */
         String message() {
             return message;
+        }
+
+        /** クイックフィックスで挿入する終端 (自動で書けない指摘は null)。 */
+        String closer() {
+            return closer;
         }
 
         @Override
@@ -223,7 +235,7 @@ final class PumlDiagnostics {
      * この行が閉じている開始語 (無ければ null)。複合終端 ({@code end note} 等) を
      * 先に見てから、素の {@code end} を見る。
      */
-    private static String closerOf(String lower) {
+    static String closerOf(String lower) {
         // 複合終端。"end fork" と "endfork" の双方の綴りを許す。
         // title / header / footer は複数行形式かどうかを行から判断できない
         // (単独行でも成立する) ので、終端としても開始としても扱わず見送る。
@@ -260,7 +272,7 @@ final class PumlDiagnostics {
     }
 
     /** この行が開いているブロックの開始語 (無ければ null)。 */
-    private static String openerOf(String lower) {
+    static String openerOf(String lower) {
         String first = firstWord(lower);
         if (SIMPLE_OPENERS.containsKey(first)) {
             return first;
@@ -315,7 +327,8 @@ final class PumlDiagnostics {
                     return;
                 }
             }
-            out.add(new Diagnostic(lineNo, msg("puml.diag.unexpected", line)));
+            // 対応の無い素の end は指摘しない。アクティビティ図では end が
+            // 「フローの終端」という独立した文であり、開始と対にならないのが正しい。
             return;
         }
         for (Open open : stack) {
@@ -332,8 +345,61 @@ final class PumlDiagnostics {
         for (Open open : stack) {
             out.add(new Diagnostic(open.line,
                     MessageFormat.format(Messages.get("puml.diag.unclosed"),
-                            open.keyword, open.expected)));
+                            open.keyword, open.expected), insertableCloser(open)));
         }
+    }
+
+    /**
+     * この開始をそのまま閉じられる終端テキスト。{@code repeat} だけは
+     * {@code repeat while (条件)} と条件を書かないと成立しないため、機械的な
+     * 挿入を諦めて null を返す (中途半端な行を差し込むと修正がかえって増える)。
+     */
+    private static String insertableCloser(Open open) {
+        if (open.keyword.startsWith("@start")) {
+            return "@end" + open.keyword.substring("@start".length());
+        }
+        if ("repeat".equals(open.family)) {
+            return null;
+        }
+        return open.expected;
+    }
+
+    /**
+     * 閉じ忘れ指摘への修正 (終端の挿入) を編集指示として組み立てる。
+     * 挿入位置は、開始行より後で最初に現れる {@code @end…} 行の直前
+     * (図の終わりでブロックを閉じる)。無ければ本文末尾。
+     * 字下げは開始行に合わせる。修正できない指摘には null を返す。
+     */
+    static PumlEditorKeys.Edit closerEdit(String text, Diagnostic d) {
+        if (d.closer() == null || text == null) {
+            return null;
+        }
+        String[] lines = text.split("\n", -1);
+        int openerIdx = d.line() - 1;
+        if (openerIdx < 0 || openerIdx >= lines.length) {
+            return null;
+        }
+        String indent = PumlEditorKeys.indentOf(lines[openerIdx]);
+        // @start ブロック自体の閉じ忘れ (@enduml が無い) は末尾へ。それ以外は
+        // 図の終わり (@end… 行) の直前で閉じる。
+        int at = text.length();
+        if (!d.closer().startsWith("@end")) {
+            int offset = 0;
+            for (int i = 0; i < lines.length; i++) {
+                if (i > openerIdx
+                        && lines[i].strip().toLowerCase(Locale.ROOT).startsWith("@end")) {
+                    at = offset;
+                    break;
+                }
+                offset += lines[i].length() + 1;
+            }
+        }
+        String insert = indent + d.closer() + "\n";
+        if (at >= text.length() && !text.isEmpty() && !text.endsWith("\n")) {
+            insert = "\n" + indent + d.closer();
+        }
+        int caret = at + insert.length() - (insert.endsWith("\n") ? 1 : 0);
+        return new PumlEditorKeys.Edit(at, at, insert, caret, caret);
     }
 
     private static String msg(String key, String arg) {
@@ -345,7 +411,7 @@ final class PumlDiagnostics {
      * {@code package X {} } や {@code partition X {} } は中身が文であって
      * メンバーではないので含めない (中の閉じ忘れは引き続き見たい)。
      */
-    private static boolean opensMemberBody(String lower) {
+    static boolean opensMemberBody(String lower) {
         return lower.endsWith("{") && MEMBER_BODIES.contains(firstWord(lower));
     }
 

@@ -84,6 +84,15 @@ public final class ProjectSettingsPersistor {
                 style.setRankSep(parseIntOrZero(saved.get("style.rankSep")));
             if (saved.containsKey("style.customSkinparam"))
                 style.setCustomSkinparam(saved.get("style.customSkinparam"));
+            if (saved.containsKey("style.caption"))
+                style.setCaption(saved.get("style.caption"));
+            if (saved.containsKey("style.monochrome")) {
+                try {
+                    style.setMonochrome(DiagramStyle.Monochrome.valueOf(saved.get("style.monochrome")));
+                } catch (IllegalArgumentException ignored) {}
+            }
+            if (saved.containsKey("style.roundCorner"))
+                style.setRoundCorner(parseIntOrZero(saved.get("style.roundCorner")));
             s.setStyle(style);
             PlantUmlRenderer.setStyle(style);
 
@@ -142,18 +151,6 @@ public final class ProjectSettingsPersistor {
                         parseIntOrZero(saved.get("classDiagram.commentMaxLength")));
             if (saved.containsKey("classDiagram.hiddenAnnotations"))
                 s.setClassDiagramHiddenAnnotations(saved.get("classDiagram.hiddenAnnotations"));
-
-            // 保存側と同じ「後から増えた項目」。復元側にも同時に入れる —
-            // 片側だけだと次の保存で値が既定へ巻き戻る。
-            if (saved.containsKey("style.caption")) style.setCaption(saved.get("style.caption"));
-            if (saved.containsKey("style.monochrome")) {
-                try {
-                    style.setMonochrome(
-                            DiagramStyle.Monochrome.valueOf(saved.get("style.monochrome")));
-                } catch (IllegalArgumentException ignored) { }
-            }
-            if (saved.containsKey("style.roundCorner"))
-                style.setRoundCorner(parseIntOrZero(saved.get("style.roundCorner")));
             if (saved.containsKey("classDiagram.colorCodeRelations"))
                 s.setClassDiagramColorCodeRelations(
                         Boolean.parseBoolean(saved.get("classDiagram.colorCodeRelations")));
@@ -197,6 +194,9 @@ public final class ProjectSettingsPersistor {
             m.put("style.nodeSep", Integer.toString(style.getNodeSep()));
             m.put("style.rankSep", Integer.toString(style.getRankSep()));
             m.put("style.customSkinparam", style.getCustomSkinparam());
+            m.put("style.caption", style.getCaption());
+            m.put("style.monochrome", style.getMonochrome().name());
+            m.put("style.roundCorner", Integer.toString(style.getRoundCorner()));
             m.put("sequence.showComments", Boolean.toString(s.isSequenceShowComments()));
             m.put("sequence.commentStyle", s.getSequenceCommentStyle());
             m.put("sequence.commentPlacement", s.getSequenceCommentPlacement());
@@ -228,18 +228,11 @@ public final class ProjectSettingsPersistor {
             m.put("classDiagram.commentMaxLength",
                     Integer.toString(s.getClassDiagramCommentMaxLength()));
             m.put("classDiagram.hiddenAnnotations", s.getClassDiagramHiddenAnnotations());
-            // 以下は後から増えた項目で、保存にも復元にも入っていなかった。兄弟項目は
-            // 保存されるので「プロジェクトを開き直すと一部の設定だけ戻る」という
-            // 気付きにくい形で現れる (スタイル 3 + クラス図 4 + コールグラフ深さ)。
-            m.put("style.caption", style.getCaption());
-            m.put("style.monochrome", style.getMonochrome().name());
-            m.put("style.roundCorner", Integer.toString(style.getRoundCorner()));
             m.put("classDiagram.colorCodeRelations",
                     Boolean.toString(s.isClassDiagramColorCodeRelations()));
             m.put("classDiagram.hideEmptyMembers",
                     Boolean.toString(s.isClassDiagramHideEmptyMembers()));
-            m.put("classDiagram.hideUnlinked",
-                    Boolean.toString(s.isClassDiagramHideUnlinked()));
+            m.put("classDiagram.hideUnlinked", Boolean.toString(s.isClassDiagramHideUnlinked()));
             m.put("classDiagram.colorCodeStereotypes",
                     Boolean.toString(s.isClassDiagramColorCodeStereotypes()));
             m.put("callGraph.maxDepth", Integer.toString(s.getCallGraphMaxDepth()));

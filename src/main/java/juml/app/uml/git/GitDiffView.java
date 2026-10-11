@@ -39,6 +39,9 @@ final class GitDiffView extends JTextPane {
     }
 
     /** 背景の明暗を見て、diff 各種行の前景色・強調背景を決める。 */
+    /** 直近に @@ ハンクヘッダを見たか (--- / +++ をヘッダと本文で区別するため)。 */
+    private boolean inHunk;
+
     private void refreshTheme() {
         if (added == null) {
             return; // super コンストラクタからの updateUI(); フィールド未初期化
@@ -86,7 +89,12 @@ final class GitDiffView extends JTextPane {
             for (int i = 0; i < lines.length; i++) {
                 String line = lines[i];
                 String text = i < lines.length - 1 ? line + "\n" : line;
-                doc.insertString(doc.getLength(), text, styleFor(line));
+                if (line.startsWith("diff ")) {
+                    inHunk = false; // 次のファイルのヘッダ領域へ戻る
+                } else if (line.startsWith("@@")) {
+                    inHunk = true;
+                }
+                doc.insertString(doc.getLength(), text, styleFor(line, inHunk));
             }
         } catch (BadLocationException ignored) {
             setText(diff); // 失敗時は素のテキストにフォールバック
@@ -94,9 +102,16 @@ final class GitDiffView extends JTextPane {
         setCaretPosition(0);
     }
 
-    private SimpleAttributeSet styleFor(String line) {
-        if (line.startsWith("+++") || line.startsWith("---")
-                || line.startsWith("diff ") || line.startsWith("index ")
+    /**
+     * 行のスタイルを決める。{@code ---} / {@code +++} はファイルヘッダの綴りだが、ハンク内では
+     * 「{@code --} で始まる本文の削除行」でもあるため、最初の {@code @@} 以降は追加/削除として
+     * 扱う ({@code inHunk})。
+     */
+    private SimpleAttributeSet styleFor(String line, boolean inHunk) {
+        if (!inHunk && (line.startsWith("+++") || line.startsWith("---"))) {
+            return header;
+        }
+        if (line.startsWith("diff ") || line.startsWith("index ")
                 || line.startsWith("new file") || line.startsWith("deleted file")
                 || line.startsWith("rename ") || line.startsWith("similarity ")) {
             return header;

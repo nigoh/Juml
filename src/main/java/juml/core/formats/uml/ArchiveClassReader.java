@@ -159,13 +159,17 @@ public final class ArchiveClassReader {
                         || entryName.endsWith("package-info.class")) {
                     continue;
                 }
+                // multi-release JAR (META-INF/versions/N/...) は同じクラスの別バージョン。
+                // 読むと 1 つのクラスが版の数だけ図に並ぶため、基底エントリだけを採る。
+                if (entryName.startsWith("META-INF/")) {
+                    continue;
+                }
                 try {
                     out.add(ExternalClassReader.readHeader(zip, archivePath));
                 } catch (IOException | RuntimeException ex) {
-                    // IOException だけを受けていたが、壊れた .class は
-                    // IllegalArgumentException 等の実行時例外でも落ちる。1 エントリの
-                    // 破損で jar 全体 (他の全クラス) を失わない — このガードの目的は
-                    // 最初から「個別エントリの失敗を通知して続行する」ことである。
+                    // ASM は壊れた/未対応バージョンの class を unchecked 例外で弾く。
+                    // 捕まえないと 1 つの不良エントリでアーカイブ全体の読み取りが中断し、
+                    // それ以降のクラスが 1 つも得られない。
                     l.onError(juml.util.ErrorCode.PRJ_004, archivePath, -1,
                             "failed to read class " + entryName + ": " + ex.getMessage());
                 }

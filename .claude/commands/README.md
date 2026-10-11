@@ -1,6 +1,6 @@
 # Juml Claude Code Slash Commands
 
-よく使うコマンドだけを厳選した**常設セット（5 個）**です。
+よく使うコマンドだけを厳選した**常設セット（6 個）**です。
 特化コマンドは `.claude/commands-archive/` に退避してあり、必要になったら戻して使います。
 
 ## 常設コマンド
@@ -10,6 +10,7 @@
 | `/propose <課題・対象>` | ソース修正が要るとき、現行ソース基準の**修正案をアーティファクトで提示 → 選択 → 忠実に実装**する | `artifact-design` / `juml-verify` |
 | `/juml-verify [quick\|full\|<path>]` | 変更を CI と同じ基準（compile→checkstyle→test→jar→E2E）で自己検証 | `juml-verify` スキル |
 | `/bug-hunt <領域>` | 観点別並列でバグを洗い出し、敵対的検証で確定分だけ修正（枯れるまで） | `bug-hunt` ワークフロー / `orchestrate` |
+| `/persona-explore [persona,...]` | ペルソナ・エージェントが実際にアプリを動かし（GUI monkey + CLI + ランダム操作）、確定バグは修正・使い勝手/不足機能は `docs/persona-backlog.md` へ | `persona-explore` ワークフロー / スキル |
 | `/test-write <対象>` | 既存作法に沿ってテストを設計・実装（新規 / フレーキー修正 / 穴埋め） | `test-engineer` エージェント |
 | `/release <version>` | バージョン更新・タグ付け・成果物生成 | — |
 

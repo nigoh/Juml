@@ -228,4 +228,48 @@ public class ProjectSettingsPersistorTest {
                 "solarized", loaded.get("style.theme"));
         assertEquals("フォントサイズも保存されること", "13", loaded.get("style.fontSize"));
     }
+
+
+    /**
+     * bug-hunt R2: caption / monochrome / roundCorner とクラス図・コールグラフの新しい設定が
+     * プロジェクト設定の保存・復元から漏れ、別プロジェクトの値が引き継がれていた。
+     */
+    @Test
+    public void roundtrip_includesCaptionMonochromeRoundCornerAndNewerPrefs() throws Exception {
+        File root = tempDir.newFolder("NewerKeys");
+        repo.touch(root);
+        Map<String, String> saved = new LinkedHashMap<>();
+        saved.put("style.caption", "Cap!");
+        saved.put("style.monochrome", DiagramStyle.Monochrome.values()[
+                DiagramStyle.Monochrome.values().length - 1].name());
+        saved.put("style.roundCorner", "12");
+        saved.put("classDiagram.colorCodeRelations", "true");
+        saved.put("classDiagram.hideEmptyMembers", "true");
+        saved.put("classDiagram.hideUnlinked", "true");
+        saved.put("classDiagram.colorCodeStereotypes", "true");
+        saved.put("callGraph.maxDepth", "7");
+        repo.saveSettings(root, saved);
+
+        Setting setting = new Setting();
+        ProjectSettingsPersistor p = new ProjectSettingsPersistor(() -> setting, () -> { });
+        p.restoreAndPersist(root);
+        DiagramStyle style = setting.getStyle();
+        assertEquals("Cap!", style.getCaption());
+        assertEquals(DiagramStyle.Monochrome.values()[DiagramStyle.Monochrome.values().length - 1],
+                style.getMonochrome());
+        assertEquals(12, style.getRoundCorner());
+        assertTrue(setting.isClassDiagramColorCodeRelations());
+        assertTrue(setting.isClassDiagramHideEmptyMembers());
+        assertTrue(setting.isClassDiagramHideUnlinked());
+        assertTrue(setting.isClassDiagramColorCodeStereotypes());
+        assertEquals(7, setting.getCallGraphMaxDepth());
+
+        // 保存側も同じキーを書くこと (復元済みの値をそのまま保存 → 読み直して一致)。
+        p.saveCurrentProjectSettings(root);
+        Map<String, String> written = repo.loadSettings(root);
+        assertEquals("Cap!", written.get("style.caption"));
+        assertEquals("12", written.get("style.roundCorner"));
+        assertEquals("true", written.get("classDiagram.hideUnlinked"));
+        assertEquals("7", written.get("callGraph.maxDepth"));
+    }
 }

@@ -75,4 +75,26 @@ public class StyleResourceParserTest {
                 "<resources><color name=\"x\">#fff</color></resources>");
         assertTrue(res.getStyles().isEmpty());
     }
+
+
+    /**
+     * bug-hunt R4 で発見: このパーサだけ ErrorHandler 未設定で、壊れた values XML があると
+     * Xerces の "[Fatal Error] ..." が stderr へ直接漏れていた (兄弟パーサは抑止済み)。
+     */
+    @Test
+    public void malformedXmlIsReportedThroughTheListenerNotStderr() {
+        java.io.PrintStream orig = System.err;
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+        java.util.List<String> reported = new java.util.ArrayList<>();
+        try {
+            StyleResourceParser.parse("<?xml version=\"2.0\"?><resources><style name=\"A\"/></resources>",
+                    (code, source, line, message) -> reported.add(String.valueOf(message)));
+        } finally {
+            System.setErr(orig);
+        }
+        assertTrue("解析失敗はリスナーへ通知されること: " + reported, !reported.isEmpty());
+        assertEquals("stderr へ直接書かないこと: " + buf,
+                "", buf.toString(java.nio.charset.StandardCharsets.UTF_8));
+    }
 }
