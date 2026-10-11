@@ -28,8 +28,9 @@ public final class VintfManifest {
     private final Kind kind;
     private String version;
     private Integer level;
+    private String matrixType;
     private final List<VintfHal> hals = new ArrayList<>();
-    private String kernelVersion;
+    private final List<String> kernelVersions = new ArrayList<>();
     private String sepolicyVersion;
 
     public VintfManifest(Kind kind) {
@@ -62,13 +63,38 @@ public final class VintfManifest {
         return hals;
     }
 
-    /** {@code <kernel version="5.10.0"/>} の値。未指定なら null。 */
+    /**
+     * compatibility-matrix の {@code type} 属性 ({@code "framework"} /
+     * {@code "device"}、小文字化済み)。framework matrix は device manifest への
+     * 要求、device matrix は framework manifest への要求を表す。
+     * matrix 以外・属性なしは null または空。
+     */
+    public String getMatrixType() {
+        return matrixType;
+    }
+
+    public void setMatrixType(String matrixType) {
+        this.matrixType = matrixType;
+    }
+
+    /**
+     * {@code <kernel version="4.9.0"/>} の値 (宣言順)。compat-matrix は
+     * 対応カーネルを複数並べるため、リストで保持する。
+     */
+    public List<String> getKernelVersions() {
+        return kernelVersions;
+    }
+
+    /** 最初の kernel バージョン。未指定なら null (互換用)。 */
     public String getKernelVersion() {
-        return kernelVersion;
+        return kernelVersions.isEmpty() ? null : kernelVersions.get(0);
     }
 
     public void setKernelVersion(String kernelVersion) {
-        this.kernelVersion = kernelVersion;
+        kernelVersions.clear();
+        if (kernelVersion != null && !kernelVersion.isEmpty()) {
+            kernelVersions.add(kernelVersion);
+        }
     }
 
     /** {@code <sepolicy><version>30.0</version></sepolicy>} の値。未指定なら null。 */

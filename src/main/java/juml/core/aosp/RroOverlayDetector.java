@@ -111,10 +111,10 @@ public final class RroOverlayDetector {
         if (children == null) return;
         for (File c : children) {
             if (c.isDirectory()) {
-                String name = c.getName();
-                if (name.equals(".git") || name.equals(".gradle")
-                        || name.equals("build") || name.equals("out")
-                        || name.equals("node_modules")) {
+                // 除外規則は兄弟走査 (bp/mk/VINTF/.te) と同じ AospScanExcludes に
+                // 揃える。手書きリストだと prebuilts / .repo (実ツリーで数十 GB) を
+                // 歩いてしまう。
+                if (AospScanExcludes.shouldSkip(c.getName())) {
                     continue;
                 }
                 collectManifests(c, out, depth + 1);

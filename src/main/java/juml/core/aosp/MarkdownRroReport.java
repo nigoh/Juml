@@ -49,12 +49,12 @@ public final class MarkdownRroReport {
         java.util.List<RroOverlay> sorted = new java.util.ArrayList<>(overlays);
         sorted.sort(Comparator.comparing(RroOverlay::getOverlayPackage));
         for (RroOverlay o : sorted) {
-            sb.append("| `").append(o.getOverlayPackage()).append("` | `")
-                    .append(o.getTargetPackage()).append("` | ")
+            sb.append("| `").append(escapeCell(o.getOverlayPackage())).append("` | `")
+                    .append(escapeCell(o.getTargetPackage())).append("` | ")
                     .append(o.getPriority() >= 0 ? String.valueOf(o.getPriority()) : "—")
                     .append(" | ").append(o.isStatic() ? "✔" : "")
                     .append(" | ").append(o.getFile().isEmpty() ? ""
-                            : "`" + o.getFile() + "`").append(" |\n");
+                            : "`" + escapeCell(o.getFile()) + "`").append(" |\n");
         }
         sb.append('\n');
 
@@ -75,5 +75,16 @@ public final class MarkdownRroReport {
             sb.append('\n');
         }
         return sb.toString();
+    }
+
+    /**
+     * Markdown 表セル用エスケープ ({@code |} と改行)。兄弟の
+     * {@link MarkdownBuildNinjaReport} と同じ規則。
+     */
+    private static String escapeCell(String s) {
+        if (s == null || s.isEmpty()) {
+            return "";
+        }
+        return s.replace("|", "\\|").replace("\r", " ").replace("\n", " ");
     }
 }

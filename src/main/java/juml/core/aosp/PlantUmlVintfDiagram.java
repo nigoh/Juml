@@ -4,7 +4,6 @@
 package juml.core.aosp;
 
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,81 +37,163 @@ public final class PlantUmlVintfDiagram {
             return sb.toString();
         }
 
-        // 種別 → (HAL 名 → alias)。同名 HAL の重複宣言は 1 ノードへ集約する。
-        Map<VintfManifest.Kind, Map<String, String>> aliases = new LinkedHashMap<>();
-        Set<String> provided = providedHalNames(entries);
-        boolean hasDevice = !provided.isEmpty() || hasKind(entries,
-                VintfManifest.Kind.DEVICE_MANIFEST);
+        // 種別 → (HAL 名 → マージ済み HAL)。同名 HAL の複数宣言 (fragment 分割や
+        // IVibrator / IVibratorManager の並記) は捨てずに 1 ノードへ統合する —
+        // 先勝ちで捨てると 2 件目以降の interface / version が図から消える。
+        Map<VintfManifest.Kind, Map<String, VintfHal>> merged = mergeByName(entries);
+        // matrix の要求 HAL 名 → matrix type ("device" なら framework への要求)
+        Map<String, String> matrixTypeOf = matrixTypeByName(entries);
+        Set<String> providedByDevice = merged.getOrDefault(
+                VintfManifest.Kind.DEVICE_MANIFEST, Map.of()).keySet();
+        Set<String> providedByFramework = merged.getOrDefault(
+                VintfManifest.Kind.FRAMEWORK_MANIFEST, Map.of()).keySet();
+        boolean hasDevice = hasKind(entries, VintfManifest.Kind.DEVICE_MANIFEST);
+        boolean hasFramework = hasKind(entries, VintfManifest.Kind.FRAMEWORK_MANIFEST);
 
+        Map<VintfManifest.Kind, Map<String, String>> aliases = new LinkedHashMap<>();
         VintfManifest.Kind[] order = {
                 VintfManifest.Kind.FRAMEWORK_MANIFEST,
                 VintfManifest.Kind.COMPATIBILITY_MATRIX,
                 VintfManifest.Kind.DEVICE_MANIFEST,
         };
         for (VintfManifest.Kind kind : order) {
-            if (!hasKind(entries, kind)) {
+            Map<String, VintfHal> byName = merged.get(kind);
+            if (byName == null || !hasKind(entries, kind)) {
                 continue;
             }
             sb.append("package \"").append(MarkdownVintfReport.kindLabel(kind))
                     .append("\" {\n");
-            Map<String, String> byName =
+            Map<String, String> aliasMap =
                     aliases.computeIfAbsent(kind, k -> new LinkedHashMap<>());
-            for (VintfProjectScanner.Entry e : entries) {
-                if (e.getManifest().getKind() != kind) {
-                    continue;
+            for (Map.Entry<String, VintfHal> me : byName.entrySet()) {
+                VintfHal hal = me.getValue();
+                String alias = alias(kind, hal.getName());
+                aliasMap.put(hal.getName(), alias);
+                boolean missing = false;
+                if (kind == VintfManifest.Kind.COMPATIBILITY_MATRIX
+                        && !Boolean.TRUE.equals(hal.isOptional())) {
+                    // device matrix は framework manifest への要求、それ以外
+                    // (framework matrix / type 無し) は device manifest への要求。
+                    boolean deviceMatrix =
+                            "device".equals(matrixTypeOf.get(hal.getName()));
+                    missing = deviceMatrix
+                            ? hasFramework && !providedByFramework.contains(hal.getName())
+                            : hasDevice && !providedByDevice.contains(hal.getName());
                 }
-                for (VintfHal hal : e.getManifest().getHals()) {
-                    if (byName.containsKey(hal.getName())) {
-                        continue;
-                    }
-                    String alias = alias(kind, hal.getName());
-                    byName.put(hal.getName(), alias);
-                    boolean missing = kind == VintfManifest.Kind.COMPATIBILITY_MATRIX
-                            && hasDevice
-                            && !Boolean.TRUE.equals(hal.isOptional())
-                            && !provided.contains(hal.getName());
-                    sb.append("  component \"").append(label(hal)).append("\" as ")
-                            .append(alias).append(' ')
-                            .append(missing ? MISSING_FILL : colorFor(hal.getFormat()))
-                            .append('\n');
-                }
+                sb.append("  component \"").append(label(hal)).append("\" as ")
+                        .append(alias).append(' ')
+                        .append(missing ? MISSING_FILL : colorFor(hal.getFormat()))
+                        .append('\n');
             }
             sb.append("}\n");
         }
 
-        emitSatisfiedEdges(sb, aliases);
-        appendLegend(sb, hasDevice);
+        emitSatisfiedEdges(sb, aliases, matrixTypeOf);
+        appendLegend(sb, hasDevice || hasFramework);
         sb.append("@enduml\n");
         return sb.toString();
     }
 
-    /** matrix の要求 HAL と同名の device manifest 宣言を緑破線で結ぶ。 */
+    /** matrix の要求 HAL と同名の manifest 宣言 (要求の向きに応じた側) を緑破線で結ぶ。 */
     private static void emitSatisfiedEdges(StringBuilder sb,
-            Map<VintfManifest.Kind, Map<String, String>> aliases) {
+            Map<VintfManifest.Kind, Map<String, String>> aliases,
+            Map<String, String> matrixTypeOf) {
         Map<String, String> matrix = aliases.getOrDefault(
                 VintfManifest.Kind.COMPATIBILITY_MATRIX, Map.of());
         Map<String, String> device = aliases.getOrDefault(
                 VintfManifest.Kind.DEVICE_MANIFEST, Map.of());
+        Map<String, String> framework = aliases.getOrDefault(
+                VintfManifest.Kind.FRAMEWORK_MANIFEST, Map.of());
         for (Map.Entry<String, String> e : matrix.entrySet()) {
-            String deviceAlias = device.get(e.getKey());
-            if (deviceAlias != null) {
+            boolean deviceMatrix = "device".equals(matrixTypeOf.get(e.getKey()));
+            String providerAlias = deviceMatrix
+                    ? framework.get(e.getKey()) : device.get(e.getKey());
+            if (providerAlias != null) {
                 sb.append(e.getValue()).append(" .[#2da44e].> ")
-                        .append(deviceAlias).append(" : declared\n");
+                        .append(providerAlias).append(" : declared\n");
             }
         }
     }
 
-    /** device manifest で宣言されている HAL 名の集合。 */
-    private static Set<String> providedHalNames(List<VintfProjectScanner.Entry> entries) {
-        Set<String> provided = new LinkedHashSet<>();
+    /** 種別ごとに同名 HAL をマージした (HAL 名 → 統合 HAL) を作る。 */
+    private static Map<VintfManifest.Kind, Map<String, VintfHal>> mergeByName(
+            List<VintfProjectScanner.Entry> entries) {
+        Map<VintfManifest.Kind, Map<String, VintfHal>> merged = new LinkedHashMap<>();
         for (VintfProjectScanner.Entry e : entries) {
-            if (e.getManifest().getKind() == VintfManifest.Kind.DEVICE_MANIFEST) {
-                for (VintfHal hal : e.getManifest().getHals()) {
-                    provided.add(hal.getName());
+            VintfManifest.Kind kind = e.getManifest().getKind();
+            Map<String, VintfHal> byName =
+                    merged.computeIfAbsent(kind, k -> new LinkedHashMap<>());
+            for (VintfHal hal : e.getManifest().getHals()) {
+                VintfHal into = byName.get(hal.getName());
+                if (into == null) {
+                    byName.put(hal.getName(), copyOf(hal));
+                } else {
+                    mergeInto(into, hal);
                 }
             }
         }
-        return provided;
+        return merged;
+    }
+
+    private static VintfHal copyOf(VintfHal hal) {
+        VintfHal copy = new VintfHal(hal.getFormat(), hal.getName());
+        copy.setTransport(hal.getTransport());
+        copy.setOptional(hal.isOptional());
+        mergeInto(copy, hal);
+        return copy;
+    }
+
+    /** interface / instance / version を集合的に統合する。optional は required 優先。 */
+    private static void mergeInto(VintfHal into, VintfHal from) {
+        for (String v : from.getVersions()) {
+            if (!into.getVersions().contains(v)) {
+                into.getVersions().add(v);
+            }
+        }
+        for (VintfInterface vi : from.getInterfaces()) {
+            VintfInterface target = null;
+            for (VintfInterface existing : into.getInterfaces()) {
+                if (existing.getName().equals(vi.getName())) {
+                    target = existing;
+                    break;
+                }
+            }
+            if (target == null) {
+                target = new VintfInterface(vi.getName());
+                into.getInterfaces().add(target);
+            }
+            for (String inst : vi.getInstances()) {
+                if (!target.getInstances().contains(inst)) {
+                    target.getInstances().add(inst);
+                }
+            }
+        }
+        if (into.getTransport() == null) {
+            into.setTransport(from.getTransport());
+        }
+        // 1 件でも required (optional=false) があれば required として扱う。
+        if (Boolean.FALSE.equals(from.isOptional())) {
+            into.setOptional(Boolean.FALSE);
+        } else if (into.isOptional() == null) {
+            into.setOptional(from.isOptional());
+        }
+    }
+
+    /** matrix 内の HAL 名 → その matrix の type ("device" / "framework" / "")。 */
+    private static Map<String, String> matrixTypeByName(
+            List<VintfProjectScanner.Entry> entries) {
+        Map<String, String> types = new LinkedHashMap<>();
+        for (VintfProjectScanner.Entry e : entries) {
+            VintfManifest m = e.getManifest();
+            if (m.getKind() != VintfManifest.Kind.COMPATIBILITY_MATRIX) {
+                continue;
+            }
+            String type = m.getMatrixType() == null ? "" : m.getMatrixType();
+            for (VintfHal hal : m.getHals()) {
+                types.putIfAbsent(hal.getName(), type);
+            }
+        }
+        return types;
     }
 
     private static boolean hasKind(List<VintfProjectScanner.Entry> entries,
@@ -216,6 +297,8 @@ public final class PlantUmlVintfDiagram {
     }
 
     private static String escape(String s) {
-        return s == null ? "" : s.replace("\"", "\\\"");
+        // クォート内ラベルの規則は escapeQuotedLabel に 1 本化されている
+        // (\" は PlantUML 1.2026.x ではエスケープにならず、< は creole 開始になる)。
+        return juml.core.formats.uml.PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 }

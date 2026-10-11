@@ -62,12 +62,13 @@ public final class PlantUmlIntermediatesDiagram {
             sb.append("}\n");
         }
 
+        // ブロック note 内で \n はリテラル表示される (PlantUML 1.2026.x)。実改行で分ける。
         sb.append("note as Summary\n");
-        sb.append("modules: ").append(modules.size()).append("\\n");
-        sb.append("artifacts: ").append(inv.getTotalFiles()).append("\\n");
+        sb.append("modules: ").append(modules.size()).append('\n');
+        sb.append("artifacts: ").append(inv.getTotalFiles()).append('\n');
         sb.append("shown: ").append(shownCount).append(" / ").append(modules.size());
         if (inv.isTruncated()) {
-            sb.append("\\n(scan truncated)");
+            sb.append("\n(scan truncated)");
         }
         sb.append("\nend note\n");
         sb.append("@enduml\n");
@@ -85,27 +86,23 @@ public final class PlantUmlIntermediatesDiagram {
     }
 
     private static String alias(IntermediateModule m) {
-        String base = m.getModulePath() + "_" + m.getName();
+        // モジュールの同一性はインベントリと同じ key (modulePath + "/" + name) で取る。
+        // "hardware_x"+"foo" と "hardware"+"x_foo" のように '_' だけで構成が違う場合、
+        // 「置換が起きたときだけハッシュ」では両方 im_hardware_x_foo に潰れて片方の
+        // コンポーネントが黙って消えるため、常に key のハッシュを付けて一意化する。
+        String key = m.getModulePath() + "/" + m.getName();
         StringBuilder sb = new StringBuilder("im_");
-        boolean replaced = false;
-        for (int i = 0; i < base.length(); i++) {
-            char c = base.charAt(i);
-            if (Character.isLetterOrDigit(c)) {
-                sb.append(c);
-            } else {
-                sb.append('_');
-                replaced |= c != '_';
-            }
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            sb.append(Character.isLetterOrDigit(c) ? c : '_');
         }
-        // "a/b"+"c" と "a"+"b_c" が同じ "im_a_b_c" に潰れて別モジュールが合成されないよう、
-        // 置換が起きた名前には元名のハッシュを付けて一意化する。
-        if (replaced) {
-            sb.append('_').append(Integer.toHexString(base.hashCode() & 0xfffff));
-        }
+        sb.append('_').append(Integer.toHexString(key.hashCode() & 0xfffff));
         return sb.toString();
     }
 
     private static String escape(String s) {
-        return s == null ? "" : s.replace("\"", "\\\"");
+        // クォート内ラベルの規則は escapeQuotedLabel に 1 本化されている
+        // (\" は PlantUML 1.2026.x ではエスケープにならず、< は creole 開始になる)。
+        return juml.core.formats.uml.PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 }

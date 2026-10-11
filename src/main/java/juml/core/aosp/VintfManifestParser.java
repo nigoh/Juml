@@ -86,7 +86,8 @@ public final class VintfManifestParser {
         if (!version.isEmpty()) {
             info.setVersion(version);
         }
-        // compat-matrix の level 属性
+        // compat-matrix の level / type 属性。type は要求の向きを決める:
+        // framework matrix は「device manifest に要求」、device matrix はその逆。
         if (kind == VintfManifest.Kind.COMPATIBILITY_MATRIX) {
             String levelStr = attr(root, "level", "");
             if (!levelStr.isEmpty()) {
@@ -96,6 +97,7 @@ public final class VintfManifestParser {
                     // 数値で無ければ無視
                 }
             }
+            info.setMatrixType(attr(root, "type", "").toLowerCase());
         }
         for (Element hal : childElements(root, "hal")) {
             VintfHal h = parseHal(hal);
@@ -103,18 +105,35 @@ public final class VintfManifestParser {
                 info.getHals().add(h);
             }
         }
-        Element kernel = firstChildElement(root, "kernel");
-        if (kernel != null) {
+        // compat-matrix は <kernel version="4.9.0"/> を複数並べるのが通常形。
+        // 最初の 1 件だけ読むと 2 件目以降のカーネル要求が消える。
+        for (Element kernel : childElements(root, "kernel")) {
             String kver = attr(kernel, "version", "");
-            if (!kver.isEmpty()) {
-                info.setKernelVersion(kver);
+            if (!kver.isEmpty() && !info.getKernelVersions().contains(kver)) {
+                info.getKernelVersions().add(kver);
             }
         }
         Element sepolicy = firstChildElement(root, "sepolicy");
         if (sepolicy != null) {
+            // manifest 形式は <version>、compat-matrix 形式は <sepolicy-version>
+            // (複数可)。どちらのタグでも取り込む。
             Element sver = firstChildElement(sepolicy, "version");
             if (sver != null) {
                 info.setSepolicyVersion(textOf(sver));
+            } else {
+                StringBuilder joined = new StringBuilder();
+                for (Element mv : childElements(sepolicy, "sepolicy-version")) {
+                    String s = textOf(mv);
+                    if (!s.isEmpty()) {
+                        if (joined.length() > 0) {
+                            joined.append(", ");
+                        }
+                        joined.append(s);
+                    }
+                }
+                if (joined.length() > 0) {
+                    info.setSepolicyVersion(joined.toString());
+                }
             }
         }
         return info;
@@ -174,14 +193,37 @@ public final class VintfManifestParser {
                     vi.getInstances().add(instText);
                 }
             }
+            // compat-matrix は <instance> の代わりに <regex-instance> で
+            // インスタンス名をパターン指定できる。捨てると要求が図とレポート
+            // から欠落するため、パターンのまま取り込む。
+            for (Element inst : childElements(iface, "regex-instance")) {
+                String instText = textOf(inst);
+                if (!instText.isEmpty() && !vi.getInstances().contains(instText)) {
+                    vi.getInstances().add(instText);
+                }
+            }
         }
         // AIDL HAL (format="aidl") は <interface> ではなく
         // <fqname>IFoo/default</fqname> 形式でインスタンスを宣言するのが主流。
+        // HIDL では <fqname>@1.0::IFoo/default</fqname> とバージョンが前置される。
         // interface 名と instance を分解し、同名 interface へマージする。
         for (Element fq : childElements(hal, "fqname")) {
             String fqText = textOf(fq);
             if (fqText.isEmpty()) {
                 continue;
+            }
+            // HIDL 形式 @<version>::<iface> — バージョンを versions へ移し、
+            // interface 名には残さない (そのままだと versions が空のまま
+            // interface 名が "@1.0::IFoo" になる)。
+            if (fqText.startsWith("@")) {
+                int sep = fqText.indexOf("::");
+                if (sep > 1) {
+                    String ver = fqText.substring(1, sep).trim();
+                    if (!ver.isEmpty() && !h.getVersions().contains(ver)) {
+                        h.getVersions().add(ver);
+                    }
+                    fqText = fqText.substring(sep + 2);
+                }
             }
             int slash = fqText.indexOf('/');
             String ifaceName = (slash >= 0 ? fqText.substring(0, slash) : fqText).trim();
