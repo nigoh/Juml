@@ -84,7 +84,8 @@ public final class IndexDatabase implements AutoCloseable {
             // 同じ「読めない DB」なので、同じ回復 (退避 → 再構築) に載せる。
             closeQuietly(conn);
             File discarded = discardOldDb(dbFile, null);
-            juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_002, "IndexDatabase",
+            // ID はカタログどおり「読込失敗 = CACHE-001」(CACHE-002 は保存失敗)。
+            juml.util.AppLog.warn(juml.util.ErrorCode.CACHE_001, "IndexDatabase",
                     "unreadable index db (" + probeFailure.getMessage()
                             + "); discarded to " + discarded.getName()
                             + ", full rescan required");
