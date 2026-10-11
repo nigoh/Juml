@@ -112,11 +112,19 @@ public final class ClassDiagramPrefs {
         return set;
     }
 
-    /** 既定値 (PlantUmlClassDiagram.Options の既定 = BALANCED 相当)。 */
+    /**
+     * 既定値 (PlantUmlClassDiagram.Options の既定 = BALANCED 相当)。
+     *
+     * <p>コメント最大長は<b>製品既定の 0 (= 全文表示)</b>。ここだけ 80 になっていたため、
+     * スタイルダイアログの「既定値へ戻す」を押すと生成器の既定
+     * ({@code PlantUmlClassDiagram.Options.commentMaxLength = 0}) にも
+     * {@code Setting} の既定にも一致しない値へ「戻り」、コメントが 80 文字で
+     * 切り詰められるようになっていた。リセットは 3 経路の中で唯一の異分子だった。</p>
+     */
     public static ClassDiagramPrefs defaults() {
         java.util.Set<String> hidden = new java.util.LinkedHashSet<>();
         hidden.add("Override");
         hidden.add("SuppressWarnings");
-        return new ClassDiagramPrefs(true, true, true, false, false, false, false, 80, hidden);
+        return new ClassDiagramPrefs(true, true, true, false, false, false, false, 0, hidden);
     }
 }

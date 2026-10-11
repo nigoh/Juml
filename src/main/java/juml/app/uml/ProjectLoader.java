@@ -251,6 +251,11 @@ public final class ProjectLoader {
         if (loadingOverlay != null) {
             loadingOverlay.setCancelAction(cancel::cancel);
         }
+        // 通常ロード (start) と同じ規則: 個別エントリの解析失敗を握り潰さず AppLog へ
+        // 記録する。ここだけ silent() だったため、アーカイブ内の壊れたクラスの
+        // PRJ-002/PRJ-004 が<b>どこにも残らず</b>、読めたクラスだけの図が
+        // 「全部読めた」顔で出ていた。
+        final ErrorListener.Counting parseErrors = ErrorListener.counting(loggingParseListener());
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             private Throwable error;
             private boolean cancelled;
@@ -260,7 +265,7 @@ public final class ProjectLoader {
                 try {
                     cache.clear();
                     refIndexCache.invalidate();
-                    cache.loadFromArchive(archive, ErrorListener.silent());
+                    cache.loadFromArchive(archive, parseErrors);
                     cancelled = cancel.isCancelled();
                 } catch (Exception ex) {
                     error = ex;
@@ -314,9 +319,15 @@ public final class ProjectLoader {
                 state.callGraphEntry = null;
                 state.sequenceHiddenParticipants.clear();
                 state.currentScope = null;
-                statusLabel.setText(java.text.MessageFormat.format(
+                String archiveStatus = java.text.MessageFormat.format(
                         Messages.get("loader.readArchiveFormat"),
-                        cache.getClasses().size(), archive.getAbsolutePath()));
+                        cache.getClasses().size(), archive.getAbsolutePath());
+                if (parseErrors.getErrorCount() > 0) {
+                    // 通常ロードと同じく「N 件解析できなかった」を添える。
+                    archiveStatus += java.text.MessageFormat.format(
+                            Messages.get("loader.parseErrors"), parseErrors.getErrorCount());
+                }
+                statusLabel.setText(archiveStatus);
                 onLoadSuccess.accept(archive);
             }
         };

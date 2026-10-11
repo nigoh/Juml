@@ -90,15 +90,34 @@ public final class MarkdownVhalReport {
         sb.append("|---|---|---|---|---|---|\n");
         for (VhalAccess a : accesses) {
             String loc = a.getFile().isEmpty() ? ""
-                    : "`" + a.getFile() + ":" + a.getLineHint() + "`";
-            sb.append("| `").append(a.getCallerFqn()).append("` | ")
-                    .append(a.getCallerMethod().isEmpty() ? "—" : "`" + a.getCallerMethod() + "`")
+                    : "`" + escapeCell(a.getFile()) + ":" + a.getLineHint() + "`";
+            sb.append("| `").append(escapeCell(a.getCallerFqn())).append("` | ")
+                    .append(a.getCallerMethod().isEmpty()
+                            ? "—" : "`" + escapeCell(a.getCallerMethod()) + "`")
                     .append(" | ").append(a.getKind().name())
-                    .append(" | `").append(a.getPropertyShortName()).append("`")
+                    .append(" | `").append(escapeCell(a.getPropertyShortName())).append("`")
                     .append(" | ").append(a.getAreaToken().isEmpty() ? "—"
-                            : "`" + a.getAreaToken() + "`")
+                            : "`" + escapeCell(a.getAreaToken()) + "`")
                     .append(" | ").append(loc).append(" |\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * ソース由来のトークンを表セルへ入れるためのエスケープ。
+     *
+     * <p>Area は AAOS ではビット OR で書くのが定石
+     * ({@code VehicleAreaSeat.ROW_1_LEFT | VehicleAreaSeat.ROW_1_RIGHT}) なので、
+     * 素の {@code |} はセル区切りとして解釈されて<b>列がずれ、Location 列が表から
+     * 押し出され</b>ていた (実測: ヘッダ 6 列に対し 7 セル)。折り返された式では
+     * 生改行も入り、1 行が 2 行に割れて表そのものが終わる。同じパッケージの兄弟
+     * ({@code MarkdownBuildNinjaReport.escapeCell}) は以前からこの規則を持っていて、
+     * こちらには届いていなかった。</p>
+     */
+    private static String escapeCell(String s) {
+        if (s == null || s.isEmpty()) {
+            return "";
+        }
+        return s.replace("|", "\\|").replace("\r", " ").replace("\n", " ");
     }
 }

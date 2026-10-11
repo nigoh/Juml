@@ -90,65 +90,89 @@ public final class AndroidBpParser {
      * 依存を推移的に取り込まないため）。チェーン (defaults が defaults を持つ) は再帰し、
      * 循環は visited 集合で防ぐ。元の各モジュールのスナップショットを使うので適用順に依存しない。</p>
      */
+    /** {@link #resolveDefaults} 用の「適用前」スナップショット (適用順に依存しないため)。 */
+    private static final class DefaultsSnapshot {
+        final Map<String, AndroidBpModule> byName = new HashMap<>();
+        final Map<String, List<String>> srcs = new HashMap<>();
+        final Map<String, List<String>> deps = new HashMap<>();
+        final Map<String, Map<String, List<String>>> byKind = new HashMap<>();
+        final Map<String, Map<String, String>> scalars = new HashMap<>();
+    }
+
+    /** {@link #resolveDefaults} が 1 モジュールへ取り込む継承分の蓄積先。 */
+    private static final class Inherited {
+        final List<String> srcs = new ArrayList<>();
+        // {kind, name} のペアを蓄積し、種別を保ったまま取り込む。
+        final List<String[]> deps = new ArrayList<>();
+        final Map<String, String> scalars = new LinkedHashMap<>();
+    }
+
     static void resolveDefaults(List<AndroidBpModule> modules) {
         if (modules == null || modules.isEmpty()) {
             return;
         }
-        Map<String, AndroidBpModule> byName = new HashMap<>();
-        Map<String, List<String>> origSrcs = new HashMap<>();
-        Map<String, List<String>> origDeps = new HashMap<>();
-        Map<String, Map<String, List<String>>> origByKind = new HashMap<>();
+        DefaultsSnapshot snap = new DefaultsSnapshot();
         for (AndroidBpModule m : modules) {
             String name = m.getName();
             if (!name.isEmpty()) {
-                byName.put(name, m);
-                origSrcs.put(name, new ArrayList<>(m.getSrcs()));
-                origDeps.put(name, new ArrayList<>(m.getDeps()));
+                snap.byName.put(name, m);
+                snap.srcs.put(name, new ArrayList<>(m.getSrcs()));
+                snap.deps.put(name, new ArrayList<>(m.getDeps()));
                 // 宣言順を保つため LinkedHashMap でスナップショットする。HashMap だと
                 // 継承した依存の並びが実行ごとに変わり、出力が非決定的になる。
                 Map<String, List<String>> kindSnapshot = new LinkedHashMap<>();
                 for (Map.Entry<String, List<String>> e : m.getDepsByKind().entrySet()) {
                     kindSnapshot.put(e.getKey(), new ArrayList<>(e.getValue()));
                 }
-                origByKind.put(name, kindSnapshot);
+                snap.byKind.put(name, kindSnapshot);
+                snap.scalars.put(name, new LinkedHashMap<>(m.getScalars()));
             }
         }
         for (AndroidBpModule m : modules) {
-            List<String> addSrcs = new ArrayList<>();
-            // {kind, name} のペアを蓄積し、種別を保ったまま取り込む。
-            List<String[]> addDeps = new ArrayList<>();
-            List<String> base = origDeps.getOrDefault(m.getName(), m.getDeps());
-            walkDefaults(base, byName, origSrcs, origDeps, origByKind,
-                    new HashSet<>(), addSrcs, addDeps);
-            for (String s : addSrcs) {
+            Inherited add = new Inherited();
+            List<String> base = snap.deps.getOrDefault(m.getName(), m.getDeps());
+            walkDefaults(base, snap, new HashSet<>(), add);
+            for (String s : add.srcs) {
                 if (!m.getSrcs().contains(s)) {
                     m.getSrcs().add(s);
                 }
             }
-            for (String[] kd : addDeps) {
+            for (String[] kd : add.deps) {
                 if (!m.getDeps().contains(kd[1])) {
                     m.addDep(kd[0], kd[1]);
+                }
+            }
+            // スカラも継承する。<b>モジュール自身の宣言が常に勝つ</b> (Soong と同じ)。
+            // 以前は srcs と deps だけを継承していたので、`vendor: true` を
+            // cc_defaults に置く AOSP の定型では、それを継承する HAL 実装が
+            // --partitions で <b>system パーティションに分類</b>されていた —
+            // 配置の分類こそが partitions 図の本体なのに、その根拠だけ継承から漏れていた。
+            for (Map.Entry<String, String> e : add.scalars.entrySet()) {
+                if (m.scalar(e.getKey()).isEmpty()) {
+                    m.putScalar(e.getKey(), e.getValue());
                 }
             }
         }
     }
 
-    private static void walkDefaults(List<String> depNames,
-            Map<String, AndroidBpModule> byName,
-            Map<String, List<String>> origSrcs, Map<String, List<String>> origDeps,
-            Map<String, Map<String, List<String>>> origByKind,
-            Set<String> visited, List<String> addSrcs, List<String[]> addDeps) {
+    private static void walkDefaults(List<String> depNames, DefaultsSnapshot snap,
+            Set<String> visited, Inherited add) {
         for (String name : depNames) {
-            AndroidBpModule d = byName.get(name);
+            AndroidBpModule d = snap.byName.get(name);
             if (d == null || !d.getType().endsWith("_defaults")) {
                 continue;
             }
             if (!visited.add(name)) {
                 continue;
             }
-            addSrcs.addAll(origSrcs.getOrDefault(name, Collections.emptyList()));
+            // 近い defaults を優先する (先に見つかった値を残す) — Soong の解決順と同じ。
+            for (Map.Entry<String, String> e
+                    : snap.scalars.getOrDefault(name, Collections.emptyMap()).entrySet()) {
+                add.scalars.putIfAbsent(e.getKey(), e.getValue());
+            }
+            add.srcs.addAll(snap.srcs.getOrDefault(name, Collections.emptyList()));
             Map<String, List<String>> dByKind =
-                    origByKind.getOrDefault(name, Collections.emptyMap());
+                    snap.byKind.getOrDefault(name, Collections.emptyMap());
             for (Map.Entry<String, List<String>> e : dByKind.entrySet()) {
                 // "defaults" キーは「この defaults がさらに別の defaults を継承する」
                 // ポインタであり、実依存ではない。継承自体は下の再帰で辿るので、
@@ -157,12 +181,11 @@ public final class AndroidBpParser {
                     continue;
                 }
                 for (String depName : e.getValue()) {
-                    addDeps.add(new String[] {e.getKey(), depName});
+                    add.deps.add(new String[] {e.getKey(), depName});
                 }
             }
-            List<String> dDeps = origDeps.getOrDefault(name, Collections.emptyList());
-            walkDefaults(dDeps, byName, origSrcs, origDeps, origByKind,
-                    visited, addSrcs, addDeps);
+            List<String> dDeps = snap.deps.getOrDefault(name, Collections.emptyList());
+            walkDefaults(dDeps, snap, visited, add);
         }
     }
 
@@ -466,16 +489,33 @@ public final class AndroidBpParser {
         String backendBody = body.substring(braceStart + 1, braceEnd);
         List<String> enabled = new ArrayList<>();
         for (String lang : new String[] {"java", "cpp", "ndk", "rust"}) {
+            // Soong の既定は java/cpp/ndk が有効、rust が無効。backend {} ブロックは
+            // 「書いた言語だけを上書きする」のであって、他の言語を無効化しない。
+            // 以前はブロックの無い言語を落としていたので、`backend { java { sdk_version:
+            // "…" } }` と 1 言語だけ調整する実 AOSP の定型 (VHAL AIDL 等) で
+            // cpp / ndk が消え、Backends 列が実態と食い違っていた —
+            // 「backend ブロック無し = 既定」の規則が「ブロック有り」の経路にだけ
+            // 適用されていなかった形である。
+            boolean def = !"rust".equals(lang);
             Matcher lm = Pattern.compile("\\b" + lang + "\\s*:\\s*\\{").matcher(backendBody);
+            boolean on;
             if (!lm.find()) {
-                continue;
+                on = def;
+            } else {
+                int ls = lm.end() - 1;
+                int le = findMatchingBrace(backendBody, ls);
+                String langBody = le > ls ? backendBody.substring(ls + 1, le) : "";
+                if (Pattern.compile("\\benabled\\s*:\\s*false\\b").matcher(langBody).find()) {
+                    on = false;
+                } else if (Pattern.compile("\\benabled\\s*:\\s*true\\b")
+                        .matcher(langBody).find()) {
+                    on = true;
+                } else {
+                    // enabled を書かないブロック (sdk_version 等の調整だけ) は既定のまま。
+                    on = def;
+                }
             }
-            int ls = lm.end() - 1;
-            int le = findMatchingBrace(backendBody, ls);
-            String langBody = le > ls ? backendBody.substring(ls + 1, le) : "";
-            boolean disabled = Pattern.compile("\\benabled\\s*:\\s*false\\b")
-                    .matcher(langBody).find();
-            if (!disabled) {
+            if (on) {
                 enabled.add(lang);
             }
         }

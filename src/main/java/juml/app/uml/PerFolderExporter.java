@@ -77,6 +77,18 @@ final class PerFolderExporter {
                         updateBar(loadProgress, status, done, total, message)),
                 150L);
 
+        // 個別フォルダの失敗を<b>捨てない</b>。以前は silent() を渡していたので、
+        // 50 フォルダ中 40 が描けなくても例外さえ飛ばなければ「成功」ダイアログが出た。
+        // 個別失敗は例外ではなくリスナー経由で来るのがこのパイプラインの規約なので、
+        // silent() を渡すことは「失敗を報告しない」と宣言しているのと同じだった。
+        final java.util.List<String> failures =
+                java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        final ErrorListener collector = (code, source, line, message) -> {
+            if (code != null && code != juml.util.ErrorCode.NONE) {
+                failures.add(ErrorListener.format(code, source, line, message));
+            }
+        };
+
         new SwingWorker<PerFolderClassDiagrams.Result, Void>() {
             private Throwable error;
 
@@ -85,7 +97,7 @@ final class PerFolderExporter {
                 try {
                     return PerFolderClassDiagrams.generate(
                             projectRoot, outDir, classes, index, null,
-                            progress, ErrorListener.silent());
+                            progress, collector);
                 } catch (Throwable t) {
                     error = t;
                     return null;
@@ -122,15 +134,41 @@ final class PerFolderExporter {
                 status.setText(java.text.MessageFormat.format(
                         Messages.get("export.perFolder.statusDone"),
                         result.getFolderCount(), outDir.getAbsolutePath()));
+                String body = java.text.MessageFormat.format(
+                        Messages.get("export.perFolder.done"),
+                        result.getFolderCount(), result.getClassCount(),
+                        outDir.getAbsolutePath());
+                if (failures.isEmpty()) {
+                    JOptionPane.showMessageDialog(parent, body,
+                            Messages.get("export.perFolder.doneTitle"),
+                            JOptionPane.INFORMATION_MESSAGE);
+                    return;
+                }
+                // 出せた分は出せている。ただし「全部出た」と言ってはいけない。
+                for (String f : failures) {
+                    juml.util.AppLog.warn(juml.util.ErrorCode.EXP_005, "PerFolderExporter", f);
+                }
                 JOptionPane.showMessageDialog(parent,
-                        java.text.MessageFormat.format(
-                                Messages.get("export.perFolder.done"),
-                                result.getFolderCount(), result.getClassCount(),
-                                outDir.getAbsolutePath()),
+                        body + "\n\n" + java.text.MessageFormat.format(
+                                Messages.get("export.perFolder.partial"), failures.size())
+                                + "\n" + firstFailures(failures),
                         Messages.get("export.perFolder.doneTitle"),
-                        JOptionPane.INFORMATION_MESSAGE);
+                        JOptionPane.WARNING_MESSAGE);
             }
         }.execute();
+    }
+
+    /** ダイアログに載せる先頭数件 (全部載せると画面から溢れる)。 */
+    private static String firstFailures(java.util.List<String> failures) {
+        StringBuilder sb = new StringBuilder();
+        int shown = Math.min(5, failures.size());
+        for (int i = 0; i < shown; i++) {
+            sb.append("  ").append(failures.get(i)).append('\n');
+        }
+        if (failures.size() > shown) {
+            sb.append("  ... (").append(failures.size() - shown).append(" more)\n");
+        }
+        return sb.toString();
     }
 
     private static void updateBar(JProgressBar bar, JLabel status,
