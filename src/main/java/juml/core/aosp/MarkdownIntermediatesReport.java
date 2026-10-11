@@ -51,9 +51,13 @@ public final class MarkdownIntermediatesReport {
         sb.append("## Artifact kinds\n\n");
         sb.append("| Kind | Count |\n|---|---|\n");
         List<Map.Entry<String, Integer>> kinds = new ArrayList<>(kindTotals.entrySet());
-        kinds.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        // 件数降順・同数は名前順。同数の並びを走査順 (環境依存) に任せると
+        // 同じツリーでもマシンごとにレポートが変わる。
+        kinds.sort(Comparator
+                .comparingInt((Map.Entry<String, Integer> e) -> -e.getValue())
+                .thenComparing(Map.Entry::getKey));
         for (Map.Entry<String, Integer> e : kinds) {
-            sb.append("| `").append(e.getKey()).append("` | ")
+            sb.append("| `").append(escapeCell(e.getKey())).append("` | ")
                     .append(e.getValue()).append(" |\n");
         }
         sb.append('\n');
@@ -64,23 +68,40 @@ public final class MarkdownIntermediatesReport {
             sb.append("| Module | Path | Variants | Artifacts | Size | Kinds |\n");
             sb.append("|---|---|---|---|---|---|\n");
             List<IntermediateModule> sorted = new ArrayList<>(e.getValue());
-            sorted.sort(Comparator.comparing(IntermediateModule::getName));
+            // 同名モジュールは AOSP では普通 (framework 等)。パスを第 2 キーに
+            // しないと並びがディレクトリ走査順 (環境依存) になる。
+            sorted.sort(Comparator.comparing(IntermediateModule::getName)
+                    .thenComparing(IntermediateModule::getModulePath));
             for (IntermediateModule m : sorted) {
-                sb.append("| `").append(m.getName()).append("` | `")
-                        .append(m.getModulePath()).append("` | ")
+                sb.append("| `").append(escapeCell(m.getName())).append("` | `")
+                        .append(escapeCell(m.getModulePath())).append("` | ")
                         .append(m.getVariants().size()).append(" | ")
                         .append(m.getTotalFiles()).append(" | ")
                         .append(humanBytes(m.getTotalBytes())).append(" | ")
-                        .append(kindsSummary(m.getKindCounts())).append(" |\n");
+                        .append(escapeCell(kindsSummary(m.getKindCounts()))).append(" |\n");
             }
             sb.append('\n');
         }
         return sb.toString();
     }
 
+    /**
+     * Markdown 表セル用エスケープ ({@code |} と改行)。兄弟の
+     * {@link MarkdownBuildNinjaReport} と同じ規則。
+     */
+    private static String escapeCell(String s) {
+        if (s == null || s.isEmpty()) {
+            return "";
+        }
+        return s.replace("|", "\\|").replace("\r", " ").replace("\n", " ");
+    }
+
     private static String kindsSummary(Map<String, Integer> kinds) {
         List<Map.Entry<String, Integer>> list = new ArrayList<>(kinds.entrySet());
-        list.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        // 上位 5 件に切るため、同数の順序が環境依存だと表示される種別まで変わる。
+        list.sort(Comparator
+                .comparingInt((Map.Entry<String, Integer> e) -> -e.getValue())
+                .thenComparing(Map.Entry::getKey));
         StringBuilder sb = new StringBuilder();
         int limit = Math.min(list.size(), 5);
         for (int i = 0; i < limit; i++) {

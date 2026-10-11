@@ -68,6 +68,12 @@ public final class IntermediatesAnalyzer {
             }
             for (File c : children) {
                 if (c.isDirectory()) {
+                    // symlink の循環で無限走査にならないよう、ディレクトリの
+                    // symlink は辿らない (兄弟走査は深さ制限で守られているが、
+                    // この walker はスタック式で深さ上限が無い)。
+                    if (java.nio.file.Files.isSymbolicLink(c.toPath())) {
+                        continue;
+                    }
                     stack.push(c);
                 } else if (c.isFile()) {
                     if (inv.getTotalFiles() >= maxFiles) {
@@ -129,22 +135,20 @@ public final class IntermediatesAnalyzer {
 
     /**
      * variant ディレクトリらしいセグメントか判定するヒューリスティック。
-     * arch/abi/リンク種別トークンを含むものを variant とみなす。
+     * Soong の variant ディレクトリは OS トークン ({@code android_} /
+     * {@code linux_*} / {@code host_} など) で始まる。以前は
+     * {@code _static} / {@code _common} などの接尾辞や {@code _arm64} の部分一致
+     * でも variant 扱いしていたが、{@code libcrypto_static} や {@code foo_common}
+     * のような実在のモジュール名まで variant と誤認し、同ディレクトリの別モジュール
+     * が 1 つに合成されてしまうため、OS プレフィックスのみで判定する。
      */
     static boolean isVariantSegment(String seg) {
         if (seg == null || seg.isEmpty()) {
             return false;
         }
-        if (seg.startsWith("android_") || seg.startsWith("linux_")
+        return seg.startsWith("android_") || seg.startsWith("linux_")
                 || seg.startsWith("host_") || seg.startsWith("windows_")
-                || seg.startsWith("darwin_") || seg.startsWith("linux_glibc_")
-                || seg.startsWith("linux_bionic_")) {
-            return true;
-        }
-        return seg.endsWith("_shared") || seg.endsWith("_static")
-                || seg.endsWith("_common") || seg.contains("_armv8")
-                || seg.contains("_armv7") || seg.contains("_arm64")
-                || seg.contains("_x86_64") || seg.contains("_x86");
+                || seg.startsWith("darwin_");
     }
 
     /** ファイル名から成果物種別 (拡張子) を返す。拡張子なしは {@code (none)}。 */

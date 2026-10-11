@@ -83,13 +83,14 @@ public final class PlantUmlBuildNinjaDiagram {
             shown++;
         }
 
+        // ブロック note 内で \n はリテラル表示される (PlantUML 1.2026.x)。実改行で分ける。
         sb.append("note as Summary\n");
-        sb.append("build statements: ").append(graph.getBuildStatements()).append("\\n");
-        sb.append("rules: ").append(graph.getRules().size()).append("\\n");
+        sb.append("build statements: ").append(graph.getBuildStatements()).append('\n');
+        sb.append("rules: ").append(graph.getRules().size()).append('\n');
         sb.append("groups shown: ").append(kept.size())
                 .append(" / ").append(degree.size());
         if (graph.isTruncated()) {
-            sb.append("\\n(input truncated)");
+            sb.append("\n(input truncated)");
         }
         sb.append("\nend note\n");
         sb.append("@enduml\n");

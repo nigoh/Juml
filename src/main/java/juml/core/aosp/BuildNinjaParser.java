@@ -56,7 +56,14 @@ public final class BuildNinjaParser {
             collectNinjaFiles(projectRoot, ninjaFiles, 0);
         }
         for (File f : ninjaFiles) {
-            parseFile(f, graph);
+            try {
+                parseFile(f, graph);
+            } catch (IOException ex) {
+                // 兄弟の走査 (SelinuxPolicyParser / VintfProjectScanner) と同じく
+                // 1 ファイルの読み取り失敗で全体を中断しない。無痕跡にもしない。
+                juml.util.AppLog.warn(juml.util.ErrorCode.PRJ_004, "BuildNinjaParser",
+                        "failed to read " + f.getPath() + " (skipped): " + ex.getMessage());
+            }
             if (graph.isTruncated()) {
                 break;
             }
@@ -155,7 +162,10 @@ public final class BuildNinjaParser {
         }
         graph.addBuildStatement(outputs.size());
 
-        String inputsPart = afterRule.replace("||", " ").replace("|", " ");
+        // |@ (validations, ninja 1.11+) → || (order-only) → | (implicit) の順で
+        // 除去する。|@ を先に消さないと "|" だけが消えて "@" が擬似パスとして残る。
+        String inputsPart = afterRule.replace("|@", " ")
+                .replace("||", " ").replace("|", " ");
         List<String> inputs = splitPaths(inputsPart);
 
         // 集約: 出力グループ <- 入力グループ のエッジを張る
@@ -258,6 +268,12 @@ public final class BuildNinjaParser {
         String line = r.readLine();
         if (line == null) {
             return null;
+        }
+        // Ninja の字句規則ではコメントは行末まで。末尾が $ でも継続しない —
+        // 結合すると次の build 文がコメントに飲み込まれて 1 件丸ごと消える。
+        String t = stripLeadingWhitespace(line);
+        if (!t.isEmpty() && t.charAt(0) == '#') {
+            return line;
         }
         StringBuilder sb = new StringBuilder(line);
         while (endsWithContinuation(sb)) {
