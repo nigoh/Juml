@@ -106,6 +106,8 @@ public final class PlantUmlIntermediatesDiagram {
     }
 
     private static String escape(String s) {
-        return s == null ? "" : s.replace("\"", "\\\"");
+        // クォート内ラベルの規則は escapeQuotedLabel に 1 本化されている
+        // (\" は PlantUML 1.2026.x ではエスケープにならず、< は creole 開始になる)。
+        return juml.core.formats.uml.PlantUmlCommentFormatter.escapeQuotedLabel(s);
     }
 }

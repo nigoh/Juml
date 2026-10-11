@@ -68,13 +68,15 @@ public final class MarkdownVintfReport {
         sb.append("|---|---|---|---|---|---|---|\n");
         for (VintfProjectScanner.Entry e : entries) {
             VintfManifest m = e.getManifest();
-            sb.append("| `").append(e.getFile()).append("` | ")
+            sb.append("| `").append(escapeCell(e.getFile())).append("` | ")
                     .append(kindLabel(m.getKind())).append(" | ")
-                    .append(dash(m.getVersion())).append(" | ")
+                    .append(escapeCell(dash(m.getVersion()))).append(" | ")
                     .append(m.getLevel() == null ? "—" : m.getLevel().toString())
                     .append(" | ")
-                    .append(dash(m.getKernelVersion())).append(" | ")
-                    .append(dash(m.getSepolicyVersion())).append(" | ")
+                    .append(m.getKernelVersions().isEmpty() ? "—"
+                            : escapeCell(String.join(", ", m.getKernelVersions())))
+                    .append(" | ")
+                    .append(escapeCell(dash(m.getSepolicyVersion()))).append(" | ")
                     .append(m.getHals().size()).append(" |\n");
         }
         sb.append('\n');
@@ -107,10 +109,13 @@ public final class MarkdownVintfReport {
         }
         rows.sort(Comparator.comparing(r -> r[0]));
         for (String[] r : rows) {
-            sb.append("| `").append(r[0]).append("` | ").append(r[1]).append(" | ")
-                    .append(r[2]).append(" | ").append(r[3]).append(" | ")
-                    .append(r[4]).append(" | ").append(r[5]).append(" | ")
-                    .append(r[6]).append(" |\n");
+            sb.append("| `").append(escapeCell(r[0])).append("` | ")
+                    .append(escapeCell(r[1])).append(" | ")
+                    .append(escapeCell(r[2])).append(" | ")
+                    .append(escapeCell(r[3])).append(" | ")
+                    .append(escapeCell(r[4])).append(" | ")
+                    .append(escapeCell(r[5])).append(" | ")
+                    .append(escapeCell(r[6])).append(" |\n");
         }
         sb.append('\n');
     }
@@ -121,46 +126,69 @@ public final class MarkdownVintfReport {
      */
     private static void appendMatrixCheck(StringBuilder sb,
                                           List<VintfProjectScanner.Entry> entries) {
-        Set<String> provided = new LinkedHashSet<>();
-        Set<String> required = new TreeSet<>();
+        Set<String> providedByDevice = new LinkedHashSet<>();
+        Set<String> providedByFramework = new LinkedHashSet<>();
+        // framework matrix (type 無し含む) は device manifest への要求、
+        // device matrix は framework manifest への要求。向きを区別しないと
+        // device matrix の要求が「device manifest に無い」と誤報告される。
+        Set<String> requiredOfDevice = new TreeSet<>();
+        Set<String> requiredOfFramework = new TreeSet<>();
         boolean hasDevice = false;
-        boolean hasMatrix = false;
+        boolean hasFramework = false;
         for (VintfProjectScanner.Entry e : entries) {
             VintfManifest m = e.getManifest();
             if (m.getKind() == VintfManifest.Kind.DEVICE_MANIFEST) {
                 hasDevice = true;
                 for (VintfHal hal : m.getHals()) {
-                    provided.add(hal.getName());
+                    providedByDevice.add(hal.getName());
+                }
+            } else if (m.getKind() == VintfManifest.Kind.FRAMEWORK_MANIFEST) {
+                hasFramework = true;
+                for (VintfHal hal : m.getHals()) {
+                    providedByFramework.add(hal.getName());
                 }
             } else if (m.getKind() == VintfManifest.Kind.COMPATIBILITY_MATRIX) {
-                hasMatrix = true;
+                boolean deviceMatrix = "device".equals(m.getMatrixType());
                 for (VintfHal hal : m.getHals()) {
                     // optional=true の HAL は欠けていても互換性違反ではない
                     if (!Boolean.TRUE.equals(hal.isOptional())) {
-                        required.add(hal.getName());
+                        (deviceMatrix ? requiredOfFramework : requiredOfDevice)
+                                .add(hal.getName());
                     }
                 }
             }
         }
-        if (!hasDevice || !hasMatrix) {
+        boolean checkDevice = hasDevice && !requiredOfDevice.isEmpty();
+        boolean checkFramework = hasFramework && !requiredOfFramework.isEmpty();
+        if (!checkDevice && !checkFramework) {
             return;
         }
         sb.append("## Matrix ⇄ Manifest check (要求と宣言の突き合わせ)\n\n");
         List<String> missing = new ArrayList<>();
-        for (String name : required) {
-            if (!provided.contains(name)) {
-                missing.add(name);
+        if (checkDevice) {
+            for (String name : requiredOfDevice) {
+                if (!providedByDevice.contains(name)) {
+                    missing.add("`" + name + "` (device manifest に無い)");
+                }
+            }
+        }
+        if (checkFramework) {
+            for (String name : requiredOfFramework) {
+                if (!providedByFramework.contains(name)) {
+                    missing.add("`" + name + "` (framework manifest に無い)");
+                }
             }
         }
         if (missing.isEmpty()) {
-            sb.append("_compatibility matrix の必須 HAL はすべて device manifest で"
+            sb.append("_compatibility matrix の必須 HAL はすべて対応する manifest "
+                    + "(framework matrix→device / device matrix→framework) で"
                     + "宣言されています。_\n");
             return;
         }
-        sb.append("_matrix で必須 (optional=false) なのに device manifest に宣言が"
+        sb.append("_matrix で必須 (optional=false) なのに対応する manifest に宣言が"
                 + "無い HAL:_\n\n");
-        for (String name : missing) {
-            sb.append("- `").append(name).append("`\n");
+        for (String line : missing) {
+            sb.append("- ").append(line).append('\n');
         }
     }
 
@@ -198,6 +226,18 @@ public final class MarkdownVintfReport {
 
     private static String dash(String v) {
         return v == null || v.isEmpty() ? "—" : v;
+    }
+
+    /**
+     * Markdown 表セル用エスケープ。{@code |} を含む値 (パスや regex-instance の
+     * パターン等) が列を割らないようにする。兄弟の
+     * {@link MarkdownBuildNinjaReport} と同じ規則。
+     */
+    private static String escapeCell(String s) {
+        if (s == null || s.isEmpty()) {
+            return "";
+        }
+        return s.replace("|", "\\|").replace("\r", " ").replace("\n", " ");
     }
 
     private static String emptyToNull(String v) {
